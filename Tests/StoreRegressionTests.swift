@@ -47,6 +47,22 @@ enum StoreRegressionTests {
 		try check(store.portStatus.contains("isolated"), "Test configuration stubs external port checks")
 		let settings = store.networkSettings()
 		try check(settings["mapping"] as? Bool == false && settings["dht"] as? Bool == false, "Test configuration disables router mapping and discovery")
+		let selection = TransferStore(root: root, engine: FakeEngine(), automaticPolling: false, allowsSystemIntegration: false)
+		selection.records = [TransferRecord(id: "a", source: "x", destination: root.path), TransferRecord(id: "b", source: "y", destination: root.path)]
+		selection.selectFromList(["a"]); selection.selectFromList(["a", "b"])
+		try check(selection.selection.isEmpty, "List changes must not publish during the view update")
+		await drainSelectionQueue()
+		try check(selection.selection == ["a", "b"], "Latest queued list selection wins")
+		selection.selectFromList(["a"]); selection.selection = ["b"]; selection.selection = ["a", "b"]
+		await drainSelectionQueue()
+		try check(selection.selection == ["a", "b"], "Newer programmatic updates must win even when they return to the original value")
+		selection.selectFromList(["a"]); selection.selection = ["b"]
+		await drainSelectionQueue()
+		try check(selection.selection == ["b"], "A newer programmatic selection must not be overwritten")
+		selection.selectFromList(["a", "removed"])
+		selection.records.removeAll { $0.id == "a" }
+		await drainSelectionQueue()
+		try check(selection.selection.isEmpty, "Deferred selection must discard removed IDs")
 		let shutdown = await store.shutdown()
 		try check(shutdown, "Fake store shuts down")
 		let failing = StateStorage(root: root, write: { _, _ in throw CocoaError(.fileWriteOutOfSpace) })
@@ -93,6 +109,9 @@ enum StoreRegressionTests {
 		time = time.addingTimeInterval(31); await retry.refresh()
 		try check(retryEngine.commands.filter { $0 == "add" }.count == before + 1 && !fm.fileExists(atPath: original.path), "Watch retries transient failure and deletes only successfully imported bytes")
 		print("PASS: corrupt-state quit protection, concurrent startup, isolated services")
+	}
+	@MainActor private static func drainSelectionQueue() async {
+		await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in DispatchQueue.main.async { continuation.resume() } }
 	}
 }
 

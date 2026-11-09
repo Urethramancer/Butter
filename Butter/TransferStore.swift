@@ -18,7 +18,8 @@ struct AddRequest: Identifiable {
 	@Published var preferences = Preferences()
 	@Published var records: [TransferRecord] = []
 	@Published var transfers: [TransferSnapshot] = []
-	@Published var selection: Set<String> = []
+	@Published var selection: Set<String> = [] { didSet { selectionRevision &+= 1 } }
+	private var selectionRevision: UInt64 = 0
 	@Published var addRequest: AddRequest?
 	@Published var error: String?
 	@Published var networkError = ""
@@ -118,6 +119,16 @@ struct AddRequest: Identifiable {
 		return await task.value
 	}
 	func group(for torrent: TransferSnapshot) -> TorrentGroup? { TransferGrouping.group(for: torrent, groups: preferences.groups) }
+	func selectFromList(_ ids: Set<String>) {
+		// AppKit can report selection during a SwiftUI update. Publish on the next
+		// main-queue turn, retaining only the latest request and live record IDs.
+		selectionRevision &+= 1
+		let revision = selectionRevision
+		DispatchQueue.main.async { [weak self] in
+			guard let self, self.selectionRevision == revision else { return }
+			self.selection = ids.intersection(Set(self.records.map(\.id)))
+		}
+	}
 	func priority(for torrent: TransferSnapshot) -> TransferPriority { TransferGrouping.priority(record(torrent.id)?.priority, torrent: torrent, groups: preferences.groups) }
 	func record(_ id: String) -> TransferRecord? { records.first { $0.id == id } }
 	func title(_ torrent: TransferSnapshot) -> String { record(torrent.id)?.name ?? torrent.name }

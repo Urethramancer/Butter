@@ -47,6 +47,7 @@ final class ButterUITests: XCTestCase {
 		XCTAssertFalse(app.buttons["Create"].isEnabled)
 		app.typeKey(.escape, modifierFlags: [])
 		app.typeKey(",", modifierFlags: .command)
+		app.buttons["General"].click()
 		XCTAssertTrue(app.buttons["Register for Magnet Links"].waitForExistence(timeout: 5))
 		app.buttons["Register for Magnet Links"].click()
 		XCTAssertTrue(app.staticTexts["Isolated test configuration."].waitForExistence(timeout: 5))

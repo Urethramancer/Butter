@@ -65,10 +65,12 @@ upward probes; they are not measurements of an ISP connection limit.
 ## Verification
 
 ```sh
-Scripts/verify.sh all
-Scripts/verify.sh coverage after
-Scripts/verify.sh sanitizers audit
+Scripts/verify.sh final audit
 ```
+
+`final` runs the coverage-enabled suites once (including a single UI-suite run),
+then build checks and sanitizers. Run it when the computer is available for UI
+automation; no automatic verification is scheduled.
 
 `Scripts/verify.sh` also accepts `client`, `storage`, `engine`, `lifecycle`,
 `disk`, `interruption`, `interface`, `ui`, `build` and `version`. Existing test commands remain supported.

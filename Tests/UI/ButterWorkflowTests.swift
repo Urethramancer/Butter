@@ -55,7 +55,9 @@ extension ButterUITests {
 			guard let data = try? Data(contentsOf: self.root.appendingPathComponent("state.json")), let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let records = state["transfers"] as? [[String: Any]] else { return false }
 			return records.count == 2 && records.allSatisfy { $0["wanted"] as? Bool == false }
 		}, evaluatedWith: nil)
-		wait(for: [paused], timeout: 5)
+		let pauseResult = XCTWaiter.wait(for: [paused], timeout: 5)
+		let saved = (try? String(contentsOf: root.appendingPathComponent("state.json"), encoding: .utf8)) ?? "Unreadable state"
+		XCTAssertEqual(pauseResult, .completed, "Saved state: \(saved)\n\(app.debugDescription)")
 		app.menuBars.menuBarItems["Transfers"].click(); app.menuItems["Remove Selected"].click()
 		XCTAssertTrue(app.staticTexts["No transfers"].waitForExistence(timeout: 5))
 	}

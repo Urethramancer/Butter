@@ -6,6 +6,12 @@ mode=${1:-all}
 case "$mode" in
 	client|engine|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
 	version) exec sh Tests/git-version.sh ;;
+	final)
+		sh Tests/git-version.sh
+		Scripts/verify.sh coverage "${2:-final}"
+		Scripts/test-build.sh
+		Scripts/verify.sh sanitizers "${2:-final}"
+		;;
 	all)
 		sh Tests/git-version.sh
 		for suite in client storage disk engine interruption lifecycle interface ui build; do "Scripts/test-$suite.sh"; done
@@ -27,6 +33,7 @@ case "$mode" in
 				cmake --build "$out/$sanitizer" --parallel 4
 				"$out/$sanitizer/EngineTests"
 				BUTTER_INTERRUPTION_BINARY="$out/$sanitizer/InterruptionTests" Scripts/test-interruption.sh
+				BUTTER_ENGINE_DISK_BINARY="$out/$sanitizer/EngineDiskFailureTests" Scripts/test-disk.sh
 			done
 			exit 0
 		fi
@@ -84,5 +91,5 @@ PROFILES
 		fi
 		exit "$status"
 		;;
-	*) echo 'Usage: Scripts/verify.sh [all|client|storage|disk|interruption|engine|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
+	*) echo 'Usage: Scripts/verify.sh [final [label]|all|client|storage|disk|interruption|engine|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
 esac

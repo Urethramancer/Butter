@@ -32,7 +32,7 @@ struct ContentView: View {
 				if !store.ready { ProgressView("Restoring transfers…").frame(maxWidth: .infinity, maxHeight: .infinity) }
 				else if visible.isEmpty { ContentUnavailableView(search.isEmpty ? "No transfers" : "No matching transfers", systemImage: "arrow.down.doc", description: Text(search.isEmpty ? "Open a torrent file or add a magnet link to begin." : "Try another search or filter.")).frame(maxWidth: .infinity, maxHeight: .infinity) }
 				else {
-					List(selection: $store.selection) {
+					List(selection: Binding(get: { store.selection }, set: { store.selectFromList($0) })) {
 						ForEach(store.preferences.groups) { group in groupSection(group.id.uuidString, title: group.name, colour: group.colour, members: visible.filter { store.group(for: $0)?.id == group.id }) }
 						groupSection("ungrouped", title: "Ungrouped", colour: "grey", members: visible.filter { store.group(for: $0) == nil })
 					}.listStyle(.inset)

@@ -18,10 +18,9 @@ import Darwin
 		defer { try? fm.removeItem(at: root) }
 		for iteration in 0..<8 {
 			let childRoot = root.appendingPathComponent("child-\(iteration)")
-			let process = Process(), done = DispatchSemaphore(value: 0)
+			let process = Process()
 			process.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
 			process.arguments = ["--writer", childRoot.path]
-			process.terminationHandler = { _ in done.signal() }
 			try process.run()
 			defer { if process.isRunning { kill(process.processIdentifier, SIGKILL) } }
 			let deadline = ProcessInfo.processInfo.systemUptime + 5
@@ -29,8 +28,9 @@ import Darwin
 			guard fm.fileExists(atPath: childRoot.appendingPathComponent("ready").path) else { throw CocoaError(.fileReadUnknown) }
 			try await Task.sleep(for: .milliseconds(5 + iteration * 3))
 			kill(process.processIdentifier, SIGKILL)
-			let terminated = await Task.detached { done.wait(timeout: .now() + 5) == .success }.value
-			guard terminated else { throw CocoaError(.executableLoad) }
+			let terminationDeadline = ProcessInfo.processInfo.systemUptime + 5
+			while process.isRunning && ProcessInfo.processInfo.systemUptime < terminationDeadline { try await Task.sleep(for: .milliseconds(10)) }
+			guard !process.isRunning else { throw CocoaError(.executableLoad) }
 			let saved = try await StateStorage(root: childRoot).load()
 			guard saved.transfers.count == 256, Set(saved.transfers.map(\.source)).count == 1 else { throw CocoaError(.coderInvalidValue) }
 		}
