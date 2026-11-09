@@ -1,13 +1,15 @@
-# Remaining delivery checks
+# Remaining acceptance checks
 
-## Engine and transfers
-- Verify loopback TCP and µTP transfers, magnet metadata, selective files, corruption recovery and resume recovery.
-- Verify completion moves, failure retry, auto-removal, private trackers and source seeding.
+## Native interaction and appearance
+- Exercise keyboard shortcuts, file/magnet drops, multiselection, context menus,
+  file-tree checkboxes, rename dialogs and Settings interactively in Light and Dark.
+  Native-view smoke checks pass; compositor captures are unavailable in this session.
+- Compare inspector spacing with the original visual reference when available;
+  that reference was not included with the implementation plan.
 
-## Interface and integration
-- Exercise all controls, shortcuts, file drops and inspector in Light and Dark appearance.
-- Verify nested rename recovery and Trash isolation with neighbouring files.
-- Verify watcher arrival stability, occupied-port recovery and unavailable port-check service.
-
-## Release verification
-- Build Debug and Release without signing; check static linkage, Git versions and repeat-build cleanliness.
+## Failure and integration stress
+- Interrupt cross-volume completion moves and multi-file folder renames during
+  process termination; verify recovery with partial filesystem operations.
+- Inject disk-full and folder-permission failures during state saves and exports.
+- Verify notification permission changes, default-handler registration and router
+  mapping against real macOS settings and network hardware.
