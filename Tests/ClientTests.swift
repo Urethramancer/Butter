@@ -19,6 +19,7 @@ func observation(_ id: String, _ priority: TransferPriority = .normal, order: In
 				("estimator-expiry", { try CoreRegressionTests.estimator() }),
 				("storage-failures", { try await CoreRegressionTests.storageFailures() }),
 				("watched-replacement", { try await CoreRegressionTests.watchedReplacement() }),
+				("watcher-race-boundaries", { try await CoreRegressionTests.watcherRaceBoundaries() }),
 				("quit-modes", { try CoreRegressionTests.quitModes() })
 			]
 			let filter = ProcessInfo.processInfo.environment["BUTTER_TEST_CASE"]

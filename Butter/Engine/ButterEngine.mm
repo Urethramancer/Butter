@@ -137,6 +137,17 @@ struct PendingExport {
 	for (auto const& [key, t] : _transfers) if (t.handle == handle) return key;
 	return {};
 }
+- (bool)managedFileExists:(fs::path const&)file base:(fs::path const&)base excluding:(std::string const&)key {
+	auto resolved = fs::weakly_canonical(file), relative = resolved.lexically_relative(base);
+	if (relative.empty() || *relative.begin() == ".." || fs::is_symlink(file) || (fs::exists(file) && !fs::is_regular_file(file))) throw std::runtime_error("Unsafe managed source path; files were retained. Review the save location.");
+	if (!fs::exists(file)) return false;
+	for (auto const& [otherKey, other] : _transfers) if (otherKey != key) {
+		auto info = other.handle.torrent_file(); if (!info) continue;
+		auto renames = other.handle.get_renamed_files(); lt::filenames paths(info->layout(), renames);
+		for (auto index : info->layout().file_range()) if (fs::weakly_canonical(fs::path(other.handle.status().save_path) / paths.file_path(index)) == resolved) throw std::runtime_error("A managed file is shared with another transfer. Remove without deleting data, or use a separate copy.");
+	}
+	return true;
+}
 - (void)save:(Transfer&)t { t.handle.save_resume_data(lt::torrent_handle::save_info_dict | lt::torrent_handle::flush_disk_cache); ++_pendingResume; }
 - (void)flush:(std::string const&)key {
 	auto h = _transfers.at(key).handle; h.pause(); _transfers.at(key).flushed = false; h.flush_cache();
@@ -476,6 +487,7 @@ struct PendingExport {
 					if (target != fs::weakly_canonical(h.status().save_path)) {
 						[self flush:key];
 						auto renames = h.get_renamed_files(); lt::filenames paths(ti->layout(), renames);
+						auto base = fs::weakly_canonical(h.status().save_path);
 						t.moveFiles.clear();
 						for (auto index : ti->layout().file_range()) {
 							if (ti->layout().pad_file_at(index)) continue;
@@ -483,7 +495,7 @@ struct PendingExport {
 							auto contained = fs::weakly_canonical(file).lexically_relative(target);
 							if (!safeRelative(relative.string()) || contained.empty() || *contained.begin() == ".." || fs::is_symlink(file)) throw std::runtime_error("Move escapes the destination.");
 							if (fs::exists(file)) throw std::runtime_error("A file already exists at the move destination. No files were moved.");
-							if (fs::exists(fs::path(h.status().save_path) / relative)) t.moveFiles.push_back(int(index));
+							if ([self managedFileExists:base / relative base:base excluding:key]) t.moveFiles.push_back(int(index));
 						}
 						t.moveDestination = target.string();
 						try { [self persistPaths:key transfer:t]; } catch (...) { t.moveDestination.clear(); t.moveFiles.clear(); throw; }
@@ -506,6 +518,7 @@ struct PendingExport {
 				} else if ([command isEqual:@"rename"]) {
 					auto ti = h.torrent_file(); if (!ti) throw std::runtime_error("Metadata is still resolving.");
 					auto renames = h.get_renamed_files(); lt::filenames current(ti->layout(), renames);
+					auto base = fs::weakly_canonical(h.status().save_path);
 					std::set<std::string> targets; std::set<int> indices;
 					NSArray *changes = p[@"changes"];
 					if (t.moving || !t.renaming.empty()) throw std::runtime_error("Wait for the current filesystem operation to finish.");
@@ -515,10 +528,11 @@ struct PendingExport {
 						fs::path relative(path);
 						if (index < 0 || index >= ti->num_files() || !safeRelative(path)) throw std::runtime_error("Invalid or unsafe relative path.");
 						if (!targets.insert(path).second) throw std::runtime_error("Rename paths collide.");
+						if (path != current.file_path(lt::file_index_t(index))) [self managedFileExists:base / current.file_path(lt::file_index_t(index)) base:base excluding:key];
 						for (auto i : ti->layout().file_range()) if (!indices.count(int(i)) && current.file_path(i) == path) throw std::runtime_error("A torrent file already has that path.");
 						auto dest = fs::path(h.status().save_path) / relative;
 						if (fs::exists(dest) && path != current.file_path(lt::file_index_t(index))) throw std::runtime_error("A file already exists at the new path.");
-						auto base = fs::weakly_canonical(h.status().save_path); auto resolved = fs::weakly_canonical(dest.parent_path());
+						auto resolved = fs::weakly_canonical(dest.parent_path());
 						auto rel = resolved.lexically_relative(base); if (rel.empty() || *rel.begin() == "..") throw std::runtime_error("Rename escapes the destination.");
 					}
 					h.pause(); t.error.clear();
@@ -539,14 +553,7 @@ struct PendingExport {
 						for (auto i : ti->layout().file_range()) {
 							if (ti->layout().pad_file_at(i)) continue;
 							auto file = fs::path(h.status().save_path) / current.file_path(i);
-							auto resolved = fs::weakly_canonical(file); auto rel = resolved.lexically_relative(base);
-							if (rel.empty() || *rel.begin() == ".." || fs::is_symlink(file) || fs::is_directory(file)) throw std::runtime_error("Unsafe managed path; files were retained. Review the save location.");
-							for (auto const& [otherKey, other] : _transfers) if (otherKey != key) {
-								auto otherInfo = other.handle.torrent_file(); if (!otherInfo) continue;
-								auto otherRenames = other.handle.get_renamed_files(); lt::filenames otherCurrent(otherInfo->layout(), otherRenames);
-								for (auto j : otherInfo->layout().file_range()) if (fs::weakly_canonical(fs::path(other.handle.status().save_path) / otherCurrent.file_path(j)) == resolved) throw std::runtime_error("A managed file is shared with another transfer. Remove without deleting data instead.");
-							}
-							if (fs::exists(file)) managed.push_back(file);
+								if ([self managedFileExists:file base:base excluding:key]) managed.push_back(file);
 						}
 						for (auto const& file : managed) {
 							NSError *error = nil;

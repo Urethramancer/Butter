@@ -1,23 +1,14 @@
 # Remaining audit and acceptance checks
 
 ## Filesystem interruption and failure matrix
-- Extend actual ENOSPC/read-only volume tests from saved state to imports, path
-  journals and exports. State preservation/recovery now passes on a disposable
-  full/read-only image; resume/export failure uses a conflicting output directory.
-- Stress watched-file replacement at every claim/restore boundary, including a
-  replacement arriving while the original is restored. Current regression covers
-  replacement before claiming, unchanged deletion and symlink refusal.
-- Verify interrupted deletion and failed final metadata cleanup. Retained orphan
-  metadata is safe but has no automatic garbage-collection workflow.
+- Interrupt a real multi-file Trash operation and verify remaining files and Trash
+  receipts across relaunch.
 
 ## Native interaction and appearance
-- Automate multi-selection, drag/drop, queued multi-file Add sheets, valid local
-  file/folder rename dialogs and all Settings editors. Backend tests cover queued
-  requests and local renames; native tests cover display rename and selected files.
-- Complete compositor review of the transfer window, every inspector tab and all
-  Settings tabs in Light/Dark, with keyboard/VoiceOver navigation and long text.
-  General Settings captures have been inspected; layer smoke captures do not
-  establish visual acceptance for other views.
+- Automate real drag/drop, blocklist import/export dialogs, destination-folder
+  pickers and the remaining Settings controls.
+- Verify keyboard and VoiceOver navigation across every view, populated peer and
+  tracker lists, very long paths and resizing.
 - Compare inspector spacing with the original visual reference when available;
   no reference was supplied with the audit plan.
 

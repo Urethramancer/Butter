@@ -6,8 +6,16 @@ struct WatchedFile: Sendable {
 	var signature: String
 	var contents: Data
 }
+struct WatchedFileOperations: Sendable {
+	var moveExclusively: @Sendable (URL, URL) throws -> Void = { source, target in
+		guard renameatx_np(AT_FDCWD, source.path, AT_FDCWD, target.path, UInt32(RENAME_EXCL)) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+	}
+	var remove: @Sendable (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }
+}
 actor FolderWatcher {
 	private var observed: [String: (String, Date)] = [:]
+	private let operations: WatchedFileOperations
+	init(operations: WatchedFileOperations = WatchedFileOperations()) { self.operations = operations }
 	private func signature(_ url: URL) throws -> String {
 		let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
 		guard attributes[.type] as? FileAttributeType == .typeRegular,
@@ -40,19 +48,18 @@ actor FolderWatcher {
 	}
 	// Claim the directory entry before checking it. A replacement is retained, never unlinked.
 	func removeImported(_ file: WatchedFile) throws {
-		let fm = FileManager.default
 		guard try signature(file.url) == file.signature, try Data(contentsOf: file.url) == file.contents else { return }
 		let claimed = file.url.deletingLastPathComponent().appendingPathComponent(".butter-import-\(UUID().uuidString).torrent")
-		guard renameatx_np(AT_FDCWD, file.url.path, AT_FDCWD, claimed.path, UInt32(RENAME_EXCL)) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+		try operations.moveExclusively(file.url, claimed)
 		do {
 			// The signature includes the path; compare with the original path prefix restored.
 			let claimedSignature = try signature(claimed)
 			let expected = claimed.path + String(file.signature.dropFirst(file.url.path.count))
 			guard claimedSignature == expected, try Data(contentsOf: claimed) == file.contents else { throw CocoaError(.fileReadUnknown) }
-			try fm.removeItem(at: claimed)
+			try operations.remove(claimed)
 		} catch {
-			if renameatx_np(AT_FDCWD, claimed.path, AT_FDCWD, file.url.path, UInt32(RENAME_EXCL)) != 0 {
-				throw NSError(domain: "Butter.Watcher", code: 1, userInfo: [NSLocalizedDescriptionKey: "A changed watched file was retained at \(claimed.path). The original path is occupied; review both files."])
+			do { try operations.moveExclusively(claimed, file.url) } catch {
+				throw NSError(domain: "Butter.Watcher", code: 1, userInfo: [NSLocalizedDescriptionKey: "A watched file was retained at \(claimed.path). Could not restore the original path: \(error.localizedDescription) Review the retained file before retrying.", NSUnderlyingErrorKey: error])
 			}
 			throw error
 		}

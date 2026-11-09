@@ -58,14 +58,39 @@ static void filesystemCases(ButterEngine *engine, NSString *torrent, NSString *s
 		require([bytes writeToFile:journal atomically:YES], "Cannot create malformed journal fixture");
 		rejects(engine, @"add", @{@"id":@"unsafe-journal", @"source":torrent, @"destination":destination, @"restore":@YES});
 	}
+	for (NSDictionary *move in @[
+		@{@"moveDestination":@"relative", @"moveFiles":@[@0]},
+		@{@"moveDestination":destination, @"moveFiles":@[@(-1)]},
+		@{@"moveDestination":destination, @"moveFiles":@[@0, @0]},
+		@{@"moveDestination":destination, @"moveFiles":NSNull.null},
+		@{@"moveDestination":destination},
+		@{@"moveDestination":@1, @"moveFiles":@[@0]}
+	]) {
+		NSMutableDictionary *saved = [@{@"paths":@[@{@"index":@0, @"path":source.lastPathComponent}], @"pending":@[]} mutableCopy];
+		[saved addEntriesFromDictionary:move];
+		require([[NSJSONSerialization dataWithJSONObject:saved options:0 error:nil] writeToFile:journal atomically:YES], "Cannot write malformed move journal");
+		rejects(engine, @"add", @{@"id":@"unsafe-journal", @"source":torrent, @"destination":destination, @"restore":@YES});
+	}
 	[fm removeItemAtPath:journal error:nil];
 	NSString *other = decode(call(engine, @"create", @{@"id":@"private-meta", @"source":source, @"private":@YES, @"trackers":@[@"http://127.0.0.1:1/announce"]}))[@"source"];
 	call(engine, @"add", @{@"id":@"shared-public", @"source":torrent, @"destination":destination});
 	call(engine, @"add", @{@"id":@"shared-private", @"source":other, @"destination":destination});
+	rejects(engine, @"move", @{@"id":@"shared-public", @"destination":[storage stringByAppendingPathComponent:@"shared-move"]});
+	rejects(engine, @"rename", @{@"id":@"shared-public", @"changes":@[@{@"index":@0, @"path":@"shared-renamed.bin"}]});
 	rejects(engine, @"remove", @{@"id":@"shared-public", @"trash":@YES});
 	require([[NSData dataWithContentsOfFile:source] isEqual:original], "Shared-file refusal changed source bytes");
 	call(engine, @"remove", @{@"id":@"shared-private"});
 	call(engine, @"remove", @{@"id":@"shared-public"});
+	NSString *directorySource = [storage stringByAppendingPathComponent:@"directory-source"];
+	NSString *directory = [directorySource stringByAppendingPathComponent:source.lastPathComponent];
+	require([fm createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:nil], "Cannot create directory replacement fixture");
+	NSString *neighbour = [directory stringByAppendingPathComponent:@"unrelated"];
+	require([original writeToFile:neighbour atomically:YES], "Cannot create directory neighbour");
+	call(engine, @"add", @{@"id":@"directory", @"source":torrent, @"destination":directorySource});
+	rejects(engine, @"move", @{@"id":@"directory", @"destination":[storage stringByAppendingPathComponent:@"directory-target"]});
+	rejects(engine, @"rename", @{@"id":@"directory", @"changes":@[@{@"index":@0, @"path":@"directory-renamed"}]});
+	require([[NSData dataWithContentsOfFile:neighbour] isEqual:original], "Move affected contents of a directory replacing a managed file");
+	call(engine, @"remove", @{@"id":@"directory"});
 	call(engine, @"add", @{@"id":@"save-failure", @"source":torrent, @"destination":destination});
 	NSString *resume = [storage stringByAppendingPathComponent:@"save-failure.resume"];
 	for (int index = 0; index < 100 && ![fm fileExistsAtPath:resume]; ++index) { snapshot(engine); std::this_thread::sleep_for(std::chrono::milliseconds(10)); }

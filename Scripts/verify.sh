@@ -40,7 +40,7 @@ case "$mode" in
 		BUTTER_INTERRUPTION_BINARY="$out/apple-bridge/InterruptionTests" Scripts/test-interruption.sh || status=1
 		for suite in Client Lifecycle Interface StorageCrash DiskFailure; do
 			case "$suite" in
-				Client) sources='Butter/Core/*.swift Tests/CoreRegressionTests.swift'; bridge='' ;;
+				Client) sources='Butter/Core/*.swift Tests/CoreRegressionTests.swift Tests/WatcherRaceTests.swift'; bridge='' ;;
 				StorageCrash|DiskFailure) sources='Butter/Core/*.swift'; bridge='' ;;
 				Lifecycle) sources='Butter/Core/*.swift Butter/Engine/EngineClient.swift Butter/TransferStore.swift Tests/StoreRegressionTests.swift'; bridge=1 ;;
 				Interface) sources='Butter/Core/*.swift Butter/Engine/EngineClient.swift Butter/TransferStore.swift Butter/ContentView.swift Butter/UI/*.swift'; bridge=1 ;;
@@ -53,7 +53,7 @@ case "$mode" in
 			# Intentional expansion of repository-controlled source globs.
 			swiftc "$@" $sources "Tests/${suite}Tests.swift" -o "$out/${suite}Tests"
 			if [ "$suite" = DiskFailure ]; then
-				BUTTER_DISK_TEST_BINARY="$out/DiskFailureTests" Scripts/test-disk.sh || status=1
+				BUTTER_DISK_TEST_BINARY="$out/DiskFailureTests" BUTTER_ENGINE_DISK_BINARY="$out/apple-bridge/EngineDiskFailureTests" Scripts/test-disk.sh || status=1
 			else
 				"$out/${suite}Tests" "$PWD/.build/InterfaceChecks" || status=1
 			fi
@@ -68,7 +68,7 @@ $(rg --files "$out/app/Build/ProfileData" -g '*.profdata')
 PROFILES
 		fi
 		xcrun llvm-profdata merge -sparse "$@" -o "$out/merged.profdata"
-		set -- "$out/apple-bridge/EngineTests" -object "$out/apple-bridge/InterruptionTests" -object "$out/ClientTests" -object "$out/LifecycleTests" -object "$out/InterfaceTests" -object "$out/StorageCrashTests" -object "$out/DiskFailureTests"
+		set -- "$out/apple-bridge/EngineTests" -object "$out/apple-bridge/InterruptionTests" -object "$out/apple-bridge/EngineDiskFailureTests" -object "$out/ClientTests" -object "$out/LifecycleTests" -object "$out/InterfaceTests" -object "$out/StorageCrashTests" -object "$out/DiskFailureTests"
 		app=$out/app/Build/Products/Debug/Butter.app/Contents/MacOS/Butter
 		[ ! -f "$app" ] || set -- "$@" -object "$app"
 		ignore='(Tests/|\.dependencies/|/\.build/|/DerivedSources/|/Applications/|/Library/Developer/|<.*>)'
