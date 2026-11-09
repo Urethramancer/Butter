@@ -40,6 +40,7 @@ struct AddRequest: Identifiable {
 	private var watchedImports = Set<String>()
 	private var failedWatch = Set<String>()
 	private var pendingAdds: [String] = []
+	private var preparingAdd = false
 	private var polling: Task<Void, Never>?
 	private var lastSave = Date.distantPast
 	private var moving = Set<String>()
@@ -62,16 +63,19 @@ struct AddRequest: Identifiable {
 				catch { report(error) }
 			}
 			ready = true
-			polling = Task { [weak self] in
-				while !Task.isCancelled {
-					await self?.refresh()
-					try? await Task.sleep(for: .seconds(1))
-				}
-			}
+			startPolling()
 			await nextAdd()
 		} catch { report(error) }
 	}
 	func report(_ error: Error) { self.error = error.localizedDescription; logger.error("Operation failed; an actionable error was presented to the user.") }
+	private func startPolling() {
+		polling = Task { [weak self] in
+			while !Task.isCancelled {
+				await self?.refresh()
+				try? await Task.sleep(for: .seconds(1))
+			}
+		}
+	}
 	@discardableResult func persist() async -> Bool {
 		do { try await storage.save(SavedState(preferences: preferences, transfers: records, watchedImports: watchedImports)); return true }
 		catch { report(error); return false }
@@ -91,7 +95,13 @@ struct AddRequest: Identifiable {
 			let snapshot = try await engine.snapshot()
 			for transfer in snapshot.transfers where !transfer.error.isEmpty && observedErrors[transfer.id] != transfer.error { logger.error("An engine operation failed; details are visible on the transfer."); observedErrors[transfer.id] = transfer.error }
 			transfers = snapshot.transfers.filter { record($0.id) != nil }; networkError = snapshot.networkError; boundPort = snapshot.port; udpBound = snapshot.udp
+			for torrent in transfers where !moving.contains(torrent.id) {
+				if let index = records.firstIndex(where: { $0.id == torrent.id }) { records[index].destination = torrent.path }
+			}
 			for event in snapshot.events {
+				if event.kind == "duplicate", let existing = event.existingID {
+					records.removeAll { $0.id == event.id }; selection = [existing]; decisions[existing] = nil; decisions[event.id] = nil; await persist(); continue
+				}
 				guard let index = records.firstIndex(where: { $0.id == event.id }) else { continue }
 				if event.kind == "moved" { records[index].destination = event.path ?? records[index].destination; records[index].moved = true; records[index].moveFailed = false; moving.remove(event.id); await persist() }
 				if event.kind == "moveFailed" { records[index].moveFailed = true; moving.remove(event.id); await persist() }
@@ -132,7 +142,7 @@ struct AddRequest: Identifiable {
 			if preferences.autoRemove && !records[index].creation { await remove([torrent.id], trash: false); return }
 			records[index].completionHandled = true
 		}
-		if preferences.ratioLimit > 0 && torrent.ratio >= preferences.ratioLimit { records[index].wanted = false; records[index].force = false }
+		if TransferStoppingPolicy.reachedRatio(torrent, limit: preferences.ratioLimit) { records[index].wanted = false; records[index].force = false }
 	}
 	func applyNetwork() async {
 		do {
@@ -158,15 +168,19 @@ struct AddRequest: Identifiable {
 		pendingAdds.append(source); await nextAdd()
 	}
 	private func nextAdd() async {
-		guard ready && addRequest == nil && !pendingAdds.isEmpty else { return }
-		let source = pendingAdds.removeFirst()
-		do {
-			var preview: MetadataPreview?
-			if !source.hasPrefix("magnet:") { preview = try JSONDecoder().decode(MetadataPreview.self, from: await engine.perform("inspect", ["source": source])) }
-			addRequest = AddRequest(source: source, preview: preview, destination: preferences.incompleteFolder, start: preferences.startOnAdd, selected: Set(preview?.files.filter { !$0.pad }.map(\.index) ?? []))
-		} catch { report(error); await nextAdd() }
+		guard ready && !preparingAdd && addRequest == nil && !showMagnet && !showCreator && !pendingAdds.isEmpty else { return }
+		preparingAdd = true; defer { preparingAdd = false }
+		while !pendingAdds.isEmpty {
+			let source = pendingAdds.removeFirst()
+			do {
+				var preview: MetadataPreview?
+				if !source.hasPrefix("magnet:") { preview = try JSONDecoder().decode(MetadataPreview.self, from: await engine.perform("inspect", ["source": source])) }
+				addRequest = AddRequest(source: source, preview: preview, destination: preferences.incompleteFolder, start: preferences.startOnAdd, selected: Set(preview?.files.filter { !$0.pad }.map(\.index) ?? [])); return
+			} catch { report(error) }
+		}
 	}
 	func dismissAdd() { addRequest = nil; Task { await nextAdd() } }
+	func presentPendingAdd() async { await nextAdd() }
 	func add(_ request: AddRequest, creation: Bool = false, id: String = UUID().uuidString) async -> Bool {
 		do {
 			var payload: [String: Any] = ["id": id, "source": request.source, "destination": request.destination, "tracker": request.tracker]
@@ -262,8 +276,10 @@ struct AddRequest: Identifiable {
 		Task { do { try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: torrent.id, content: content, trigger: nil)) } catch { report(error) } }
 	}
 	func shutdown() async -> Bool {
-		polling?.cancel(); polling = nil
-		guard await persist() else { return false }
-		do { _ = try await engine.perform("shutdown"); return true } catch { report(error); polling = Task { await refresh() }; return false }
+		if creating { engine.bridge.cancelCreation() }
+		let finishing = polling; finishing?.cancel(); polling = nil
+		await finishing?.value
+		guard await persist() else { startPolling(); return false }
+		do { _ = try await engine.perform("shutdown"); return true } catch { report(error); decisions = [:]; startPolling(); return false }
 	}
 }

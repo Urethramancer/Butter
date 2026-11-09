@@ -1,5 +1,9 @@
 import Foundation
 
+enum TransferStoppingPolicy {
+	static func reachedRatio(_ transfer: TransferSnapshot, limit: Double) -> Bool { transfer.complete && limit > 0 && transfer.ratio >= limit }
+}
+
 // A single coordinator owns admission and bandwidth decisions. libtorrent auto-management is disabled.
 struct TransferObservation {
 	var id: String

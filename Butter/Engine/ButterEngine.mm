@@ -35,6 +35,12 @@ static void writeFile(std::string const& path, std::vector<char> const& bytes) {
 	if (![[NSData dataWithBytes:bytes.data() length:bytes.size()] writeToFile:str(path) options:NSDataWritingAtomic error:&error])
 		throw std::runtime_error(cpp(error.localizedDescription));
 }
+static bool safeRelative(std::string const& path) {
+	fs::path relative(path);
+	if (path.empty() || relative.is_absolute()) return false;
+	for (auto const& part : relative) if (part == ".." || part == "." || part.empty()) return false;
+	return true;
+}
 static NSArray *hashes(lt::info_hash_t const& h) {
 	NSMutableArray *a = [NSMutableArray array];
 	if (h.has_v1()) [a addObject:str(lt::aux::to_hex(h.v1))];
@@ -48,6 +54,7 @@ struct Transfer {
 	std::string error;
 	bool moving = false;
 	bool flushed = false;
+	std::uint64_t order = 0;
 };
 @implementation ButterEngine {
 	dispatch_queue_t _queue;
@@ -66,6 +73,7 @@ struct Transfer {
 	int _torrentPeers;
 	std::string _networkError;
 	std::string _saveError;
+	std::uint64_t _nextOrder;
 }
 - (instancetype)initWithStorage:(NSString *)storage {
 	if ((self = [super init])) {
@@ -80,15 +88,29 @@ struct Transfer {
 	lt::settings_pack p;
 	p.set_int(lt::settings_pack::alert_mask, static_cast<std::uint32_t>(lt::alert_category::error | lt::alert_category::storage | lt::alert_category::status | lt::alert_category::port_mapping | lt::alert_category::peer | lt::alert_category::connect));
 	p.set_str(lt::settings_pack::user_agent, "Butter/libtorrent-2.1.2");
-	p.set_str(lt::settings_pack::listen_interfaces, "0.0.0.0:6881,[::]:6881");
+	// Wait for persisted preferences before opening sockets or discovery services.
+	p.set_str(lt::settings_pack::listen_interfaces, "");
+	p.set_bool(lt::settings_pack::enable_dht, false); p.set_bool(lt::settings_pack::enable_lsd, false);
+	p.set_bool(lt::settings_pack::enable_upnp, false); p.set_bool(lt::settings_pack::enable_natpmp, false);
 	p.set_int(lt::settings_pack::connections_limit, 200);
+	p.set_int(lt::settings_pack::connections_slack, 0);
 	_session = std::make_unique<lt::session>(p);
 }
 - (std::string)identifier:(lt::torrent_handle const&)handle {
 	for (auto const& [key, t] : _transfers) if (t.handle == handle) return key;
 	return {};
 }
-- (void)save:(Transfer&)t { t.handle.save_resume_data(lt::torrent_handle::save_info_dict); ++_pendingResume; }
+- (void)save:(Transfer&)t { t.handle.save_resume_data(lt::torrent_handle::save_info_dict | lt::torrent_handle::flush_disk_cache); ++_pendingResume; }
+- (void)persistPaths:(std::string const&)key transfer:(Transfer&)t {
+	auto ti = t.handle.torrent_file(); if (!ti) return;
+	if (t.original.empty()) for (auto i : ti->layout().file_range()) t.original.push_back(ti->layout().file_path(i));
+	auto renames = t.handle.get_renamed_files(); lt::filenames current(ti->layout(), renames);
+	NSMutableArray *paths = [NSMutableArray array], *pending = [NSMutableArray array];
+	for (auto i : ti->layout().file_range()) [paths addObject:@{@"index":@(int(i)), @"original":str(t.original.at(int(i))), @"path":str(current.file_path(i))}];
+	for (auto const& [index, target] : t.renaming) [pending addObject:@{@"index":@(index), @"path":str(target)}];
+	NSData *data = json(@{@"paths":paths, @"pending":pending, @"destination":str(t.handle.status().save_path), @"reviewRequired":@(!t.error.empty())});
+	writeFile(_storage + "/" + key + ".paths.json", std::vector<char>((char const *)data.bytes, (char const *)data.bytes + data.length));
+}
 - (void)drain {
 	std::vector<lt::alert *> alerts; _session->pop_alerts(&alerts);
 	for (auto *a : alerts) { try {
@@ -111,7 +133,7 @@ struct Transfer {
 			auto key = [self identifier:r->handle]; if (_transfers.count(key)) _transfers[key].flushed = true;
 		} else if (auto *r = lt::alert_cast<lt::storage_moved_alert>(a)) {
 			auto key = [self identifier:r->handle]; if (!_transfers.count(key)) continue;
-			auto& t = _transfers[key]; t.moving = false; t.error.clear(); [self save:t];
+			auto& t = _transfers[key]; t.moving = false; t.error.clear(); [self persistPaths:key transfer:t]; [self save:t];
 			[_events addObject:@{@"kind":@"moved", @"id":str(key), @"path":str(r->storage_path())}];
 		} else if (auto *r = lt::alert_cast<lt::storage_moved_failed_alert>(a)) {
 			auto key = [self identifier:r->handle]; if (!_transfers.count(key)) continue;
@@ -119,12 +141,33 @@ struct Transfer {
 			[_events addObject:@{@"kind":@"moveFailed", @"id":str(key)}];
 		} else if (auto *r = lt::alert_cast<lt::file_renamed_alert>(a)) {
 			auto key = [self identifier:r->handle]; if (!_transfers.count(key)) continue;
-			auto& t = _transfers[key]; t.renaming.erase(int(r->index)); [self save:t];
+			auto& t = _transfers[key]; t.renaming.erase(int(r->index)); [self persistPaths:key transfer:t]; [self save:t];
 		} else if (auto *r = lt::alert_cast<lt::file_rename_failed_alert>(a)) {
 			auto key = [self identifier:r->handle]; if (!_transfers.count(key)) continue;
-			auto& t = _transfers[key]; t.renaming.erase(int(r->index)); t.error = "Some paths could not be renamed. Review the current file paths before resuming."; [self save:t];
+			auto& t = _transfers[key]; t.renaming.erase(int(r->index)); t.error = "Some paths could not be renamed. Review the current file paths before resuming."; [self persistPaths:key transfer:t]; [self save:t];
 		} else if (auto *r = lt::alert_cast<lt::metadata_received_alert>(a)) {
-			auto key = [self identifier:r->handle]; if (_transfers.count(key)) [self save:_transfers[key]];
+			auto key = [self identifier:r->handle];
+			if (_transfers.count(key)) {
+				auto ti = r->handle.torrent_file();
+				if (ti && ti->priv()) r->handle.set_flags(lt::torrent_flags::disable_dht | lt::torrent_flags::disable_pex | lt::torrent_flags::disable_lsd);
+				[self persistPaths:key transfer:_transfers[key]];
+				[self save:_transfers[key]];
+			}
+		} else if (auto *r = lt::alert_cast<lt::torrent_conflict_alert>(a)) {
+			auto first = [self identifier:r->handle], second = [self identifier:r->conflicting_torrent];
+			if (!_transfers.count(first) || !_transfers.count(second)) continue;
+			if (_transfers[first].order > _transfers[second].order) std::swap(first, second);
+			auto& existing = _transfers[first];
+			lt::add_torrent_params params; params.ti = r->metadata; params.save_path = existing.handle.status().save_path;
+			params.flags &= ~lt::torrent_flags::auto_managed; params.flags |= lt::torrent_flags::paused;
+			if (!_pex) params.flags |= lt::torrent_flags::disable_pex;
+			if (params.ti->priv()) params.flags |= lt::torrent_flags::disable_dht | lt::torrent_flags::disable_pex | lt::torrent_flags::disable_lsd;
+			writeFile(_storage + "/" + first + ".torrent", lt::write_torrent_file_buf(params, lt::write_flags::allow_missing_piece_layer));
+			_session->remove_torrent(existing.handle); _session->remove_torrent(_transfers[second].handle);
+			existing.handle = _session->add_torrent(params); existing.handle.set_max_connections(_torrentPeers); existing.error.clear();
+			_transfers.erase(second); [self persistPaths:first transfer:existing]; [self save:existing];
+			for (auto const& suffix : {".torrent", ".resume", ".paths.json"}) fs::remove(_storage + "/" + second + suffix);
+			[_events addObject:@{@"kind":@"duplicate", @"id":str(second), @"existingID":str(first)}];
 		} else if (auto *r = lt::alert_cast<lt::listen_succeeded_alert>(a)) {
 			if (_requestedPort && r->port != _requestedPort) continue;
 			_boundPort = r->port;
@@ -148,6 +191,7 @@ struct Transfer {
 - (double)creationProgress { return _creationProgress.load(); }
 - (void)cancelCreation { _cancel.store(true); }
 - (void)perform:(NSString *)command payload:(NSData *)payload completion:(void (^)(NSData *, NSString *))completion {
+	if ([command isEqual:@"create"]) { _cancel = false; _creationProgress = 0; }
 	dispatch_async(_queue, ^{
 		@autoreleasepool { try {
 			[self ensureSession]; [self drain];
@@ -172,6 +216,29 @@ struct Transfer {
 					}
 				}
 				params.save_path = cpp(p[@"destination"]);
+				bool interruptedRename = false;
+				if ([p[@"restore"] boolValue] && params.ti && fs::exists(_storage + "/" + key + ".paths.json")) {
+					auto bytes = readFile(_storage + "/" + key + ".paths.json");
+					NSDictionary *journal = [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:bytes.data() length:bytes.size()] options:0 error:nil];
+					if (![journal isKindOfClass:NSDictionary.class]) throw std::runtime_error("Saved path mappings are unreadable. Restore state.json and the Engine folder from a backup.");
+					interruptedRename = [journal[@"reviewRequired"] boolValue];
+					NSString *destination = journal[@"destination"];
+					if (destination.length && fs::path(cpp(destination)).is_absolute()) params.save_path = cpp(destination);
+					for (NSDictionary *entry in journal[@"paths"]) {
+						int index = [entry[@"index"] intValue]; auto path = cpp(entry[@"path"]);
+						if (index < 0 || index >= params.ti->num_files() || !safeRelative(path)) throw std::runtime_error("Saved path mapping is unsafe. Review the saved engine state before resuming.");
+						params.renamed_files[lt::file_index_t(index)] = path;
+					}
+					for (NSDictionary *entry in journal[@"pending"]) {
+						int index = [entry[@"index"] intValue]; auto target = cpp(entry[@"path"]);
+						if (index < 0 || index >= params.ti->num_files() || !safeRelative(target)) throw std::runtime_error("Saved rename journal is unsafe.");
+						auto fileIndex = lt::file_index_t(index); auto old = params.renamed_files[fileIndex];
+						bool oldExists = fs::exists(fs::path(params.save_path) / old), newExists = fs::exists(fs::path(params.save_path) / target);
+						if (!oldExists || old == target) params.renamed_files[fileIndex] = target;
+						else if (newExists) throw std::runtime_error("Interrupted rename has conflicting files. Review both local paths before restoring this transfer.");
+						interruptedRename = true;
+					}
+				}
 				fs::create_directories(params.save_path);
 				params.flags &= ~lt::torrent_flags::auto_managed;
 				params.flags |= lt::torrent_flags::paused;
@@ -190,8 +257,12 @@ struct Transfer {
 				if (ec) throw std::runtime_error("Cannot add torrent: " + ec.message());
 				handle.set_max_connections(_torrentPeers);
 				Transfer t; t.handle = handle;
+				t.order = _nextOrder++;
+				if (interruptedRename) t.error = "An interrupted rename was reconciled with local files. Review current names, then Start to resume.";
 				if (params.ti) for (auto i : params.ti->layout().file_range()) t.original.push_back(params.ti->layout().file_path(i));
-				_transfers[key] = std::move(t); [self save:_transfers[key]];
+				_transfers[key] = std::move(t);
+				try { [self persistPaths:key transfer:_transfers[key]]; [self save:_transfers[key]]; }
+				catch (...) { _session->remove_torrent(handle); _transfers.erase(key); throw; }
 				completion(json(@{@"id":str(key), @"duplicate":@NO, @"hashes":hashes(ih)}), nil); return;
 			}
 			if ([command isEqual:@"inspect"]) {
@@ -203,6 +274,7 @@ struct Transfer {
 			}
 			if ([command isEqual:@"settings"]) {
 				lt::settings_pack s;
+				if (p[@"allowSameIP"]) s.set_bool(lt::settings_pack::allow_multiple_connections_per_ip, [p[@"allowSameIP"] boolValue]);
 				s.set_bool(lt::settings_pack::enable_incoming_utp, [p[@"utp"] boolValue]); s.set_bool(lt::settings_pack::enable_outgoing_utp, [p[@"utp"] boolValue]);
 				if (p[@"tcp"]) { s.set_bool(lt::settings_pack::enable_incoming_tcp, [p[@"tcp"] boolValue]); s.set_bool(lt::settings_pack::enable_outgoing_tcp, [p[@"tcp"] boolValue]); }
 				s.set_bool(lt::settings_pack::enable_dht, [p[@"dht"] boolValue]); s.set_bool(lt::settings_pack::enable_lsd, [p[@"lsd"] boolValue]);
@@ -244,16 +316,16 @@ struct Transfer {
 				if (!_saveError.empty()) throw std::runtime_error(_saveError);
 				if (_pendingResume) throw std::runtime_error("Resume data has not finished saving. Please try quitting again.");
 			} else if ([command isEqual:@"create"]) {
-				_cancel = false; _creationProgress = 0;
-				std::string source = cpp(p[@"source"]); lt::file_storage files;
-				lt::add_files(files, source, [](std::string const& path) { return !fs::is_symlink(path); });
-				lt::create_torrent creator(files); // Default generates both v1 and v2 metadata.
+				std::string source = cpp(p[@"source"]);
+				auto files = lt::list_files(source, [](std::string const& path) { return !fs::is_symlink(path); });
+				lt::create_torrent creator(std::move(files)); // Default generates both v1 and v2 metadata.
 				creator.set_priv([p[@"private"] boolValue]);
 				NSArray *trackers = p[@"trackers"];
 				if ([p[@"private"] boolValue] && !trackers.count) throw std::runtime_error("A private torrent requires at least one tracker.");
 				for (NSString *tracker in trackers) creator.add_tracker(cpp(tracker));
 				lt::error_code ec;
 				lt::set_piece_hashes(creator, fs::path(source).parent_path().string(), [&](lt::piece_index_t i) { if (_cancel) throw std::runtime_error("Creation cancelled."); _creationProgress = double(int(i) + 1) / creator.num_pieces(); }, ec);
+				if (_cancel) throw std::runtime_error("Creation cancelled.");
 				if (ec) throw std::runtime_error("Cannot hash source: " + ec.message());
 				std::vector<char> bytes; lt::bencode(std::back_inserter(bytes), creator.generate());
 				std::string output = _storage + "/" + cpp(p[@"id"]) + ".torrent"; writeFile(output, bytes);
@@ -267,7 +339,7 @@ struct Transfer {
 					if (p[@"downloadLimit"]) h.set_download_limit([p[@"downloadLimit"] intValue]);
 					if (p[@"uploadLimit"]) h.set_upload_limit([p[@"uploadLimit"] intValue]);
 				} else if ([command isEqual:@"pause"]) { h.pause(); [self save:t]; }
-				else if ([command isEqual:@"retry"]) { t.error.clear(); h.clear_error(); }
+				else if ([command isEqual:@"retry"]) { t.error.clear(); h.clear_error(); [self persistPaths:key transfer:t]; }
 				else if ([command isEqual:@"save"]) { [self save:t]; }
 				else if ([command isEqual:@"recheck"]) { t.error.clear(); h.force_recheck(); }
 				else if ([command isEqual:@"connect"]) { h.connect_peer({lt::make_address(cpp(p[@"address"])), static_cast<unsigned short>([p[@"port"] intValue])}); }
@@ -277,7 +349,11 @@ struct Transfer {
 				} else if ([command isEqual:@"move"]) {
 					fs::create_directories(cpp(p[@"destination"])); t.error.clear(); t.moving = true;
 					h.move_storage(cpp(p[@"destination"]), lt::move_flags_t::fail_if_exist);
-				} else if ([command isEqual:@"magnet"]) { completion(json(@{@"magnet":str(lt::make_magnet_uri(h))}), nil); return; }
+				} else if ([command isEqual:@"magnet"]) {
+					lt::add_torrent_params magnet; magnet.info_hashes = h.info_hashes(); magnet.name = h.status().name;
+					for (auto const& tracker : h.trackers()) magnet.trackers.push_back(tracker.url);
+					completion(json(@{@"magnet":str(lt::make_magnet_uri(magnet))}), nil); return;
+				}
 				else if ([command isEqual:@"export"]) {
 					if (!h.torrent_file()) throw std::runtime_error("Metadata is still resolving.");
 					_exports[key] = [completion copy]; [self save:t]; return;
@@ -293,8 +369,7 @@ struct Transfer {
 					for (NSDictionary *change in changes) {
 						int index = [change[@"index"] intValue]; std::string path = cpp(change[@"path"]);
 						fs::path relative(path);
-						if (index < 0 || index >= ti->num_files() || path.empty() || relative.is_absolute()) throw std::runtime_error("Invalid relative path.");
-						for (auto const& part : relative) if (part == ".." || part == "." || part.empty()) throw std::runtime_error("Unsafe relative path.");
+						if (index < 0 || index >= ti->num_files() || !safeRelative(path)) throw std::runtime_error("Invalid or unsafe relative path.");
 						if (!targets.insert(path).second) throw std::runtime_error("Rename paths collide.");
 						for (auto i : ti->layout().file_range()) if (!indices.count(int(i)) && current.file_path(i) == path) throw std::runtime_error("A torrent file already has that path.");
 						auto dest = fs::path(h.status().save_path) / relative;
@@ -303,8 +378,11 @@ struct Transfer {
 						auto rel = resolved.lexically_relative(base); if (rel.empty() || *rel.begin() == "..") throw std::runtime_error("Rename escapes the destination.");
 					}
 					h.pause(); t.error.clear();
-					for (NSDictionary *change in changes) { int index = [change[@"index"] intValue]; t.renaming[index] = cpp(change[@"path"]); h.rename_file(lt::file_index_t(index), t.renaming[index]); }
+					for (NSDictionary *change in changes) t.renaming[[change[@"index"] intValue]] = cpp(change[@"path"]);
+					try { [self persistPaths:key transfer:t]; } catch (...) { t.renaming.clear(); throw; }
+					for (auto const& [index, path] : t.renaming) h.rename_file(lt::file_index_t(index), path);
 				} else if ([command isEqual:@"remove"]) {
+					NSMutableArray *trashed = [NSMutableArray array];
 					// Swift handles confirmation. Trash only regular managed files, never directories.
 					if ([p[@"trash"] boolValue]) {
 						auto ti = h.torrent_file(); if (!ti) throw std::runtime_error("Cannot safely delete files without metadata.");
@@ -315,6 +393,7 @@ struct Transfer {
 
 						auto renames = h.get_renamed_files(); lt::filenames current(ti->layout(), renames);
 						auto base = fs::weakly_canonical(h.status().save_path);
+						std::vector<fs::path> managed;
 						for (auto i : ti->layout().file_range()) {
 							if (ti->layout().pad_file_at(i)) continue;
 							auto file = fs::path(h.status().save_path) / current.file_path(i);
@@ -325,12 +404,19 @@ struct Transfer {
 								auto otherRenames = other.handle.get_renamed_files(); lt::filenames otherCurrent(otherInfo->layout(), otherRenames);
 								for (auto j : otherInfo->layout().file_range()) if (fs::weakly_canonical(fs::path(other.handle.status().save_path) / otherCurrent.file_path(j)) == resolved) throw std::runtime_error("A managed file is shared with another transfer. Remove without deleting data instead.");
 							}
-							if (fs::exists(file)) { NSError *error = nil;
- if (![[NSFileManager defaultManager] trashItemAtURL:[NSURL fileURLWithPath:str(file.string())] resultingItemURL:nil error:&error]) throw std::runtime_error(cpp(error.localizedDescription)); }
+							if (fs::exists(file)) managed.push_back(file);
+						}
+						for (auto const& file : managed) {
+							NSError *error = nil;
+							NSURL *receipt = nil;
+							if (![[NSFileManager defaultManager] trashItemAtURL:[NSURL fileURLWithPath:str(file.string())] resultingItemURL:&receipt error:&error])
+								throw std::runtime_error("Trash operation failed; some managed files may already be in Trash. " + cpp(error.localizedDescription));
+							if (receipt) [trashed addObject:receipt.path];
 						}
 					}
 					_session->remove_torrent(h); _transfers.erase(it);
-					fs::remove(_storage + "/" + key + ".resume"); fs::remove(_storage + "/" + key + ".torrent");
+					fs::remove(_storage + "/" + key + ".resume"); fs::remove(_storage + "/" + key + ".torrent"); fs::remove(_storage + "/" + key + ".paths.json");
+					completion(json(@{@"trashed":trashed}), nil); return;
 				} else throw std::runtime_error("Unknown engine command.");
 			}
 			completion(json(@{}), nil);
@@ -362,11 +448,14 @@ struct Transfer {
 			}
 			for (auto const& tracker : h.trackers()) {
 				NSString *message = @"";
-				for (auto const& ep : tracker.endpoints) for (auto const& info : ep.info_hashes) if (info.last_error) message = str(info.last_error.message());
+				for (auto const& ep : tracker.endpoints) for (auto const& info : ep.info_hashes) {
+					if (info.last_error) message = str(info.last_error.message());
+					if (!info.message.empty()) message = str(info.message);
+				}
 				[trackers addObject:@{@"url":str(tracker.url), @"message":message}];
 			}
 			std::vector<lt::peer_info> peerInfo; h.get_peer_info(peerInfo);
-			for (auto const& peer : peerInfo) [peers addObject:@{@"address":str(peer.ip.address().to_string()), @"client":str(peer.client), @"down":@(peer.down_speed), @"up":@(peer.up_speed), @"utp":@((peer.flags & lt::peer_info::utp_socket) != lt::peer_flags_t{})}];
+			for (auto const& peer : peerInfo) [peers addObject:@{@"address":str(peer.remote_endpoint().address().to_string()), @"client":str(peer.client), @"down":@(peer.down_speed), @"up":@(peer.up_speed), @"utp":@((peer.flags & lt::peer_info::utp_socket) != lt::peer_flags_t{})}];
 			bool demand = false; for (auto const& peer : peerInfo) if ((peer.flags & lt::peer_info::remote_interested) != lt::peer_flags_t{}) demand = true;
 			NSString *state = @"Downloading";
 			if (!s.has_metadata) state = @"Resolving metadata";

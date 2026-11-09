@@ -40,7 +40,7 @@ struct MagnetSheet: View {
 	@Environment(\.dismiss) private var dismiss
 	@State private var text = ""
 	var body: some View {
-		VStack(alignment: .leading, spacing: 16) { Text("Add Magnet Link").font(.title2.bold()); TextField("magnet:?xt=urn:…", text: $text).textFieldStyle(.roundedBorder); HStack { Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Continue") { dismiss(); Task { await store.open(text.trimmingCharacters(in: .whitespacesAndNewlines)) } }.keyboardShortcut(.defaultAction).disabled(!text.hasPrefix("magnet:?")) } }.padding(24).frame(width: 520)
+		VStack(alignment: .leading, spacing: 16) { Text("Add Magnet Link").font(.title2.bold()); TextField("magnet:?xt=urn:…", text: $text).textFieldStyle(.roundedBorder); HStack { Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Continue") { Task { await store.open(text.trimmingCharacters(in: .whitespacesAndNewlines)); dismiss() } }.keyboardShortcut(.defaultAction).disabled(!text.hasPrefix("magnet:?")) } }.padding(24).frame(width: 520)
 	}
 }
 struct CreateTorrentSheet: View {

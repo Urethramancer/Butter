@@ -118,6 +118,6 @@ struct MixedCheckbox: NSViewRepresentable {
 		var action: (Bool) -> Void
 		var state: NSControl.StateValue = .off
 		init(_ action: @escaping (Bool) -> Void) { self.action = action }
-		@objc func changed(_ sender: NSButton) { action(state != .on) }
+		@objc func changed(_ sender: NSButton) { let enabled = state != .on; state = enabled ? .on : .off; sender.state = state; action(enabled) }
 	}
 }

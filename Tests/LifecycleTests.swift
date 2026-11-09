@@ -39,9 +39,11 @@ func check(_ condition: @autoclosure () -> Bool, _ message: String) throws { if 
 			let watchTorrent = try JSONSerialization.jsonObject(with: await store.engine.perform("create", ["id": "watched", "source": watchData.path, "trackers": [], "private": false])) as! [String: String]
 			let watchedOriginal = watched.appendingPathComponent("watched.torrent"); try fm.copyItem(atPath: watchTorrent["source"]!, toPath: watchedOriginal.path)
 			store.preferences.watchFolder = watched.path; store.preferences.deleteOriginal = true; store.preferences.startOnAdd = false
+			store.preferences.trackers = [FavouriteTracker(name: "Favourite", url: "http://127.0.0.1:3/favourite")]
 			await store.refresh(); try check(fm.fileExists(atPath: watchedOriginal.path), "Watcher must wait for arrival stability")
 			try await Task.sleep(for: .seconds(4)); await store.refresh()
 			try check(store.records.count == 2 && !fm.fileExists(atPath: watchedOriginal.path), "Successful watched import copies metadata before deleting original")
+			await store.refresh(); try check(store.transfers.first { $0.name == "watched.bin" }?.trackers.isEmpty == true, "Watched imports do not append favourite trackers")
 			try check(store.records.allSatisfy { fm.fileExists(atPath: $0.source) }, "Imported metadata lives in Application Support")
 			let privateSource = seed.appendingPathComponent("private.bin"); try Data([22, 33, 44]).write(to: privateSource)
 			let privateAdded = await store.create(source: privateSource.path, trackers: ["http://127.0.0.1:1/announce"], isPrivate: true, start: false)
@@ -50,9 +52,23 @@ func check(_ condition: @autoclosure () -> Bool, _ message: String) throws { if 
 			let privateTorrent = store.transfers.first { $0.private }!
 			await store.command("tracker", id: privateTorrent.id, extra: ["tracker": "http://127.0.0.1:2/announce"])
 			try check(store.error != nil, "Existing private torrent must reject appended favourites")
+			let publicSource = seed.appendingPathComponent("public.bin"); try Data([55, 66, 77]).write(to: publicSource)
+			let publicAdded = await store.create(source: publicSource.path, trackers: ["http://127.0.0.1:1/original"], isPrivate: false, start: false)
+			try check(publicAdded, "Public creation with original tracker"); await store.refresh()
+			let publicTorrent = store.transfers.first { $0.name == "public.bin" }!
+			await store.command("tracker", id: publicTorrent.id, extra: ["tracker": store.preferences.trackers[0].url]); await store.refresh()
+			let updated = store.transfers.first { $0.id == publicTorrent.id }!
+			try check(Set(updated.trackers.map(\.url)) == ["http://127.0.0.1:1/original", "http://127.0.0.1:3/favourite"] && updated.hashes == publicTorrent.hashes, "Explicit favourite appends without replacing original trackers or identity")
+			let firstOpen = Task { await store.open(watchTorrent["source"]!) }; let secondOpen = Task { await store.open(created["source"]!) }
+			await firstOpen.value; await secondOpen.value
+			let firstPrepared = store.addRequest?.source
+			try check(firstPrepared != nil, "Concurrent opens prepare an Add sheet")
+			store.dismissAdd(); await store.presentPendingAdd()
+			try check(Set([firstPrepared, store.addRequest?.source].compactMap { $0 }) == Set([watchTorrent["source"]!, created["source"]!]), "Concurrent opens queue both Add sheets without replacing one")
+			store.dismissAdd()
 			let shutdown = await store.shutdown(); try check(shutdown, "Orderly save before termination")
 			let restored = try await StateStorage(root: root).load()
-			try check(restored.transfers.count == 3 && restored.watchedImports.count == 1, "Persist transfer and watcher state")
+			try check(restored.transfers.count == 4 && restored.watchedImports.count == 1, "Persist transfer and watcher state")
 			print("PASS: completion move/auto-remove retaining data, creation in place, duplicate selection, stable watched import/copy/deletion, private tracker restriction, orderly persistence")
 		} catch { fputs("FAIL: \(error)\n", stderr); exit(1) }
 	}

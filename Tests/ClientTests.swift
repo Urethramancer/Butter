@@ -20,7 +20,8 @@ func observation(_ id: String, _ priority: TransferPriority = .normal, order: In
 		let t = fixture()
 		let first = TorrentGroup(name: "First", priority: .high, trackerHosts: "example", maximumMiB: 1, keywords: "unrelated, linux")
 		let second = TorrentGroup(name: "Second", priority: .low)
-		try require([first, second].first { $0.matches(t) }?.id == first.id, "First matching group must win")
+		try require(TransferGrouping.group(for: t, groups: [first, second])?.id == first.id, "First matching group must win")
+		try require(TransferGrouping.priority(nil, torrent: t, groups: []) == .normal, "Unmatched transfers default to normal priority")
 		var mismatch = first; mismatch.minimumMiB = 2
 		try require(!mismatch.matches(t), "All group criteria must match")
 		mismatch = first; mismatch.trackerHosts = "notexample"
@@ -45,6 +46,11 @@ func observation(_ id: String, _ priority: TransferPriority = .normal, order: In
 		var now = 0.0; var idle = TransferScheduler(clock: { now }); let seed = observation("idle", complete: true, rate: 0, demand: false)
 		_ = idle.stoppedSeeds([seed], idleMinutes: 1); now = 61
 		try require(idle.stoppedSeeds([seed], idleMinutes: 1) == ["idle"], "Stop a running seed after configured idle time")
+		var requested = seed; requested.uploadDemand = true; now = 62
+		try require(idle.stoppedSeeds([requested], idleMinutes: 1).isEmpty, "Upload demand resets the idle clock")
+		var ratio = fixture(complete: true); ratio.uploaded = 2048; ratio.downloaded = 1024
+		for (limit, stopped) in [(0.0, false), (1.0, true), (2.0, true), (3.0, false)] { try require(TransferStoppingPolicy.reachedRatio(ratio, limit: limit) == stopped, "Seed ratio stopping at \(limit)") }
+		ratio.complete = false; try require(!TransferStoppingPolicy.reachedRatio(ratio, limit: 1), "Ratio stopping applies only to completed transfers")
 	}
 	static func bandwidth() throws {
 		var now = 0.0; var scheduler = TransferScheduler(clock: { now })

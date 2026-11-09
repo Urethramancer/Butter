@@ -117,7 +117,7 @@ struct TransferSnapshot: Codable, Identifiable {
 	var eta: String { down > 0 && !complete ? Duration.seconds(Double(max(0, wanted - done)) / Double(down)).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .abbreviated, maximumUnitCount: 2)) : "—" }
 	var verifiedProgress: Double { wanted > 0 ? Double(done) / Double(wanted) : 0 }
 }
-struct EngineEvent: Codable { var kind: String; var id: String; var path: String? }
+struct EngineEvent: Codable { var kind: String; var id: String; var path: String?; var existingID: String? }
 struct EngineSnapshot: Codable {
 	var transfers: [TransferSnapshot]
 	var events: [EngineEvent]

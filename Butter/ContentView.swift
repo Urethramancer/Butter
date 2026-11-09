@@ -57,8 +57,8 @@ struct ContentView: View {
 		.frame(minWidth: 980, minHeight: 590)
 		.onDrop(of: [.fileURL, .url, .plainText], isTargeted: nil, perform: handleDrop)
 		.sheet(item: $store.addRequest, onDismiss: { store.dismissAdd() }) { AddTorrentSheet(request: $0) }
-		.sheet(isPresented: $store.showCreator) { CreateTorrentSheet() }
-		.sheet(isPresented: $store.showMagnet) { MagnetSheet() }
+		.sheet(isPresented: $store.showCreator, onDismiss: { Task { await store.presentPendingAdd() } }) { CreateTorrentSheet() }
+		.sheet(isPresented: $store.showMagnet, onDismiss: { Task { await store.presentPendingAdd() } }) { MagnetSheet() }
 		.alert("Butter couldn’t complete the operation", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) { Button("OK") { store.error = nil } } message: { Text(store.error ?? "") }
 	}
 	@ViewBuilder private func groupSection(_ key: String, title: String, colour: String, members: [TransferSnapshot]) -> some View {
