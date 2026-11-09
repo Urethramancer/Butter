@@ -47,6 +47,7 @@ struct Transfer {
 	std::map<int, std::string> renaming;
 	std::string error;
 	bool moving = false;
+	bool flushed = false;
 };
 @implementation ButterEngine {
 	dispatch_queue_t _queue;
@@ -62,12 +63,14 @@ struct Transfer {
 	bool _udpBound;
 	bool _pex;
 	int _requestedPort;
+	int _torrentPeers;
 	std::string _networkError;
+	std::string _saveError;
 }
 - (instancetype)initWithStorage:(NSString *)storage {
 	if ((self = [super init])) {
 		_storage = cpp(storage); _queue = dispatch_queue_create("net.grimdork.Butter.engine", DISPATCH_QUEUE_SERIAL);
-		_events = [NSMutableArray array]; _pex = true;
+		_events = [NSMutableArray array]; _pex = true; _torrentPeers = 80;
 	}
 	return self;
 }
@@ -88,14 +91,14 @@ struct Transfer {
 - (void)save:(Transfer&)t { t.handle.save_resume_data(lt::torrent_handle::save_info_dict); ++_pendingResume; }
 - (void)drain {
 	std::vector<lt::alert *> alerts; _session->pop_alerts(&alerts);
-	for (auto *a : alerts) {
+	for (auto *a : alerts) { try {
 		
 		if (auto *r = lt::alert_cast<lt::save_resume_data_alert>(a)) {
 			_pendingResume = std::max(0, _pendingResume - 1);
 			auto key = [self identifier:r->handle]; if (key.empty()) continue;
 			writeFile(_storage + "/" + key + ".resume", lt::write_resume_data_buf(r->params));
 			if (!fs::exists(_storage + "/" + key + ".torrent") && r->params.ti)
-				writeFile(_storage + "/" + key + ".torrent", lt::write_torrent_file_buf(r->params, {}));
+				writeFile(_storage + "/" + key + ".torrent", lt::write_torrent_file_buf(r->params, lt::write_flags::allow_missing_piece_layer));
 			auto ex = _exports.find(key);
 			if (ex != _exports.end()) { auto bytes = lt::write_torrent_file_buf(r->params, {}); ex->second([NSData dataWithBytes:bytes.data() length:bytes.size()], nil); _exports.erase(ex); }
 		} else if (auto *r = lt::alert_cast<lt::save_resume_data_failed_alert>(a)) {
@@ -103,6 +106,9 @@ struct Transfer {
 			auto key = [self identifier:r->handle];
 			auto ex = _exports.find(key); if (ex != _exports.end()) { ex->second(nil, @"Could not save torrent metadata. Retry after checking disk access."); _exports.erase(ex); }
 			if (_transfers.count(key)) _transfers[key].error = "Could not save resume data. Check Application Support disk access.";
+			_saveError = "Resume data could not be saved. Check disk access before quitting.";
+		} else if (auto *r = lt::alert_cast<lt::cache_flushed_alert>(a)) {
+			auto key = [self identifier:r->handle]; if (_transfers.count(key)) _transfers[key].flushed = true;
 		} else if (auto *r = lt::alert_cast<lt::storage_moved_alert>(a)) {
 			auto key = [self identifier:r->handle]; if (!_transfers.count(key)) continue;
 			auto& t = _transfers[key]; t.moving = false; t.error.clear(); [self save:t];
@@ -130,7 +136,14 @@ struct Transfer {
 		} else if (auto *r = lt::alert_cast<lt::torrent_error_alert>(a)) {
 			auto key = [self identifier:r->handle]; if (_transfers.count(key)) _transfers[key].error = "Transfer failed: " + r->error.message();
 		}
-	}
+	} catch (std::exception const& e) {
+		_saveError = "Could not persist engine state. Check Application Support access and free disk space.";
+		if (auto *ta = dynamic_cast<lt::torrent_alert *>(a)) {
+			auto key = [self identifier:ta->handle];
+			if (_transfers.count(key)) _transfers[key].error = _saveError;
+			auto ex = _exports.find(key); if (ex != _exports.end()) { ex->second(nil, @"Export failed. Check metadata availability and disk access, then retry."); _exports.erase(ex); }
+		}
+	} }
 }
 - (double)creationProgress { return _creationProgress.load(); }
 - (void)cancelCreation { _cancel.store(true); }
@@ -175,8 +188,9 @@ struct Transfer {
 				}
 				auto handle = _session->add_torrent(params, ec);
 				if (ec) throw std::runtime_error("Cannot add torrent: " + ec.message());
+				handle.set_max_connections(_torrentPeers);
 				Transfer t; t.handle = handle;
-				if (params.ti) for (auto i : params.ti->orig_files().file_range()) t.original.push_back(params.ti->orig_files().file_path(i));
+				if (params.ti) for (auto i : params.ti->layout().file_range()) t.original.push_back(params.ti->layout().file_path(i));
 				_transfers[key] = std::move(t); [self save:_transfers[key]];
 				completion(json(@{@"id":str(key), @"duplicate":@NO, @"hashes":hashes(ih)}), nil); return;
 			}
@@ -184,7 +198,7 @@ struct Transfer {
 				lt::error_code ec; auto ti = std::make_shared<lt::torrent_info>(cpp(p[@"source"]), ec);
 				if (ec) throw std::runtime_error("Cannot read torrent: " + ec.message());
 				NSMutableArray *files = [NSMutableArray array];
-				for (auto i : ti->files().file_range()) [files addObject:@{@"index":@(int(i)), @"path":str(ti->files().file_path(i)), @"size":@(ti->files().file_size(i)), @"pad":@(ti->files().pad_file_at(i))}];
+				for (auto i : ti->layout().file_range()) [files addObject:@{@"index":@(int(i)), @"path":str(ti->layout().file_path(i)), @"size":@(ti->layout().file_size(i)), @"pad":@(ti->layout().pad_file_at(i))}];
 				completion(json(@{@"name":str(ti->name()), @"private":@(ti->priv()), @"files":files, @"hashes":hashes(ti->info_hashes())}), nil); return;
 			}
 			if ([command isEqual:@"settings"]) {
@@ -202,12 +216,13 @@ struct Transfer {
 					if (bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr))) { close(fd); throw std::runtime_error("Cannot select a free port."); }
 					socklen_t len = sizeof(addr); getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len); port = ntohs(addr.sin_port); close(fd);
 				}
-				_requestedPort = port; _boundPort = 0; _udpBound = false; _networkError.clear();
+				if (_requestedPort != port) { _boundPort = 0; _udpBound = false; _networkError.clear(); } _requestedPort = port;
 				s.set_bool(lt::settings_pack::listen_system_port_fallback, false); s.set_int(lt::settings_pack::max_retry_port_bind, 0);
 				auto address = std::string("0.0.0.0:") + std::to_string(port);
 
 				if (port != 0) address += ",[::]:" + std::to_string(port);
 				s.set_str(lt::settings_pack::listen_interfaces, address); _session->apply_settings(s); _pex = [p[@"pex"] boolValue];
+				_torrentPeers = std::max(1, std::min([p[@"torrentPeers"] intValue], [p[@"peers"] intValue]));
 				for (auto& [key, t] : _transfers) {
 					t.handle.set_max_connections(std::max(1, std::min([p[@"torrentPeers"] intValue], [p[@"peers"] intValue])));
 					auto ti = t.handle.torrent_file();
@@ -222,9 +237,11 @@ struct Transfer {
 					filter.add_rule(first, last, lt::ip_filter::blocked);
 				} _session->set_ip_filter(filter);
 			} else if ([command isEqual:@"shutdown"]) {
+				_saveError.clear();
 				for (auto& [key, t] : _transfers) { t.handle.pause(); [self save:t]; }
 				auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
 				while (_pendingResume > 0 && std::chrono::steady_clock::now() < deadline) { _session->wait_for_alert(lt::milliseconds(100)); [self drain]; }
+				if (!_saveError.empty()) throw std::runtime_error(_saveError);
 				if (_pendingResume) throw std::runtime_error("Resume data has not finished saving. Please try quitting again.");
 			} else if ([command isEqual:@"create"]) {
 				_cancel = false; _creationProgress = 0;
@@ -269,6 +286,7 @@ struct Transfer {
 					h.add_tracker(lt::announce_entry(cpp(p[@"tracker"]))); [self save:t];
 				} else if ([command isEqual:@"rename"]) {
 					auto ti = h.torrent_file(); if (!ti) throw std::runtime_error("Metadata is still resolving.");
+					auto renames = h.get_renamed_files(); lt::filenames current(ti->layout(), renames);
 					std::set<std::string> targets; std::set<int> indices;
 					NSArray *changes = p[@"changes"];
 					for (NSDictionary *change in changes) indices.insert([change[@"index"] intValue]);
@@ -278,9 +296,9 @@ struct Transfer {
 						if (index < 0 || index >= ti->num_files() || path.empty() || relative.is_absolute()) throw std::runtime_error("Invalid relative path.");
 						for (auto const& part : relative) if (part == ".." || part == "." || part.empty()) throw std::runtime_error("Unsafe relative path.");
 						if (!targets.insert(path).second) throw std::runtime_error("Rename paths collide.");
-						for (auto i : ti->files().file_range()) if (!indices.count(int(i)) && ti->files().file_path(i) == path) throw std::runtime_error("A torrent file already has that path.");
+						for (auto i : ti->layout().file_range()) if (!indices.count(int(i)) && current.file_path(i) == path) throw std::runtime_error("A torrent file already has that path.");
 						auto dest = fs::path(h.status().save_path) / relative;
-						if (fs::exists(dest) && path != ti->files().file_path(lt::file_index_t(index))) throw std::runtime_error("A file already exists at the new path.");
+						if (fs::exists(dest) && path != current.file_path(lt::file_index_t(index))) throw std::runtime_error("A file already exists at the new path.");
 						auto base = fs::weakly_canonical(h.status().save_path); auto resolved = fs::weakly_canonical(dest.parent_path());
 						auto rel = resolved.lexically_relative(base); if (rel.empty() || *rel.begin() == "..") throw std::runtime_error("Rename escapes the destination.");
 					}
@@ -290,14 +308,25 @@ struct Transfer {
 					// Swift handles confirmation. Trash only regular managed files, never directories.
 					if ([p[@"trash"] boolValue]) {
 						auto ti = h.torrent_file(); if (!ti) throw std::runtime_error("Cannot safely delete files without metadata.");
-						h.pause(); h.flush_cache();
+						h.pause(); t.flushed = false; h.flush_cache();
+						auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+						while (!t.flushed && std::chrono::steady_clock::now() < deadline) { _session->wait_for_alert(lt::milliseconds(50)); [self drain]; }
+						if (!t.flushed) throw std::runtime_error("Files are still in use. Wait for disk activity to finish and retry removal.");
+
+						auto renames = h.get_renamed_files(); lt::filenames current(ti->layout(), renames);
 						auto base = fs::weakly_canonical(h.status().save_path);
-						for (auto i : ti->files().file_range()) {
-							if (ti->files().pad_file_at(i)) continue;
-							auto file = fs::path(h.status().save_path) / ti->files().file_path(i);
+						for (auto i : ti->layout().file_range()) {
+							if (ti->layout().pad_file_at(i)) continue;
+							auto file = fs::path(h.status().save_path) / current.file_path(i);
 							auto resolved = fs::weakly_canonical(file); auto rel = resolved.lexically_relative(base);
 							if (rel.empty() || *rel.begin() == ".." || fs::is_symlink(file) || fs::is_directory(file)) throw std::runtime_error("Unsafe managed path; files were retained. Review the save location.");
-							if (fs::exists(file)) { NSError *error = nil; if (![[NSFileManager defaultManager] trashItemAtURL:[NSURL fileURLWithPath:str(file.string())] resultingItemURL:nil error:&error]) throw std::runtime_error(cpp(error.localizedDescription)); }
+							for (auto const& [otherKey, other] : _transfers) if (otherKey != key) {
+								auto otherInfo = other.handle.torrent_file(); if (!otherInfo) continue;
+								auto otherRenames = other.handle.get_renamed_files(); lt::filenames otherCurrent(otherInfo->layout(), otherRenames);
+								for (auto j : otherInfo->layout().file_range()) if (fs::weakly_canonical(fs::path(other.handle.status().save_path) / otherCurrent.file_path(j)) == resolved) throw std::runtime_error("A managed file is shared with another transfer. Remove without deleting data instead.");
+							}
+							if (fs::exists(file)) { NSError *error = nil;
+ if (![[NSFileManager defaultManager] trashItemAtURL:[NSURL fileURLWithPath:str(file.string())] resultingItemURL:nil error:&error]) throw std::runtime_error(cpp(error.localizedDescription)); }
 						}
 					}
 					_session->remove_torrent(h); _transfers.erase(it);
@@ -317,9 +346,10 @@ struct Transfer {
 			auto h = t.handle; auto s = h.status(lt::torrent_handle::query_pieces | lt::torrent_handle::query_name | lt::torrent_handle::query_save_path);
 			auto ti = h.torrent_file(); NSMutableArray *files = [NSMutableArray array], *trackers = [NSMutableArray array], *peers = [NSMutableArray array], *pieces = [NSMutableArray array];
 			if (ti) {
-				if (t.original.empty()) for (auto i : ti->orig_files().file_range()) t.original.push_back(ti->orig_files().file_path(i));
+				auto renames = h.get_renamed_files(); lt::filenames current(ti->layout(), renames);
+				if (t.original.empty()) for (auto i : ti->layout().file_range()) t.original.push_back(ti->layout().file_path(i));
 				auto priorities = h.get_file_priorities(); auto done = h.file_progress(lt::torrent_handle::piece_granularity);
-				for (auto i : ti->files().file_range()) [files addObject:@{@"index":@(int(i)), @"path":str(ti->files().file_path(i)), @"original":str(t.original.at(int(i))), @"size":@(ti->files().file_size(i)), @"done":@(done.at(int(i))), @"selected":@(static_cast<std::uint8_t>(priorities.at(int(i))) > 0), @"pad":@(ti->files().pad_file_at(i))}];
+				for (auto i : ti->layout().file_range()) [files addObject:@{@"index":@(int(i)), @"path":str(current.file_path(i)), @"original":str(t.original.at(int(i))), @"size":@(ti->layout().file_size(i)), @"done":@(done.at(int(i))), @"selected":@(static_cast<std::uint8_t>(priorities.at(int(i))) > 0), @"pad":@(ti->layout().pad_file_at(i))}];
 				std::vector<int> avail; h.piece_availability(avail); std::vector<lt::partial_piece_info> queue; h.get_download_queue(queue);
 				std::set<int> downloading; for (auto const& p : queue) downloading.insert(int(p.piece_index));
 				for (int i = 0; i < ti->num_pieces(); ++i) {

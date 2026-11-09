@@ -42,7 +42,22 @@
           "shell": "/bin/sh",
           "script": "/bin/sh \"${SRCROOT}/Scripts/git-version.sh\" \"${SRCROOT}\" \"${SCRIPT_OUTPUT_FILE_0}\" \"${SRCROOT}/Butter-Info.plist\"",
         },
+        {
+          "kind": "script",
+          "name": "Check engine bridge",
+          "input-paths": [
+            "$(SRCROOT)/Scripts/check-bridge.sh",
+            "$(SRCROOT)/Scripts/build-bridge.sh",
+            "$(SRCROOT)/Butter/Engine",
+            "$(SRCROOT)/.dependencies/bridge-build/libButterEngine.a",
+          ],
+          "output-paths": ["$(DERIVED_FILE_DIR)/EngineVerified"],
+          "run-on-every-build": true,
+          "shell": "/bin/sh",
+          "script": "/bin/sh \"${SRCROOT}/Scripts/check-bridge.sh\"",
+        },
         "compile-sources",
+
         "frameworks",
         "resources",
       ],

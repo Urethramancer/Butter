@@ -57,8 +57,49 @@ int main() { @autoreleasepool { try {
 		NSData *exported = call(b, @"export", @{@"id":@"fixture"}); pumping = false;
 		NSString *exportPath = [root stringByAppendingPathComponent:@"export.torrent"]; [exported writeToFile:exportPath atomically:YES];
 		NSDictionary *preview = decode(call(b, @"inspect", @{@"source":exportPath})); require([preview[@"hashes"] isEqual:hashes], "Export changed info hashes after rename");
-		call(b, @"shutdown", @{}); call(a, @"shutdown", @{});
-		printf("PASS: hybrid creation, duplicate detection, verified µTP-only transfer, rename and hash-preserving export, resume save\n");
+		call(b, @"shutdown", @{});
+		ButterEngine *c = [[ButterEngine alloc] initWithStorage:[root stringByAppendingPathComponent:@"b"]]; call(c, @"settings", settings);
+		call(c, @"add", @{@"id":@"fixture", @"source":torrent, @"destination":download, @"restore":@YES});
+		call(c, @"run", @{@"id":@"fixture", @"running":@YES});
+		bool recovered = false;
+		for (int i = 0; i < 100; ++i) {
+			NSDictionary *row = [snapshot(c)[@"transfers"] firstObject];
+			NSDictionary *file = [row[@"files"] firstObject];
+			if ([row[@"complete"] boolValue]) { require([file[@"path"] isEqual:@"renamed.bin"], "Resume lost local rename"); require([file[@"original"] isEqual:@"fixture.bin"], "Resume lost original name"); recovered = true; break; }
+			std::this_thread::sleep_for(std::chrono::milliseconds(30));
+		}
+		require(recovered, "Resume recovery did not retain verified data");
+		NSString *collision = [download stringByAppendingPathComponent:@"collision.bin"]; [fixture writeToFile:collision atomically:YES];
+		bool rejected = false;
+		try { call(c, @"rename", @{@"id":@"fixture", @"changes":@[@{@"index":@0, @"path":@"collision.bin"}]}); } catch (std::exception const&) { rejected = true; }
+		require(rejected, "Rename collision was not rejected");
+		NSString *final = [root stringByAppendingPathComponent:@"final"];
+		call(c, @"move", @{@"id":@"fixture", @"destination":final});
+		bool moved = false;
+		for (int i = 0; i < 100; ++i) { NSDictionary *shot = snapshot(c); for (NSDictionary *event in shot[@"events"]) if ([event[@"kind"] isEqual:@"moved"]) moved = true; if (moved) break; std::this_thread::sleep_for(std::chrono::milliseconds(30)); }
+		require(moved && [fm fileExistsAtPath:[final stringByAppendingPathComponent:@"renamed.bin"]], "Confirmed completion move failed");
+		require([fm fileExistsAtPath:collision], "Move affected an unrelated neighbour");
+		call(c, @"remove", @{@"id":@"fixture", @"trash":@NO});
+		require([fm fileExistsAtPath:[final stringByAppendingPathComponent:@"renamed.bin"]], "Ordinary removal deleted downloaded data");
+		// Resolve metadata over loopback, this time with TCP enabled and µTP disabled.
+		NSDictionary *tcp = @{@"port":@0, @"utp":@NO, @"tcp":@YES, @"mapping":@NO, @"dht":@NO, @"lsd":@NO, @"pex":@NO, @"peers":@20, @"torrentPeers":@10};
+		call(a, @"settings", tcp); call(c, @"settings", tcp);
+		NSString *magnet = decode(call(a, @"magnet", @{@"id":@"fixture"}))[@"magnet"];
+		NSString *magnetPath = [root stringByAppendingPathComponent:@"magnet"];
+		call(c, @"add", @{@"id":@"magnet", @"source":magnet, @"destination":magnetPath}); call(c, @"run", @{@"id":@"magnet", @"running":@YES});
+		bool metadata = false;
+		for (int i = 0; i < 1200; ++i) {
+			NSDictionary *sa = snapshot(a), *sc = snapshot(c); NSDictionary *row = [sc[@"transfers"] firstObject];
+			if ([row[@"metadata"] boolValue]) metadata = true;
+			if ([row[@"complete"] boolValue]) break;
+			if (i % 20 == 0 && [sa[@"port"] intValue]) call(c, @"connect", @{@"id":@"magnet", @"address":@"127.0.0.1", @"port":sa[@"port"]});
+			std::this_thread::sleep_for(std::chrono::milliseconds(25));
+		}
+		require(metadata, "Magnet metadata did not resolve over TCP");
+		require([[NSData dataWithContentsOfFile:[magnetPath stringByAppendingPathComponent:@"fixture.bin"]] isEqual:fixture], "TCP magnet transfer failed");
+		call(c, @"shutdown", @{}); call(a, @"shutdown", @{});
+
+		printf("PASS: hybrid creation, duplicate detection, verified µTP-only transfer, rename and hash-preserving export, resume recovery, collision rejection, confirmed move, data-retaining removal and TCP magnet metadata\n");
 	} @finally { [fm removeItemAtPath:root error:nil]; }
 	return 0;
 } catch (std::exception const& e) { fprintf(stderr, "FAIL: %s\n", e.what()); return 1; } } }
