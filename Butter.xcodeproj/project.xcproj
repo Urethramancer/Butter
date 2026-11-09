@@ -12,6 +12,7 @@
   },
   "files": [
     { "kind": "folder", "path": "Butter", "target-membership": [ "Butter" ] },
+    { "kind": "folder", "path": "Packages/ButterTorrent/Sources/ButterTorrentMetadata", "target-membership": [ "Butter" ] },
     { "kind": "folder", "path": "Tests/UI", "target-membership": [ "ButterUITests" ] },
     {
       "kind": "group",

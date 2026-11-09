@@ -1,8 +1,6 @@
 # Remaining audit and acceptance checks
 
 ## Swift torrent engine replacement
-- Phase 2: bounded binary bencoding, exact info retention, hashing, magnets and
-  v1/v2/hybrid metadata inspection; compare against libtorrent before routing utilities.
 - Phase 3: hybrid creation, traversal, progress, cancellation and source seeding.
 - Phase 4: HTTP trackers and BEP 17/19 web seeds with local service fixtures.
 - Phase 5: shared TCP/UDP transport, UDP trackers, discovery and router mapping.

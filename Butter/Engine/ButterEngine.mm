@@ -502,9 +502,14 @@ struct PendingExport {
 					}
 					fs::create_directories(cpp(p[@"destination"])); t.error.clear(); t.moving = true;
 					h.move_storage(cpp(p[@"destination"]), lt::move_flags_t::fail_if_exist);
-				} else if ([command isEqual:@"magnet"]) {
+				} else if ([command isEqual:@"magnet"] || [command isEqual:@"magnetFields"]) {
 					lt::add_torrent_params magnet; magnet.info_hashes = h.info_hashes(); magnet.name = h.status().name;
 					for (auto const& tracker : h.trackers()) magnet.trackers.push_back(tracker.url);
+					if ([command isEqual:@"magnetFields"]) {
+						NSMutableArray *trackers = [NSMutableArray array];
+						for (auto const& tracker : magnet.trackers) [trackers addObject:str(tracker)];
+						completion(json(@{@"hashes":hashes(magnet.info_hashes), @"name":str(magnet.name), @"trackers":trackers}), nil); return;
+					}
 					completion(json(@{@"magnet":str(lt::make_magnet_uri(magnet))}), nil); return;
 				}
 				else if ([command isEqual:@"export"]) {

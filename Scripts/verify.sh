@@ -4,10 +4,12 @@ set -eu
 cd "$(dirname "$0")/.."
 mode=${1:-all}
 case "$mode" in
-	client|engine|contract|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
+	client|engine|contract|metadata|metadata-reference|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
 	version) exec sh Tests/git-version.sh ;;
 	final)
 		sh Tests/git-version.sh
+		Scripts/test-metadata.sh
+		Scripts/test-metadata-reference.sh
 		Scripts/test-contract.sh
 		Scripts/verify.sh coverage "${2:-final}"
 		Scripts/test-build.sh
@@ -15,7 +17,7 @@ case "$mode" in
 		;;
 	all)
 		sh Tests/git-version.sh
-		for suite in client storage disk engine contract interruption lifecycle interface ui build; do "Scripts/test-$suite.sh"; done
+		for suite in client storage disk engine metadata metadata-reference contract interruption lifecycle interface ui build; do "Scripts/test-$suite.sh"; done
 		Scripts/verify.sh sanitizers all
 		;;
 	coverage|sanitizers)
@@ -55,6 +57,7 @@ case "$mode" in
 			esac
 			set -- -module-name Butter -DDEBUG -profile-generate -profile-coverage-mapping -g -module-cache-path /tmp/butter-swift-cache
 			if [ -n "$bridge" ]; then
+				sources="Packages/ButterTorrent/Sources/ButterTorrentMetadata/*.swift $sources"
 				set -- "$@" -import-objc-header Butter/Engine/ButterEngine.h -L "$out/apple-bridge" -L .dependencies/install/lib \
 					-lButterEngine -ltorrent-rasterbar -lssl -lcrypto -lc++ -framework AppKit -framework SystemConfiguration
 			fi
@@ -83,7 +86,7 @@ PROFILES
 		xcrun llvm-cov report "$@" -instr-profile="$out/merged.profdata" -ignore-filename-regex="$ignore" > "$out/report.txt"
 		xcrun llvm-cov show "$@" -instr-profile="$out/merged.profdata" -ignore-filename-regex="$ignore" -show-branches=count > "$out/uncovered.txt"
 		xcrun llvm-cov export "$@" -instr-profile="$out/merged.profdata" -ignore-filename-regex="$ignore" > "$out/coverage.json"
-		xcrun llvm-cov report "$@" -instr-profile="$out/merged.profdata" -ignore-filename-regex="$ignore" $(rg --files Butter -g '*.swift') > "$out/swift-report.txt"
+		xcrun llvm-cov report "$@" -instr-profile="$out/merged.profdata" -ignore-filename-regex="$ignore" $(rg --files Butter Packages/ButterTorrent/Sources -g '*.swift') > "$out/swift-report.txt"
 		xcrun llvm-cov report "$@" -instr-profile="$out/merged.profdata" Butter/Engine/ButterEngine.mm > "$out/bridge-report.txt"
 		printf 'Suite status: %s (0 = passed)\n' "$status" > "$out/status.txt"
 		cat "$out/report.txt"
@@ -92,5 +95,5 @@ PROFILES
 		fi
 		exit "$status"
 		;;
-	*) echo 'Usage: Scripts/verify.sh [final [label]|all|client|storage|disk|interruption|engine|contract|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
+	*) echo 'Usage: Scripts/verify.sh [final [label]|all|client|storage|disk|interruption|engine|contract|metadata|metadata-reference|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
 esac

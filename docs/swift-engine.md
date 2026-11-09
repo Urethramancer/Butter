@@ -6,6 +6,8 @@ Keep layouts, `EngineOperations`, scheduling and completion policies unchanged.
 
 ## Reference and comparison boundary (phase 1)
 
+Completed and tagged `v0.4.0`.
+
 The immutable application reference is `v0.3.0`, commit
 `e2268d90f7bd4960d100ab0b9da5997572c6651b`. Do not move the tag. Its bootstrap
 pins libtorrent `6da363d2994f17c0b3c0450d124cf73a31a73847` (2.1.2), Boost
@@ -129,3 +131,37 @@ arrive. Run both interoperability directions; Swift-only peers are insufficient.
 Use bounded waits, disposable fixtures and no retries that hide failures. Record
 throughput, CPU and memory on equivalent fixtures before cut-over; no performance
 improvement is assumed. Reserve the full native UI suite for final integration.
+
+## Metadata utilities (phase 2)
+
+`Packages/ButterTorrent` now provides the separately tested
+`ButterTorrentMetadata` library: bounded binary bencoding, original info ranges,
+incremental CryptoKit SHA-1/SHA-256, full identifiers, magnets and v1/v2/hybrid
+inspection. The app compiles that target's source directory directly, as do the
+existing headless builds; standalone consumers use the SwiftPM product. No
+AppKit/SwiftUI or new bundled dependencies are introduced in the package.
+
+`EngineClient` sends preview reads through a serial metadata actor and generates
+magnets in Swift from current bridge-provided hashes, name and trackers. The
+internal `magnetFields` command avoids draining snapshots or changing event
+delivery. Transfer and creation commands still use libtorrent. The original
+bridge `inspect`/`magnet` commands remain available to the reference harness.
+
+`Scripts/verify.sh metadata` tests canonical/binary encoding, malformed inputs,
+resource bounds, original info bytes, standard hash vectors (including a million
+bytes), query escaping, Base32, invalid/conflicting identifiers, metadata layouts
+and bounded disk reads. `metadata-reference` generates twelve independent cases
+with libtorrent: six single/multifile v1/v2/hybrid cases plus six path-sanitisation
+cases. It compares files, padding, private flags and full hashes, then imports
+Swift-generated magnets into libtorrent. `contract` runs the same scenarios on
+both the raw bridge and the Swift utility adapter. Existing lifecycle checks
+exercise native previews and private tracker rules. Debug/Release build checks
+include bundled notices and unchanged repeat-build checks. No native UI suite is
+required at this stage.
+
+Path sanitisation is adapted from the pinned implementation; attribution and BSD
+terms live in the package's `THIRD_PARTY_NOTICES.txt` and the app's
+`Butter/Licences/ButterTorrent.txt`. Retain these when removing the dependency.
+Inspection checks piece-layer structure and retains its bytes; payload and Merkle
+verification belong to creation/transfer phases. It never treats data as verified.
+See the package README for explicit bounds and supported integer sizes.
