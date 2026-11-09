@@ -4,12 +4,13 @@ set -eu
 cd "$(dirname "$0")/.."
 mode=${1:-all}
 case "$mode" in
-	client|engine|contract|metadata|metadata-reference|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
+	client|engine|contract|metadata|metadata-reference|creation|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
 	version) exec sh Tests/git-version.sh ;;
 	final)
 		sh Tests/git-version.sh
 		Scripts/test-metadata.sh
 		Scripts/test-metadata-reference.sh
+		Scripts/test-creation.sh
 		Scripts/test-contract.sh
 		Scripts/verify.sh coverage "${2:-final}"
 		Scripts/test-build.sh
@@ -17,7 +18,7 @@ case "$mode" in
 		;;
 	all)
 		sh Tests/git-version.sh
-		for suite in client storage disk engine metadata metadata-reference contract interruption lifecycle interface ui build; do "Scripts/test-$suite.sh"; done
+		for suite in client storage disk engine metadata metadata-reference creation contract interruption lifecycle interface ui build; do "Scripts/test-$suite.sh"; done
 		Scripts/verify.sh sanitizers all
 		;;
 	coverage|sanitizers)
@@ -95,5 +96,5 @@ PROFILES
 		fi
 		exit "$status"
 		;;
-	*) echo 'Usage: Scripts/verify.sh [final [label]|all|client|storage|disk|interruption|engine|contract|metadata|metadata-reference|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
+	*) echo 'Usage: Scripts/verify.sh [final [label]|all|client|storage|disk|interruption|engine|contract|metadata|metadata-reference|creation|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
 esac

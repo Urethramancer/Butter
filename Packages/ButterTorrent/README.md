@@ -6,7 +6,7 @@ third-party dependencies. The parent repository's MIT licence applies.
 
 `ButterTorrentMetadata` provides bounded binary bencoding, exact original info
 bytes, incremental SHA-1/SHA-256, full v1/v2 identifiers, magnet parsing/generation
-and v1/v2/hybrid metadata inspection. Binary dictionary keys remain binary.
+and v1/v2/hybrid metadata inspection and hybrid creation. Binary dictionary keys remain binary.
 Out-of-order dictionary keys are tolerated for interoperability, but duplicate
 keys and non-canonical numbers/lengths are rejected. Identity always hashes the
 original info section, including its original key order.
@@ -20,9 +20,20 @@ bytes are retained and structurally inspected; transfer-time Merkle verification
 belongs to later creation/transfer phases. Inspection never marks payload data
 verified. Magnet hints do not authorise discovery for private torrents.
 
+`TorrentCreator` hashes files in 16 KiB blocks, constructs v1 piece hashes and v2
+Merkle trees/piece layers, and emits hybrid metadata with canonical file ordering,
+padding, private flags and trackers. Empty files are retained, symlinks excluded
+and changed source files rejected. Descriptor-relative reads refuse symlinks in
+source subdirectories. Limits include 50,000 source files, depth 90, fewer than
+400,000 pieces and 16 MiB maximum piece size, in addition to encoding limits.
+Creation needs a source containing at least one byte. Progress and cancellation
+callbacks are synchronous; callers choose the worker. Butter uses one serial
+worker, atomic publication, explicit cancellation and shutdown settlement.
+
 ```sh
 swift test --package-path Packages/ButterTorrent --scratch-path .build/ButterTorrent
 Scripts/verify.sh metadata-reference
+Scripts/verify.sh creation
 ```
 
 The first command works without libtorrent installed. The second uses the parent

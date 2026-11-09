@@ -134,6 +134,8 @@ improvement is assumed. Reserve the full native UI suite for final integration.
 
 ## Metadata utilities (phase 2)
 
+Completed and tagged `v0.5.0`.
+
 `Packages/ButterTorrent` now provides the separately tested
 `ButterTorrentMetadata` library: bounded binary bencoding, original info ranges,
 incremental CryptoKit SHA-1/SHA-256, full identifiers, magnets and v1/v2/hybrid
@@ -165,3 +167,36 @@ terms live in the package's `THIRD_PARTY_NOTICES.txt` and the app's
 Inspection checks piece-layer structure and retains its bytes; payload and Merkle
 verification belong to creation/transfer phases. It never treats data as verified.
 See the package README for explicit bounds and supported integer sizes.
+
+## Hybrid creation (phase 3)
+
+Completed and tagged `v0.6.0`.
+
+`TorrentCreator` now builds hybrid metadata with bounded sequential hashing,
+v1 piece hashes, v2 Merkle roots/piece layers, canonical ordering, padding,
+private flags and tracker lists. Traversal includes empty and hidden files but
+excludes symlinks. Descriptor-relative reads reject symlinked subdirectories and
+files; size/timestamp changes during hashing fail the operation. It reads 16 KiB
+blocks and bounds source counts, depth and retained hash lists before encoding.
+
+`EngineClient` routes creation through one serial worker. Progress is observable
+without blocking snapshots. Explicit and task cancellation settle once; failed
+or cancelled hashing publishes no metadata. An atomic write under the worker
+state lock orders cancellation against publication. Output collisions fail
+without overwriting metadata. Publication failure releases the worker for retry.
+Shutdown waits for an active creation result to settle. The response still
+returns the source parent so the existing store seeds in place.
+
+`Scripts/verify.sh creation` checks response/progress, cancellation before work,
+publication failure and retry, then transfers eight generated fixtures through
+libtorrent and verifies every file byte after shutdown's flush barrier. Cases
+cover single/multifile layouts, empty files and 16/32/64 KiB pieces; v2-only
+derivatives force independent Merkle verification as well as hybrid transfers.
+Package tests additionally cover fixed payload hashes, symlink/cycle exclusions,
+private trackers, cancellation during hashing and source mutation. Existing
+contract and lifecycle suites cover creation in place, completion policies and
+private tracker restrictions. Debug/Release, linkage, bundled notices and
+unchanged repeat-build checks are required before tagging the phase.
+
+Creation emits both identities; transfer traffic still belongs to libtorrent.
+Throughput/CPU/memory comparisons and full UI acceptance remain later gates.

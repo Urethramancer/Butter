@@ -68,10 +68,12 @@ The staged native Swift engine replacement and its preserved reference contract
 are documented in [the migration record](docs/swift-engine.md). Production
 continues to use libtorrent until the complete replacement passes acceptance.
 Run `Scripts/verify.sh contract` for the shared headless engine boundary checks.
-`Packages/ButterTorrent` supplies native metadata inspection and magnet generation;
-libtorrent continues to create torrents and handle transfers. Run
+`Packages/ButterTorrent` supplies native metadata inspection, magnet generation
+and hybrid torrent creation; libtorrent continues to handle transfers. Run
 `Scripts/verify.sh metadata` for its independent Swift package tests and
 `Scripts/verify.sh metadata-reference` for optional libtorrent comparisons.
+`Scripts/verify.sh creation` verifies native creation, cancellation, publication
+failure/recovery and reference transfers of the generated metadata.
 
 ```sh
 Scripts/verify.sh final audit

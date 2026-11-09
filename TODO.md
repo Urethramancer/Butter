@@ -1,7 +1,6 @@
 # Remaining audit and acceptance checks
 
 ## Swift torrent engine replacement
-- Phase 3: hybrid creation, traversal, progress, cancellation and source seeding.
 - Phase 4: HTTP trackers and BEP 17/19 web seeds with local service fixtures.
 - Phase 5: shared TCP/UDP transport, UDP trackers, discovery and router mapping.
 - Phase 6: safe storage, selective layout, verification, checkpoints and interruption recovery.
