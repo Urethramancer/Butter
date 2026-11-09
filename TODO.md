@@ -1,5 +1,21 @@
 # Remaining audit and acceptance checks
 
+## Swift torrent engine replacement
+- Phase 2: bounded binary bencoding, exact info retention, hashing, magnets and
+  v1/v2/hybrid metadata inspection; compare against libtorrent before routing utilities.
+- Phase 3: hybrid creation, traversal, progress, cancellation and source seeding.
+- Phase 4: HTTP trackers and BEP 17/19 web seeds with local service fixtures.
+- Phase 5: shared TCP/UDP transport, UDP trackers, discovery and router mapping.
+- Phase 6: safe storage, selective layout, verification, checkpoints and interruption recovery.
+- Phase 7: v1 TCP downloads and seeding, both libtorrent interoperability directions.
+- Phase 8: metadata exchange, PEX, v2/hybrid transfers and private discovery enforcement.
+- Phase 9: negotiated peer encryption and plaintext fallback interoperability.
+- Phase 10: µTP with deterministic network-failure fixtures and TCP-disabled transfers.
+- Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
+- Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
+  Preserve `v0.3.0`; do not create further tags or push. Details and gates are in
+  [the migration record](docs/swift-engine.md).
+
 ## Filesystem interruption and failure matrix
 - Interrupt a real multi-file Trash operation and verify remaining files and Trash
   receipts across relaunch.

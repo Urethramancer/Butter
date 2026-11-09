@@ -64,6 +64,11 @@ upward probes; they are not measurements of an ISP connection limit.
 
 ## Verification
 
+The staged native Swift engine replacement and its preserved reference contract
+are documented in [the migration record](docs/swift-engine.md). Production
+continues to use libtorrent until the complete replacement passes acceptance.
+Run `Scripts/verify.sh contract` for the shared headless engine boundary checks.
+
 ```sh
 Scripts/verify.sh final audit
 ```
