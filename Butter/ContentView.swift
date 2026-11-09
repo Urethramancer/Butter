@@ -40,13 +40,15 @@ struct ContentView: View {
 				Divider(); StatusBar().padding(.horizontal, 12).padding(.vertical, 7)
 			}
 			.navigationTitle(filter.rawValue)
-			.searchable(text: $search, prompt: "Find transfers")
 			.toolbar {
+				ToolbarItem(placement: .principal) {
+					TransferSearchField(text: $search).frame(minWidth: 180, idealWidth: 260, maxWidth: 340).help("Find transfers by name.")
+				}
 				ToolbarItemGroup(placement: .primaryAction) {
 					Button { store.chooseTorrent() } label: { Label("Open Torrent", systemImage: "plus") }.help("Open torrent file (⌘O)")
-					Button { store.showMagnet = true } label: { Label("Add Magnet", systemImage: "link") }
-					Button { store.showCreator = true } label: { Label("Create Torrent", systemImage: "doc.badge.plus") }
-					Button { store.showInspector.toggle() } label: { Label("Inspector", systemImage: "sidebar.right") }.keyboardShortcut("i", modifiers: [.command, .option])
+					Button { store.showMagnet = true } label: { Label("Add Magnet", systemImage: "link") }.help("Add a magnet link (⌘L)")
+					Button { store.showCreator = true } label: { Label("Create Torrent", systemImage: "doc.badge.plus") }.help("Create a torrent from local files (⌘N)")
+					Button { store.showInspector.toggle() } label: { Label("Inspector", systemImage: "sidebar.right") }.keyboardShortcut("i", modifiers: [.command, .option]).help(store.showInspector ? "Hide inspector (⌥⌘I)" : "Show inspector (⌥⌘I)").accessibilityValue(store.showInspector ? "Shown" : "Hidden")
 				}
 			}
 			.inspector(isPresented: $store.showInspector) {
@@ -67,7 +69,7 @@ struct ContentView: View {
 				if !collapsed.contains(key) { ForEach(members) { torrent in TorrentRow(torrent: torrent).tag(torrent.id).contextMenu { TransferMenu(torrent: torrent) } } }
 			} header: {
 				HStack {
-					Button { if collapsed.contains(key) { collapsed.remove(key) } else { collapsed.insert(key) } } label: { HStack { Image(systemName: collapsed.contains(key) ? "chevron.right" : "chevron.down"); Circle().fill(groupColour(colour)).frame(width: 8, height: 8); Text(title); Text("\(members.count)").foregroundStyle(.secondary) } }.buttonStyle(.plain)
+					Button { if collapsed.contains(key) { collapsed.remove(key) } else { collapsed.insert(key) } } label: { HStack { Image(systemName: collapsed.contains(key) ? "chevron.right" : "chevron.down"); Circle().fill(groupColour(colour)).frame(width: 8, height: 8); Text(title); Text("\(members.count)").foregroundStyle(.secondary) } }.buttonStyle(.plain).controlHelp("\(collapsed.contains(key) ? "Expand" : "Collapse") group \(title)").accessibilityValue("\(members.count) transfers")
 					Spacer()
 					Button { store.selection = Set(members.map(\.id)) } label: { Image(systemName: "checkmark.circle") }.buttonStyle(.plain).help("Select all members of \(title)").accessibilityLabel("Select all members of \(title)")
 				}
@@ -94,14 +96,14 @@ struct TorrentRow: View {
 	let torrent: TransferSnapshot
 	var body: some View {
 		HStack(spacing: 12) {
-			Menu { PriorityMenu(ids: store.selection.contains(torrent.id) ? store.selection : [torrent.id]) } label: { Image(systemName: "line.3.horizontal.decrease.circle").font(.title3) }.menuStyle(.borderlessButton).frame(width: 23).help("Transfer priority: \(store.priority(for: torrent).label)")
+			Menu { PriorityMenu(ids: store.selection.contains(torrent.id) ? store.selection : [torrent.id]) } label: { Image(systemName: "line.3.horizontal.decrease.circle").font(.title3) }.menuStyle(.borderlessButton).frame(width: 23).controlHelp("Change priority for \(store.title(torrent))").accessibilityValue(store.priority(for: torrent).label)
 			VStack(alignment: .leading, spacing: 5) {
 				HStack { Text(store.title(torrent)).font(.headline).lineLimit(1); Spacer(); Text("\(Int(torrent.verifiedProgress * 100))%").monospacedDigit().foregroundStyle(.secondary) }
 				PieceProgress(pieces: torrent.pieces).frame(height: 7)
-				HStack { Text("\(bytes(torrent.done)) of \(bytes(torrent.wanted)) · \(store.state(torrent))").lineLimit(1); Spacer(); if torrent.down > 0 { Text("↓ \(speed(torrent.down))") }; if torrent.up > 0 { Text("↑ \(speed(torrent.up))") } }.font(.caption).foregroundStyle(torrent.error.isEmpty ? Color.secondary : Color.red)
+				HStack { Text("\(bytes(torrent.done)) of \(bytes(torrent.wanted)) · \(store.state(torrent))").lineLimit(1); Spacer(); if torrent.down > 0 { Text("↓ \(speed(torrent.down))") }; if torrent.up > 0 { Text("↑ \(speed(torrent.up))") } }.font(.caption).foregroundStyle(torrent.error.isEmpty ? Color.secondary : Color.red).accessibilityElement(children: .ignore).accessibilityLabel("\(bytes(torrent.done)) of \(bytes(torrent.wanted)), \(store.state(torrent)). Download \(speed(torrent.down)), upload \(speed(torrent.up)).")
 			}
-			Button { Task { await store.setRunning([torrent.id], running: !(store.record(torrent.id)?.wanted ?? false)) } } label: { Image(systemName: store.record(torrent.id)?.wanted == true ? "pause.circle.fill" : "play.circle.fill").font(.title2) }.buttonStyle(.plain).help(store.record(torrent.id)?.wanted == true ? "Pause" : "Start")
-			Button { store.reveal(torrent) } label: { Image(systemName: "folder").font(.title3) }.buttonStyle(.plain).help("Reveal in Finder")
+			Button { Task { await store.setRunning([torrent.id], running: !(store.record(torrent.id)?.wanted ?? false)) } } label: { Image(systemName: store.record(torrent.id)?.wanted == true ? "pause.circle.fill" : "play.circle.fill").font(.title2) }.buttonStyle(.plain).controlHelp("\(store.record(torrent.id)?.wanted == true ? "Pause" : "Start") \(store.title(torrent))")
+			Button { store.reveal(torrent) } label: { Image(systemName: "folder").font(.title3) }.buttonStyle(.plain).controlHelp("Reveal \(store.title(torrent)) in Finder")
 		}.padding(.vertical, 8)
 	}
 }
@@ -125,8 +127,8 @@ struct PriorityMenu: View {
 	@EnvironmentObject private var store: TransferStore
 	var ids: Set<String>
 	var body: some View {
-		ForEach(TransferPriority.allCases) { priority in Button(priority.label) { Task { await store.setPriority(priority, ids: ids) } } }
-		Divider(); Button("Reset to Group Priority") { Task { await store.setPriority(nil, ids: ids) } }
+		ForEach(TransferPriority.allCases) { priority in Button(priority.label) { Task { await store.setPriority(priority, ids: ids) } }.help("Set selected transfers to \(priority.label.lowercased()) priority.") }
+		Divider(); Button("Reset to Group Priority") { Task { await store.setPriority(nil, ids: ids) } }.help("Inherit priority from the matching group.")
 	}
 }
 struct TransferMenu: View {
@@ -134,17 +136,17 @@ struct TransferMenu: View {
 	let torrent: TransferSnapshot
 	private var ids: Set<String> { store.selection.contains(torrent.id) ? store.selection : [torrent.id] }
 	var body: some View {
-		Button("Start") { Task { await store.setRunning(ids, running: true) } }
-		Button("Pause") { Task { await store.setRunning(ids, running: false) } }
-		Button("Force Start") { Task { await store.setRunning(ids, running: true, force: true) } }
+		Button("Start") { Task { await store.setRunning(ids, running: true) } }.help("Start selected transfers using the queue limits.")
+		Button("Pause") { Task { await store.setRunning(ids, running: false) } }.help("Pause selected transfers and retain their data.")
+		Button("Force Start") { Task { await store.setRunning(ids, running: true, force: true) } }.help("Start selected transfers beyond the active-transfer limits.")
 		Menu("Priority") { PriorityMenu(ids: ids) }
-		Divider(); Button("Rename…") { store.renameTorrent(torrent) }
-		Button("Verify Local Data") { Task { for id in ids { await store.command("recheck", id: id) } } }.disabled(!torrent.metadata)
-		Button("Retry Completion Move") { Task { await store.retryMove(torrent) } }.disabled(!torrent.complete)
-		Button("Copy Magnet Link") { Task { await store.copyMagnet(torrent.id) } }.disabled(!torrent.metadata)
-		Button("Export Torrent…") { store.export(torrent) }.disabled(!torrent.metadata)
-		Divider(); Button("Remove") { Task { await store.remove(ids, trash: false) } }
-		Button("Remove and Delete Data…", role: .destructive) { store.confirmRemoval(ids) }.disabled(!torrent.metadata)
+		Divider(); Button("Rename…") { store.renameTorrent(torrent) }.help("Change this transfer’s display name.")
+		Button("Verify Local Data") { Task { for id in ids { await store.command("recheck", id: id) } } }.disabled(!torrent.metadata).help("Hash local data again and retry damaged or missing pieces.")
+		Button("Retry Completion Move") { Task { await store.retryMove(torrent) } }.disabled(!torrent.complete).help("Retry moving completed data to the final destination.")
+		Button("Copy Magnet Link") { Task { await store.copyMagnet(torrent.id) } }.disabled(!torrent.metadata).help("Copy this torrent’s magnet link to the clipboard.")
+		Button("Export Torrent…") { store.export(torrent) }.disabled(!torrent.metadata).help("Save a torrent file with its original swarm identity.")
+		Divider(); Button("Remove") { Task { await store.remove(ids, trash: false) } }.help("Remove selected transfers while keeping downloaded data.")
+		Button("Remove and Delete Data…", role: .destructive) { store.confirmRemoval(ids) }.disabled(!torrent.metadata).help("Confirm removal and move only managed files to Trash.")
 	}
 }
 struct StatusBar: View {
@@ -158,7 +160,7 @@ struct StatusBar: View {
 			Spacer(minLength: 0)
 			if store.preferences.statusItems.contains("Download speed") { Text("↓ \(speed(store.transfers.reduce(0) { $0 + $1.down }))") }
 			if store.preferences.statusItems.contains("Upload speed") { Text("↑ \(speed(store.transfers.reduce(0) { $0 + $1.up }))") }
-			if !store.networkError.isEmpty { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).help(store.networkError) }
+			if !store.networkError.isEmpty { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).help(store.networkError).accessibilityLabel("Network warning").accessibilityValue(store.networkError) }
 		}.font(.caption).foregroundStyle(.secondary).monospacedDigit()
 	}
 }

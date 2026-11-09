@@ -7,7 +7,7 @@ struct PreferencesView: View {
 	var body: some View {
 		TabView {
 			GeneralPreferences().tabItem { Label("General", systemImage: "gearshape") }
-			TransferPreferences().tabItem { Label("Transfers", systemImage: "arrow.down.arrow.up") }
+			TransferPreferences().tabItem { Label("Transfers", systemImage: "arrow.up.arrow.down") }
 			NetworkPreferences().tabItem { Label("Network", systemImage: "network") }
 			GroupPreferences().tabItem { Label("Groups", systemImage: "folder.badge.gearshape") }
 			TrackerPreferences().tabItem { Label("Favourite Trackers", systemImage: "star") }
@@ -24,12 +24,12 @@ struct GeneralPreferences: View {
 			Picker("Appearance", selection: $store.preferences.appearance) { ForEach(["System", "Light", "Dark"], id: \.self) { Text($0) } }
 			Section("Notifications") {
 				Toggle("Notify when a download completes", isOn: $store.preferences.notifications)
-				Button("Open Notification Settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?net.grimdork.Butter")!) }
+				Button("Open Notification Settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?net.grimdork.Butter")!) }.help("Manage Butter’s notification permissions in System Settings.")
 			}
 			Picker("Confirm quitting", selection: $store.preferences.quitMode) { ForEach(["Always", "Active Transfers", "Active Downloads", "Never"], id: \.self) { Text($0) } }
 			Section("Status bar") { ForEach(["Torrents", "Peers", "Downloads", "Uploads", "Download speed", "Upload speed"], id: \.self) { item in Toggle(item, isOn: Binding(get: { store.preferences.statusItems.contains(item) }, set: { if $0 { store.preferences.statusItems.insert(item) } else { store.preferences.statusItems.remove(item) } })) } }
 			Section("Default application") {
-				HStack { Button("Register for Magnet Links") { NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpenURLsWithScheme: "magnet") { error in Task { @MainActor in if let error { store.report(error) } else { registration = "Magnet registration requested." } } } }; Button("Register for Torrent Files") { NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: UTType(filenameExtension: "torrent") ?? .data) { error in Task { @MainActor in if let error { store.report(error) } else { registration = "Torrent registration requested." } } } } }
+				HStack { Button("Register for Magnet Links") { NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpenURLsWithScheme: "magnet") { error in Task { @MainActor in if let error { store.report(error) } else { registration = "Magnet registration requested." } } } }.help("Make Butter the default application for magnet links."); Button("Register for Torrent Files") { NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: UTType(filenameExtension: "torrent") ?? .data) { error in Task { @MainActor in if let error { store.report(error) } else { registration = "Torrent registration requested." } } } }.help("Make Butter the default application for torrent files.") }
 				if !registration.isEmpty { Text(registration).font(.caption).foregroundStyle(.secondary) }
 			}
 		}.formStyle(.grouped)
@@ -68,18 +68,18 @@ struct NetworkPreferences: View {
 		Form {
 			Section("Connections") {
 				Toggle("Enable incoming and outgoing µTP", isOn: $store.preferences.utp)
-				HStack { TextField("Listening port", value: $store.preferences.port, format: .number.grouping(.never)).frame(maxWidth: 230); Button("Randomise") { Task { await randomise() } }.disabled(randomising); Button("Check Port") { checking = true; Task { store.portStatus = await PortChecker().check(store.boundPort); checking = false } }.disabled(checking || store.boundPort == 0) }
+				HStack { TextField("Listening port", value: $store.preferences.port, format: .number.grouping(.never)).frame(maxWidth: 230); Button("Randomise") { Task { await randomise() } }.disabled(randomising).help("Bind a free listening port before saving it."); Button("Check Port") { checking = true; Task { store.portStatus = await PortChecker().check(store.boundPort); checking = false } }.disabled(checking || store.boundPort == 0).help("Ask Transmission’s HTTPS service to check external TCP reachability.") }
 				Text("TCP: \(store.portStatus)").font(.caption)
 				Text("Local UDP/µTP: \(store.udpBound ? "bound on port \(store.boundPort)" : "not confirmed")").font(.caption).foregroundStyle(.secondary)
 				if !store.networkError.isEmpty { Text(store.networkError).font(.caption).foregroundStyle(.orange) }
-				Stepper("Global peer limit: \(store.preferences.peers)", value: $store.preferences.peers, in: 1...5000)
-				Stepper("Per-torrent peer limit: \(store.preferences.torrentPeers)", value: $store.preferences.torrentPeers, in: 1...1000)
+				PeerLimitField(title: "Global peer limit", value: $store.preferences.peers, range: 1...5000)
+				PeerLimitField(title: "Per-torrent peer limit", value: $store.preferences.torrentPeers, range: 1...1000)
 				Text("The global peer limit remains authoritative. Router mapping is automatic.").font(.caption).foregroundStyle(.secondary)
 			}
 			Section("Discovery") { Toggle("Peer exchange (PEX)", isOn: $store.preferences.pex); Toggle("Distributed hash table (DHT)", isOn: $store.preferences.dht); Toggle("Local peer discovery", isOn: $store.preferences.lsd); Text("Private torrents always disable these discovery mechanisms.").font(.caption).foregroundStyle(.secondary) }
 			Section("Blocklists") {
-				ForEach(store.preferences.blocklists) { source in HStack { Text(source.name); Spacer(); Text("\(source.ranges.count) ranges").foregroundStyle(.secondary); Button { store.preferences.blocklists.removeAll { $0.id == source.id } } label: { Image(systemName: "minus.circle") }.help("Remove blocklist") } }
-				HStack { Button("Import…") { importBlocklists() }; Button("Export Optimised List…") { exportBlocklist() }.disabled(store.preferences.blocklists.isEmpty) }
+				ForEach(store.preferences.blocklists) { source in HStack { Text(source.name); Spacer(); Text("\(source.ranges.count) ranges").foregroundStyle(.secondary); Button { store.preferences.blocklists.removeAll { $0.id == source.id } } label: { Image(systemName: "minus.circle") }.controlHelp("Remove blocklist \(source.name)") } }
+				HStack { Button("Import…") { importBlocklists() }.help("Import one or more IP blocklist files."); Button("Export Optimised List…") { exportBlocklist() }.disabled(store.preferences.blocklists.isEmpty).help("Save the merged, optimised IP blocklist.") }
 				Text("Supports IP addresses, CIDR and PeerGuardian/eMule ranges. All imported sources are combined.").font(.caption).foregroundStyle(.secondary)
 			}
 		}.formStyle(.grouped)
@@ -122,12 +122,13 @@ struct GroupPreferences: View {
 		HSplitView {
 			VStack {
 				List(store.preferences.groups, selection: $selection) { group in Label { Text(group.name) } icon: { Circle().fill(groupColour(group.colour)).frame(width: 9, height: 9) }.tag(group.id) }
-				HStack { Button { let group = TorrentGroup(); store.preferences.groups.append(group); selection = group.id } label: { Image(systemName: "plus") }; Button { store.preferences.groups.removeAll { $0.id == selection }; selection = nil } label: { Image(systemName: "minus") }.disabled(selection == nil); Spacer(); Button { move(-1) } label: { Image(systemName: "arrow.up") }; Button { move(1) } label: { Image(systemName: "arrow.down") } }.padding(10)
+				HStack { Button { let group = TorrentGroup(); store.preferences.groups.append(group); selection = group.id } label: { Image(systemName: "plus") }.controlHelp("Add group"); Button { store.preferences.groups.removeAll { $0.id == selection }; selection = nil } label: { Image(systemName: "minus") }.disabled(selection == nil).controlHelp("Delete selected group"); Spacer(); Button { move(-1) } label: { Image(systemName: "arrow.up") }.disabled(!canMove(-1)).controlHelp("Move selected group earlier"); Button { move(1) } label: { Image(systemName: "arrow.down") }.disabled(!canMove(1)).controlHelp("Move selected group later") }.padding(10)
 			}.frame(minWidth: 180, idealWidth: 210)
 			if let index = store.preferences.groups.firstIndex(where: { $0.id == selection }) { GroupEditor(group: $store.preferences.groups[index]) }
 			else { ContentUnavailableView("Select a group", systemImage: "folder") }
 		}.padding(16)
 	}
+	private func canMove(_ offset: Int) -> Bool { guard let index = store.preferences.groups.firstIndex(where: { $0.id == selection }) else { return false }; return store.preferences.groups.indices.contains(index + offset) }
 	private func move(_ offset: Int) { guard let index = store.preferences.groups.firstIndex(where: { $0.id == selection }), store.preferences.groups.indices.contains(index + offset) else { return }; store.preferences.groups.swapAt(index, index + offset) }
 }
 struct GroupEditor: View {
@@ -153,8 +154,8 @@ struct TrackerPreferences: View {
 	@State private var editing: UUID?
 	var body: some View {
 		VStack(alignment: .leading, spacing: 16) {
-			List(store.preferences.trackers) { tracker in HStack { VStack(alignment: .leading) { Text(tracker.name).font(.headline); Text(tracker.url).font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Edit") { draft = tracker; editing = tracker.id }; Button { store.preferences.trackers.removeAll { $0.id == tracker.id } } label: { Image(systemName: "minus.circle") }.help("Delete favourite tracker") } }
-			Form { TextField("Name", text: $draft.name); TextField("Tracker URL", text: $draft.url); HStack { Button(editing == nil ? "Add Favourite" : "Save Changes") { if let i = store.preferences.trackers.firstIndex(where: { $0.id == editing }) { store.preferences.trackers[i] = draft } else { store.preferences.trackers.append(draft) }; draft = FavouriteTracker(); editing = nil }.disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !FavouriteTracker.valid(draft.url)); if editing != nil { Button("Cancel") { editing = nil; draft = FavouriteTracker() } } } }
+			List(store.preferences.trackers) { tracker in HStack { VStack(alignment: .leading) { Text(tracker.name).font(.headline); Text(tracker.url).font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Edit") { draft = tracker; editing = tracker.id }.help("Edit favourite tracker \(tracker.name)."); Button { store.preferences.trackers.removeAll { $0.id == tracker.id } } label: { Image(systemName: "minus.circle") }.controlHelp("Delete favourite tracker \(tracker.name)") } }
+			Form { TextField("Name", text: $draft.name); TextField("Tracker URL", text: $draft.url); HStack { Button(editing == nil ? "Add Favourite" : "Save Changes") { if let i = store.preferences.trackers.firstIndex(where: { $0.id == editing }) { store.preferences.trackers[i] = draft } else { store.preferences.trackers.append(draft) }; draft = FavouriteTracker(); editing = nil }.disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !FavouriteTracker.valid(draft.url)).help(editing == nil ? "Add this validated tracker to favourites." : "Save changes to this favourite tracker."); if editing != nil { Button("Cancel") { editing = nil; draft = FavouriteTracker() }.help("Discard changes to this favourite tracker.") } } }
 			Text("Choosing a favourite appends it explicitly; watched imports add none. Existing private torrents keep their original trackers.").font(.caption).foregroundStyle(.secondary)
 		}.padding(20)
 	}

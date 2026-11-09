@@ -8,6 +8,8 @@ import AppKit
 		Task { @MainActor in
 			let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 			do {
+				guard NSImage(systemSymbolName: "arrow.up.arrow.down", accessibilityDescription: nil) != nil else { throw CocoaError(.coderInvalidValue) }
+				try await checkSearchField()
 				try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 				var saved = SavedState(); saved.preferences.port = 0; saved.preferences.dht = false; saved.preferences.lsd = false; saved.preferences.pex = false
 				try await StateStorage(root: root).save(saved)
@@ -27,6 +29,8 @@ import AppKit
 					let settings = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 730, height: 610), styleMask: [.titled, .closable], backing: .buffered, defer: false)
 					settings.contentView = NSHostingView(rootView: PreferencesView().environmentObject(store)); settings.makeKeyAndOrderFront(nil)
 					try await Task.sleep(for: .milliseconds(500)); try capture(settings, at: output.appendingPathComponent("settings-\(name).png")); settings.orderOut(nil)
+					settings.contentView = NSHostingView(rootView: NetworkPreferences().environmentObject(store)); settings.makeKeyAndOrderFront(nil)
+					try await Task.sleep(for: .milliseconds(500)); try capture(settings, at: output.appendingPathComponent("network-\(name).png")); settings.orderOut(nil)
 				}
 				_ = await store.shutdown(); try FileManager.default.removeItem(at: root)
 				print("PASS: native main window, inspector, creation sheet and Settings instantiate in Light and Dark; layer captures require manual visual review")
@@ -34,6 +38,19 @@ import AppKit
 			} catch { fputs("FAIL: \(error)\n", stderr); try? FileManager.default.removeItem(at: root); exit(1) }
 		}
 		app.run()
+	}
+	@MainActor static func checkSearchField() async throws {
+		var query = ""
+		let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 280, height: 40), styleMask: [.titled], backing: .buffered, defer: false)
+		let host = NSHostingView(rootView: TransferSearchField(text: Binding(get: { query }, set: { query = $0 })))
+		window.contentView = host; window.orderFront(nil); defer { window.orderOut(nil) }
+		try await Task.sleep(for: .milliseconds(100))
+		func find(_ view: NSView) -> NSSearchField? { (view as? NSSearchField) ?? view.subviews.lazy.compactMap { find($0) }.first }
+		guard let field = find(host), let action = field.action, field.accessibilityLabel() == "Find transfers" else { throw CocoaError(.coderInvalidValue) }
+		for text in ["Example", ""] {
+			field.stringValue = text
+			guard NSApp.sendAction(action, to: field.target, from: field), query == text else { throw CocoaError(.coderInvalidValue) }
+		}
 	}
 	@MainActor static func capture(_ window: NSWindow, at url: URL) throws {
 		// NSView captures omit some compositor layers. These are smoke-test artefacts,

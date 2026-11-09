@@ -15,9 +15,9 @@ struct TorrentInspector: View {
 				Spacer(minLength: 0)
 			}.padding(.horizontal)
 			HStack {
-				Button { Task { await store.setRunning([torrent.id], running: !(store.record(torrent.id)?.wanted ?? false)) } } label: { Label(store.record(torrent.id)?.wanted == true ? "Pause" : "Start", systemImage: store.record(torrent.id)?.wanted == true ? "pause.fill" : "play.fill") }
-				Button("Force Start") { Task { await store.setRunning([torrent.id], running: true, force: true) } }
-				Button { store.reveal(torrent) } label: { Image(systemName: "folder") }.help("Reveal in Finder")
+				Button { Task { await store.setRunning([torrent.id], running: !(store.record(torrent.id)?.wanted ?? false)) } } label: { Label(store.record(torrent.id)?.wanted == true ? "Pause" : "Start", systemImage: store.record(torrent.id)?.wanted == true ? "pause.fill" : "play.fill") }.help(store.record(torrent.id)?.wanted == true ? "Pause this transfer." : "Start this transfer using the queue limits.")
+				Button("Force Start") { Task { await store.setRunning([torrent.id], running: true, force: true) } }.help("Start this transfer beyond the active-transfer limits.")
+				Button { store.reveal(torrent) } label: { Image(systemName: "folder") }.controlHelp("Reveal in Finder")
 			}
 			Picker("Inspector section", selection: $tab) { ForEach(["Info", "Trackers", "Peers", "Files"], id: \.self) { Text($0) } }.pickerStyle(.segmented).labelsHidden().padding(.horizontal)
 			Divider()
@@ -38,8 +38,8 @@ struct TorrentInspector: View {
 				LabeledContent("Priority", value: store.priority(for: torrent).label + (store.record(torrent.id)?.priority == nil ? " (group)" : ""))
 				if let added = store.record(torrent.id)?.added { LabeledContent("Added", value: added.formatted(date: .abbreviated, time: .shortened)) }
 			}
-			Section("Location") { Text(torrent.path).font(.caption).textSelection(.enabled); Button("Reveal in Finder") { store.reveal(torrent) }; if store.record(torrent.id)?.moveFailed == true { Button("Retry Completion Move") { Task { await store.retryMove(torrent) } } } }
-			Section("Identity") { ForEach(torrent.hashes, id: \.self) { Text($0).font(.system(.caption, design: .monospaced)).textSelection(.enabled) }; LabeledContent("Private", value: torrent.private ? "Yes" : "No"); Button("Copy Magnet Link") { Task { await store.copyMagnet(torrent.id) } }.disabled(!torrent.metadata); Button("Export Torrent…") { store.export(torrent) }.disabled(!torrent.metadata) }
+			Section("Location") { Text(torrent.path).font(.caption).textSelection(.enabled); Button("Reveal in Finder") { store.reveal(torrent) }.help("Show this transfer’s files in Finder."); if store.record(torrent.id)?.moveFailed == true { Button("Retry Completion Move") { Task { await store.retryMove(torrent) } }.help("Retry moving data to the completed-download destination.") } }
+			Section("Identity") { ForEach(torrent.hashes, id: \.self) { Text($0).font(.system(.caption, design: .monospaced)).textSelection(.enabled) }; LabeledContent("Private", value: torrent.private ? "Yes" : "No"); Button("Copy Magnet Link") { Task { await store.copyMagnet(torrent.id) } }.disabled(!torrent.metadata).help("Copy this torrent’s magnet link to the clipboard."); Button("Export Torrent…") { store.export(torrent) }.disabled(!torrent.metadata).help("Save a torrent file with its original swarm identity.") }
 		}.formStyle(.grouped)
 	}
 	private var trackers: some View {
@@ -47,7 +47,7 @@ struct TorrentInspector: View {
 			List(torrent.trackers, id: \.url) { tracker in VStack(alignment: .leading, spacing: 5) { Text(tracker.url).font(.caption).textSelection(.enabled); if !tracker.message.isEmpty { Text(tracker.message).font(.caption).foregroundStyle(.orange) } } }
 			if torrent.private { Text("Private torrents keep their original trackers.").font(.caption).foregroundStyle(.secondary).padding() }
 			else {
-				HStack { Picker("Favourite", selection: $favourite) { Text("Choose tracker").tag(""); ForEach(store.preferences.trackers) { Text($0.name).tag($0.url) } }; Button("Append") { Task { await store.command("tracker", id: torrent.id, extra: ["tracker": favourite]); favourite = "" } }.disabled(favourite.isEmpty || !torrent.metadata) }.padding()
+				HStack { Picker("Favourite", selection: $favourite) { Text("Choose tracker").tag(""); ForEach(store.preferences.trackers) { Text($0.name).tag($0.url) } }; Button("Append") { Task { await store.command("tracker", id: torrent.id, extra: ["tracker": favourite]); favourite = "" } }.disabled(favourite.isEmpty || !torrent.metadata).help("Append the chosen favourite without replacing existing trackers.") }.padding()
 			}
 		}
 	}
@@ -56,7 +56,7 @@ struct TorrentInspector: View {
 	}
 	private var files: some View {
 		VStack {
-			TextField("Search current or original names", text: $search).textFieldStyle(.roundedBorder).padding(.horizontal)
+			TextField("Search current or original names", text: $search).textFieldStyle(.roundedBorder).padding(.horizontal).accessibilityLabel("Search files").help("Filter files by their current or original names.")
 			if torrent.metadata {
 				ScrollView { LazyVStack(alignment: .leading, spacing: 4) { ForEach(FileNode.tree(torrent.files.filter { !$0.pad })) { node in FileNodeRow(node: node, torrent: torrent, search: search) } }.padding(.horizontal) }
 			} else { ContentUnavailableView("Resolving metadata", systemImage: "hourglass", description: Text("File selection becomes available when metadata arrives.")) }
@@ -93,15 +93,15 @@ struct FileNodeRow: View {
 		if node.matches(search) {
 			VStack(alignment: .leading, spacing: 4) {
 				HStack(spacing: 5) {
-					if node.isFolder { Button { expanded.toggle() } label: { Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption2) }.buttonStyle(.plain).frame(width: 12) } else { Spacer().frame(width: 12) }
+					if node.isFolder { Button { expanded.toggle() } label: { Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption2) }.buttonStyle(.plain).frame(width: 12).controlHelp("\(expanded ? "Collapse" : "Expand") folder \(node.title)") } else { Spacer().frame(width: 12) }
 					MixedCheckbox(state: node.selection, label: "Download \(node.title)") { value in
 						let indices = Set(node.files.map(\.index)); let selected = torrent.files.map { indices.contains($0.index) ? (value ? 1 : 0) : ($0.selected ? 1 : 0) }
 						Task { await store.command("select", id: torrent.id, extra: ["selected": selected]) }
 					}.frame(width: 18, height: 18)
-					Image(systemName: node.isFolder ? "folder" : "doc").foregroundStyle(.secondary)
+					Image(systemName: node.isFolder ? "folder" : "doc").foregroundStyle(.secondary).accessibilityHidden(true)
 					VStack(alignment: .leading, spacing: 2) { Text(node.title).lineLimit(1); if node.original != node.path { Text("Original: \((node.original as NSString).lastPathComponent)").font(.caption2).foregroundStyle(.secondary).lineLimit(1) } }
 					Spacer(); Text(bytes(node.files.reduce(0) { $0 + $1.size })).font(.caption2).foregroundStyle(.secondary)
-				}.contextMenu { Button("Rename Local \(node.isFolder ? "Folder" : "File")…") { store.renamePath(node.path, torrent: torrent) } }
+				}.contextMenu { Button("Rename Local \(node.isFolder ? "Folder" : "File")…") { store.renamePath(node.path, torrent: torrent) }.help("Rename local contents while preserving the original torrent metadata.") }
 				if expanded && node.isFolder { ForEach(node.children) { child in FileNodeRow(node: child, torrent: torrent, search: search).padding(.leading, 16) } }
 			}.padding(.vertical, 3)
 		}
@@ -113,7 +113,7 @@ struct MixedCheckbox: NSViewRepresentable {
 	var action: (Bool) -> Void
 	func makeCoordinator() -> Coordinator { Coordinator(action) }
 	func makeNSView(context: Context) -> NSButton { let button = NSButton(checkboxWithTitle: "", target: context.coordinator, action: #selector(Coordinator.changed(_:))); button.allowsMixedState = true; return button }
-	func updateNSView(_ button: NSButton, context: Context) { button.state = state; button.setAccessibilityLabel(label); context.coordinator.action = action; context.coordinator.state = state }
+	func updateNSView(_ button: NSButton, context: Context) { button.state = state; button.toolTip = label; button.setAccessibilityLabel(label); button.setAccessibilityHelp("Include or exclude these contents from downloading. Mixed means only some files are selected."); context.coordinator.action = action; context.coordinator.state = state }
 	final class Coordinator: NSObject {
 		var action: (Bool) -> Void
 		var state: NSControl.StateValue = .off
