@@ -21,6 +21,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <filesystem>
+#include <cmath>
 namespace lt = libtorrent;
 namespace fs = std::filesystem;
 static NSString *str(std::string const& s) { return [[NSString alloc] initWithBytes:s.data() length:s.size() encoding:NSUTF8StringEncoding] ?: @""; }
@@ -41,6 +42,34 @@ static bool safeRelative(std::string const& path) {
 	for (auto const& part : relative) if (part == ".." || part == "." || part.empty()) return false;
 	return true;
 }
+static void validateFields(NSDictionary *p) {
+	unichar zero = 0; NSString *nul = [NSString stringWithCharacters:&zero length:1];
+	for (NSString *key in @[@"id", @"source", @"destination", @"tracker", @"address", @"path", @"first", @"last", @"original"]) {
+		if (p[key] && ![p[key] isKindOfClass:NSString.class]) throw std::runtime_error("Expected a string field.");
+		if (p[key] && [p[key] rangeOfString:nul].location != NSNotFound) throw std::runtime_error("String fields cannot contain null characters.");
+	}
+	for (NSString *key in @[@"index", @"port", @"peers", @"torrentPeers", @"downloadLimit", @"uploadLimit", @"restore", @"running", @"trash", @"private", @"utp", @"tcp", @"dht", @"pex", @"lsd", @"mapping", @"allowSameIP", @"reviewRequired"])
+		if (p[key] && (![p[key] isKindOfClass:NSNumber.class] || !std::isfinite([p[key] doubleValue]) || std::floor([p[key] doubleValue]) != [p[key] doubleValue] || [p[key] doubleValue] < INT_MIN || [p[key] doubleValue] > INT_MAX)) throw std::runtime_error("Expected a bounded whole number.");
+	for (NSString *key in @[@"changes", @"ranges", @"paths", @"pending", @"selected", @"trackers"]) {
+		if (!p[key]) continue;
+		if (![p[key] isKindOfClass:NSArray.class]) throw std::runtime_error("Expected an array field.");
+		for (id entry in p[key]) {
+			if ([key isEqual:@"selected"]) {
+				if (![entry isKindOfClass:NSNumber.class] || ([entry doubleValue] != 0 && [entry doubleValue] != 1)) throw std::runtime_error("Invalid file selection.");
+			} else if ([key isEqual:@"trackers"]) {
+				if (![entry isKindOfClass:NSString.class]) throw std::runtime_error("Invalid tracker URL.");
+			} else {
+				if (![entry isKindOfClass:NSDictionary.class]) throw std::runtime_error("Expected an object entry.");
+				validateFields(entry);
+				if (([key isEqual:@"paths"] || [key isEqual:@"pending"] || [key isEqual:@"changes"]) && (!entry[@"index"] || !entry[@"path"])) throw std::runtime_error("Incomplete path mapping.");
+			}
+		}
+	}
+	if (p[@"id"]) {
+		auto key = cpp(p[@"id"]);
+		if (key.empty() || key.size() > 128 || key.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_") != std::string::npos) throw std::runtime_error("Invalid transfer identifier.");
+	}
+}
 static NSArray *hashes(lt::info_hash_t const& h) {
 	NSMutableArray *a = [NSMutableArray array];
 	if (h.has_v1()) [a addObject:str(lt::aux::to_hex(h.v1))];
@@ -56,13 +85,17 @@ struct Transfer {
 	bool flushed = false;
 	std::uint64_t order = 0;
 };
+struct PendingExport {
+	std::vector<void (^)(NSData *, NSString *)> completions;
+	std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+};
 @implementation ButterEngine {
 	dispatch_queue_t _queue;
 	std::unique_ptr<lt::session> _session;
 	std::map<std::string, Transfer> _transfers;
 	std::string _storage;
 	NSMutableArray *_events;
-	std::map<std::string, void (^)(NSData *, NSString *)> _exports;
+	std::map<std::string, PendingExport> _exports;
 	std::atomic<bool> _cancel;
 	std::atomic<double> _creationProgress;
 	int _pendingResume;
@@ -101,6 +134,22 @@ struct Transfer {
 	return {};
 }
 - (void)save:(Transfer&)t { t.handle.save_resume_data(lt::torrent_handle::save_info_dict | lt::torrent_handle::flush_disk_cache); ++_pendingResume; }
+- (void)finishExports:(std::string const&)key data:(NSData *)data error:(NSString *)error {
+	auto it = _exports.find(key); if (it == _exports.end()) return;
+	auto completions = std::move(it->second.completions); _exports.erase(it);
+	for (auto const& completion : completions) completion(data, error);
+}
+- (void)pumpExports {
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_MSEC), _queue, ^{
+		@autoreleasepool {
+			[self drain];
+			std::vector<std::string> expired;
+			for (auto const& [key, pending] : _exports) if (std::chrono::steady_clock::now() >= pending.deadline) expired.push_back(key);
+			for (auto const& key : expired) [self finishExports:key data:nil error:@"Export timed out waiting for metadata. Retry after checking disk access."];
+			if (!_exports.empty()) [self pumpExports];
+		}
+	});
+}
 - (void)persistPaths:(std::string const&)key transfer:(Transfer&)t {
 	auto ti = t.handle.torrent_file(); if (!ti) return;
 	if (t.original.empty()) for (auto i : ti->layout().file_range()) t.original.push_back(ti->layout().file_path(i));
@@ -122,11 +171,11 @@ struct Transfer {
 			if (!fs::exists(_storage + "/" + key + ".torrent") && r->params.ti)
 				writeFile(_storage + "/" + key + ".torrent", lt::write_torrent_file_buf(r->params, lt::write_flags::allow_missing_piece_layer));
 			auto ex = _exports.find(key);
-			if (ex != _exports.end()) { auto bytes = lt::write_torrent_file_buf(r->params, {}); ex->second([NSData dataWithBytes:bytes.data() length:bytes.size()], nil); _exports.erase(ex); }
+			if (ex != _exports.end()) { auto bytes = lt::write_torrent_file_buf(r->params, {}); [self finishExports:key data:[NSData dataWithBytes:bytes.data() length:bytes.size()] error:nil]; }
 		} else if (auto *r = lt::alert_cast<lt::save_resume_data_failed_alert>(a)) {
 			_pendingResume = std::max(0, _pendingResume - 1);
 			auto key = [self identifier:r->handle];
-			auto ex = _exports.find(key); if (ex != _exports.end()) { ex->second(nil, @"Could not save torrent metadata. Retry after checking disk access."); _exports.erase(ex); }
+			[self finishExports:key data:nil error:@"Could not save torrent metadata. Retry after checking disk access."];
 			if (_transfers.count(key)) _transfers[key].error = "Could not save resume data. Check Application Support disk access.";
 			_saveError = "Resume data could not be saved. Check disk access before quitting.";
 		} else if (auto *r = lt::alert_cast<lt::cache_flushed_alert>(a)) {
@@ -157,6 +206,8 @@ struct Transfer {
 			auto first = [self identifier:r->handle], second = [self identifier:r->conflicting_torrent];
 			if (!_transfers.count(first) || !_transfers.count(second)) continue;
 			if (_transfers[first].order > _transfers[second].order) std::swap(first, second);
+			[self finishExports:first data:nil error:@"Transfer metadata changed while exporting. Retry the export."];
+			[self finishExports:second data:nil error:@"Transfer was merged with a duplicate."];
 			auto& existing = _transfers[first];
 			lt::add_torrent_params params; params.ti = r->metadata; params.save_path = existing.handle.status().save_path;
 			params.flags &= ~lt::torrent_flags::auto_managed; params.flags |= lt::torrent_flags::paused;
@@ -184,7 +235,7 @@ struct Transfer {
 		if (auto *ta = dynamic_cast<lt::torrent_alert *>(a)) {
 			auto key = [self identifier:ta->handle];
 			if (_transfers.count(key)) _transfers[key].error = _saveError;
-			auto ex = _exports.find(key); if (ex != _exports.end()) { ex->second(nil, @"Export failed. Check metadata availability and disk access, then retry."); _exports.erase(ex); }
+			[self finishExports:key data:nil error:@"Export failed. Check metadata availability and disk access, then retry."];
 		}
 	} }
 }
@@ -197,8 +248,12 @@ struct Transfer {
 			[self ensureSession]; [self drain];
 			NSDictionary *p = [NSJSONSerialization JSONObjectWithData:payload options:0 error:nil];
 			if (![p isKindOfClass:NSDictionary.class]) throw std::runtime_error("Invalid engine command.");
+			validateFields(p);
+			if (([command isEqual:@"add"] || [command isEqual:@"create"]) && (!p[@"id"] || ![p[@"source"] length])) throw std::runtime_error("A transfer identifier and source are required.");
 			if ([command isEqual:@"add"]) {
 				std::string key = cpp(p[@"id"]), source = cpp(p[@"source"]);
+				if (_transfers.count(key)) throw std::runtime_error("Transfer identifier is already in use.");
+				if (![p[@"destination"] length] || !fs::path(cpp(p[@"destination"])).is_absolute()) throw std::runtime_error("Choose an absolute destination folder.");
 				lt::error_code ec; lt::add_torrent_params params;
 				auto resume = readFile(_storage + "/" + key + ".resume");
 				if ([p[@"restore"] boolValue] && !resume.empty()) params = lt::read_resume_data(resume, ec);
@@ -221,11 +276,15 @@ struct Transfer {
 					auto bytes = readFile(_storage + "/" + key + ".paths.json");
 					NSDictionary *journal = [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:bytes.data() length:bytes.size()] options:0 error:nil];
 					if (![journal isKindOfClass:NSDictionary.class]) throw std::runtime_error("Saved path mappings are unreadable. Restore state.json and the Engine folder from a backup.");
+					validateFields(journal);
+					if ([journal[@"paths"] count] != params.ti->num_files()) throw std::runtime_error("Saved path mappings are incomplete. Restore the Engine folder from a backup.");
+					std::set<int> journalIndices;
 					interruptedRename = [journal[@"reviewRequired"] boolValue];
 					NSString *destination = journal[@"destination"];
 					if (destination.length && fs::path(cpp(destination)).is_absolute()) params.save_path = cpp(destination);
 					for (NSDictionary *entry in journal[@"paths"]) {
 						int index = [entry[@"index"] intValue]; auto path = cpp(entry[@"path"]);
+						if (!journalIndices.insert(index).second) throw std::runtime_error("Saved path mappings contain duplicate file indices.");
 						if (index < 0 || index >= params.ti->num_files() || !safeRelative(path)) throw std::runtime_error("Saved path mapping is unsafe. Review the saved engine state before resuming.");
 						params.renamed_files[lt::file_index_t(index)] = path;
 					}
@@ -237,6 +296,16 @@ struct Transfer {
 						if (!oldExists || old == target) params.renamed_files[fileIndex] = target;
 						else if (newExists) throw std::runtime_error("Interrupted rename has conflicting files. Review both local paths before restoring this transfer.");
 						interruptedRename = true;
+					}
+				}
+				if (params.ti) {
+					auto base = fs::weakly_canonical(params.save_path);
+					for (auto i : params.ti->layout().file_range()) {
+						auto renamed = params.renamed_files.find(i);
+						auto path = renamed == params.renamed_files.end() ? params.ti->layout().file_path(i) : renamed->second;
+						if (!safeRelative(path)) throw std::runtime_error("Unsafe saved file path. Review the Engine folder before restoring.");
+						auto relative = fs::weakly_canonical(base / path).lexically_relative(base);
+						if (relative.empty() || *relative.begin() == "..") throw std::runtime_error("A managed file escapes the destination through a symlink.");
 					}
 				}
 				fs::create_directories(params.save_path);
@@ -306,6 +375,7 @@ struct Transfer {
 				for (NSDictionary *range in p[@"ranges"]) {
 					lt::error_code ec; auto first = lt::make_address(cpp(range[@"first"]), ec); if (ec) throw std::runtime_error("Invalid blocklist address.");
 					auto last = lt::make_address(cpp(range[@"last"]), ec); if (ec) throw std::runtime_error("Invalid blocklist address.");
+					if (first.is_v4() != last.is_v4() || last < first) throw std::runtime_error("Invalid blocklist range.");
 					filter.add_rule(first, last, lt::ip_filter::blocked);
 				} _session->set_ip_filter(filter);
 			} else if ([command isEqual:@"shutdown"]) {
@@ -347,6 +417,8 @@ struct Transfer {
 					std::vector<lt::download_priority_t> priorities; for (NSNumber *v in p[@"selected"]) priorities.push_back(lt::download_priority_t(v.intValue ? 4 : 0));
 					h.prioritize_files(priorities); [self save:t];
 				} else if ([command isEqual:@"move"]) {
+					if (t.moving || !t.renaming.empty()) throw std::runtime_error("Wait for the current filesystem operation to finish.");
+					if (![p[@"destination"] length] || !fs::path(cpp(p[@"destination"])).is_absolute()) throw std::runtime_error("Choose an absolute destination folder.");
 					fs::create_directories(cpp(p[@"destination"])); t.error.clear(); t.moving = true;
 					h.move_storage(cpp(p[@"destination"]), lt::move_flags_t::fail_if_exist);
 				} else if ([command isEqual:@"magnet"]) {
@@ -356,7 +428,9 @@ struct Transfer {
 				}
 				else if ([command isEqual:@"export"]) {
 					if (!h.torrent_file()) throw std::runtime_error("Metadata is still resolving.");
-					_exports[key] = [completion copy]; [self save:t]; return;
+					bool startPump = _exports.empty();
+					_exports[key].completions.push_back([completion copy]);
+					[self save:t]; if (startPump) [self pumpExports]; return;
 				} else if ([command isEqual:@"tracker"]) {
 					auto ti = h.torrent_file(); if (!ti || ti->priv()) throw std::runtime_error("Trackers cannot be appended to this torrent.");
 					h.add_tracker(lt::announce_entry(cpp(p[@"tracker"]))); [self save:t];
@@ -365,7 +439,8 @@ struct Transfer {
 					auto renames = h.get_renamed_files(); lt::filenames current(ti->layout(), renames);
 					std::set<std::string> targets; std::set<int> indices;
 					NSArray *changes = p[@"changes"];
-					for (NSDictionary *change in changes) indices.insert([change[@"index"] intValue]);
+					if (t.moving || !t.renaming.empty()) throw std::runtime_error("Wait for the current filesystem operation to finish.");
+					for (NSDictionary *change in changes) if (!indices.insert([change[@"index"] intValue]).second) throw std::runtime_error("A file may only be renamed once per command.");
 					for (NSDictionary *change in changes) {
 						int index = [change[@"index"] intValue]; std::string path = cpp(change[@"path"]);
 						fs::path relative(path);
@@ -382,6 +457,7 @@ struct Transfer {
 					try { [self persistPaths:key transfer:t]; } catch (...) { t.renaming.clear(); throw; }
 					for (auto const& [index, path] : t.renaming) h.rename_file(lt::file_index_t(index), path);
 				} else if ([command isEqual:@"remove"]) {
+					if (t.moving || !t.renaming.empty()) throw std::runtime_error("Wait for the current filesystem operation to finish before removal.");
 					NSMutableArray *trashed = [NSMutableArray array];
 					// Swift handles confirmation. Trash only regular managed files, never directories.
 					if ([p[@"trash"] boolValue]) {
@@ -414,6 +490,7 @@ struct Transfer {
 							if (receipt) [trashed addObject:receipt.path];
 						}
 					}
+					[self finishExports:key data:nil error:@"Transfer was removed during export."];
 					_session->remove_torrent(h); _transfers.erase(it);
 					fs::remove(_storage + "/" + key + ".resume"); fs::remove(_storage + "/" + key + ".torrent"); fs::remove(_storage + "/" + key + ".paths.json");
 					completion(json(@{@"trashed":trashed}), nil); return;

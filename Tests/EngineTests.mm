@@ -8,6 +8,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <libtorrent/create_torrent.hpp>
+#include <libtorrent/bencode.hpp>
+namespace lt = libtorrent;
 static NSDictionary *decode(NSData *data) { return [NSJSONSerialization JSONObjectWithData:data options:0 error:nil]; }
 static NSData *call(ButterEngine *engine, NSString *command, NSDictionary *payload) {
 	__block NSData *result; __block NSString *failure;
@@ -23,7 +26,10 @@ static NSDictionary *snapshot(ButterEngine *engine) {
 	if (failure) throw std::runtime_error(failure.UTF8String); return decode(result);
 }
 static void require(bool condition, char const *message) { if (!condition) throw std::runtime_error(message); }
+#include "EngineRegressionCases.h"
 int main() { @autoreleasepool { try {
+	NSString *selectedCase = NSProcessInfo.processInfo.environment[@"BUTTER_TEST_CASE"];
+	if (selectedCase && ![@[@"engine-validation", @"concurrent-exports", @"filesystem-failures", @"metadata-variants", @"transfer-integration"] containsObject:selectedCase]) throw std::runtime_error("Unknown engine test case");
 	NSString *root = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
 	NSFileManager *fm = NSFileManager.defaultManager; [fm createDirectoryAtPath:root withIntermediateDirectories:YES attributes:nil error:nil];
 	@try {
@@ -41,12 +47,23 @@ int main() { @autoreleasepool { try {
 		require(![fm fileExistsAtPath:[[root stringByAppendingPathComponent:@"a"] stringByAppendingPathComponent:@"cancelled.torrent"]], "Cancelled creation wrote metadata");
 		NSDictionary *created = decode(call(a, @"create", @{@"id":@"fixture", @"source":source, @"trackers":@[], @"private":@NO}));
 		NSString *torrent = created[@"source"];
+		ButterEngine *regression = [[ButterEngine alloc] initWithStorage:[root stringByAppendingPathComponent:@"regression"]];
+		call(regression, @"settings", settings);
+		call(regression, @"add", @{@"id":@"fixture", @"source":torrent, @"destination":seed});
+		if (!selectedCase || [selectedCase isEqual:@"engine-validation"]) validationCases(regression, torrent, seed);
+		call(regression, @"remove", @{@"id":@"fixture"});
+		if (!selectedCase || [selectedCase isEqual:@"concurrent-exports"]) exportCases(regression, torrent, seed);
+		if (!selectedCase || [selectedCase isEqual:@"filesystem-failures"]) filesystemCases(regression, torrent, source, seed, [root stringByAppendingPathComponent:@"regression"]);
+		call(regression, @"shutdown", @{});
+		if (!selectedCase || [selectedCase isEqual:@"metadata-variants"]) metadataVariantCases(root, source, seed, settings);
+		if (selectedCase && ![selectedCase isEqual:@"transfer-integration"]) { call(a, @"shutdown", @{}); call(b, @"shutdown", @{}); return 0; }
+
 		NSDictionary *add = @{@"id":@"fixture", @"source":torrent, @"destination":seed};
 		call(a, @"add", add);
 		NSDictionary *duplicate = decode(call(a, @"add", @{@"id":@"other", @"source":torrent, @"destination":seed})); require([duplicate[@"duplicate"] boolValue], "Duplicate detection");
 		NSString *download = [root stringByAppendingPathComponent:@"download"];
 		call(b, @"add", @{@"id":@"fixture", @"source":torrent, @"destination":download});
-		call(a, @"run", @{@"id":@"fixture", @"running":@YES}); call(b, @"run", @{@"id":@"fixture", @"running":@YES});
+		call(a, @"run", @{@"id":@"fixture", @"running":@YES}); call(b, @"run", @{@"id":@"fixture", @"running":@YES, @"downloadLimit":@(2 * 1024 * 1024)});
 		bool complete = false, utp = false;
 		for (int i = 0; i < 1200; ++i) {
 			auto sa = snapshot(a); auto sb = snapshot(b);
