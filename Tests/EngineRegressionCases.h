@@ -112,14 +112,16 @@ static void metadataVariantCases(NSString *root, NSString *source, NSString *des
 		bool complete = false;
 		for (int index = 0; index < 1200; ++index) {
 			NSDictionary *row = [snapshot(download)[@"transfers"] firstObject];
-			if ([row[@"complete"] boolValue]) { complete = true; break; }
+			if ([row[@"complete"] boolValue] && [row[@"wanted"] longLongValue] > 0 && [row[@"done"] isEqual:row[@"wanted"]]) { complete = true; break; }
 			NSDictionary *bound = snapshot(seed);
 			if (index % 20 == 0 && [bound[@"port"] intValue]) call(download, @"connect", @{@"id":@"variant", @"address":@"127.0.0.1", @"port":bound[@"port"]});
 			std::this_thread::sleep_for(std::chrono::milliseconds(25));
 		}
 		require(complete, "Independent v1/v2 fixture did not transfer");
+		// Completion can precede the final disk write. The shutdown save is a flush barrier.
+		call(download, @"shutdown", @{});
 		require([[NSData dataWithContentsOfFile:[output stringByAppendingPathComponent:source.lastPathComponent]] isEqual:[NSData dataWithContentsOfFile:source]], "Independent transfer bytes differ");
-		call(download, @"shutdown", @{}); call(seed, @"shutdown", @{});
+		call(seed, @"shutdown", @{});
 	}
 	printf("PASS: independent v1-only and v2-only metadata, loopback transfers and byte verification\n");
 }

@@ -10,7 +10,8 @@ struct FavouriteTracker: Codable, Identifiable, Equatable {
 	var name = ""
 	var url = ""
 	static func valid(_ text: String) -> Bool {
-		guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), ["http", "https", "udp", "ws", "wss"].contains(scheme), url.host != nil else { return false }
+		guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), ["http", "https", "udp", "ws", "wss"].contains(scheme), let host = url.host, !host.isEmpty else { return false }
+		if let port = url.port, !(1...65535).contains(port) { return false }
 		return !text.contains(where: \.isWhitespace)
 	}
 }

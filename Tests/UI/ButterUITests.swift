@@ -42,6 +42,10 @@ final class ButterUITests: XCTestCase {
 		XCTAssertTrue(app.staticTexts["No matching transfers"].waitForExistence(timeout: 5))
 		search.typeKey("a", modifierFlags: .command); search.typeKey(.delete, modifierFlags: [])
 		XCTAssertTrue(app.staticTexts["No transfers"].waitForExistence(timeout: 5))
+		app.typeKey("n", modifierFlags: .command)
+		XCTAssertTrue(app.staticTexts["Create Torrent"].waitForExistence(timeout: 5))
+		XCTAssertFalse(app.buttons["Create"].isEnabled)
+		app.typeKey(.escape, modifierFlags: [])
 		app.typeKey(",", modifierFlags: .command)
 		XCTAssertTrue(app.buttons["Register for Magnet Links"].waitForExistence(timeout: 5))
 		app.buttons["Register for Magnet Links"].click()
@@ -60,6 +64,9 @@ final class ButterUITests: XCTestCase {
 		add.click()
 		let row = app.staticTexts["folder"].firstMatch
 		XCTAssertTrue(row.waitForExistence(timeout: 10)); row.click()
+		app.menuBars.menuBarItems["Transfers"].click(); app.menuItems["Pause Selected"].click()
+		XCTAssertTrue(app.staticTexts["Paused"].firstMatch.waitForExistence(timeout: 5))
+		app.menuBars.menuBarItems["Transfers"].click(); app.menuItems["Force Start Selected"].click()
 		app.radioButtons["Files"].click()
 		let folder = app.checkBoxes["Download folder"]
 		XCTAssertTrue(folder.waitForExistence(timeout: 5))

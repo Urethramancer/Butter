@@ -12,6 +12,9 @@ enum CoreRegressionTests {
 		}
 	}
 	static func parsers() throws {
+		for (url, valid) in [("https://:80/announce", false), ("https://tracker:99999/announce", false), ("udp://tracker:0/announce", false), ("http://tracker:65535/announce", true), ("udp://tracker:1/announce", true), ("https://tracker/announce", true), ("https://tracker/a b", false), ("file:///tmp/tracker", false)] {
+			try require(FavouriteTracker.valid(url) == valid, "Tracker boundary \(url)")
+		}
 		for bad in ["/1.2.3.4/24", "1.2.3.4/24/", "1..2.3", "256.0.0.0", "::/129", "::/", "1.2.3.4/-1", "1.2.3.4-::1", "2.0.0.0-1.0.0.0"] {
 			do { _ = try Blocklist.parse(bad); throw TestFailure(description: "Accepted malformed blocklist: \(bad)") }
 			catch is TestFailure { throw TestFailure(description: "Accepted malformed blocklist: \(bad)") } catch { }
