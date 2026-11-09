@@ -305,6 +305,7 @@ struct AddRequest: Identifiable {
 	}
 	func renamePath(_ path: String, torrent: TransferSnapshot) {
 		let field = NSTextField(string: (path as NSString).lastPathComponent); field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+		field.setAccessibilityIdentifier("local-name")
 		let alert = NSAlert(); alert.messageText = "Rename local contents"; alert.informativeText = "Original torrent names and swarm identity are preserved. Transfers pause while the engine renames files."; alert.accessoryView = field; alert.addButton(withTitle: "Rename"); alert.addButton(withTitle: "Cancel")
 		guard alert.runModal() == .alertFirstButtonReturn else { return }
 		let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)

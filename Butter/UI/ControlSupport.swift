@@ -19,8 +19,10 @@ struct PeerLimitField: View {
 		LabeledContent(title) {
 			HStack(spacing: 8) {
 				TextField(title, value: boundedValue, format: .number.grouping(.never))
+					.labelsHidden()
 					.frame(width: 80).multilineTextAlignment(.trailing)
 					.accessibilityLabel(title)
+					.accessibilityIdentifier(title)
 					.accessibilityHint("Enter a whole number from \(range.lowerBound) to \(range.upperBound).")
 					.help("Enter \(range.lowerBound)–\(range.upperBound) peers; values outside this range are limited automatically.")
 				Stepper(title, value: $value, in: range).labelsHidden()

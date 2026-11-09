@@ -1,8 +1,8 @@
 import XCTest
 
 final class ButterUITests: XCTestCase {
-	private var root: URL!
-	private var app: XCUIApplication!
+	var root: URL!
+	var app: XCUIApplication!
 	override func setUpWithError() throws {
 		continueAfterFailure = false
 		root = FileManager.default.temporaryDirectory.appendingPathComponent("ButterUI-\(UUID().uuidString)")
@@ -93,7 +93,10 @@ final class ButterUITests: XCTestCase {
 		app.typeKey(",", modifierFlags: .command)
 		app.buttons["Network"].click()
 		let peers = app.textFields["Global peer limit"]
-		XCTAssertTrue(peers.waitForExistence(timeout: 5)); peers.click(); peers.typeKey("a", modifierFlags: .command); peers.typeText("321"); peers.typeKey(.tab, modifierFlags: [])
+		for title in ["Global peer limit", "Per-torrent peer limit"] {
+			XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", title, title)).count, 1, "The nested numeric field must not repeat the row label")
+		}
+		XCTAssertTrue(peers.waitForExistence(timeout: 5), app.debugDescription); peers.click(); peers.typeKey("a", modifierFlags: .command); peers.typeText("321"); peers.typeKey(.tab, modifierFlags: [])
 		XCTAssertEqual(peers.value as? String, "321")
 		app.windows.firstMatch.typeKey("w", modifierFlags: .command)
 		app.typeKey("q", modifierFlags: .command)
@@ -120,7 +123,7 @@ final class ButterUITests: XCTestCase {
 		app.typeKey("w", modifierFlags: .command); app.typeKey("q", modifierFlags: .command)
 		XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
 	}
-	private func bencode(_ value: Any) -> Data {
+	func bencode(_ value: Any) -> Data {
 		if let bytes = value as? Data { return Data("\(bytes.count):".utf8) + bytes }
 		if let text = value as? String { return bencode(Data(text.utf8)) }
 		if let number = value as? Int { return Data("i\(number)e".utf8) }

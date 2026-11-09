@@ -112,8 +112,10 @@ source seeding, private trackers, explicit favourite selection and orderly saves
 Native XCUITests exercise torrent and magnet addition, keyboard shortcuts,
 search typing/clearing, mixed file selection, context rename, inspector toggling,
 removal confirmation, typed peer limits, Settings persistence and quit modes.
-General Settings compositor captures have been inspected in Light and Dark; this
-is not a full visual acceptance review.
+Default-size compositor captures of every Settings and inspector tab have been
+inspected in Light and Dark. This review found and fixed a collapsed Groups
+editor and duplicate peer-field labels; resizing and full accessibility acceptance
+remain in TODO.md.
 
 Interface smoke checks open isolated native test windows in Light and Dark appearance.
 They write partial layer captures under ignored `.build/InterfaceChecks`; these

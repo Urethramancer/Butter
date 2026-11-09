@@ -120,10 +120,10 @@ struct GroupPreferences: View {
 	var body: some View {
 		HSplitView {
 			VStack {
-				List(store.preferences.groups, selection: $selection) { group in Label { Text(group.name) } icon: { Circle().fill(groupColour(group.colour)).frame(width: 9, height: 9) }.tag(group.id) }
+				List(store.preferences.groups, selection: $selection) { group in Label { Text(group.name).lineLimit(1) } icon: { Circle().fill(groupColour(group.colour)).frame(width: 9, height: 9) }.tag(group.id) }
 				HStack { Button { let group = TorrentGroup(); store.preferences.groups.append(group); selection = group.id } label: { Image(systemName: "plus") }.controlHelp("Add group"); Button { store.preferences.groups.removeAll { $0.id == selection }; selection = nil } label: { Image(systemName: "minus") }.disabled(selection == nil).controlHelp("Delete selected group"); Spacer(); Button { move(-1) } label: { Image(systemName: "arrow.up") }.disabled(!canMove(-1)).controlHelp("Move selected group earlier"); Button { move(1) } label: { Image(systemName: "arrow.down") }.disabled(!canMove(1)).controlHelp("Move selected group later") }.padding(10)
-			}.frame(minWidth: 180, idealWidth: 210)
-			if let index = store.preferences.groups.firstIndex(where: { $0.id == selection }) { GroupEditor(group: $store.preferences.groups[index]) }
+			}.frame(minWidth: 180, idealWidth: 210, maxWidth: 280)
+			if let index = store.preferences.groups.firstIndex(where: { $0.id == selection }) { GroupEditor(group: $store.preferences.groups[index]).frame(minWidth: 350) }
 			else { ContentUnavailableView("Select a group", systemImage: "folder") }
 		}.padding(16)
 	}
@@ -134,14 +134,14 @@ struct GroupEditor: View {
 	@Binding var group: TorrentGroup
 	var body: some View {
 		Form {
-			TextField("Name", text: $group.name)
-			Picker("Colour", selection: $group.colour) { ForEach(["blue", "green", "orange", "red", "purple", "pink", "grey"], id: \.self) { Text($0.capitalized) } }
-			Picker("Priority", selection: $group.priority) { ForEach(TransferPriority.allCases) { Text($0.label).tag($0) } }
+			TextField("Name", text: $group.name).accessibilityIdentifier("group-name")
+			Picker("Colour", selection: $group.colour) { ForEach(["blue", "green", "orange", "red", "purple", "pink", "grey"], id: \.self) { Text($0.capitalized) } }.accessibilityIdentifier("group-colour")
+			Picker("Priority", selection: $group.priority) { ForEach(TransferPriority.allCases) { Text($0.label).tag($0) } }.accessibilityIdentifier("group-priority")
 			Section("Rules") {
-				TextField("Tracker hosts (comma separated)", text: $group.trackerHosts)
-				TextField("Minimum size (MiB)", value: $group.minimumMiB, format: .number)
-				TextField("Maximum size (MiB, 0 unlimited)", value: $group.maximumMiB, format: .number)
-				TextField("Name/path keywords (comma separated)", text: $group.keywords)
+				TextField("Tracker hosts (comma separated)", text: $group.trackerHosts).accessibilityIdentifier("group-tracker-hosts")
+				TextField("Minimum size (MiB)", value: $group.minimumMiB, format: .number).accessibilityIdentifier("group-min-size")
+				TextField("Maximum size (MiB, 0 unlimited)", value: $group.maximumMiB, format: .number).accessibilityIdentifier("group-max-size")
+				TextField("Name/path keywords (comma separated)", text: $group.keywords).accessibilityIdentifier("group-keywords")
 				Text("All configured criteria must match. Keywords match any listed term. The first matching group owns the torrent.").font(.caption).foregroundStyle(.secondary)
 			}
 		}.formStyle(.grouped)
@@ -154,7 +154,7 @@ struct TrackerPreferences: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: 16) {
 			List(store.preferences.trackers) { tracker in HStack { VStack(alignment: .leading) { Text(tracker.name).font(.headline); Text(tracker.url).font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Edit") { draft = tracker; editing = tracker.id }.help("Edit favourite tracker \(tracker.name)."); Button { store.preferences.trackers.removeAll { $0.id == tracker.id } } label: { Image(systemName: "minus.circle") }.controlHelp("Delete favourite tracker \(tracker.name)") } }
-			Form { TextField("Name", text: $draft.name); TextField("Tracker URL", text: $draft.url); HStack { Button(editing == nil ? "Add Favourite" : "Save Changes") { if let i = store.preferences.trackers.firstIndex(where: { $0.id == editing }) { store.preferences.trackers[i] = draft } else { store.preferences.trackers.append(draft) }; draft = FavouriteTracker(); editing = nil }.disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !FavouriteTracker.valid(draft.url)).help(editing == nil ? "Add this validated tracker to favourites." : "Save changes to this favourite tracker."); if editing != nil { Button("Cancel") { editing = nil; draft = FavouriteTracker() }.help("Discard changes to this favourite tracker.") } } }
+			Form { TextField("Name", text: $draft.name).accessibilityIdentifier("tracker-name"); TextField("Tracker URL", text: $draft.url).accessibilityIdentifier("tracker-url"); HStack { Button(editing == nil ? "Add Favourite" : "Save Changes") { if let i = store.preferences.trackers.firstIndex(where: { $0.id == editing }) { store.preferences.trackers[i] = draft } else { store.preferences.trackers.append(draft) }; draft = FavouriteTracker(); editing = nil }.disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !FavouriteTracker.valid(draft.url)).help(editing == nil ? "Add this validated tracker to favourites." : "Save changes to this favourite tracker."); if editing != nil { Button("Cancel") { editing = nil; draft = FavouriteTracker() }.help("Discard changes to this favourite tracker.") } } }
 			Text("Choosing a favourite appends it explicitly; watched imports add none. Existing private torrents keep their original trackers.").font(.caption).foregroundStyle(.secondary)
 		}.padding(20)
 	}
