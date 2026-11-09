@@ -12,7 +12,9 @@ pins libtorrent `6da363d2994f17c0b3c0450d124cf73a31a73847` (2.1.2), Boost
 1.88.0, OpenSSL 3.5.9 and try_signal
 `105cce59972f925a33aa6b1c3109e4cd3caf583d`. Build the reference in a separate
 checkout when production no longer includes it; reference dependencies remain
-optional developer tooling after cut-over. No additional tags are required.
+optional developer tooling after cut-over. Following the updated release
+instruction, create an annotated minor tag after each completed phase, beginning
+with `v0.4.0` for phase 1. Keep tags local; preserve `v0.3.0`.
 
 `EngineOperations` in `Butter/Engine/EngineClient.swift` is the app boundary:
 immutable JSON commands return `Data`; snapshots decode into `EngineSnapshot`;

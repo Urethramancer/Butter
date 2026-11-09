@@ -13,7 +13,8 @@
 - Phase 10: µTP with deterministic network-failure fixtures and TCP-disabled transfers.
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
 - Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
-  Preserve `v0.3.0`; do not create further tags or push. Details and gates are in
+  Preserve `v0.3.0`; create an annotated minor tag after each completed phase;
+  do not push. Details and gates are in
   [the migration record](docs/swift-engine.md).
 
 ## Filesystem interruption and failure matrix
