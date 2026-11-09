@@ -46,7 +46,7 @@ enum Blocklist {
 			if value.isEmpty || value.hasPrefix("#") || value.hasPrefix(";") { continue }
 			var first: IPAddress?, last: IPAddress?
 			if value.contains("/") {
-				let parts = value.split(separator: "/")
+				let parts = value.split(separator: "/", omittingEmptySubsequences: false)
 				if parts.count == 2, let ip = IPAddress(String(parts[0])), let prefix = Int(parts[1]), prefix >= 0, prefix <= ip.octets.count * 8 {
 					var low = ip.octets, high = ip.octets
 					for i in low.indices { let bits = max(0, min(8, prefix - i * 8)); let mask = UInt8(truncatingIfNeeded: 255 << (8 - bits)); low[i] &= mask; high[i] |= ~mask }

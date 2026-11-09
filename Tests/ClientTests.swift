@@ -12,8 +12,17 @@ func observation(_ id: String, _ priority: TransferPriority = .normal, order: In
 @main struct ClientTests {
 	static func main() async {
 		do {
-			try groups(); try queue(); try bandwidth(); try blocklists(); try await persistenceAndWatcher(); try await checker()
-			print("PASS: group criteria, inheritance, queue/Force Start, bandwidth fairness/redistribution/probes, blocklists, atomic persistence, watcher stability, checker failures")
+			let cases: [(String, () async throws -> Void)] = [
+				("groups", { try groups() }), ("queue", { try queue() }), ("bandwidth", { try bandwidth() }),
+				("blocklists", { try blocklists() }), ("persistence-watcher", { try await persistenceAndWatcher() }),
+				("port-checker", { try await checker() }), ("parser-invariants", { try CoreRegressionTests.parsers() }),
+				("estimator-expiry", { try CoreRegressionTests.estimator() }),
+				("storage-failures", { try await CoreRegressionTests.storageFailures() }),
+				("watched-replacement", { try await CoreRegressionTests.watchedReplacement() })
+			]
+			let filter = ProcessInfo.processInfo.environment["BUTTER_TEST_CASE"]
+			guard filter == nil || cases.contains(where: { $0.0 == filter }) else { throw TestFailure(description: "Unknown test case: \(filter!)") }
+			for (name, run) in cases where filter == nil || filter == name { try await run(); print("PASS: \(name)") }
 		} catch { fputs("FAIL: \(error)\n", stderr); exit(1) }
 	}
 	static func groups() throws {

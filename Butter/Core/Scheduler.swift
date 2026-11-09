@@ -33,7 +33,7 @@ struct CapacityEstimator {
 		observations.removeAll { now - $0.0 > 120 }
 		if rate > 0 && demand { observations.append((now, Double(rate))) }
 		let peak = observations.map(\.1).max() ?? 0
-		if peak > 0 { estimate = max(16_384, peak * 1.15) }
+		estimate = peak > 0 ? max(16_384, peak * 1.15) : 0
 		// Five unrestricted seconds every thirty seconds allow recovery from underestimation.
 		return Int(max(0, now - (started ?? now))) % 30 < 5 || estimate == 0
 	}
