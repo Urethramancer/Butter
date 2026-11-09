@@ -27,7 +27,7 @@ freshness and fails with instructions if it is missing or stale. Both Xcode
 script phases retain script sandboxing. Bootstrap is an explicit separate step.
 
 Dependencies are static: [libtorrent 2.1.2](https://github.com/arvidn/libtorrent/releases/tag/v2.1.2),
-Boost 1.88.0 headers, OpenSSL 3.5.4 and libtorrent's pinned try_signal submodule.
+Boost 1.88.0 headers, OpenSSL 3.5.9 and libtorrent's pinned try_signal submodule.
 `Scripts/bootstrap-engine.sh` pins source revisions/releases and verifies SHA-256
 checksums before extraction. Sources and products stay in ignored `.dependencies`.
 Licence notices are included in `Butter/Licences` and copied into the app bundle.
@@ -62,18 +62,41 @@ upward probes; they are not measurements of an ISP connection limit.
 ## Verification
 
 ```sh
-sh Tests/git-version.sh
-Scripts/test-client.sh
-Scripts/test-engine.sh
-Scripts/test-lifecycle.sh
-Scripts/test-interface.sh
+Scripts/verify.sh all
+Scripts/verify.sh coverage after
+Scripts/verify.sh sanitizers audit
 ```
+
+`Scripts/verify.sh` also accepts `client`, `storage`, `engine`, `lifecycle`,
+`disk`, `interface`, `ui`, `build` and `version`. Existing test commands remain supported.
+Use `BUTTER_TEST_CASE=parser-invariants Scripts/verify.sh client` for a named
+client case. Engine cases are `engine-validation`, `concurrent-exports`,
+`filesystem-failures`, `metadata-variants` and `transfer-integration`; lifecycle
+cases are `store-regressions` and `lifecycle-integration`. UI accepts Xcode's
+`-only-testing:` arguments. Unknown case names fail.
+
+Coverage uses Apple LLVM and instruments first-party Swift and Objective-C++
+code in separate products. Native XCUITests launch the real Debug application
+with disposable storage; system registration, notifications, discovery, router
+mapping and public port checks are stubbed. Production builds ignore the test
+launch configuration. `.build/coverage/<label>` contains per-file line/region
+reports, separate Swift and bridge reports, C++ branches, annotated uncovered
+source, JSON, suite status and a before/after comparison when a baseline exists.
+Dependencies, tests, SDK sources and generated asset code are excluded explicitly.
+The `disk` suite mounts and detaches a disposable 16 MB image under `/tmp` to
+verify real ENOSPC and read-only recovery without filling the user’s disk.
+Sanitizers cover the bridge with uninstrumented dependencies. Full verification
+also checks unsigned Debug/Release builds, static linkage, bundled licences and
+repeat-build cleanliness. See [the audit record](docs/audit.md) for findings,
+measurement scope and [remaining checks](TODO.md).
 
 Client checks cover persistence, watcher stability, group rules, priority
 inheritance, admission, Force Start, bandwidth fairness/redistribution/recovery,
 ratio/idle stopping, blocklist formats/merging/export and unavailable port-check services.
 
-Engine checks generate temporary fixtures for a verified **µTP-only transfer
+Engine checks include 192 overlapping export requests, shared-file refusal,
+resume/export-write failure and recovery, unsafe journal/symlink rejection,
+and independent v1-only/v2-only loopback transfers. They generate temporary fixtures for a verified **µTP-only transfer
 with TCP disabled on both peers**, TCP magnet metadata, corruption/retry,
 selective files, blocklists, nested rename identity, hash-preserving export,
 resume recovery and interrupted rename reconciliation, resolved v1/v2 magnet
@@ -83,7 +106,13 @@ up their own receipts and need normal access to the user's Trash. Lifecycle chec
 and deletion, duplicate selection, completion moves, auto-removal retaining data,
 source seeding, private trackers, explicit favourite selection and orderly saves.
 
-Interface checks open isolated native test windows in Light and Dark appearance.
+Native XCUITests exercise torrent and magnet addition, keyboard shortcuts,
+search typing/clearing, mixed file selection, context rename, inspector toggling,
+removal confirmation, typed peer limits, Settings persistence and quit modes.
+General Settings compositor captures have been inspected in Light and Dark; this
+is not a full visual acceptance review.
+
+Interface smoke checks open isolated native test windows in Light and Dark appearance.
 They write partial layer captures under ignored `.build/InterfaceChecks`; these
 do not replace a compositor-based visual review. Remaining manual and stress
 checks are listed in `TODO.md`.
