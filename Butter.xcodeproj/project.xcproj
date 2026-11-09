@@ -43,8 +43,7 @@
           "run-on-every-build": true,
           "shell": "/bin/sh",
           "script": "/bin/sh \"${SRCROOT}/Scripts/git-version.sh\" \"${SRCROOT}\" \"${SCRIPT_OUTPUT_FILE_0}\" \"${SRCROOT}/Butter-Info.plist\"",
-        },
-        {
+        }, {
           "kind": "script",
           "name": "Check engine bridge",
           "input-paths": [
@@ -56,13 +55,14 @@
             "$(SRCROOT)/.dependencies/bridge-build/verified-inputs.sha256",
             "$(SRCROOT)/.dependencies/install/lib",
           ],
-          "output-paths": ["$(DERIVED_FILE_DIR)/EngineVerified"],
+          "output-paths": [
+            "$(DERIVED_FILE_DIR)/EngineVerified",
+          ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
           "script": "/bin/sh \"${SRCROOT}/Scripts/check-bridge.sh\"",
         },
         "compile-sources",
-
         "frameworks",
         "resources",
       ],
@@ -132,20 +132,25 @@
         "SWIFT_VERSION": "5.0",
         "USE_RECURSIVE_SCRIPT_INPUTS_IN_SCRIPT_PHASES": "YES",
       },
-    },
-    {
+    }, {
       "name": "ButterUITests",
       "id": "000000000000000100000001",
       "product": "Products/ButterUITests.xctest",
       "product-type": "bundle.ui-testing",
-      "build-phases": [ "compile-sources", "frameworks", "resources" ],
-      "dependencies": [ "Butter" ],
+      "dependencies": [
+        "Butter",
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+      ],
       "build-settings": {
         "GENERATE_INFOPLIST_FILE": "YES",
+        "MACOSX_DEPLOYMENT_TARGET": "26.0",
         "PRODUCT_BUNDLE_IDENTIFIER": "net.grimdork.Butter.UITests",
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "SUPPORTED_PLATFORMS": "macosx",
-        "MACOSX_DEPLOYMENT_TARGET": "26.0",
         "SWIFT_VERSION": "5.0",
         "TEST_TARGET_NAME": "Butter",
       },
