@@ -4,11 +4,11 @@ set -eu
 cd "$(dirname "$0")/.."
 mode=${1:-all}
 case "$mode" in
-	client|engine|lifecycle|interface|storage|disk|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
+	client|engine|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
 	version) exec sh Tests/git-version.sh ;;
 	all)
 		sh Tests/git-version.sh
-		for suite in client storage disk engine lifecycle interface ui build; do "Scripts/test-$suite.sh"; done
+		for suite in client storage disk engine interruption lifecycle interface ui build; do "Scripts/test-$suite.sh"; done
 		Scripts/verify.sh sanitizers all
 		;;
 	coverage|sanitizers)
@@ -26,6 +26,7 @@ case "$mode" in
 				cmake -S Butter/Engine -B "$out/$sanitizer" "$@" -DBUTTER_SANITIZER="$sanitizer"
 				cmake --build "$out/$sanitizer" --parallel 4
 				"$out/$sanitizer/EngineTests"
+				BUTTER_INTERRUPTION_BINARY="$out/$sanitizer/InterruptionTests" Scripts/test-interruption.sh
 			done
 			exit 0
 		fi
@@ -36,6 +37,7 @@ case "$mode" in
 		export LLVM_PROFILE_FILE="$raw/%m-%p.profraw"
 		status=0
 		"$out/apple-bridge/EngineTests" || status=1
+		BUTTER_INTERRUPTION_BINARY="$out/apple-bridge/InterruptionTests" Scripts/test-interruption.sh || status=1
 		for suite in Client Lifecycle Interface StorageCrash DiskFailure; do
 			case "$suite" in
 				Client) sources='Butter/Core/*.swift Tests/CoreRegressionTests.swift'; bridge='' ;;
@@ -66,7 +68,7 @@ $(rg --files "$out/app/Build/ProfileData" -g '*.profdata')
 PROFILES
 		fi
 		xcrun llvm-profdata merge -sparse "$@" -o "$out/merged.profdata"
-		set -- "$out/apple-bridge/EngineTests" -object "$out/ClientTests" -object "$out/LifecycleTests" -object "$out/InterfaceTests" -object "$out/StorageCrashTests" -object "$out/DiskFailureTests"
+		set -- "$out/apple-bridge/EngineTests" -object "$out/apple-bridge/InterruptionTests" -object "$out/ClientTests" -object "$out/LifecycleTests" -object "$out/InterfaceTests" -object "$out/StorageCrashTests" -object "$out/DiskFailureTests"
 		app=$out/app/Build/Products/Debug/Butter.app/Contents/MacOS/Butter
 		[ ! -f "$app" ] || set -- "$@" -object "$app"
 		ignore='(Tests/|\.dependencies/|/\.build/|/DerivedSources/|/Applications/|/Library/Developer/|<.*>)'
@@ -82,5 +84,5 @@ PROFILES
 		fi
 		exit "$status"
 		;;
-	*) echo 'Usage: Scripts/verify.sh [all|client|storage|disk|engine|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
+	*) echo 'Usage: Scripts/verify.sh [all|client|storage|disk|interruption|engine|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
 esac

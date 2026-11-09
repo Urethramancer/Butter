@@ -1,10 +1,6 @@
 # Remaining audit and acceptance checks
 
 ## Filesystem interruption and failure matrix
-- Kill actual cross-volume completion moves and multi-file folder renames at
-  several filesystem-operation boundaries; verify recovery on a second volume.
-  Current tests cover interrupted rename journals and process death during state
-  writes, not partial cross-volume operations.
 - Extend actual ENOSPC/read-only volume tests from saved state to imports, path
   journals and exports. State preservation/recovery now passes on a disposable
   full/read-only image; resume/export failure uses a conflicting output directory.

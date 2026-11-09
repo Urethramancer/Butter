@@ -44,17 +44,19 @@ static bool safeRelative(std::string const& path) {
 }
 static void validateFields(NSDictionary *p) {
 	unichar zero = 0; NSString *nul = [NSString stringWithCharacters:&zero length:1];
-	for (NSString *key in @[@"id", @"source", @"destination", @"tracker", @"address", @"path", @"first", @"last", @"original"]) {
+	for (NSString *key in @[@"id", @"source", @"destination", @"moveDestination", @"reviewMessage", @"tracker", @"address", @"path", @"first", @"last", @"original"]) {
 		if (p[key] && ![p[key] isKindOfClass:NSString.class]) throw std::runtime_error("Expected a string field.");
 		if (p[key] && [p[key] rangeOfString:nul].location != NSNotFound) throw std::runtime_error("String fields cannot contain null characters.");
 	}
 	for (NSString *key in @[@"index", @"port", @"peers", @"torrentPeers", @"downloadLimit", @"uploadLimit", @"restore", @"running", @"trash", @"retainState", @"private", @"utp", @"tcp", @"dht", @"pex", @"lsd", @"mapping", @"allowSameIP", @"reviewRequired"])
 		if (p[key] && (![p[key] isKindOfClass:NSNumber.class] || !std::isfinite([p[key] doubleValue]) || std::floor([p[key] doubleValue]) != [p[key] doubleValue] || [p[key] doubleValue] < INT_MIN || [p[key] doubleValue] > INT_MAX)) throw std::runtime_error("Expected a bounded whole number.");
-	for (NSString *key in @[@"changes", @"ranges", @"paths", @"pending", @"selected", @"trackers"]) {
+	for (NSString *key in @[@"changes", @"ranges", @"paths", @"pending", @"selected", @"moveFiles", @"trackers"]) {
 		if (!p[key]) continue;
 		if (![p[key] isKindOfClass:NSArray.class]) throw std::runtime_error("Expected an array field.");
 		for (id entry in p[key]) {
-			if ([key isEqual:@"selected"]) {
+			if ([key isEqual:@"moveFiles"]) {
+				if (![entry isKindOfClass:NSNumber.class] || [entry doubleValue] < 0 || [entry doubleValue] > INT_MAX || std::floor([entry doubleValue]) != [entry doubleValue]) throw std::runtime_error("Invalid move file index.");
+			} else if ([key isEqual:@"selected"]) {
 				if (![entry isKindOfClass:NSNumber.class] || ([entry doubleValue] != 0 && [entry doubleValue] != 1)) throw std::runtime_error("Invalid file selection.");
 			} else if ([key isEqual:@"trackers"]) {
 				if (![entry isKindOfClass:NSString.class]) throw std::runtime_error("Invalid tracker URL.");
@@ -82,6 +84,8 @@ struct Transfer {
 	std::map<int, std::string> renaming;
 	std::string error;
 	bool moving = false;
+	std::string moveDestination;
+	std::vector<int> moveFiles;
 	bool flushed = false;
 	std::uint64_t order = 0;
 };
@@ -134,6 +138,17 @@ struct PendingExport {
 	return {};
 }
 - (void)save:(Transfer&)t { t.handle.save_resume_data(lt::torrent_handle::save_info_dict | lt::torrent_handle::flush_disk_cache); ++_pendingResume; }
+- (void)flush:(std::string const&)key {
+	auto h = _transfers.at(key).handle; h.pause(); _transfers.at(key).flushed = false; h.flush_cache();
+	auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+	for (;;) {
+		auto it = _transfers.find(key);
+		if (it == _transfers.end() || it->second.handle != h) throw std::runtime_error("Transfer changed while waiting for disk activity. Retry the operation.");
+		if (it->second.flushed) return;
+		if (std::chrono::steady_clock::now() >= deadline) throw std::runtime_error("Files are still in use. Wait for disk activity to finish and retry.");
+		_session->wait_for_alert(lt::milliseconds(50)); [self drain];
+	}
+}
 - (void)finishExports:(std::string const&)key data:(NSData *)data error:(NSString *)error {
 	auto it = _exports.find(key); if (it == _exports.end()) return;
 	auto completions = std::move(it->second.completions); _exports.erase(it);
@@ -157,7 +172,12 @@ struct PendingExport {
 	NSMutableArray *paths = [NSMutableArray array], *pending = [NSMutableArray array];
 	for (auto i : ti->layout().file_range()) [paths addObject:@{@"index":@(int(i)), @"original":str(t.original.at(int(i))), @"path":str(current.file_path(i))}];
 	for (auto const& [index, target] : t.renaming) [pending addObject:@{@"index":@(index), @"path":str(target)}];
-	NSData *data = json(@{@"paths":paths, @"pending":pending, @"destination":str(t.handle.status().save_path), @"reviewRequired":@(!t.error.empty())});
+	NSMutableDictionary *journal = [@{@"paths":paths, @"pending":pending, @"destination":str(t.handle.status().save_path), @"reviewRequired":@(!t.error.empty()), @"reviewMessage":str(t.error)} mutableCopy];
+	if (!t.moveDestination.empty()) {
+		NSMutableArray *files = [NSMutableArray array]; for (int index : t.moveFiles) [files addObject:@(index)];
+		journal[@"moveDestination"] = str(t.moveDestination); journal[@"moveFiles"] = files;
+	}
+	NSData *data = json(journal);
 	writeFile(_storage + "/" + key + ".paths.json", std::vector<char>((char const *)data.bytes, (char const *)data.bytes + data.length));
 }
 - (void)drain {
@@ -182,7 +202,7 @@ struct PendingExport {
 			auto key = [self identifier:r->handle]; if (_transfers.count(key)) _transfers[key].flushed = true;
 		} else if (auto *r = lt::alert_cast<lt::storage_moved_alert>(a)) {
 			auto key = [self identifier:r->handle]; if (!_transfers.count(key)) continue;
-			auto& t = _transfers[key]; t.moving = false; t.error.clear(); [self persistPaths:key transfer:t]; [self save:t];
+			auto& t = _transfers[key]; t.moving = false; t.moveDestination.clear(); t.moveFiles.clear(); t.error.clear(); [self persistPaths:key transfer:t]; [self save:t];
 			[_events addObject:@{@"kind":@"moved", @"id":str(key), @"path":str(r->storage_path())}];
 		} else if (auto *r = lt::alert_cast<lt::storage_moved_failed_alert>(a)) {
 			auto key = [self identifier:r->handle]; if (!_transfers.count(key)) continue;
@@ -272,6 +292,8 @@ struct PendingExport {
 				}
 				params.save_path = cpp(p[@"destination"]);
 				bool interruptedRename = false;
+				bool interruptedMove = false;
+				std::string reviewMessage;
 				if ([p[@"restore"] boolValue] && params.ti && fs::exists(_storage + "/" + key + ".paths.json")) {
 					auto bytes = readFile(_storage + "/" + key + ".paths.json");
 					NSDictionary *journal = [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:bytes.data() length:bytes.size()] options:0 error:nil];
@@ -280,6 +302,7 @@ struct PendingExport {
 					if ([journal[@"paths"] count] != params.ti->num_files()) throw std::runtime_error("Saved path mappings are incomplete. Restore the Engine folder from a backup.");
 					std::set<int> journalIndices;
 					interruptedRename = [journal[@"reviewRequired"] boolValue];
+					if (interruptedRename) reviewMessage = cpp(journal[@"reviewMessage"]);
 					NSString *destination = journal[@"destination"];
 					if (destination.length && fs::path(cpp(destination)).is_absolute()) params.save_path = cpp(destination);
 					for (NSDictionary *entry in journal[@"paths"]) {
@@ -296,6 +319,29 @@ struct PendingExport {
 						if (!oldExists || old == target) params.renamed_files[fileIndex] = target;
 						else if (newExists) throw std::runtime_error("Interrupted rename has conflicting files. Review both local paths before restoring this transfer.");
 						interruptedRename = true;
+					}
+					if (journal[@"moveDestination"]) {
+						auto target = cpp(journal[@"moveDestination"]);
+						if (!fs::path(target).is_absolute() || !journal[@"moveFiles"] || [journal[@"pending"] count]) throw std::runtime_error("Saved move journal is unsafe or incomplete.");
+						std::set<int> indices;
+						for (NSNumber *number in journal[@"moveFiles"]) if (number.intValue >= params.ti->num_files() || !indices.insert(number.intValue).second) throw std::runtime_error("Saved move journal has invalid file indices.");
+						auto available = [&](std::string const& root) {
+							auto base = fs::weakly_canonical(root);
+							for (int index : indices) {
+								auto file = base / params.renamed_files.at(lt::file_index_t(index));
+								auto relative = fs::weakly_canonical(file).lexically_relative(base);
+								if (relative.empty() || *relative.begin() == ".." || fs::is_symlink(file)) throw std::runtime_error("Saved move journal escapes its destination.");
+								if (!fs::is_regular_file(file)) return false;
+							}
+							return true;
+						};
+						auto previous = params.save_path;
+						if (!available(previous)) {
+							if (!available(target)) throw std::runtime_error("Interrupted move has files in both locations. Retain both folders and restore missing files before retrying.");
+							params.save_path = target;
+						}
+						interruptedMove = true;
+						reviewMessage = "An interrupted move was recovered at " + params.save_path + ". Review retained files at " + (params.save_path == previous ? target : previous) + " before resuming.";
 					}
 				}
 				if (params.ti) {
@@ -327,11 +373,13 @@ struct PendingExport {
 				handle.set_max_connections(_torrentPeers);
 				Transfer t; t.handle = handle;
 				t.order = _nextOrder++;
-				if (interruptedRename) t.error = "An interrupted rename was reconciled with local files. Review current names, then Start to resume.";
+				if (!reviewMessage.empty()) t.error = reviewMessage;
+				else if (interruptedRename) t.error = "An interrupted rename was reconciled with local files. Review current names, then Start to resume.";
 				if (params.ti) for (auto i : params.ti->layout().file_range()) t.original.push_back(params.ti->layout().file_path(i));
 				_transfers[key] = std::move(t);
 				try { [self persistPaths:key transfer:_transfers[key]]; [self save:_transfers[key]]; }
 				catch (...) { _session->remove_torrent(handle); _transfers.erase(key); throw; }
+				if (interruptedMove) handle.force_recheck();
 				completion(json(@{@"id":str(key), @"duplicate":@NO, @"hashes":hashes(ih)}), nil); return;
 			}
 			if ([command isEqual:@"inspect"]) {
@@ -423,6 +471,23 @@ struct PendingExport {
 				} else if ([command isEqual:@"move"]) {
 					if (t.moving || !t.renaming.empty()) throw std::runtime_error("Wait for the current filesystem operation to finish.");
 					if (![p[@"destination"] length] || !fs::path(cpp(p[@"destination"])).is_absolute()) throw std::runtime_error("Choose an absolute destination folder.");
+					auto ti = h.torrent_file(); if (!ti) throw std::runtime_error("Metadata is still resolving.");
+					auto target = fs::weakly_canonical(cpp(p[@"destination"]));
+					if (target != fs::weakly_canonical(h.status().save_path)) {
+						[self flush:key];
+						auto renames = h.get_renamed_files(); lt::filenames paths(ti->layout(), renames);
+						t.moveFiles.clear();
+						for (auto index : ti->layout().file_range()) {
+							if (ti->layout().pad_file_at(index)) continue;
+							fs::path relative(paths.file_path(index)); auto file = target / relative;
+							auto contained = fs::weakly_canonical(file).lexically_relative(target);
+							if (!safeRelative(relative.string()) || contained.empty() || *contained.begin() == ".." || fs::is_symlink(file)) throw std::runtime_error("Move escapes the destination.");
+							if (fs::exists(file)) throw std::runtime_error("A file already exists at the move destination. No files were moved.");
+							if (fs::exists(fs::path(h.status().save_path) / relative)) t.moveFiles.push_back(int(index));
+						}
+						t.moveDestination = target.string();
+						try { [self persistPaths:key transfer:t]; } catch (...) { t.moveDestination.clear(); t.moveFiles.clear(); throw; }
+					}
 					fs::create_directories(cpp(p[@"destination"])); t.error.clear(); t.moving = true;
 					h.move_storage(cpp(p[@"destination"]), lt::move_flags_t::fail_if_exist);
 				} else if ([command isEqual:@"magnet"]) {
@@ -466,10 +531,7 @@ struct PendingExport {
 					// Swift handles confirmation. Trash only regular managed files, never directories.
 					if ([p[@"trash"] boolValue]) {
 						auto ti = h.torrent_file(); if (!ti) throw std::runtime_error("Cannot safely delete files without metadata.");
-						h.pause(); t.flushed = false; h.flush_cache();
-						auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-						while (!t.flushed && std::chrono::steady_clock::now() < deadline) { _session->wait_for_alert(lt::milliseconds(50)); [self drain]; }
-						if (!t.flushed) throw std::runtime_error("Files are still in use. Wait for disk activity to finish and retry removal.");
+						[self flush:key];
 
 						auto renames = h.get_renamed_files(); lt::filenames current(ti->layout(), renames);
 						auto base = fs::weakly_canonical(h.status().save_path);

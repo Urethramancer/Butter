@@ -43,7 +43,10 @@ Create a torrent with `⌘N`; open Settings with `⌘,` and toggle the inspector
 App state is stored in `~/Library/Application Support/Butter`: atomic `state.json`,
 imported torrent metadata, resume data and path journals in `Engine/`. Local
 renames keep the original info dictionary. Interrupted rename journals are
-reconciled against disk and require review before resuming. Keep the whole
+reconciled against disk and require review before resuming. Moves record their
+destination before starting; recovery selects a location containing all files
+that existed before the move, rechecks them and pauses for review. Retained copies
+in the other location are kept for the user to inspect. Keep the whole
 support folder together when backing up or restoring it.
 
 Ordinary removal retains data. The separate delete action asks for confirmation,
@@ -68,7 +71,7 @@ Scripts/verify.sh sanitizers audit
 ```
 
 `Scripts/verify.sh` also accepts `client`, `storage`, `engine`, `lifecycle`,
-`disk`, `interface`, `ui`, `build` and `version`. Existing test commands remain supported.
+`disk`, `interruption`, `interface`, `ui`, `build` and `version`. Existing test commands remain supported.
 Use `BUTTER_TEST_CASE=parser-invariants Scripts/verify.sh client` for a named
 client case. Engine cases are `engine-validation`, `concurrent-exports`,
 `filesystem-failures`, `metadata-variants` and `transfer-integration`; lifecycle

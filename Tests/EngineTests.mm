@@ -11,21 +11,7 @@
 #include <libtorrent/create_torrent.hpp>
 #include <libtorrent/bencode.hpp>
 namespace lt = libtorrent;
-static NSDictionary *decode(NSData *data) { return [NSJSONSerialization JSONObjectWithData:data options:0 error:nil]; }
-static NSData *call(ButterEngine *engine, NSString *command, NSDictionary *payload) {
-	__block NSData *result; __block NSString *failure;
-	auto done = dispatch_semaphore_create(0);
-	[engine perform:command payload:[NSJSONSerialization dataWithJSONObject:payload options:0 error:nil] completion:^(NSData *data, NSString *error) { result = data; failure = error; dispatch_semaphore_signal(done); }];
-	if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC))) throw std::runtime_error("Command timed out");
-	if (failure) throw std::runtime_error(failure.UTF8String); return result;
-}
-static NSDictionary *snapshot(ButterEngine *engine) {
-	__block NSData *result; __block NSString *failure; auto done = dispatch_semaphore_create(0);
-	[engine snapshot:^(NSData *data, NSString *error) { result = data; failure = error; dispatch_semaphore_signal(done); }];
-	if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC))) throw std::runtime_error("Snapshot timed out");
-	if (failure) throw std::runtime_error(failure.UTF8String); return decode(result);
-}
-static void require(bool condition, char const *message) { if (!condition) throw std::runtime_error(message); }
+#include "EngineTestSupport.h"
 #include "EngineRegressionCases.h"
 int main() { @autoreleasepool { try {
 	NSString *selectedCase = NSProcessInfo.processInfo.environment[@"BUTTER_TEST_CASE"];
@@ -176,9 +162,10 @@ int main() { @autoreleasepool { try {
 		NSString *conflict = [root stringByAppendingPathComponent:@"conflict"], *conflictParent = [conflict stringByAppendingPathComponent:@"renamed/inside"];
 		[fm createDirectoryAtPath:conflictParent withIntermediateDirectories:YES attributes:nil error:nil];
 		NSData *neighbour = [NSData dataWithBytes:"neighbour" length:9]; NSString *collisionPath = [conflictParent stringByAppendingPathComponent:@"wanted.bin"];
-		[neighbour writeToFile:collisionPath atomically:YES]; call(c, @"move", @{@"id":@"multi", @"destination":conflict});
+		[neighbour writeToFile:collisionPath atomically:YES];
 		bool failedMove = false;
-		for (int i = 0; i < 100; ++i) { for (NSDictionary *event in snapshot(c)[@"events"]) if ([event[@"kind"] isEqual:@"moveFailed"]) failedMove = true; if (failedMove) break; std::this_thread::sleep_for(std::chrono::milliseconds(30)); }
+		try { call(c, @"move", @{@"id":@"multi", @"destination":conflict}); } catch (std::exception const&) { failedMove = true; }
+		for (int i = 0; !failedMove && i < 100; ++i) { for (NSDictionary *event in snapshot(c)[@"events"]) if ([event[@"kind"] isEqual:@"moveFailed"]) failedMove = true; if (failedMove) break; std::this_thread::sleep_for(std::chrono::milliseconds(30)); }
 		require(failedMove, "Move collision did not produce a visible failure"); require([[NSData dataWithContentsOfFile:collisionPath] isEqual:neighbour], "Failed move damaged neighbouring file");
 		NSString *unrelated = [selectivePath stringByAppendingPathComponent:@"unrelated.bin"]; [neighbour writeToFile:unrelated atomically:YES];
 		NSDictionary *removed = decode(call(c, @"remove", @{@"id":@"multi", @"trash":@YES}));
