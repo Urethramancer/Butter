@@ -17,7 +17,7 @@ struct AddTorrentSheet: View {
 			if let preview = request.preview {
 				List(preview.files.filter { !$0.pad }) { file in HStack { Toggle(file.path, isOn: Binding(get: { request.selected.contains(file.index) }, set: { if $0 { request.selected.insert(file.index) } else { request.selected.remove(file.index) } })); Spacer(); Text(bytes(file.size)).foregroundStyle(.secondary) } }.frame(height: 200)
 			} else { Text("Contents and tracker options will be available after the magnet’s metadata resolves.").foregroundStyle(.secondary).frame(height: 90) }
-			HStack { Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).help("Close this sheet without adding a transfer.").disabled(adding); Button("Add") { adding = true; Task { _ = await store.add(request); adding = false; dismiss() } }.keyboardShortcut(.defaultAction).disabled(adding || request.destination.isEmpty || (request.preview != nil && request.selected.isEmpty)).help("Import this torrent with the chosen destination and contents.") }
+			HStack { Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).help("Close this sheet without adding a transfer.").disabled(adding); Button("Add") { adding = true; Task { _ = await store.add(request); adding = false; dismiss() } }.accessibilityIdentifier("torrent-add").keyboardShortcut(.defaultAction).disabled(adding || request.destination.isEmpty || (request.preview != nil && request.selected.isEmpty)).help("Import this torrent with the chosen destination and contents.") }
 		}.padding(24).frame(width: 570).interactiveDismissDisabled(adding)
 	}
 }
@@ -40,7 +40,7 @@ struct MagnetSheet: View {
 	@Environment(\.dismiss) private var dismiss
 	@State private var text = ""
 	var body: some View {
-		VStack(alignment: .leading, spacing: 16) { Text("Add Magnet Link").font(.title2.bold()); TextField("magnet:?xt=urn:…", text: $text).textFieldStyle(.roundedBorder).accessibilityLabel("Magnet link"); HStack { Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).help("Close this sheet without adding a transfer."); Button("Continue") { Task { await store.open(text.trimmingCharacters(in: .whitespacesAndNewlines)); dismiss() } }.keyboardShortcut(.defaultAction).disabled(!text.hasPrefix("magnet:?")).help("Review the destination and start preference for this magnet link.") } }.padding(24).frame(width: 520)
+		VStack(alignment: .leading, spacing: 16) { Text("Add Magnet Link").font(.title2.bold()); TextField("magnet:?xt=urn:…", text: $text).textFieldStyle(.roundedBorder).accessibilityLabel("Magnet link").accessibilityIdentifier("magnet-link"); HStack { Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).help("Close this sheet without adding a transfer."); Button("Continue") { Task { await store.open(text.trimmingCharacters(in: .whitespacesAndNewlines)); dismiss() } }.accessibilityIdentifier("magnet-continue").keyboardShortcut(.defaultAction).disabled(!text.hasPrefix("magnet:?")).help("Review the destination and start preference for this magnet link.") } }.padding(24).frame(width: 520)
 	}
 }
 struct CreateTorrentSheet: View {
@@ -66,7 +66,7 @@ struct CreateTorrentSheet: View {
 			Text("Creates hybrid v1/v2 metadata. Source files remain in their current location.").font(.caption).foregroundStyle(.secondary)
 			}.disabled(store.creating)
 			if store.creating { ProgressView(value: store.creationProgress).accessibilityLabel("Torrent hashing progress").accessibilityValue("\(Int(store.creationProgress * 100)) per cent"); Text("Hashing \(Int(store.creationProgress * 100))%…").font(.caption) }
-			HStack { Spacer(); Button(store.creating ? "Cancel Hashing" : "Cancel") { if store.creating { store.engine.bridge.cancelCreation() } else { dismiss() } }.keyboardShortcut(.cancelAction).help(store.creating ? "Cancel hashing the source files." : "Close without creating a torrent."); Button("Create") { Task { if await store.create(source: source, trackers: urls, isPrivate: isPrivate, start: start) { dismiss() } } }.keyboardShortcut(.defaultAction).disabled(!valid || store.creating).help("Hash the source and create a hybrid torrent.") }
+			HStack { Spacer(); Button(store.creating ? "Cancel Hashing" : "Cancel") { if store.creating { store.engine.cancelCreation() } else { dismiss() } }.keyboardShortcut(.cancelAction).help(store.creating ? "Cancel hashing the source files." : "Close without creating a torrent."); Button("Create") { Task { if await store.create(source: source, trackers: urls, isPrivate: isPrivate, start: start) { dismiss() } } }.keyboardShortcut(.defaultAction).disabled(!valid || store.creating).help("Hash the source and create a hybrid torrent.") }
 		}.padding(24).frame(width: 590).interactiveDismissDisabled(store.creating).onAppear { start = store.preferences.startOnAdd }
 	}
 }

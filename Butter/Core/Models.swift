@@ -116,6 +116,9 @@ struct TransferSnapshot: Codable, Identifiable {
 	var ratio: Double { Double(uploaded) / Double(max(1, downloaded > 0 ? downloaded : wanted)) }
 	var eta: String { down > 0 && !complete ? Duration.seconds(Double(max(0, wanted - done)) / Double(down)).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .abbreviated, maximumUnitCount: 2)) : "—" }
 	var verifiedProgress: Double { wanted > 0 ? Double(done) / Double(wanted) : 0 }
+	static func unavailable(_ record: TransferRecord, error: String) -> Self {
+		Self(id: record.id, name: record.name ?? (record.source.hasPrefix("magnet:") ? "Unavailable transfer" : URL(fileURLWithPath: record.source).lastPathComponent), path: record.destination, state: "Unavailable", error: error, metadata: false, private: false, complete: false, progress: 0, wanted: 0, done: 0, total: 0, down: 0, up: 0, downloaded: 0, uploaded: 0, demand: false, hashes: [], pieces: [], files: [], trackers: [], peers: [])
+	}
 }
 struct EngineEvent: Codable { var kind: String; var id: String; var path: String?; var existingID: String? }
 struct EngineSnapshot: Codable {
@@ -144,4 +147,11 @@ func speed(_ value: Int) -> String { "\(bytes(Int64(value)))/s" }
 enum TransferGrouping {
 	static func group(for torrent: TransferSnapshot, groups: [TorrentGroup]) -> TorrentGroup? { groups.first { $0.matches(torrent) } }
 	static func priority(_ explicit: TransferPriority?, torrent: TransferSnapshot, groups: [TorrentGroup]) -> TransferPriority { explicit ?? group(for: torrent, groups: groups)?.priority ?? .normal }
+}
+
+enum QuitPolicy {
+	static func shouldConfirm(mode: String, transfers: [TransferSnapshot], wanted: Set<String>) -> Bool {
+		let active = transfers.filter { wanted.contains($0.id) && $0.state != "Paused" }
+		return mode == "Always" || (mode == "Active Transfers" && !active.isEmpty) || (mode == "Active Downloads" && active.contains { !$0.complete })
+	}
 }

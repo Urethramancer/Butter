@@ -13,7 +13,7 @@ import AppKit
 				try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 				var saved = SavedState(); saved.preferences.port = 0; saved.preferences.dht = false; saved.preferences.lsd = false; saved.preferences.pex = false
 				try await StateStorage(root: root).save(saved)
-				let store = TransferStore(root: root); await store.start()
+				let store = TransferStore(root: root, allowsSystemIntegration: false); await store.start()
 				let source = root.appendingPathComponent("Example download.bin"); try Data(repeating: 71, count: 128_000).write(to: source)
 				_ = await store.create(source: source.path, trackers: [], isPrivate: false, start: true)
 				try await Task.sleep(for: .milliseconds(500)); await store.refresh()

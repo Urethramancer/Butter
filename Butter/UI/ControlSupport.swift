@@ -43,6 +43,7 @@ struct TransferSearchField: NSViewRepresentable {
 		field.target = context.coordinator
 		field.action = #selector(Coordinator.searchChanged(_:))
 		field.setAccessibilityLabel("Find transfers")
+		field.setAccessibilityIdentifier("transfer-search")
 		field.setAccessibilityHelp("Filter transfers by name.")
 		return field
 	}

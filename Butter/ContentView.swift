@@ -46,9 +46,9 @@ struct ContentView: View {
 				}
 				ToolbarItemGroup(placement: .primaryAction) {
 					Button { store.chooseTorrent() } label: { Label("Open Torrent", systemImage: "plus") }.help("Open torrent file (⌘O)")
-					Button { store.showMagnet = true } label: { Label("Add Magnet", systemImage: "link") }.help("Add a magnet link (⌘L)")
+					Button { store.showMagnet = true } label: { Label("Add Magnet", systemImage: "link") }.help("Add a magnet link (⌘L)").accessibilityIdentifier("add-magnet")
 					Button { store.showCreator = true } label: { Label("Create Torrent", systemImage: "doc.badge.plus") }.help("Create a torrent from local files (⌘N)")
-					Button { store.showInspector.toggle() } label: { Label("Inspector", systemImage: "sidebar.right") }.keyboardShortcut("i", modifiers: [.command, .option]).help(store.showInspector ? "Hide inspector (⌥⌘I)" : "Show inspector (⌥⌘I)").accessibilityValue(store.showInspector ? "Shown" : "Hidden")
+					Button { store.showInspector.toggle() } label: { Label("Inspector", systemImage: "sidebar.right") }.keyboardShortcut("i", modifiers: [.command, .option]).help(store.showInspector ? "Hide inspector (⌥⌘I)" : "Show inspector (⌥⌘I)").accessibilityValue(store.showInspector ? "Shown" : "Hidden").accessibilityIdentifier("toggle-inspector")
 				}
 			}
 			.inspector(isPresented: $store.showInspector) {
@@ -66,7 +66,7 @@ struct ContentView: View {
 	@ViewBuilder private func groupSection(_ key: String, title: String, colour: String, members: [TransferSnapshot]) -> some View {
 		if !members.isEmpty {
 			Section {
-				if !collapsed.contains(key) { ForEach(members) { torrent in TorrentRow(torrent: torrent).tag(torrent.id).contextMenu { TransferMenu(torrent: torrent) } } }
+				if !collapsed.contains(key) { ForEach(members) { torrent in TorrentRow(torrent: torrent).tag(torrent.id).accessibilityElement(children: .contain).accessibilityIdentifier("transfer-row-\(torrent.id)").contextMenu { TransferMenu(torrent: torrent) } } }
 			} header: {
 				HStack {
 					Button { if collapsed.contains(key) { collapsed.remove(key) } else { collapsed.insert(key) } } label: { HStack { Image(systemName: collapsed.contains(key) ? "chevron.right" : "chevron.down"); Circle().fill(groupColour(colour)).frame(width: 8, height: 8); Text(title); Text("\(members.count)").foregroundStyle(.secondary) } }.buttonStyle(.plain).controlHelp("\(collapsed.contains(key) ? "Expand" : "Collapse") group \(title)").accessibilityValue("\(members.count) transfers")

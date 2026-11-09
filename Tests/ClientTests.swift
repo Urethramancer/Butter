@@ -18,7 +18,8 @@ func observation(_ id: String, _ priority: TransferPriority = .normal, order: In
 				("port-checker", { try await checker() }), ("parser-invariants", { try CoreRegressionTests.parsers() }),
 				("estimator-expiry", { try CoreRegressionTests.estimator() }),
 				("storage-failures", { try await CoreRegressionTests.storageFailures() }),
-				("watched-replacement", { try await CoreRegressionTests.watchedReplacement() })
+				("watched-replacement", { try await CoreRegressionTests.watchedReplacement() }),
+				("quit-modes", { try CoreRegressionTests.quitModes() })
 			]
 			let filter = ProcessInfo.processInfo.environment["BUTTER_TEST_CASE"]
 			guard filter == nil || cases.contains(where: { $0.0 == filter }) else { throw TestFailure(description: "Unknown test case: \(filter!)") }

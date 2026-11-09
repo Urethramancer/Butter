@@ -1,6 +1,16 @@
 import Foundation
 
 enum CoreRegressionTests {
+	static func quitModes() throws {
+		var paused = fixture(); paused.state = "Paused"
+		for (mode, empty, download, seed) in [("Always", true, true, true), ("Never", false, false, false), ("Active Transfers", false, true, true), ("Active Downloads", false, true, false)] {
+			try require(QuitPolicy.shouldConfirm(mode: mode, transfers: [], wanted: []) == empty, "Empty quit mode \(mode)")
+			try require(QuitPolicy.shouldConfirm(mode: mode, transfers: [fixture()], wanted: ["a"]) == download, "Download quit mode \(mode)")
+			try require(QuitPolicy.shouldConfirm(mode: mode, transfers: [fixture(complete: true)], wanted: ["a"]) == seed, "Seed quit mode \(mode)")
+			try require(QuitPolicy.shouldConfirm(mode: mode, transfers: [paused], wanted: ["a"]) == empty, "Queued quit mode \(mode)")
+			try require(QuitPolicy.shouldConfirm(mode: mode, transfers: [fixture()], wanted: []) == empty, "Stopped quit mode \(mode)")
+		}
+	}
 	static func parsers() throws {
 		for bad in ["/1.2.3.4/24", "1.2.3.4/24/", "1..2.3", "256.0.0.0", "::/129", "::/", "1.2.3.4/-1", "1.2.3.4-::1", "2.0.0.0-1.0.0.0"] {
 			do { _ = try Blocklist.parse(bad); throw TestFailure(description: "Accepted malformed blocklist: \(bad)") }

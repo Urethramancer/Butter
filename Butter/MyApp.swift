@@ -3,7 +3,21 @@ import AppKit
 
 @main struct ButterApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-	@StateObject private var store = TransferStore()
+	@StateObject private var store = makeStore()
+	@MainActor private static func makeStore() -> TransferStore {
+		#if DEBUG
+		if let path = ProcessInfo.processInfo.environment["BUTTER_UI_TEST_ROOT"] {
+			let root = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+			let temporary = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().path + "/"
+			// Only explicit disposable fixtures can enable integration stubs.
+			if root.path.hasPrefix(temporary), FileManager.default.fileExists(atPath: root.appendingPathComponent(".butter-ui-test").path) {
+				return TransferStore(root: root, allowsSystemIntegration: false)
+			}
+			fatalError("Invalid isolated UI test directory")
+		}
+		#endif
+		return TransferStore()
+	}
 	private var colourScheme: ColorScheme? { store.preferences.appearance == "Light" ? .light : store.preferences.appearance == "Dark" ? .dark : nil }
 	var body: some Scene {
 		Window("Butter", id: "transfers") {
@@ -34,9 +48,7 @@ import AppKit
 	func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
 		if quitting { return .terminateLater }
 		guard let store else { return .terminateNow }
-		let active = store.transfers.filter { store.record($0.id)?.wanted == true && $0.state != "Paused" }
-		let mode = store.preferences.quitMode
-		let confirm = mode == "Always" || (mode == "Active Transfers" && !active.isEmpty) || (mode == "Active Downloads" && active.contains { !$0.complete })
+		let confirm = QuitPolicy.shouldConfirm(mode: store.preferences.quitMode, transfers: store.transfers, wanted: Set(store.records.filter(\.wanted).map(\.id)))
 		if confirm {
 			let alert = NSAlert(); alert.messageText = "Quit Butter?"; alert.informativeText = "Transfers will stop. Their resume state will be saved before quitting."; alert.addButton(withTitle: "Quit"); alert.addButton(withTitle: "Cancel")
 			if alert.runModal() != .alertFirstButtonReturn { return .terminateCancel }

@@ -7,12 +7,16 @@ func check(_ condition: @autoclosure () -> Bool, _ message: String) throws { if 
 	@MainActor static func main() async {
 		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		do {
+			let selected = ProcessInfo.processInfo.environment["BUTTER_TEST_CASE"]
+			if let selected, !["store-regressions", "lifecycle-integration"].contains(selected) { throw Failure(description: "Unknown lifecycle test case") }
+			if selected != "lifecycle-integration" { try await StoreRegressionTests.run() }
+			if selected == "store-regressions" { return }
 			let fm = FileManager.default
 			try fm.createDirectory(at: root, withIntermediateDirectories: true)
 			defer { try? fm.removeItem(at: root) }
 			var saved = SavedState(); saved.preferences.port = 0; saved.preferences.dht = false; saved.preferences.pex = false; saved.preferences.lsd = false
 			try await StateStorage(root: root).save(saved)
-			let store = TransferStore(root: root); await store.start(); _ = await store.shutdown()
+			let store = TransferStore(root: root, automaticPolling: false, allowsSystemIntegration: false); await store.start()
 			// Disable router discovery for the isolated test sessions.
 			_ = try await store.engine.perform("settings", ["port": 0, "mapping": false, "utp": true, "dht": false, "lsd": false, "pex": false, "peers": 20, "torrentPeers": 10])
 			let seed = root.appendingPathComponent("seed"); try fm.createDirectory(at: seed, withIntermediateDirectories: true)

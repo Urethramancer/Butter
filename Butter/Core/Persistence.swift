@@ -1,7 +1,11 @@
 import Foundation
 
+protocol StatePersisting: Sendable {
+	func load() async throws -> SavedState
+	func save(_ state: SavedState) async throws
+}
 // All disk access is isolated from the UI actor; atomic replacement keeps the previous state on failure.
-actor StateStorage {
+actor StateStorage: StatePersisting {
 	let root: URL
 	private let write: @Sendable (Data, URL) throws -> Void
 	init(root: URL, write: @escaping @Sendable (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }) { self.root = root; self.write = write }

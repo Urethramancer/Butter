@@ -48,7 +48,7 @@ static void validateFields(NSDictionary *p) {
 		if (p[key] && ![p[key] isKindOfClass:NSString.class]) throw std::runtime_error("Expected a string field.");
 		if (p[key] && [p[key] rangeOfString:nul].location != NSNotFound) throw std::runtime_error("String fields cannot contain null characters.");
 	}
-	for (NSString *key in @[@"index", @"port", @"peers", @"torrentPeers", @"downloadLimit", @"uploadLimit", @"restore", @"running", @"trash", @"private", @"utp", @"tcp", @"dht", @"pex", @"lsd", @"mapping", @"allowSameIP", @"reviewRequired"])
+	for (NSString *key in @[@"index", @"port", @"peers", @"torrentPeers", @"downloadLimit", @"uploadLimit", @"restore", @"running", @"trash", @"retainState", @"private", @"utp", @"tcp", @"dht", @"pex", @"lsd", @"mapping", @"allowSameIP", @"reviewRequired"])
 		if (p[key] && (![p[key] isKindOfClass:NSNumber.class] || !std::isfinite([p[key] doubleValue]) || std::floor([p[key] doubleValue]) != [p[key] doubleValue] || [p[key] doubleValue] < INT_MIN || [p[key] doubleValue] > INT_MAX)) throw std::runtime_error("Expected a bounded whole number.");
 	for (NSString *key in @[@"changes", @"ranges", @"paths", @"pending", @"selected", @"trackers"]) {
 		if (!p[key]) continue;
@@ -378,6 +378,10 @@ struct PendingExport {
 					if (first.is_v4() != last.is_v4() || last < first) throw std::runtime_error("Invalid blocklist range.");
 					filter.add_rule(first, last, lt::ip_filter::blocked);
 				} _session->set_ip_filter(filter);
+			} else if ([command isEqual:@"forget"]) {
+				auto key = cpp(p[@"id"]);
+				if (key.empty() || _transfers.count(key)) throw std::runtime_error("Cannot discard state for a live transfer.");
+				for (auto const& suffix : {".resume", ".torrent", ".paths.json"}) fs::remove(_storage + "/" + key + suffix);
 			} else if ([command isEqual:@"shutdown"]) {
 				_saveError.clear();
 				for (auto& [key, t] : _transfers) { t.handle.pause(); [self save:t]; }
@@ -492,7 +496,7 @@ struct PendingExport {
 					}
 					[self finishExports:key data:nil error:@"Transfer was removed during export."];
 					_session->remove_torrent(h); _transfers.erase(it);
-					fs::remove(_storage + "/" + key + ".resume"); fs::remove(_storage + "/" + key + ".torrent"); fs::remove(_storage + "/" + key + ".paths.json");
+					if (![p[@"retainState"] boolValue]) for (auto const& suffix : {".resume", ".torrent", ".paths.json"}) fs::remove(_storage + "/" + key + suffix);
 					completion(json(@{@"trashed":trashed}), nil); return;
 				} else throw std::runtime_error("Unknown engine command.");
 			}

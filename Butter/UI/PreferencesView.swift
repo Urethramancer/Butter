@@ -21,15 +21,15 @@ struct GeneralPreferences: View {
 	@State private var registration = ""
 	var body: some View {
 		Form {
-			Picker("Appearance", selection: $store.preferences.appearance) { ForEach(["System", "Light", "Dark"], id: \.self) { Text($0) } }
+			Picker("Appearance", selection: $store.preferences.appearance) { ForEach(["System", "Light", "Dark"], id: \.self) { Text($0) } }.accessibilityIdentifier("appearance")
 			Section("Notifications") {
 				Toggle("Notify when a download completes", isOn: $store.preferences.notifications)
-				Button("Open Notification Settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?net.grimdork.Butter")!) }.help("Manage Butter’s notification permissions in System Settings.")
+				Button("Open Notification Settings") { guard store.allowsSystemIntegration else { return }; NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?net.grimdork.Butter")!) }.help("Manage Butter’s notification permissions in System Settings.")
 			}
-			Picker("Confirm quitting", selection: $store.preferences.quitMode) { ForEach(["Always", "Active Transfers", "Active Downloads", "Never"], id: \.self) { Text($0) } }
+			Picker("Confirm quitting", selection: $store.preferences.quitMode) { ForEach(["Always", "Active Transfers", "Active Downloads", "Never"], id: \.self) { Text($0) } }.accessibilityIdentifier("quit-mode")
 			Section("Status bar") { ForEach(["Torrents", "Peers", "Downloads", "Uploads", "Download speed", "Upload speed"], id: \.self) { item in Toggle(item, isOn: Binding(get: { store.preferences.statusItems.contains(item) }, set: { if $0 { store.preferences.statusItems.insert(item) } else { store.preferences.statusItems.remove(item) } })) } }
 			Section("Default application") {
-				HStack { Button("Register for Magnet Links") { NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpenURLsWithScheme: "magnet") { error in Task { @MainActor in if let error { store.report(error) } else { registration = "Magnet registration requested." } } } }.help("Make Butter the default application for magnet links."); Button("Register for Torrent Files") { NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: UTType(filenameExtension: "torrent") ?? .data) { error in Task { @MainActor in if let error { store.report(error) } else { registration = "Torrent registration requested." } } } }.help("Make Butter the default application for torrent files.") }
+				HStack { Button("Register for Magnet Links") { guard store.allowsSystemIntegration else { registration = "Isolated test configuration."; return }; NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpenURLsWithScheme: "magnet") { error in Task { @MainActor in if let error { store.report(error) } else { registration = "Magnet registration requested." } } } }.help("Make Butter the default application for magnet links."); Button("Register for Torrent Files") { guard store.allowsSystemIntegration else { registration = "Isolated test configuration."; return }; NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: UTType(filenameExtension: "torrent") ?? .data) { error in Task { @MainActor in if let error { store.report(error) } else { registration = "Torrent registration requested." } } } }.help("Make Butter the default application for torrent files.") }
 				if !registration.isEmpty { Text(registration).font(.caption).foregroundStyle(.secondary) }
 			}
 		}.formStyle(.grouped)
@@ -68,7 +68,7 @@ struct NetworkPreferences: View {
 		Form {
 			Section("Connections") {
 				Toggle("Enable incoming and outgoing µTP", isOn: $store.preferences.utp)
-				HStack { TextField("Listening port", value: $store.preferences.port, format: .number.grouping(.never)).frame(maxWidth: 230); Button("Randomise") { Task { await randomise() } }.disabled(randomising).help("Bind a free listening port before saving it."); Button("Check Port") { checking = true; Task { store.portStatus = await PortChecker().check(store.boundPort); checking = false } }.disabled(checking || store.boundPort == 0).help("Ask Transmission’s HTTPS service to check external TCP reachability.") }
+				HStack { TextField("Listening port", value: $store.preferences.port, format: .number.grouping(.never)).frame(maxWidth: 230); Button("Randomise") { Task { await randomise() } }.disabled(randomising).help("Bind a free listening port before saving it."); Button("Check Port") { checking = true; Task { await store.checkPort(); checking = false } }.disabled(checking || store.boundPort == 0).help("Ask Transmission’s HTTPS service to check external TCP reachability.") }
 				Text("TCP: \(store.portStatus)").font(.caption)
 				Text("Local UDP/µTP: \(store.udpBound ? "bound on port \(store.boundPort)" : "not confirmed")").font(.caption).foregroundStyle(.secondary)
 				if !store.networkError.isEmpty { Text(store.networkError).font(.caption).foregroundStyle(.orange) }
@@ -88,8 +88,7 @@ struct NetworkPreferences: View {
 		randomising = true; defer { randomising = false }
 		do {
 			for _ in 0..<5 {
-				var p = store.preferences; p.port = 0
-				let data = try await store.engine.perform("settings", ["port": 0, "utp": p.utp, "peers": p.peers, "torrentPeers": p.torrentPeers, "dht": p.dht, "pex": p.pex, "lsd": p.lsd])
+				let data = try await store.engine.perform("settings", store.networkSettings(port: 0))
 				let result = try JSONSerialization.jsonObject(with: data) as? [String: Int]
 				guard let port = result?["port"] else { continue }
 				try await Task.sleep(for: .milliseconds(600))

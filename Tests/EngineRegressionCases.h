@@ -78,6 +78,14 @@ static void filesystemCases(ButterEngine *engine, NSString *torrent, NSString *s
 	[fm removeItemAtPath:resume error:nil];
 	call(engine, @"shutdown", @{});
 	call(engine, @"remove", @{@"id":@"save-failure"});
+	call(engine, @"add", @{@"id":@"retained", @"source":torrent, @"destination":destination});
+	call(engine, @"remove", @{@"id":@"retained", @"retainState":@YES});
+	NSString *retained = [storage stringByAppendingPathComponent:@"retained.torrent"];
+	require([fm fileExistsAtPath:retained], "Removal discarded metadata before state commit");
+	call(engine, @"add", @{@"id":@"retained", @"source":retained, @"destination":destination, @"restore":@YES});
+	call(engine, @"remove", @{@"id":@"retained", @"retainState":@YES});
+	call(engine, @"forget", @{@"id":@"retained"});
+	require(![fm fileExistsAtPath:retained], "Committed removal did not discard retained metadata");
 	printf("PASS: shared-file Trash refusal, failed resume/export callbacks and shutdown retry\n");
 }
 static void metadataVariantCases(NSString *root, NSString *source, NSString *destination, NSDictionary *baseSettings) {

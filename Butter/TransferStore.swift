@@ -32,43 +32,69 @@ struct AddRequest: Identifiable {
 	@Published var showMagnet = false
 	@Published var showInspector = true
 	private let root: URL
-	let engine: EngineClient
-	private let storage: StateStorage
+	let engine: any EngineOperations
+	let allowsSystemIntegration: Bool
+	private let automaticPolling: Bool
+	private let now: () -> Date
+	private let storage: any StatePersisting
 	private let watcher = FolderWatcher()
 	private var scheduler = TransferScheduler()
 	private var decisions: [String: ScheduleDecision] = [:]
 	private var watchedImports = Set<String>()
-	private var failedWatch = Set<String>()
+	private var failedWatch: [String: Date] = [:]
 	private var pendingAdds: [String] = []
 	private var preparingAdd = false
 	private var polling: Task<Void, Never>?
 	private var lastSave = Date.distantPast
 	private var moving = Set<String>()
 	private var refreshing = false
+	private var starting = false
+	private var loadedState = false
+	private var shuttingDown = false
+	private var activeOperations = 0
+	private var saving: Task<Bool, Never>?
 	private var notified = Set<String>()
 	private var observedErrors: [String: String] = [:]
+	private var restoreFailures: [String: String] = [:]
+	private var removing = Set<String>()
 	private let logger = Logger(subsystem: "net.grimdork.Butter", category: "errors")
-	init(root: URL? = nil) {
+	init(root: URL? = nil, engine: (any EngineOperations)? = nil, storage: (any StatePersisting)? = nil, automaticPolling: Bool = true, allowsSystemIntegration: Bool = true, now: @escaping () -> Date = Date.init) {
 		self.root = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("Butter", isDirectory: true)
-		storage = StateStorage(root: self.root)
-		engine = EngineClient(storage: self.root.appendingPathComponent("Engine", isDirectory: true))
+		self.storage = storage ?? StateStorage(root: self.root)
+		self.engine = engine ?? EngineClient(storage: self.root.appendingPathComponent("Engine", isDirectory: true))
+		self.automaticPolling = automaticPolling
+		self.allowsSystemIntegration = allowsSystemIntegration
+		self.now = now
 	}
 	func start() async {
-		guard !ready else { return }
+		guard !ready && !starting && !shuttingDown else { return }
+		starting = true; defer { starting = false }
 		do {
 			let saved = try await storage.load(); preferences = saved.preferences; records = saved.transfers; watchedImports = saved.watchedImports
-			await applyNetwork()
-			for record in records {
-				do { _ = try await engine.perform("add", ["id": record.id, "source": record.source, "destination": record.destination, "restore": true]) }
-				catch { report(error) }
+			loadedState = true
+			if !allowsSystemIntegration {
+				preferences.incompleteFolder = root.appendingPathComponent("Downloads").path
+				preferences.port = 0
 			}
+			await applyNetwork()
+			for record in records { await restore(record) }
 			ready = true
-			startPolling()
+			if !shuttingDown { startPolling() }
 			await nextAdd()
 		} catch { report(error) }
 	}
 	func report(_ error: Error) { self.error = error.localizedDescription; logger.error("Operation failed; an actionable error was presented to the user.") }
+	private func restore(_ record: TransferRecord) async {
+		do {
+			let result = try JSONSerialization.jsonObject(with: await engine.perform("add", ["id": record.id, "source": record.source, "destination": record.destination, "restore": true])) as? [String: Any]
+			if result?["duplicate"] as? Bool == true, let existing = result?["id"] as? String, existing != record.id {
+				records.removeAll { $0.id == record.id }; selection = [existing]
+			}
+			restoreFailures[record.id] = nil
+		} catch { restoreFailures[record.id] = error.localizedDescription; report(error) }
+	}
 	private func startPolling() {
+		guard automaticPolling else { return }
 		polling = Task { [weak self] in
 			while !Task.isCancelled {
 				await self?.refresh()
@@ -77,8 +103,19 @@ struct AddRequest: Identifiable {
 		}
 	}
 	@discardableResult func persist() async -> Bool {
-		do { try await storage.save(SavedState(preferences: preferences, transfers: records, watchedImports: watchedImports)); return true }
-		catch { report(error); return false }
+		guard loadedState else {
+			report(NSError(domain: "Butter.Storage", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saved state could not be loaded. Restore or repair state.json before saving changes."]))
+			return false
+		}
+		let state = SavedState(preferences: preferences, transfers: records, watchedImports: watchedImports)
+		let previous = saving
+		let task = Task {
+			_ = await previous?.value
+			do { try await storage.save(state); return true }
+			catch { report(error); return false }
+		}
+		saving = task
+		return await task.value
 	}
 	func group(for torrent: TransferSnapshot) -> TorrentGroup? { TransferGrouping.group(for: torrent, groups: preferences.groups) }
 	func priority(for torrent: TransferSnapshot) -> TransferPriority { TransferGrouping.priority(record(torrent.id)?.priority, torrent: torrent, groups: preferences.groups) }
@@ -90,11 +127,12 @@ struct AddRequest: Identifiable {
 		return torrent.state
 	}
 	func refresh() async {
-		guard !refreshing else { return }; refreshing = true; defer { refreshing = false }
+		guard !refreshing && !shuttingDown else { return }; refreshing = true; defer { refreshing = false }
 		do {
 			let snapshot = try await engine.snapshot()
 			for transfer in snapshot.transfers where !transfer.error.isEmpty && observedErrors[transfer.id] != transfer.error { logger.error("An engine operation failed; details are visible on the transfer."); observedErrors[transfer.id] = transfer.error }
 			transfers = snapshot.transfers.filter { record($0.id) != nil }; networkError = snapshot.networkError; boundPort = snapshot.port; udpBound = snapshot.udp
+			transfers += records.compactMap { record in restoreFailures[record.id].map { TransferSnapshot.unavailable(record, error: $0) } }
 			for torrent in transfers where !moving.contains(torrent.id) {
 				if let index = records.firstIndex(where: { $0.id == torrent.id }) { records[index].destination = torrent.path }
 			}
@@ -107,7 +145,7 @@ struct AddRequest: Identifiable {
 				if event.kind == "moveFailed" { records[index].moveFailed = true; moving.remove(event.id); await persist() }
 			}
 			for torrent in transfers { await processCompletion(torrent) }
-			var observations = transfers.enumerated().map { _, torrent in
+			var observations = transfers.filter { restoreFailures[$0.id] == nil }.map { torrent in
 				let r = record(torrent.id)
 				return TransferObservation(id: torrent.id, order: records.firstIndex { $0.id == torrent.id } ?? 0, priority: priority(for: torrent), wanted: r?.wanted ?? false, force: r?.force ?? false, complete: torrent.complete, blocked: !torrent.error.isEmpty || moving.contains(torrent.id) || torrent.state == "Moving" || torrent.state == "Renaming", downloadRate: torrent.down, uploadRate: torrent.up, downloadDemand: !torrent.complete && !torrent.peers.isEmpty, uploadDemand: torrent.demand)
 			}
@@ -123,7 +161,7 @@ struct AddRequest: Identifiable {
 			decisions = next
 			if Date().timeIntervalSince(lastSave) > 15 {
 				await persist(); lastSave = Date()
-				for torrent in transfers { _ = try await engine.perform("save", ["id": torrent.id]) }
+				for torrent in transfers where restoreFailures[torrent.id] == nil { _ = try await engine.perform("save", ["id": torrent.id]) }
 			}
 			await scanWatchFolder()
 		} catch { report(error) }
@@ -146,15 +184,21 @@ struct AddRequest: Identifiable {
 	}
 	func applyNetwork() async {
 		do {
-			_ = try await engine.perform("settings", ["utp": preferences.utp, "port": preferences.port, "peers": max(1, preferences.peers), "torrentPeers": max(1, preferences.torrentPeers), "dht": preferences.dht, "pex": preferences.pex, "lsd": preferences.lsd])
+			_ = try await engine.perform("settings", networkSettings())
 			let ranges = Blocklist.merge(preferences.blocklists.flatMap(\.ranges))
 			_ = try await engine.perform("blocklist", ["ranges": ranges.map { ["first": $0.first, "last": $0.last] }])
 		} catch { report(error) }
 	}
+	func networkSettings(port: Int? = nil) -> [String: Any] {
+		["utp": preferences.utp, "port": port ?? preferences.port, "peers": max(1, preferences.peers), "torrentPeers": max(1, preferences.torrentPeers), "mapping": allowsSystemIntegration, "dht": allowsSystemIntegration && preferences.dht, "pex": allowsSystemIntegration && preferences.pex, "lsd": allowsSystemIntegration && preferences.lsd]
+	}
+	func checkPort() async {
+		portStatus = allowsSystemIntegration ? await PortChecker().check(boundPort) : "Unknown — isolated test configuration"
+	}
 	func settingsChanged(from old: Preferences) async {
 		await persist()
 		if old.utp != preferences.utp || old.port != preferences.port || old.peers != preferences.peers || old.torrentPeers != preferences.torrentPeers || old.dht != preferences.dht || old.pex != preferences.pex || old.lsd != preferences.lsd || old.blocklists != preferences.blocklists { await applyNetwork() }
-		if preferences.notifications && !old.notifications {
+		if allowsSystemIntegration && preferences.notifications && !old.notifications {
 			do { _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) } catch { report(error) }
 		}
 		decisions = [:]
@@ -182,6 +226,8 @@ struct AddRequest: Identifiable {
 	func dismissAdd() { addRequest = nil; Task { await nextAdd() } }
 	func presentPendingAdd() async { await nextAdd() }
 	func add(_ request: AddRequest, creation: Bool = false, id: String = UUID().uuidString) async -> Bool {
+		guard !shuttingDown else { return false }
+		activeOperations += 1; defer { activeOperations -= 1 }
 		do {
 			var payload: [String: Any] = ["id": id, "source": request.source, "destination": request.destination, "tracker": request.tracker]
 			if let preview = request.preview { payload["selected"] = preview.files.map { request.selected.contains($0.index) ? 1 : 0 } }
@@ -191,7 +237,12 @@ struct AddRequest: Identifiable {
 			if result?["duplicate"] as? Bool == true { return false }
 			let storedSource = request.source.hasPrefix("magnet:") ? request.source : root.appendingPathComponent("Engine/\(id).torrent").path
 			records.append(TransferRecord(id: id, source: storedSource, destination: request.destination, wanted: request.start, creation: creation))
-			guard await persist() else { return false }; decisions[id] = nil; return true
+			guard await persist() else {
+				// Roll back only this import; retain the previous valid saved generation.
+				do { _ = try await engine.perform("remove", ["id": id]); records.removeAll { $0.id == id }; selection.remove(id) }
+				catch { report(error) }
+				return false
+			}; decisions[id] = nil; return true
 		} catch { report(error); return false }
 	}
 	func setRunning(_ ids: Set<String>, running: Bool, force: Bool = false) async {
@@ -205,11 +256,29 @@ struct AddRequest: Identifiable {
 		decisions = [:]; await persist()
 	}
 	func command(_ command: String, id: String, extra: [String: Any] = [:]) async {
+		guard !shuttingDown else { return }
+		activeOperations += 1; defer { activeOperations -= 1 }
+		if command == "retry", restoreFailures[id] != nil, let record = record(id) { await restore(record); return }
 		do { var p = extra; p["id"] = id; _ = try await engine.perform(command, p); decisions[id] = nil } catch { report(error) }
 	}
 	func remove(_ ids: Set<String>, trash: Bool) async {
+		guard !shuttingDown else { return }
+		activeOperations += 1; defer { activeOperations -= 1 }
 		for id in ids {
-			do { _ = try await engine.perform("remove", ["id": id, "trash": trash]); records.removeAll { $0.id == id }; transfers.removeAll { $0.id == id }; selection.remove(id); decisions[id] = nil; await persist() }
+			guard !removing.contains(id), let original = record(id) else { continue }
+			removing.insert(id); defer { removing.remove(id) }
+			do {
+				if restoreFailures[id] == nil || trash { _ = try await engine.perform("remove", ["id": id, "trash": trash, "retainState": true]) }
+				let index = records.firstIndex { $0.id == id } ?? records.count
+				restoreFailures[id] = nil; records.removeAll { $0.id == id }; transfers.removeAll { $0.id == id }; selection.remove(id); decisions[id] = nil
+				if await persist() {
+					_ = try await engine.perform("forget", ["id": id])
+				} else {
+					var retained = original; retained.wanted = false; retained.force = false
+					records.insert(retained, at: min(index, records.count))
+					restoreFailures[id] = "Removal could not be saved. Metadata was retained. Start to restore this transfer, or retry removal after checking disk access."
+				}
+			}
 			catch { report(error) }
 		}
 	}
@@ -230,6 +299,7 @@ struct AddRequest: Identifiable {
 	}
 	func renameTorrent(_ torrent: TransferSnapshot) {
 		let field = NSTextField(string: title(torrent)); field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+		field.setAccessibilityIdentifier("transfer-name")
 		let alert = NSAlert(); alert.messageText = "Rename transfer"; alert.informativeText = "This changes the display name."; alert.accessoryView = field; alert.addButton(withTitle: "Rename"); alert.addButton(withTitle: "Cancel")
 		if alert.runModal() == .alertFirstButtonReturn, !field.stringValue.isEmpty, let i = records.firstIndex(where: { $0.id == torrent.id }) { records[i].name = field.stringValue; Task { await persist() } }
 	}
@@ -250,8 +320,10 @@ struct AddRequest: Identifiable {
 		do { _ = try await engine.perform("move", ["id": torrent.id, "destination": preferences.finalFolder]) } catch { moving.remove(torrent.id); report(error) }
 	}
 	func create(source: String, trackers: [String], isPrivate: Bool, start: Bool) async -> Bool {
+		guard !shuttingDown && !creating else { return false }
+		activeOperations += 1; defer { activeOperations -= 1 }
 		creating = true; creationProgress = 0
-		let progressTask = Task { while !Task.isCancelled { creationProgress = engine.bridge.creationProgress; try? await Task.sleep(for: .milliseconds(200)) } }
+		let progressTask = Task { while !Task.isCancelled { creationProgress = engine.creationProgress; try? await Task.sleep(for: .milliseconds(200)) } }
 		defer { progressTask.cancel(); creating = false }
 		do {
 			let id = UUID().uuidString
@@ -262,23 +334,40 @@ struct AddRequest: Identifiable {
 	}
 	private func scanWatchFolder() async {
 		do {
-			let files = try await watcher.scan(preferences.watchFolder, imported: watchedImports.union(failedWatch))
+			failedWatch = failedWatch.filter { now().timeIntervalSince($0.value) < 30 }
+			let files = try await watcher.scan(preferences.watchFolder, imported: watchedImports.union(failedWatch.keys), now: now())
 			for file in files {
-				let imported = await add(AddRequest(source: file.url.path, destination: preferences.incompleteFolder, start: preferences.startOnAdd))
-				if imported { watchedImports.insert(file.signature); await persist(); if preferences.deleteOriginal { do { try await Task.detached { try FileManager.default.removeItem(at: file.url) }.value } catch { report(error) } } }
-				else { failedWatch.insert(file.signature) }
+				// Import exactly the observed bytes, even if another process replaces the original.
+				let staged = root.appendingPathComponent("watched-\(UUID().uuidString).torrent")
+				try file.contents.write(to: staged, options: .atomic)
+				defer { try? FileManager.default.removeItem(at: staged) }
+				let imported = await add(AddRequest(source: staged.path, destination: preferences.incompleteFolder, start: preferences.startOnAdd))
+				if imported {
+					watchedImports.insert(file.signature)
+					if await persist(), preferences.deleteOriginal { do { try await watcher.removeImported(file) } catch { report(error) } }
+				} else { failedWatch[file.signature] = now() }
 			}
 		} catch { if networkError != error.localizedDescription { networkError = "Watched folder unavailable: \(error.localizedDescription)" } }
 	}
 	private func notify(_ torrent: TransferSnapshot) {
-		guard preferences.notifications else { return }
+		guard allowsSystemIntegration && preferences.notifications else { return }
 		let content = UNMutableNotificationContent(); content.title = "Download completed"; content.body = title(torrent)
 		Task { do { try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: torrent.id, content: content, trigger: nil)) } catch { report(error) } }
 	}
 	func shutdown() async -> Bool {
-		if creating { engine.bridge.cancelCreation() }
+		guard !shuttingDown else { return false }
+		shuttingDown = true; defer { shuttingDown = false }
+		if creating { engine.cancelCreation() }
 		let finishing = polling; finishing?.cancel(); polling = nil
 		await finishing?.value
+		let deadline = ProcessInfo.processInfo.systemUptime + 20
+		while starting || refreshing || activeOperations > 0 {
+			if ProcessInfo.processInfo.systemUptime >= deadline {
+				report(NSError(domain: "Butter.Lifecycle", code: 1, userInfo: [NSLocalizedDescriptionKey: "An operation is still finishing. Wait for it to complete before quitting."]))
+				startPolling(); return false
+			}
+			try? await Task.sleep(for: .milliseconds(20))
+		}
 		guard await persist() else { startPolling(); return false }
 		do { _ = try await engine.perform("shutdown"); return true } catch { report(error); decisions = [:]; startPolling(); return false }
 	}
