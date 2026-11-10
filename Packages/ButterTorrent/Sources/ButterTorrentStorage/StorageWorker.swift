@@ -20,13 +20,14 @@ final class DiskCancellation: @unchecked Sendable {
 	func check() throws { if lock.withLock({ cancelled }) { throw CancellationError() } }
 }
 
-// A serial worker bounds both outstanding commands and simultaneous disk/hash work.
+// Each owner remains serial; four shared workers permit independent disk/hash work.
 final class StorageWorker: @unchecked Sendable {
-	private static let queue = DispatchQueue(label: "Butter.Storage")
+	private static let pool = DiskWorkPool()
 	private static let budget = DiskWorkBudget()
+	private let owner = UUID()
 	private let lock = NSLock()
 	private var pending = 0
-	func run<T: Sendable>(_ operation: @escaping @Sendable (DiskCancellation) throws -> T) async throws -> T {
+	func run<T: Sendable>(bulk: Bool = false, _ operation: @escaping @Sendable (DiskCancellation) throws -> T) async throws -> T {
 		try Task.checkCancellation()
 		let admitted = lock.withLock { if pending >= 8 { return false }; pending += 1; return true }
 		guard admitted else { throw StorageFailure.limit("queued disk commands") }
@@ -34,7 +35,7 @@ final class StorageWorker: @unchecked Sendable {
 		let cancellation = DiskCancellation()
 		return try await withTaskCancellationHandler {
 			try await withCheckedThrowingContinuation { continuation in
-				Self.queue.async {
+				Self.pool.submit(owner: self.owner, bulk: bulk) {
 					let result = Result { try cancellation.check(); return try operation(cancellation) }
 					self.lock.withLock { self.pending -= 1 }
 					Self.budget.release()
@@ -42,6 +43,44 @@ final class StorageWorker: @unchecked Sendable {
 				}
 			}
 		} onCancel: { cancellation.cancel() }
+	}
+}
+
+// Ready work never blocks a thread waiting for another owner's turn.
+final class DiskWorkPool: @unchecked Sendable {
+	private struct Job: Sendable { let owner: UUID; let bulk: Bool; let run: @Sendable () -> Void }
+	private let lock = NSLock()
+	private let queue = DispatchQueue(label: "Butter.Storage", attributes: .concurrent)
+	private let maximum: Int
+	private var busy: Set<UUID> = []
+	private var bulkOwners: Set<UUID> = []
+	private var pending: [Job] = []
+	init(maximum: Int = 4) { precondition(maximum > 0); self.maximum = maximum }
+	func submit(owner: UUID, bulk: Bool = false, run: @escaping @Sendable () -> Void) {
+		let ready = lock.withLock { pending.append(Job(owner: owner, bulk: bulk, run: run)); return takeReady() }
+		dispatch(ready)
+	}
+	private func takeReady() -> [Job] {
+		var ready: [Job] = []
+		while busy.count < maximum {
+			var seen: Set<UUID> = []
+			guard let index = pending.firstIndex(where: { job in
+				guard seen.insert(job.owner).inserted, !busy.contains(job.owner) else { return false }
+				return !job.bulk || bulkOwners.count < max(1, maximum - 1)
+			}) else { break }
+			let job = pending.remove(at: index); busy.insert(job.owner)
+			if job.bulk { bulkOwners.insert(job.owner) }; ready.append(job)
+		}
+		return ready
+	}
+	private func dispatch(_ ready: [Job]) {
+		for job in ready {
+			queue.async {
+				job.run()
+				let next = self.lock.withLock { self.busy.remove(job.owner); self.bulkOwners.remove(job.owner); return self.takeReady() }
+				self.dispatch(next)
+			}
+		}
 	}
 }
 

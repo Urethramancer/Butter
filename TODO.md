@@ -7,7 +7,6 @@
   Allow enabled DHT for unresolved magnets; cancel and drain discovery when
   private metadata arrives before publishing the resolved transfer to the app.
   Coordinate mapping lifecycles in that session.
-  Keep snapshots and unrelated commands responsive during long filesystem operations.
   Verify interruption and disk-failure recovery during repository publication/discard.
   Resolve inherited PCP-before-NAT-PMP behaviour from the pinned reference;
   the Swift mapping clients currently implement UPnP and NAT-PMP.

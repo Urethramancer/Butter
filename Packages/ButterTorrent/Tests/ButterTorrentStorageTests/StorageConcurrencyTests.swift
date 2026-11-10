@@ -28,6 +28,38 @@ private func storageDeadline<T: Sendable>(_ operation: @escaping @Sendable () as
 }
 
 @Suite struct StorageConcurrencyTests {
+	@Test func bulkWorkReservesCapacityWithoutReorderingABlockedOwner() async throws {
+		let pool = DiskWorkPool(maximum: 2), probe = DiskPoolProbe(), first = UUID(), second = UUID(), control = UUID()
+		for (owner, bulk, label) in [(first, true, "a"), (second, true, "b1"), (second, false, "b2"), (control, false, "control")] {
+			pool.submit(owner: owner, bulk: bulk) { probe.run(owner, label: label) }
+		}
+		do {
+			try await storageDeadline { while probe.active != 2 { try await Task.sleep(for: .milliseconds(5)) } }
+			#expect(Set(probe.started) == ["a", "control"])
+			probe.release()
+			try await storageDeadline { while probe.completed != 4 { try await Task.sleep(for: .milliseconds(5)) } }
+			#expect(probe.started.filter { $0.hasPrefix("b") } == ["b1", "b2"])
+			#expect(!probe.overlappedOwner && probe.peak == 2)
+		} catch { probe.release(); throw error }
+	}
+	@Test func diskPoolBoundsParallelOwnersAndPreservesEachOwnersOrder() async throws {
+		let pool = DiskWorkPool(maximum: 2), probe = DiskPoolProbe(), first = UUID(), second = UUID(), third = UUID()
+		for (owner, label) in [(first, "a1"), (first, "a2"), (second, "b"), (third, "c")] {
+			pool.submit(owner: owner) { probe.run(owner, label: label) }
+		}
+		do {
+			try await storageDeadline {
+				while probe.active != 2 { try await Task.sleep(for: .milliseconds(5)) }
+			}
+			#expect(probe.started == ["a1", "b"] || probe.started == ["b", "a1"])
+			probe.release()
+			try await storageDeadline {
+				while probe.completed != 4 { try await Task.sleep(for: .milliseconds(5)) }
+			}
+			#expect(probe.peak == 2 && !probe.overlappedOwner)
+			#expect(probe.started.filter { $0.hasPrefix("a") } == ["a1", "a2"])
+		} catch { probe.release(); throw error }
+	}
 	@Test func cancellationLeavesDurableJournalAndMalformedRecoveryDoesNotTouchFiles() async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try storageMetadata(root), gate = DiskGate()
@@ -76,4 +108,27 @@ private func storageDeadline<T: Sendable>(_ operation: @escaping @Sendable () as
 		let results = await pending.value
 		#expect(results.count == 16 && results.contains(false))
 	}
+}
+
+private final class DiskPoolProbe: @unchecked Sendable {
+	private let lock = NSLock()
+	private let gate = DispatchSemaphore(value: 0)
+	private var owners: Set<UUID> = []
+	private var labels: [String] = []
+	private var maximum = 0, finished = 0
+	private var overlap = false
+	var active: Int { lock.withLock { owners.count } }
+	var completed: Int { lock.withLock { finished } }
+	var peak: Int { lock.withLock { maximum } }
+	var started: [String] { lock.withLock { labels } }
+	var overlappedOwner: Bool { lock.withLock { overlap } }
+	func run(_ owner: UUID, label: String) {
+		lock.withLock {
+			if !owners.insert(owner).inserted { overlap = true }
+			labels.append(label); maximum = max(maximum, owners.count)
+		}
+		_ = gate.wait(timeout: .now() + 5)
+		lock.withLock { owners.remove(owner); finished += 1 }
+	}
+	func release() { for _ in 0..<4 { gate.signal() } }
 }

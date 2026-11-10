@@ -15,7 +15,7 @@ public actor TorrentStorage {
 		coordinator: StorageCoordinator = .shared, preparedState: PreparedTransferState? = nil, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TorrentStorage {
 		guard preparedState == nil || preparedState?.directory == stateDirectory else { throw StorageFailure.invalid("prepared checkpoint directory") }
 		let worker = StorageWorker()
-		let state = try await worker.run { cancellation in
+		let state = try await worker.run(bulk: true) { cancellation in
 			let layout = try StorageLayout(metadata: metadata)
 			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, anchoredState: preparedState?.anchor, event: event, check: cancellation.check)
 			try cancellation.check(); return state

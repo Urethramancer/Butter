@@ -15,7 +15,10 @@ public struct SessionTransferSnapshot: Sendable {
 	public let state: ManagedTransferSnapshot
 	public let error: String
 	public let trackers: [SessionTrackerSnapshot]
+	public let activity: SessionTransferActivity?
 }
+
+public enum SessionTransferActivity: Sendable, Equatable { case checking, moving, renaming }
 
 public struct SessionEvent: Sendable {
 	public let kind: String
@@ -38,6 +41,7 @@ private final class SessionEntry {
 	var error = ""
 	var closed = false
 	var running = false
+	var activity: SessionTransferActivity?
 	var receipts: [URL] = []
 	var downloadLimit: Int
 	var uploadLimit: Int
@@ -65,24 +69,29 @@ public actor TorrentSession {
 	private let webSeedTransport: (any HTTPTransport)?
 	private let dhtBootstrap: [NetworkEndpoint]?
 	private let localDiscoveryFactory: LocalDiscoveryFactory?
+	private let storageEvent: @Sendable (String, StorageEvent) -> Void
 	private var trackerClient: TrackerClient?
 	private var network: SessionPeerNetwork?
 	private var peerSettings: SessionPeerSettings?
 	private var networkError = ""
 	private var networkChanging = false
 	private var closed = false
-	private let commands = TransferPermits(1)
+	private let commands = SessionCommandGate()
+	private let publication = TransferPermits(1)
+	private let routing = TransferPermits(1)
+	private let trackerSetup = TransferPermits(1)
 	private var entries: [SessionEntry] = []
 	private var events: [SessionEvent] = []
 	private var peerHints: PeerCandidateQueue<SessionPeerHint>?
 	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
-		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient(), webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil, localDiscoveryFactory: LocalDiscoveryFactory? = nil) {
+		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient(), webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil, localDiscoveryFactory: LocalDiscoveryFactory? = nil, storageEvent: @escaping @Sendable (String, StorageEvent) -> Void = { _, _ in }) {
 		repository = TransferRepository(root: storage); self.configuration = configuration; self.resources = resources; budget = TCPPeerBudget(limit: maximumPeers)
 		self.loopbackOnly = loopbackOnly; self.clock = clock
 		self.httpTracker = httpTracker
 		self.webSeedTransport = webSeedTransport
 		self.dhtBootstrap = dhtBootstrap
 		self.localDiscoveryFactory = localDiscoveryFactory
+		self.storageEvent = storageEvent
 		peerID = Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
 	}
 	public var currentPeerSettings: SessionPeerSettings {
@@ -94,7 +103,7 @@ public actor TorrentSession {
 		try TransferRepository.validateID(id)
 		let selected = selected?.isEmpty == true ? nil : selected
 		guard destination.isFileURL, destination.path.hasPrefix("/"), !destination.path.utf8.contains(0) else { throw StorageFailure.invalid("absolute destination") }
-		return try await serial {
+		return try await serial(id: id, publishing: true) {
 			guard !self.entries.contains(where: { $0.id == id }) else { throw StorageFailure.collision("transfer identifier") }
 			guard self.entries.count < 10_000 else { throw PeerFailure.limit("session transfers") }
 			var metadata = try await self.repository.metadata(id: id, source: source, restore: restore)
@@ -108,7 +117,7 @@ public actor TorrentSession {
 			var owner: ManagedTransfer?
 			do {
 				let managed = try await ManagedTransfer.open(metadata: metadata, destination: destination, stateDirectory: prepared.directory,
-					selected: selected, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport); owner = managed
+					selected: selected, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport, event: { self.storageEvent(id, $0) }); owner = managed
 				await self.observeDiscovery(id: id, owner: managed)
 				var snapshot = try await managed.snapshot()
 				if !snapshot.storage.needsRecovery { try await managed.recheck(); snapshot = try await managed.snapshot() }
@@ -129,7 +138,7 @@ public actor TorrentSession {
 		}
 	}
 	public func run(id: String, running: Bool, downloadLimit: Int? = nil, uploadLimit: Int? = nil) async throws {
-		try await serial {
+		try await serial(id: id) {
 			let entry = try self.entry(id)
 			if downloadLimit != nil || uploadLimit != nil {
 				let down = downloadLimit ?? entry.downloadLimit, up = uploadLimit ?? entry.uploadLimit
@@ -143,19 +152,22 @@ public actor TorrentSession {
 		}
 	}
 	public func pause(id: String) async throws {
-		try await serial { try await self.pauseEntry(self.entry(id)) }
+		try await serial(id: id) { try await self.pauseEntry(self.entry(id)) }
 	}
-	public func save(id: String) async throws { try await serial { try await self.entry(id).owner.save() } }
+	public func save(id: String) async throws { try await serial(id: id) { try await self.entry(id).owner.save() } }
 	public func recheck(id: String) async throws {
-		try await serial { let entry = try self.entry(id); try await entry.owner.recheck(); entry.error = "" }
+		try await serial(id: id) {
+			let entry = try self.entry(id); entry.activity = .checking; defer { entry.activity = nil }
+			try await entry.owner.recheck(); entry.error = ""
+		}
 	}
 	public func retry(id: String) async throws {
-		try await serial {
+		try await serial(id: id) {
 			let entry = try self.entry(id)
 			if !entry.closed { try await self.pauseEntry(entry) }
 			if entry.closed {
 				entry.owner = try await ManagedTransfer.open(metadata: entry.metadata, destination: entry.last.storage.destination,
-					stateDirectory: entry.prepared.directory, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: entry.prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport)
+					stateDirectory: entry.prepared.directory, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: entry.prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport, event: { self.storageEvent(id, $0) })
 				await self.observeDiscovery(id: id, owner: entry.owner)
 				entry.closed = false
 			}
@@ -165,8 +177,10 @@ public actor TorrentSession {
 		}
 	}
 	public func changeStorage(id: String, change: TransferStorageChange) async throws {
-		try await serial {
+		try await serial(id: id) {
 			let entry = try self.entry(id)
+			switch change { case .move: entry.activity = .moving; case .rename: entry.activity = .renaming; default: break }
+			defer { entry.activity = nil }
 			do {
 				try await entry.owner.changeStorage(change)
 				entry.last = try await entry.owner.snapshot(); entry.error = ""
@@ -175,14 +189,14 @@ public actor TorrentSession {
 		}
 	}
 	public func export(id: String) async throws -> Data {
-		try await serial {
+		try await serial(id: id) {
 			let entry = try self.entry(id)
 			let data = try await entry.owner.exportMetadata(), metadata = try TorrentMetadata(data)
 			return metadata.trackerTiers == entry.metadata.trackerTiers ? data : try metadata.withTrackerTiers(entry.metadata.trackerTiers)
 		}
 	}
 	public func appendTracker(id: String, tracker: String) async throws {
-		try await serial {
+		try await serial(id: id, publishing: true) {
 			let entry = try self.entry(id)
 			guard !entry.metadata.inspection.private else { throw MetadataError.invalid("private trackers cannot be appended") }
 			let candidate = try self.appending(tracker, to: entry.metadata)
@@ -192,7 +206,7 @@ public actor TorrentSession {
 		}
 	}
 	public func magnet(id: String) async throws -> String {
-		try await serial { let entry = try self.entry(id); return Magnet(hashes: entry.metadata.hashes, name: entry.metadata.inspection.name, trackers: entry.metadata.trackerTiers.flatMap({ $0 })).uri }
+		try await serial(id: id) { let entry = try self.entry(id); return Magnet(hashes: entry.metadata.hashes, name: entry.metadata.inspection.name, trackers: entry.metadata.trackerTiers.flatMap({ $0 })).uri }
 	}
 	@discardableResult public func connect(id: String, to endpoint: NetworkEndpoint, utp: UTPTransport? = nil) async throws -> UUID {
 		guard !closed, !networkChanging else { throw NetworkFailure.busy }
@@ -207,7 +221,7 @@ public actor TorrentSession {
 		return try await owner.connect(to: endpoint, utp: utp)
 	}
 	public func remove(id: String, trash: Bool = false, retainState: Bool = false, trashDirectory: URL? = nil) async throws -> [URL] {
-		try await serial {
+		try await serial(id: id, publishing: true) {
 			let entry = try self.entry(id)
 			do {
 				entry.running = false; try await self.refreshRouting()
@@ -223,7 +237,7 @@ public actor TorrentSession {
 	}
 	public func forget(id: String) async throws {
 		try TransferRepository.validateID(id)
-		try await serial { guard !self.entries.contains(where: { $0.id == id }) else { throw StorageFailure.invalid("cannot forget a live transfer") }; try await self.repository.discard(id: id) }
+		try await serial(id: id, publishing: true) { guard !self.entries.contains(where: { $0.id == id }) else { throw StorageFailure.invalid("cannot forget a live transfer") }; try await self.repository.discard(id: id) }
 	}
 	public func shutdown() async throws {
 		try await serial {
@@ -239,20 +253,25 @@ public actor TorrentSession {
 		}
 	}
 	public func snapshot() async throws -> TorrentSessionSnapshot {
-		try await serial {
-			var snapshots: [SessionTransferSnapshot] = []
-			for entry in self.entries {
-				if !entry.closed { entry.last = try await entry.owner.snapshot() }
-				let messages = await entry.tracker?.messages() ?? entry.trackerMessages
-				let fallback = await entry.tracker?.failure() ?? entry.trackerFailure
-				let trackers = entry.metadata.trackerTiers.flatMap({ $0 }).map { url in SessionTrackerSnapshot(url: url, message: URL(string: url).flatMap { messages[$0] } ?? fallback) }
-				snapshots.append(SessionTransferSnapshot(id: entry.id, metadata: entry.metadata, state: entry.last, error: entry.error, trackers: trackers))
+		try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }
+		var snapshots: [SessionTransferSnapshot] = []
+		for entry in self.entries {
+			var sampled = false
+			if !entry.closed, let token = await commands.tryAcquire(entry.id) {
+				guard !entry.closed, entries.contains(where: { $0 === entry }) else { await commands.release(token); continue }
+				do { entry.last = try await entry.owner.snapshot(); sampled = true; await commands.release(token) }
+				catch { await commands.release(token); throw error }
 			}
-			let wire = await self.network?.snapshot()
-			let status = SessionNetworkSnapshot(port: wire?.port ?? 0, udp: wire?.udp ?? false, error: wire?.error.isEmpty == false ? wire!.error : self.networkError,
-				pendingHandshakes: wire?.pendingHandshakes ?? 0, peers: self.budget.count, discovery: wire?.discovery ?? .disabled, localDiscovery: wire?.localDiscovery ?? false)
-			let result = TorrentSessionSnapshot(transfers: snapshots, events: self.events, network: status); self.events.removeAll(); return result
+			let messages = await entry.tracker?.messages() ?? entry.trackerMessages
+			let fallback = await entry.tracker?.failure() ?? entry.trackerFailure
+			let trackers = entry.metadata.trackerTiers.flatMap({ $0 }).map { url in SessionTrackerSnapshot(url: url, message: URL(string: url).flatMap { messages[$0] } ?? fallback) }
+			let state = sampled ? entry.last : ManagedTransferSnapshot(storage: entry.last.storage, transfer: entry.running ? entry.last.transfer : nil, running: entry.running && !entry.closed)
+			snapshots.append(SessionTransferSnapshot(id: entry.id, metadata: entry.metadata, state: state, error: entry.error, trackers: trackers, activity: entry.activity))
 		}
+		let wire = await self.network?.snapshot()
+		let status = SessionNetworkSnapshot(port: wire?.port ?? 0, udp: wire?.udp ?? false, error: wire?.error.isEmpty == false ? wire!.error : self.networkError,
+			pendingHandshakes: wire?.pendingHandshakes ?? 0, peers: self.budget.count, discovery: wire?.discovery ?? .disabled, localDiscovery: wire?.localDiscovery ?? false)
+		let result = TorrentSessionSnapshot(transfers: snapshots, events: self.events, network: status); self.events.removeAll(); return result
 	}
 	@discardableResult public func configurePeers(_ settings: SessionPeerSettings) async throws -> UInt16 {
 		try settings.validate()
@@ -305,7 +324,7 @@ public actor TorrentSession {
 		}
 	}
 	public func close() async throws {
-		try await commands.acquire()
+		let token = try await commands.acquire()
 		do {
 			if !closed {
 				networkChanging = true; defer { networkChanging = false }
@@ -323,10 +342,15 @@ public actor TorrentSession {
 				}
 				if let failure { throw failure }; closed = true
 			}
-			await commands.release()
-		} catch { await commands.release(); throw error }
+			await commands.release(token)
+		} catch { await commands.release(token); throw error }
 	}
 	private func refreshRouting() async throws {
+		try await routing.acquire()
+		do { try await updateRouting(); await routing.release() }
+		catch { await routing.release(); throw error }
+	}
+	private func updateRouting() async throws {
 		guard let network else { return }
 		let targets = entries.filter { $0.running && !$0.closed && $0.error.isEmpty }.map {
 			SessionPeerTarget(id: $0.id, hashes: [$0.metadata.hashes.v1, $0.metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap({ $0 }), owner: $0.owner)
@@ -410,6 +434,11 @@ public actor TorrentSession {
 		}
 	}
 	private func startTracker(_ entry: SessionEntry) async {
+		do {
+			try await trackerSetup.acquire(); await startTrackerState(entry); await trackerSetup.release()
+		} catch { entry.trackerFailure = error.localizedDescription }
+	}
+	private func startTrackerState(_ entry: SessionEntry) async {
 		guard entry.tracker == nil, entry.running, !entry.closed, !entry.metadata.trackerTiers.isEmpty else { return }
 		do {
 			if network == nil && peerSettings == nil {
@@ -445,10 +474,24 @@ public actor TorrentSession {
 	}
 	private func emit(_ event: SessionEvent) { if events.count >= 1024 { events.removeFirst() }; events.append(event) }
 	private static func overlaps(_ a: InfoHashes, _ b: InfoHashes) -> Bool { (a.v1 != nil && a.v1 == b.v1) || (a.v2 != nil && a.v2 == b.v2) }
-	private func serial<T: Sendable>(_ body: () async throws -> T) async throws -> T {
-		try await commands.acquire()
-		do { try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }; let result = try await body(); await commands.release(); return result }
-		catch { await commands.release(); throw error }
+	private func serial<T: Sendable>(id: String? = nil, publishing: Bool = false, _ body: () async throws -> T) async throws -> T {
+		let token = try await commands.acquire(id); var ownsPublication = false
+		do {
+			try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }
+			if publishing { try await publication.acquire(); ownsPublication = true }
+			try Task.checkCancellation()
+			let result = try await body()
+			if let id { await cache(id) }
+			if ownsPublication { await publication.release() }; await commands.release(token); return result
+		} catch {
+			if ownsPublication { await publication.release() }; await commands.release(token); throw error
+		}
+	}
+	private func cache(_ id: String) async {
+		guard let entry = entries.first(where: { $0.id == id }), !entry.closed else { return }
+		do { entry.last = try await entry.owner.snapshot() }
+		catch is CancellationError { }
+		catch { entry.error = error.localizedDescription }
 	}
 	deinit { if let network { Task { await network.shutdown() } } }
 }

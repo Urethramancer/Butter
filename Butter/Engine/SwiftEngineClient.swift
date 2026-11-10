@@ -138,8 +138,10 @@ actor NativeSnapshotMapper {
 				mappedPeers.append(PeerSnapshot(address: URL(string: seed.url)?.host ?? "", client: "Web seed", down: rates.0, up: 0, utp: false))
 			}
 			let complete = done == wanted
+			let activity: String?
+			switch row.activity { case .checking: activity = row.state.running ? "Checking" : nil; case .moving: activity = "Moving"; case .renaming: activity = "Renaming"; case nil: activity = nil }
 			rows.append(TransferSnapshot(id: row.id, name: metadata.inspection.name, path: disk.destination.path,
-				state: row.state.running ? (complete ? "Seeding" : "Downloading") : "Paused", error: wire?.storageError ?? row.error, metadata: true,
+				state: activity ?? (row.state.running ? (complete ? "Seeding" : "Downloading") : "Paused"), error: wire?.storageError ?? row.error, metadata: true,
 				private: metadata.inspection.private, complete: complete, progress: wanted == 0 ? 1 : Double(done) / Double(wanted), wanted: wanted, done: done, total: total,
 				down: row.state.running ? rates.0 : 0, up: row.state.running ? rates.1 : 0, downloaded: sample.down, uploaded: sample.up,
 				demand: wire?.peers.contains(where: \.remoteInterested) ?? false, hashes: metadata.hashes.hex,

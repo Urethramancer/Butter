@@ -46,11 +46,11 @@ public actor ManagedTransfer {
 	}
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
 		configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared,
-		budget: TCPPeerBudget? = nil, preparedState: PreparedTransferState? = nil, peerID: Data? = nil, clock: any TransportClock = ContinuousTransportClock(), webSeedTransport: (any HTTPTransport)? = nil) async throws -> ManagedTransfer {
+		budget: TCPPeerBudget? = nil, preparedState: PreparedTransferState? = nil, peerID: Data? = nil, clock: any TransportClock = ContinuousTransportClock(), webSeedTransport: (any HTTPTransport)? = nil, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> ManagedTransfer {
 		try configuration.validate()
 		let identity = peerID ?? Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
 		guard identity.count == 20 else { throw PeerFailure.invalid("peer identifier") }
-		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory, selected: selected, preparedState: preparedState)
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory, selected: selected, preparedState: preparedState, event: event)
 		return ManagedTransfer(metadata: metadata, storage: storage, configuration: configuration, resources: resources, budget: budget, peerID: identity, clock: clock, webSeedTransport: webSeedTransport)
 	}
 	public func start() async throws {

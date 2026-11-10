@@ -38,7 +38,7 @@ public actor TransferRepository {
 	}
 	public func metadata(id: String, source: URL, restore: Bool) async throws -> TorrentMetadata {
 		try Self.validateID(id); let root = root
-		return try await worker.run { _ in
+		return try await worker.run(bulk: true) { _ in
 			let directory = try StorageDirectory(root)
 			let lease = try StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
 			if restore, try Self.record(id, in: directory) != nil { return try TorrentMetadata(directory.read(id + ".torrent", maximum: 33_554_432)) }
@@ -47,7 +47,7 @@ public actor TransferRepository {
 	}
 	public func prepare(id: String, restore: Bool) async throws -> PreparedTransferState {
 		try Self.validateID(id); let root = root
-		return try await worker.run { _ in
+		return try await worker.run(bulk: true) { _ in
 			let directory = try StorageDirectory(root)
 			let reservation = RepositoryReservation(try StorageLease(directory: directory, path: ".native.lock"))
 			if let record = try Self.record(id, in: directory) {
@@ -61,7 +61,7 @@ public actor TransferRepository {
 	}
 	public func publish(id: String, metadata: TorrentMetadata, state: PreparedTransferState) async throws {
 		try Self.validateID(id); let root = root
-		try await worker.run { _ in
+		try await worker.run(bulk: true) { _ in
 			let directory = try StorageDirectory(root, create: false)
 			guard try state.parentIdentity.sameFile(directory.identity()) else { throw StorageFailure.recoveryRequired("session repository was replaced") }
 			let lease = try state.reservation.take() ?? StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
@@ -81,7 +81,7 @@ public actor TransferRepository {
 	}
 	public func abandon(_ state: PreparedTransferState) async throws {
 		let root = root
-		try await worker.run { _ in
+		try await worker.run(bulk: true) { _ in
 			let directory = try StorageDirectory(root, create: false)
 			guard try state.parentIdentity.sameFile(directory.identity()) else { throw StorageFailure.recoveryRequired("session repository was replaced") }
 			let lease = try state.reservation.take() ?? StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
@@ -96,7 +96,7 @@ public actor TransferRepository {
 	/// Discards only recognised native state and the standard torrent; legacy resume files remain intact.
 	public func discard(id: String) async throws {
 		try Self.validateID(id); let root = root
-		try await worker.run { _ in
+		try await worker.run(bulk: true) { _ in
 			let directory = try StorageDirectory(root)
 			let lease = try StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
 			if let record = try Self.record(id, in: directory) {

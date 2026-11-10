@@ -128,10 +128,17 @@ favour integrity over startup/throughput until transfer benchmarks and immutable
 engine caching are available. Descriptor-relative operations refuse symlinked
 descendants and destructive access to hard-linked files. A shared coordinator
 protects live transfer paths; an OS lock protects each checkpoint directory.
-Opening is asynchronous. Disk/hash commands share one serial worker, with at most
-eight pending commands per session and sixty-four across sessions. Payload paths
+Opening is asynchronous. Disk/hash commands are serial per storage owner, with
+four shared workers, eight pending commands per owner and sixty-four overall.
+Bulk filesystem work can occupy three workers, leaving capacity for shorter
+operations such as snapshots and checkpoints. Payload paths
 cannot overlap the checkpoint directory; missing payload files still reserve
 their paths against other transfers.
+
+The native session orders commands per transfer, retains a barrier for settings
+and shutdown, and samples other transfers while a filesystem operation is busy.
+Busy rows use their last storage snapshot and report the current move, rename or
+check activity. Repository publication remains serialised under its existing lease.
 
 Imports copy without deleting their sources. Rename, selection, move and Trash
 operations use durable journals, exclusive publication and content-checked copies

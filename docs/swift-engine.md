@@ -1037,3 +1037,29 @@ flushed files match. Select them with `BUTTER_REFERENCE_FILTER=lsd`, optionally
 protocol comparisons. Package tests, focused Release/Thread Sanitizer checks and
 the shared app contract pass. Physical-interface and router acceptance remain
 separate checks, and phase 11 is still in progress.
+
+### Responsive storage commands and snapshots
+
+Commands now hold a cancellable lease for their transfer. Settings, blocklist
+changes and shutdown retain exclusive barriers. Waiting barriers cannot be
+overtaken by later commands. Repository writes, listener setup and routing
+updates have separate serial ownership so unrelated operations can overlap
+without creating duplicate imports or competing listeners.
+
+Snapshots reuse the last storage state for a busy row, with the existing Moving,
+Renaming and Checking labels, and refresh idle rows independently. They drain
+events once after sampling. The durable-move fixture holds one or four actual
+filesystem operations while another transfer snapshots, pauses and exports.
+Shutdown waits for the moves to finish, and exact bytes and one event per move
+are verified afterwards.
+
+The fixture exposed a second blocking point in the global serial disk queue.
+The disk pool now runs four workers with strict FIFO order per storage owner,
+retaining the eight-per-owner and 64-total admission limits. At most three
+workers run bulk jobs, reserving capacity for shorter disk work. Tests verify
+that an ordinary job cannot bypass a blocked bulk job for its own owner.
+Package tests, focused Release/Thread Sanitizer checks, the complete storage
+target under Thread Sanitizer, the shared app contract and 36 independent
+libtorrent session transfers pass. No production transfer backend is changed.
+The disposable-volume recovery harness also passes its journal/checkpoint child
+interruptions, real ENOSPC and read-only remount cases with the new scheduler.
