@@ -610,10 +610,11 @@ public actor TorrentSession {
 					let stored = try await self.repository.retainedMetadata(id: winner.id)
 					guard stored == nil || stored?.originalInfo == metadata.originalInfo else { throw MetadataError.invalid("retained magnet identity") }
 					entry = try await self.publishMetadata(id: winner.id, metadata: metadata, destination: winner.destination, restore: stored != nil, configuration: configuration, pending: winner.state)
-					self.entries.append(entry)
 					if winner.running, entry.error.isEmpty {
-						do { try await entry.owner.start(); entry.running = true }
-						catch { entry.error = error.localizedDescription }
+						do {
+							try await entry.owner.start()
+							entry.last = try await entry.owner.snapshot(); entry.running = true
+						} catch { try? await entry.owner.pause(); entry.error = error.localizedDescription }
 					}
 				}
 				let resolved = Set(aliases.map(\.id))
@@ -622,6 +623,7 @@ public actor TorrentSession {
 					do { try await self.repository.retireMagnet(alias.state) }
 					catch { Self.log.error("Could not retire pending magnet state: \(error.localizedDescription)") }
 				}
+				if existing == nil { self.entries.append(entry) }
 				self.pendingMagnets.removeAll { resolved.contains($0.id) }
 				for alias in aliases where alias.id != entry.id { self.emit(SessionEvent(kind: "duplicate", id: alias.id, existingID: entry.id)) }
 				try await self.refreshRouting()
