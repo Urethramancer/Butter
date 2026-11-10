@@ -8,7 +8,8 @@ public actor TorrentStorage {
 	let worker: StorageWorker
 	let state: StorageState
 	public nonisolated let layout: StorageLayout
-	private init(state: StorageState, worker: StorageWorker) { self.state = state; self.worker = worker; layout = state.layout }
+	public nonisolated let infoHashes: InfoHashes
+	private init(state: StorageState, worker: StorageWorker) { self.state = state; self.worker = worker; layout = state.layout; infoHashes = state.metadata.hashes }
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
 		coordinator: StorageCoordinator = .shared, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TorrentStorage {
 		let worker = StorageWorker()
@@ -25,6 +26,10 @@ public actor TorrentStorage {
 	}
 	public func write(piece: Int, offset: Int, data: Data) async throws {
 		try await worker.run { [state] cancellation in try state.write(piece: piece, offset: offset, data: data, check: cancellation.check) }
+	}
+	/// Returns one immutable, hash-checked piece, bounded by the layout's 16 MiB limit.
+	public func readVerifiedPiece(_ piece: Int) async throws -> Data {
+		try await worker.run { [state] cancellation in try state.verifiedPiece(piece, check: cancellation.check) }
 	}
 	@discardableResult public func verify(piece: Int) async throws -> Bool {
 		try await worker.run { [state] cancellation in try state.verify(piece: piece, check: cancellation.check) }
@@ -212,6 +217,14 @@ final class StorageState: @unchecked Sendable {
 		record.set(piece, false)
 		let valid = try checkedPiece(piece, check: check).valid
 		record.set(piece, valid); try save(); return valid
+	}
+	func verifiedPiece(_ piece: Int, check: () throws -> Void) throws -> Data {
+		try ready(); let length = try layout.length(of: piece); try invalidateChangedFiles()
+		guard record.contains(piece) else { throw StorageFailure.invalid("piece has not been verified") }
+		do {
+			let result = try checkedPiece(piece, range: 0..<length, check: check)
+			guard result.valid else { throw StorageFailure.invalid("verified payload failed its hash") }; return result.bytes
+		} catch { record.set(piece, false); throw error }
 	}
 	private func checkedPiece(_ piece: Int, range: Range<Int>? = nil, check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
 		let length = try layout.length(of: piece)

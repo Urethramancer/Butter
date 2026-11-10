@@ -1,0 +1,108 @@
+import Foundation
+import Testing
+import ButterTorrentMetadata
+import ButterTorrentNetworking
+import ButterTorrentStorage
+@testable import ButterTorrentEngine
+
+func eventually(_ operation: @escaping @Sendable () async throws -> Bool) async throws {
+	let deadline = ProcessInfo.processInfo.systemUptime + 6
+	while ProcessInfo.processInfo.systemUptime < deadline { if try await operation() { return }; try await Task.sleep(for: .milliseconds(5)) }
+	throw PeerFailure.invalid("test deadline")
+}
+
+final class TransferFixture {
+	let root: URL
+	let metadata: TorrentMetadata
+	let bytes: Data
+	let lengths = [10003, 50019, 30000, 0]
+	let names = ["a", "skip", "c", "empty"]
+	var engines: [TCPTransfer] = []
+	var stores: [TorrentStorage] = []
+	var listeners: [TCPListener] = []
+	init() throws {
+		root = FileManager.default.temporaryDirectory.appendingPathComponent("butter-peer-" + UUID().uuidString).resolvingSymlinksInPath()
+		try FileManager.default.createDirectory(at: root.appendingPathComponent("source/bundle"), withIntermediateDirectories: true)
+		let total: Int = lengths.reduce(0, +)
+		var payload = Data(count: total)
+		for index in 0..<total { payload[index] = UInt8((index * 17 + index / 13) % 251) }; bytes = payload
+		var offset = 0, files: [BencodeValue] = [], hashes = Data()
+		for (name, size) in zip(names, lengths) {
+			try bytes.subdata(in: offset..<(offset + size)).write(to: root.appendingPathComponent("source/bundle/" + name)); offset += size
+			files.append(.dictionary([Data("path".utf8): .list([.bytes(Data(name.utf8))]), Data("length".utf8): .integer(Int64(size))]))
+		}
+		for start in stride(from: 0, to: bytes.count, by: 32768) { hashes.append(TorrentHasher.hash(bytes.subdata(in: start..<min(start + 32768, bytes.count))).sha1) }
+		let info: [Data: BencodeValue] = [Data("name".utf8): .bytes(Data("bundle".utf8)), Data("files".utf8): .list(files), Data("piece length".utf8): .integer(32768), Data("pieces".utf8): .bytes(hashes)]
+		metadata = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
+	}
+	func transfer(_ name: String, seed: Bool = false, selected: [Bool]? = nil, configuration: TCPTransferConfiguration = .init(), clock: any TransportClock = ContinuousTransportClock()) async throws -> TCPTransfer {
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent(name), stateDirectory: root.appendingPathComponent(name + "-state"), selected: selected)
+		stores.append(storage)
+		if seed { try await storage.importFiles(from: root.appendingPathComponent("source")); for piece in 0..<storage.layout.pieceCount { #expect(try await storage.verify(piece: piece)) } }
+		let engine = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration, clock: clock)
+		engines.append(engine); return engine
+	}
+	func listen() async throws -> TCPListener {
+		let listener = try await TCPListener.listen(address: IPAddress("127.0.0.1")); listeners.append(listener); return listener
+	}
+	func join(_ download: TCPTransfer, _ seed: TCPTransfer) async throws {
+		let listener = try await listen()
+		let incoming = Task { try await seed.attach(listener.accept(timeout: 3)) }
+		do { _ = try await download.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port)); _ = try await incoming.value }
+		catch { incoming.cancel(); _ = try? await incoming.value; throw error }
+	}
+	func scripted(_ engine: TCPTransfer, identity: UInt8 = 42, hash: Data? = nil) async throws -> WirePeer {
+		let listener = try await listen(), connecting = Task { try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port)) }
+		let stream = try await listener.accept(timeout: 3), peer = WirePeer(stream: stream)
+		_ = try await connecting.value
+		try await peer.hello(hash: hash ?? metadata.hashes.v1!, identity: identity)
+		return peer
+	}
+	func clean() async {
+		for engine in engines { try? await engine.shutdown() }
+		for listener in listeners { try? await listener.shutdown() }
+		for storage in stores { try? await storage.shutdown() }
+		try? FileManager.default.removeItem(at: root)
+	}
+}
+
+func transferFixture(_ body: (TransferFixture) async throws -> Void) async throws {
+	let fixture = try TransferFixture()
+	do { try await body(fixture) } catch { await fixture.clean(); throw error }; await fixture.clean()
+}
+
+final class WirePeer {
+	let stream: TCPStream
+	var decoder = PeerWireDecoder()
+	init(stream: TCPStream) { self.stream = stream }
+	func hello(hash: Data, identity: UInt8, fragmented: Bool = true) async throws {
+		let hello = try PeerHandshake(infoHash: hash, peerID: Data(repeating: identity, count: 20))
+		if fragmented { for byte in hello.encoded { try await stream.write(Data([byte])) } } else { try await stream.write(hello.encoded) }
+		while true {
+			if try decoder.handshake() != nil { return }
+			let bytes = try await stream.read(timeout: 3)
+			guard !bytes.isEmpty else { throw PeerFailure.closed }; try decoder.feed(bytes)
+		}
+	}
+	func send(_ message: PeerMessage) async throws { try await stream.write(message.encoded()) }
+	func next() async throws -> PeerMessage {
+		while true {
+			if let message = try decoder.next() { return message }
+			let bytes = try await stream.read(timeout: 3)
+			guard !bytes.isEmpty else { throw PeerFailure.closed }; try decoder.feed(bytes)
+		}
+	}
+	func requests(_ count: Int) async throws -> [PeerBlock] {
+		var requests: [PeerBlock] = []
+		while requests.count < count { if case .request(let block) = try await next() { requests.append(block) } }; return requests
+	}
+	func seed(pieceCount: Int) async throws {
+		try await send(.bitfield(PieceBitfield(count: pieceCount, pieces: Set(0..<pieceCount)).bytes)); try await send(.unchoke)
+	}
+	func reply(_ block: PeerBlock, bytes: Data, corrupt: Bool = false) async throws {
+		let start = block.piece * 32768 + block.offset
+		var data = bytes.subdata(in: start..<(start + block.length)); if corrupt { data[0] ^= 255 }
+		try await send(.piece(block.piece, block.offset, data))
+	}
+	deinit { stream.close() }
+}

@@ -55,6 +55,11 @@ extension TorrentStorage {
 			var entries: [StorageJournal.Entry] = []
 			for index in state.record.paths.indices where !state.layout.files[index].pad {
 				let (target, path) = state.location(index)
+				if state.layout.files[index].size == 0, let existing = try target.inspect(path) {
+					guard existing.size == 0 else { throw StorageFailure.collision(path) }
+					if let original = try source.inspect(state.record.paths[index]), original.size != 0 { throw StorageFailure.invalid("import file length") }
+					continue
+				}
 				if let entry = try state.entry(index, source: source, path: state.record.paths[index], target: target, destination: path, move: false, check: cancellation.check) {
 					guard entry.original.size == state.layout.files[index].size else { throw StorageFailure.invalid("import file length") }; entries.append(entry)
 				}
