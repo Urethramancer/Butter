@@ -10,8 +10,8 @@ actor InjectedDatagrams: DatagramTransport {
 	let sent = AsyncStream<(Data, NetworkEndpoint)>.makeStream()
 	private var closed = false
 	private(set) var sentCount = 0
-	init() throws {
-		localEndpoint = try NetworkEndpoint("127.0.0.1", port: 12345)
+	init(endpoint: NetworkEndpoint? = nil) throws {
+		localEndpoint = try endpoint ?? NetworkEndpoint("127.0.0.1", port: 12345)
 		let pair = AsyncStream<NetworkDatagram>.makeStream(bufferingPolicy: .bufferingNewest(256))
 		datagrams = pair.stream; continuation = pair.continuation
 	}

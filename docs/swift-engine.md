@@ -1142,3 +1142,9 @@ Discard journals the owned checkpoint directory and repository file identities
 before removing state. Restore rejects a partially discarded record until the
 discard is retried. The retry checks the remaining identities and preserves
 replacement files, unrelated entries, legacy resume data and payload bytes.
+
+The UDP mapping client can negotiate PCP MAP before falling back to NAT-PMP
+on an IPv4 unsupported-version reply. PCP exchanges are scoped to the gateway
+and mapping nonce, which is retained for renewal and removal. Injected packets
+cover IPv4 and IPv6 mapping, nonce mismatch, renewal, removal and IPv4 fallback.
+[RFC 6887](https://www.rfc-editor.org/rfc/rfc6887.html)

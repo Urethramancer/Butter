@@ -6,6 +6,7 @@ public enum UDPReply: Hashable, Sendable {
 	case tracker(UInt32)
 	case dht(Data)
 	case natPMP(opcode: UInt8, internalPort: UInt16?)
+	case pcpMap(nonce: Data?)
 }
 
 public enum UDPChannel: Sendable { case dht, utp, localDiscovery, ssdp, natPMP, raw }
@@ -44,14 +45,16 @@ public actor UDPDispatcher {
 			await self?.ended()
 		}
 	}
-	public func exchange(_ data: Data, with peer: NetworkEndpoint, reply: UDPReply, timeout: TimeInterval) async throws -> NetworkDatagram {
+	public func exchange(_ data: Data, with peer: NetworkEndpoint, reply: UDPReply, alternate: UDPReply? = nil, timeout: TimeInterval) async throws -> NetworkDatagram {
 		try Task.checkCancellation()
 		guard !closed else { throw NetworkFailure.closed }
-		guard pending.count < 128 else { throw NetworkFailure.limit("UDP transactions") }
 		let key = Key(peer: peer, reply: reply)
-		guard pending[key] == nil else { throw NetworkFailure.busy }
+		let other = alternate.map { Key(peer: peer, reply: $0) }
+		guard pending.count + (other == nil ? 1 : 2) <= 128 else { throw NetworkFailure.limit("UDP transactions") }
+		guard pending[key] == nil, other.map({ pending[$0] == nil }) ?? true else { throw NetworkFailure.busy }
 		let waiter = NetworkWaiter<NetworkDatagram>(); pending[key] = waiter; start()
-		defer { pending[key] = nil }
+		if let other { pending[other] = waiter }
+		defer { pending[key] = nil; if let other { pending[other] = nil } }
 		try await transport.send(data, to: peer)
 		return try await waiter.value(timeout: timeout, clock: clock)
 	}
@@ -86,6 +89,11 @@ public actor UDPDispatcher {
 		if data.count >= 8, data[0] == 0, data[1] >= 128 {
 			candidates.append(.natPMP(opcode: data[1] & 127, internalPort: nil))
 			if let port = try? PacketBytes.uint16(data, at: 8) { candidates.append(.natPMP(opcode: data[1] & 127, internalPort: port)) }
+			if data.count == 8, data[2] == 0, data[3] == 1 { candidates.append(.pcpMap(nonce: nil)) }
+		}
+		if (24...1100).contains(data.count), data.count.isMultiple(of: 4), data[0] == 2, data[1] == 129 {
+			if data.count >= 60 { candidates.append(.pcpMap(nonce: data.subdata(in: 24..<36))) }
+			else if data.count == 24, data[3] != 0 { candidates.append(.pcpMap(nonce: nil)) }
 		}
 		for reply in candidates {
 			if let waiter = pending[Key(peer: packet.source, reply: reply)] { waiter.resolve(.success(packet)); return }
