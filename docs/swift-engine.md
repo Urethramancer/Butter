@@ -307,3 +307,73 @@ Protocol references: [BEP 15](https://www.bittorrent.org/beps/bep_0015.html),
 [BEP 14](https://www.bittorrent.org/beps/bep_0014.html),
 [RFC 6886](https://www.rfc-editor.org/rfc/rfc6886) and
 [UPnP WANIPConnection v2](https://upnp.org/specs/gw/UPnP-gw-WANIPConnection-v2-Service.pdf).
+
+## Storage and recovery foundations (phase 6)
+
+Completed and tagged `v0.9.0`.
+
+`ButterTorrentStorage` supplies piece-to-file mapping, virtual padding, selective
+storage, verification and durable recovery without AppKit or SwiftUI. Opening and
+all I/O run on one shared serial disk/hash worker, bounded to eight pending
+commands per session and sixty-four globally. Commands settle once; cancellation
+is checked between bounded blocks and filesystem transaction steps. Reads/writes
+are at most 1 MiB; hashing/copying uses 64 KiB blocks. Layout limits are 50,000
+files, 400,000 pieces and 16 MiB pieces. Selected empty files are retained.
+
+Skipped-file bytes use private per-file spill storage so a piece spanning a file
+boundary can still be verified. Selecting a spilled file journal-moves it to its
+normal path. Deselecting an already materialised file retains its bytes. Path
+components, normalisation/case collisions and file/directory conflicts are
+validated before I/O. Descendant traversal uses descriptor-relative `O_NOFOLLOW`
+opens; nonregular files and destructive access to hard links fail. A shared
+coordinator reserves paths, including absent files, across live transfers. An OS
+lock protects each checkpoint directory. Payload and checkpoint paths cannot
+overlap.
+
+The version 1 Codable binary-property-list checkpoint retains standard torrent
+metadata, selections, renamed paths, destination, counters, Trash receipts, file
+identity/timestamps and a compact verified-piece bitset. Record versions, counts,
+paths, identities, spare bits and counters are validated on restore. Cached pieces
+are rehashed before opening finishes: filesystem stamps alone cannot establish
+integrity on coarse filesystems. Changed or missing bytes invalidate affected
+progress. Verified reads hash the whole piece while retaining only the requested
+range, so returned bytes belong to the checked content. V1 and hybrid verification
+uses incremental SHA-1; pure v2 verification remains phase 8, and these bytes
+cannot be advertised as verified. Previously verified progress is durably
+invalidated before overwriting payload bytes. Failed invalidation does not touch
+those bytes and must succeed before a later write. File and directory flushes
+precede checkpoint publication; atomic replacement retains the previous record
+on failure. Existing libtorrent state files are not imported or rewritten.
+
+Imports copy and verify content without deleting their sources. Rename, move,
+selection and Trash operations first validate all targets and persist a bounded
+journal. Publication is exclusive; moves across volumes copy, flush and verify
+SHA-256 before publishing. Source copies are removed only after the destination
+checkpoint is durable. Journals record root/file identities and receipts and
+survive failures at every operation boundary. Recovery suppresses ordinary I/O
+and verified-piece advertising until reconciliation finishes. A copy published
+before its durable receipt requires explicit `acceptMatchingCopies` review;
+both paths remain intact until then. Conflicts, changed roots/content and unknown
+journal versions fail conservatively without discarding files.
+
+`Scripts/verify.sh native-storage` runs ten focused package tests plus a
+disposable-image harness linked to the current library build. It kills real
+children at 18 rename/import/selection/move/Trash boundaries, including partial
+multi-file operations, cross-volume publication and source deletion. Every managed
+byte is checked before recovery and every file/Trash receipt after recovery. Four
+additional child interruptions verify atomic checkpoint generations. An actually
+full HFS+ image proves ENOSPC preserves the prior checkpoint and verified payload;
+freeing space restores writes. A read-only remount proves EROFS preserves state.
+An edit after publication cannot inherit verified progress; corruption of a
+cross-volume destination blocks original-file deletion. The complete Debug/Release
+package suites cover 76 tests; storage cancellation and
+worker-limit cases run five independent times without retries.
+
+Production storage and transfers remain on libtorrent. Trash fixtures exercise
+the real journal/copy/rename/removal path using disposable destinations; native
+system destination selection and Finder interaction remain integration checks.
+The next gate is v1 TCP transfers in both reference interoperability directions.
+Cached-data rehashing and per-read piece checks trade throughput for a conservative
+foundation. Immutable engine caches and disk scheduling need repeatable performance
+measurement during transfer integration. No UI, sustained throughput or power-loss
+hardware acceptance is claimed.

@@ -1,7 +1,6 @@
 # Remaining audit and acceptance checks
 
 ## Swift torrent engine replacement
-- Phase 6: safe storage, selective layout, verification, checkpoints and interruption recovery.
 - Phase 7: v1 TCP downloads and seeding, both libtorrent interoperability directions.
 - Phase 8: metadata exchange, PEX, v2/hybrid transfers and private discovery enforcement.
 - Phase 9: negotiated peer encryption and plaintext fallback interoperability.
@@ -14,9 +13,10 @@
   do not push. Details and gates are in
   [the migration record](docs/swift-engine.md).
 
-## Filesystem interruption and failure matrix
-- Interrupt a real multi-file Trash operation and verify remaining files and Trash
-  receipts across relaunch.
+## Filesystem integration
+- Verify native system Trash destination selection and Finder receipt behaviour
+  when connecting the Swift adapter. Multi-file interruption recovery and receipt
+  bytes pass with disposable Trash directories, including cross-volume copies.
 
 ## Native interaction and appearance
 - Automate real drag/drop, blocklist import/export dialogs, destination-folder

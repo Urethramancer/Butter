@@ -114,7 +114,7 @@ final class StorageDirectory: @unchecked Sendable {
 	}
 	func remove(_ path: String, expected: FileStamp) throws {
 		try parent(path) { directory, name in
-			guard let current = try inspect(path), current.sameFile(expected) else { throw StorageFailure.recoveryRequired("source identity changed") }
+			guard let current = try inspect(path), current == expected else { throw StorageFailure.recoveryRequired("source identity or content stamp changed") }
 			guard unlinkat(directory, name, 0) == 0 else { throw diskError("Cannot remove managed file") }; try sync(directory)
 		}
 	}
@@ -129,6 +129,9 @@ final class StorageDirectory: @unchecked Sendable {
 		}
 	}
 	func digest(_ path: String, check: () throws -> Void) throws -> Data {
+		try checkedDigest(path, check: check).hash
+	}
+	func checkedDigest(_ path: String, check: () throws -> Void) throws -> (hash: Data, stamp: FileStamp) {
 		let file = try openFile(path); defer { close(file) }
 		let before = try stamp(file, shared: true)
 		var hash = SHA256(), offset: Int64 = 0
@@ -138,6 +141,6 @@ final class StorageDirectory: @unchecked Sendable {
 			hash.update(data: data); offset += Int64(data.count)
 		}
 		guard try stamp(file, shared: true) == before else { throw StorageFailure.invalid("file changed during copy") }
-		return Data(hash.finalize())
+		return (Data(hash.finalize()), before)
 	}
 }

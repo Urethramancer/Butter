@@ -14,7 +14,7 @@ public actor TorrentStorage {
 		let worker = StorageWorker()
 		let state = try await worker.run { cancellation in
 			let layout = try StorageLayout(metadata: metadata)
-			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, event: event)
+			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, event: event, check: cancellation.check)
 			try cancellation.check(); return state
 		}
 		return TorrentStorage(state: state, worker: worker)
@@ -58,7 +58,7 @@ final class StorageState: @unchecked Sendable {
 	let lease: StorageLease
 	var closed = false
 	var hasJournal = false
-	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, event: @escaping @Sendable (StorageEvent) -> Void) throws {
+	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
 		self.metadata = metadata; self.layout = layout; self.coordinator = coordinator; self.event = event
 		state = try StorageDirectory(stateDirectory)
 		lease = try StorageLease(directory: state)
@@ -88,7 +88,16 @@ final class StorageState: @unchecked Sendable {
 			hasJournal = try state.inspect("operation.plist") != nil
 			if !hasJournal {
 				try prepareEmptyFiles()
-				try invalidateChangedFiles()
+				// Stamps are hints: coarse filesystems can conceal same-size edits.
+				let cached = (0..<layout.pieceCount).filter { record.contains($0) }
+				record.verified = Data(repeating: 0, count: record.verified.count)
+				for piece in cached {
+					try check()
+					try invalidateChangedFiles()
+					do { record.set(piece, try checkedPiece(piece, check: check).valid) }
+					catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { }
+					catch StorageFailure.invalid("short payload read") { }
+				}
 				try save()
 			}
 		} catch { coordinator.release(owner); throw error }
@@ -152,7 +161,13 @@ final class StorageState: @unchecked Sendable {
 		_ = try layout.length(of: piece)
 		if verifiedOnly { try invalidateChangedFiles(); guard record.contains(piece) else { throw StorageFailure.invalid("piece has not been verified") } }
 		let segments = try layout.segments(piece: piece, offset: offset, count: count)
-		let before = verifiedOnly ? try stamps() : []
+		if verifiedOnly {
+			do {
+				let checked = try checkedPiece(piece, range: offset..<(offset + count), check: check)
+				guard checked.valid else { throw StorageFailure.invalid("verified payload failed its hash") }
+				return checked.bytes
+			} catch { record.set(piece, false); throw error }
+		}
 		var result = Data()
 		for segment in segments {
 			try check()
@@ -165,7 +180,6 @@ final class StorageState: @unchecked Sendable {
 				guard !data.isEmpty else { throw StorageFailure.invalid("short payload read") }; done += data.count; result.append(data)
 			}
 		}
-		if verifiedOnly, try stamps() != before { try invalidateChangedFiles(); throw StorageFailure.invalid("payload changed during read") }
 		return result
 	}
 	func write(piece: Int, offset: Int, data: Data, check: () throws -> Void) throws {
@@ -193,18 +207,29 @@ final class StorageState: @unchecked Sendable {
 	}
 	func verify(piece: Int, check: () throws -> Void) throws -> Bool {
 		try ready()
-		let length = try layout.length(of: piece)
+		_ = try layout.length(of: piece)
 		try invalidateChangedFiles()
-		guard let hashes = metadata.document.root["info"]?["pieces"]?.bytes, piece < hashes.count / 20 else { throw StorageFailure.invalid("v2 verification requires the phase 8 hash exchange layer") }
 		record.set(piece, false)
+		let valid = try checkedPiece(piece, check: check).valid
+		record.set(piece, valid); try save(); return valid
+	}
+	private func checkedPiece(_ piece: Int, range: Range<Int>? = nil, check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
+		let length = try layout.length(of: piece)
+		guard let hashes = metadata.document.root["info"]?["pieces"]?.bytes, piece < hashes.count / 20 else { throw StorageFailure.invalid("v2 verification requires the phase 8 hash exchange layer") }
 		let before = try stamps()
-		var hash = Insecure.SHA1(), offset = 0
+		var hash = Insecure.SHA1(), offset = 0, result = Data()
 		while offset < length {
 			try check(); let count = min(65536, length - offset)
-			hash.update(data: try read(piece: piece, offset: offset, count: count, verifiedOnly: false, check: check)); offset += count
+			let data = try read(piece: piece, offset: offset, count: count, verifiedOnly: false, check: check)
+			hash.update(data: data)
+			if let range {
+				let lower = max(offset, range.lowerBound), upper = min(offset + count, range.upperBound)
+				if lower < upper { result.append(data.subdata(in: (lower - offset)..<(upper - offset))) }
+			}
+			offset += count
 		}
 		guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
 		let valid = Data(hash.finalize()) == hashes.subdata(in: (piece * 20)..<(piece * 20 + 20))
-		record.set(piece, valid); try save(); return valid
+		return (valid, result)
 	}
 }

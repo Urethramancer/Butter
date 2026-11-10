@@ -4,6 +4,44 @@ import ButterTorrentMetadata
 @testable import ButterTorrentStorage
 
 @Suite struct StorageOperationTests {
+	@Test func restartRehashesCachedPiecesEvenWhenFileStampsMatch() async throws {
+		try await storageFixture { root in
+			let (metadata, _) = try storageMetadata(root), destination = root.appendingPathComponent("data"), stateURL = root.appendingPathComponent("state")
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateURL)
+			try await storage.importFiles(from: root)
+			for piece in 0..<storage.layout.pieceCount { #expect(try await storage.verify(piece: piece)) }
+			try await storage.shutdown()
+			let payload = try StorageDirectory(destination), state = try StorageDirectory(stateURL)
+			let file = try FileHandle(forWritingTo: destination.appendingPathComponent("source/a"))
+			try file.write(contentsOf: Data([255])); try file.close()
+			var checkpoint = try PropertyListDecoder().decode(StorageCheckpoint.self, from: state.read("checkpoint.plist", maximum: 16_777_216))
+			// Simulate an edit hidden by a coarse filesystem's unchanged stamp.
+			checkpoint.stamps[0] = try payload.inspect("source/a")
+			try state.atomic(checkpoint.encoded(), path: "checkpoint.plist")
+			let restored = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateURL)
+			#expect(try await restored.snapshot().verifiedPieces == [1, 2])
+			await #expect(throws: StorageFailure.self) { try await restored.read(piece: 0, offset: 0, count: 1) }
+			try await restored.shutdown()
+		}
+	}
+	@Test func externalChangeAfterPublicationCannotInheritVerifiedProgress() async throws {
+		try await storageFixture { root in
+			let (metadata, _) = try storageMetadata(root), destination = root.appendingPathComponent("data")
+			let renamed = destination.appendingPathComponent("renamed/a")
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: root.appendingPathComponent("state"), event: { event in
+				if event == .entryDurable(0), let handle = try? FileHandle(forWritingTo: renamed) {
+					try? handle.write(contentsOf: Data([9])); try? handle.close()
+				}
+			})
+			try await storage.importFiles(from: root)
+			for piece in 0..<storage.layout.pieceCount { #expect(try await storage.verify(piece: piece)) }
+			try await storage.rename([0: "renamed/a"])
+			#expect(try Data(contentsOf: renamed).first == 9)
+			#expect(try await storage.snapshot().verifiedPieces == [2])
+			await #expect(throws: StorageFailure.self) { try await storage.read(piece: 0, offset: 0, count: 1) }
+			try await storage.shutdown()
+		}
+	}
 	@Test func missingFilesStillReserveRenameTargetsAndEmptySelectionsCreateFiles() async throws {
 		try await storageFixture { root in
 			let (metadata, _) = try storageMetadata(root), destination = root.appendingPathComponent("download")

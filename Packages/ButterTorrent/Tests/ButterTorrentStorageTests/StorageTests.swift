@@ -33,6 +33,7 @@ func storageMetadata(_ root: URL) throws -> (TorrentMetadata, Data) {
 			}
 			#expect(!FileManager.default.fileExists(atPath: destination.appendingPathComponent("source/b").path))
 			#expect(try Data(contentsOf: destination.appendingPathComponent("source/a")) == bytes)
+			#expect(try await storage!.read(piece: 0, offset: 7, count: 17) == bytes.subdata(in: 7..<24))
 			try await storage!.checkpoint(downloaded: 20003, uploaded: 9)
 			try await storage!.shutdown(); storage = nil
 			let restored = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state)
@@ -60,6 +61,7 @@ func storageMetadata(_ root: URL) throws -> (TorrentMetadata, Data) {
 			#expect(try Data(contentsOf: file) == Data([42]))
 			#expect(throws: StorageFailure.self) { try StorageLayout.validatePaths(["a", "a/b"]) }
 			#expect(throws: StorageFailure.self) { try StorageLayout.validatePaths(["A", "a"]) }
+			#expect(throws: StorageFailure.self) { try StorageLayout.validatePaths(["Σ", "ς"]) }
 			#expect(throws: StorageFailure.self) { try StorageLayout.components("../a") }
 			await #expect(throws: StorageFailure.self) {
 				try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("overlap"), stateDirectory: root.appendingPathComponent("overlap/source"))

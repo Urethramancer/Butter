@@ -36,6 +36,7 @@ Scripts/verify.sh metadata-reference
 Scripts/verify.sh creation
 Scripts/verify.sh http
 Scripts/verify.sh network
+Scripts/verify.sh native-storage
 ```
 
 The first command works without libtorrent installed. The second uses the parent
@@ -112,14 +113,24 @@ the same harness; the native UI suite is reserved for later integration.
 `ButterTorrentStorage` supplies bounded piece/file mapping, virtual padding,
 skipped-file storage, SHA-1 verification for v1/hybrid data and versioned binary
 property-list checkpoints with compact progress bits. Verification of v2 Merkle
-hashes belongs to phase 8. Descriptor-relative file operations refuse symlinked
+hashes belongs to phase 8. Opening rehashes cached verified pieces; verified reads
+hash the complete piece while retaining only the requested bytes. These checks
+favour integrity over startup/throughput until transfer benchmarks and immutable
+engine caching are available. Descriptor-relative operations refuse symlinked
 descendants and destructive access to hard-linked files. A shared coordinator
 protects live transfer paths; an OS lock protects each checkpoint directory.
-Disk/hash commands run serially on a worker with at most eight pending commands.
+Opening is asynchronous. Disk/hash commands share one serial worker, with at most
+eight pending commands per session and sixty-four across sessions. Payload paths
+cannot overlap the checkpoint directory; missing payload files still reserve
+their paths against other transfers.
 
 Imports copy without deleting their sources. Rename, selection, move and Trash
 operations use durable journals, exclusive publication and content-checked copies
 across volumes. Recovery blocks ordinary I/O and advertising of verified pieces
 until reconciliation finishes. A copy published before its receipt needs explicit
 acceptance after review; both source and destination are retained meanwhile.
-Production storage remains on libtorrent while phase 6 recovery/failure gates run.
+Production storage remains on libtorrent. `native-storage` runs the focused tests
+and a disposable-image harness: 18 journalled child-process interruptions, four
+atomic-checkpoint interruptions, actual ENOSPC and a read-only remount. Trash tests
+use disposable directories and verify every receipt; system Trash destination
+selection and Finder integration remain application-integration checks.

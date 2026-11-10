@@ -78,6 +78,9 @@ failure/recovery and reference transfers of the generated metadata.
 with local HTTP/TLS fixtures; these services remain outside the production engine.
 `Scripts/verify.sh network` runs the networking harness, including shared TCP/UDP
 port ownership, pinned HTTP DNS, UDP trackers, discovery and router-mapping fixtures.
+`Scripts/verify.sh native-storage` checks native layouts, verification, checkpoints
+and file operations, including killed child processes and real disk failures on a
+disposable image. Production storage remains on libtorrent.
 
 ```sh
 Scripts/verify.sh final audit

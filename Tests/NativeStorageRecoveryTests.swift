@@ -141,6 +141,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			try await storage.shutdown()
 			print("PASS: killed \(operation)/\(boundary)\(cross ? " across volumes" : ""); recovered every managed byte")
 		}
+		try await copyCorruption(root: root.appendingPathComponent("copy-corruption"), target: volume.appendingPathComponent("target-corruption"))
 		for iteration in 0..<4 {
 			let work = root.appendingPathComponent("atomic-\(iteration)"), metadata = try await prepare(work)
 			try await stopChild(work, operation: "atomic", boundary: "unused", target: work)
@@ -150,6 +151,21 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			try await storage.shutdown()
 		}
 		print("PASS: four atomic-checkpoint child interruptions")
+	}
+	static func copyCorruption(root: URL, target: URL) async throws {
+		let metadata = try await prepare(root)
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), event: { event in
+			if event == .entryDurable(0), let handle = try? FileHandle(forWritingTo: target.appendingPathComponent("bundle/" + name(0))) {
+				try? handle.write(contentsOf: Data([9])); try? handle.close()
+			}
+		})
+		var rejected = false
+		do { try await storage.move(to: target) } catch StorageFailure.recoveryRequired { rejected = true }
+		try require(rejected, "Changed destination did not block source deletion")
+		for index in 0..<8 { try require(try Data(contentsOf: root.appendingPathComponent("data/bundle/" + name(index))) == contents(index), "Changed copy caused original bytes to be deleted") }
+		let pending = try await storage.snapshot()
+		try require(pending.needsRecovery && pending.verifiedPieces.isEmpty, "Changed destination advertised progress")
+		print("PASS: cross-volume destination corruption retains every original and blocks verified progress")
 	}
 	static func disk(root: URL, volume: URL) async throws {
 		try require(fm.fileExists(atPath: volume.appendingPathComponent(".butter-native-storage-test").path), "Missing disposable-volume marker")

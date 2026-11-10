@@ -69,7 +69,9 @@ public struct StorageLayout: Sendable {
 			parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && !$0.utf8.contains(0) && $0.utf8.count <= 255 }) else { throw StorageFailure.invalid("relative file path") }
 		return parts
 	}
-	static func pathKey(_ path: String) -> String { path.precomposedStringWithCanonicalMapping.lowercased() }
+	static func pathKey(_ path: String) -> String {
+		path.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX")).precomposedStringWithCanonicalMapping
+	}
 	static func validatePaths(_ paths: [String]) throws {
 		for path in paths { _ = try components(path) }
 		let sorted = paths.map(pathKey).sorted()

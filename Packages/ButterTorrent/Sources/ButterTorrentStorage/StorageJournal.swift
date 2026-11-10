@@ -83,8 +83,9 @@ extension StorageState {
 				} else {
 					guard acceptMatchingCopies else { throw StorageFailure.recoveryRequired("copy was published before its receipt; review both paths, then explicitly accept matching copies") }
 				}
-				guard try target.digest(entry.destination, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("destination content changed") }
-				entry.published = existing
+				let checked = try target.checkedDigest(entry.destination, check: check)
+				guard checked.hash == entry.digest else { throw StorageFailure.recoveryRequired("destination content changed") }
+				entry.published = checked.stamp
 			} else {
 				guard entry.published == nil else { throw StorageFailure.recoveryRequired("published destination is missing") }
 				guard let existing = try source.inspect(entry.source), existing == entry.original,
@@ -93,8 +94,9 @@ extension StorageState {
 					try copy(&entry, source: source, target: target, journal: &journal, index: index, check: check)
 				} else { try source.rename(entry.source, to: target, path: entry.destination) }
 				event(.filePublished(entry.index))
-				guard try target.digest(entry.destination, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("published bytes changed") }
-				entry.published = try target.inspect(entry.destination)
+				let checked = try target.checkedDigest(entry.destination, check: check)
+				guard checked.hash == entry.digest else { throw StorageFailure.recoveryRequired("published bytes changed") }
+				entry.published = checked.stamp
 			}
 			journal.entries[index] = entry; try persist(journal); event(.entryDurable(entry.index))
 		}
@@ -102,9 +104,17 @@ extension StorageState {
 		record = journal.after
 		payload = try StorageDirectory(URL(fileURLWithPath: record.destination), create: false)
 		try prepareEmptyFiles()
-		record.stamps = try stamps(); try save(); event(.checkpointDurable)
+		// Preserve the stamps bound to checked content, then invalidate any later edits.
+		for entry in journal.entries {
+			let (directory, path) = location(entry.index)
+			if directory.url.path == entry.destinationRoot && path == entry.destination { record.stamps[entry.index] = entry.published }
+		}
+		try save(); event(.checkpointDurable)
 		for entry in journal.entries where entry.copy && entry.removeSource {
 			try check()
+			let target = try StorageDirectory(URL(fileURLWithPath: entry.destinationRoot), create: false)
+			guard let published = entry.published, try target.inspect(entry.destination) == published,
+				try target.digest(entry.destination, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("destination changed before source removal") }
 			let source = try StorageDirectory(URL(fileURLWithPath: entry.sourceRoot), create: false)
 			if let current = try source.inspect(entry.source) {
 				guard current == entry.original, try source.digest(entry.source, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("source copy changed; it was retained") }
