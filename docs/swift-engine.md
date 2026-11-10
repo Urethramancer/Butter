@@ -691,3 +691,38 @@ and the pinned reference's
 This is an independent Swift implementation. No throughput, CPU, peak-memory,
 public-network or UI acceptance is claimed. Consolidated measurements and
 dependency removal remain phase 12.
+
+## Session integration foundations (phase 11, in progress)
+
+`TransferResources` now shares disk admission and immutable upload-cache capacity
+across native transfers. Defaults admit eight disk operations and bound cached
+bytes plus reserved loads to 64 MiB. Per-transfer disk admission remains four;
+closing one scope does not close the shared budget. A global LRU evicts cache
+entries across owners, and capacity waits are bounded and cancellable. Owner
+closure cancels its loads and wakes its waiters while retaining other owners'
+data. Borrowed immutable pieces and outbound peer buffers are separate from the
+cache accounting; no process peak-memory measurement is claimed.
+
+`ManagedTransfer` owns storage and the current peer controller. It serialises
+storage commands, drains negotiations, readers, uploads, rate waits and disk work
+before mutation, then reopens a controller from the resulting verified checkpoint.
+Selection, rename, move, recovery and recheck use that boundary. A rejected
+preflight can resume safely; a pending journal or failed pause keeps I/O stopped.
+Failed checkpoints prevent mutation and remain retryable. Exports retain the
+original identity and serialize with filesystem commands. Removal can quiesce
+before Trash and release storage ownership through an idempotent close.
+
+Headless integration fixtures exercise a rename during a real rate-limited
+upload, verified seeding afterwards, overlapping exports/rename/move/selection,
+checkpoint-path failure and retry, and pause during an unanswered MSE negotiation.
+Controlled real disk reads verify cache-memory admission, queued cancellation and
+independent owner closure. The application adapter, service/session orchestration
+and remaining phase 11 TODOs are unfinished; production remains on libtorrent and
+no phase 11 tag has been created.
+
+Verification for these foundations: all 155 package tests pass in Debug and
+Release. The 12 ownership/resource cases pass under Thread Sanitizer and five
+independent fail-fast runs. Twenty-four representative reference transfers pass
+in both directions across TCP and TCP-disabled µTP, plaintext, required RC4 and
+negotiated plaintext, including fragmented/impaired IPv6 paths. This is focused
+regression evidence, not the complete phase 11 acceptance suite.

@@ -2,8 +2,9 @@
 
 ## Swift torrent engine replacement
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
-  Quiesce peer I/O before storage mutations and coordinate aggregate disk/cache
-  admission across simultaneous transfers.
+  Connect `ManagedTransfer` to the application command/snapshot adapter and session
+  routing for accepted TCP/µTP peers, including encrypted swarm selection.
+  Coordinate tracker, web-seed, discovery and mapping lifecycles in that session.
   Resolve inherited PCP-before-NAT-PMP behaviour from the pinned reference;
   the Swift mapping clients currently implement UPnP and NAT-PMP.
   Select or retry hybrid wire identities automatically. Hybrid magnets with
