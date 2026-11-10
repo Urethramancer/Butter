@@ -32,7 +32,9 @@ extension NativeSessionTests { @Suite struct SessionTrackerTests {
 				#expect(await udpTracker.failure == nil)
 				for hash in hashes {
 					let identity = requests.filter { $0.infoHash == hash }
-					#expect(identity.map(\.event) == [2, 3, 2, 1, 3])
+					let completions = identity.dropFirst(3).dropLast()
+					#expect(identity.prefix(3).map(\.event) == [2, 3, 2] && identity.last?.event == 3)
+					#expect((1...2).contains(completions.count) && completions.allSatisfy { $0.event == 1 })
 					#expect(identity.prefix(2).allSatisfy { $0.left == 16_384 && $0.downloaded == 0 })
 				}
 				#expect(requests.allSatisfy { $0.port == port && $0.source.port == port && $0.peerID == session.peerID })
@@ -40,7 +42,9 @@ extension NativeSessionTests { @Suite struct SessionTrackerTests {
 				let requests = await tracker.requests.map(\.1)
 				for hash in hashes {
 					let identity = requests.filter { $0.infoHash == hash }
-					#expect(identity.map(\.event) == [.started, .stopped, .started, .completed, .stopped])
+					let completions = identity.dropFirst(3).dropLast()
+					#expect(identity.prefix(3).map(\.event) == [.started, .stopped, .started] && identity.last?.event == .stopped)
+					#expect((1...2).contains(completions.count) && completions.allSatisfy { $0.event == .completed })
 					#expect(identity.prefix(2).allSatisfy { $0.counters.left == 16_384 && $0.counters.downloaded == 0 })
 				}
 				#expect(requests.allSatisfy { $0.port == port && $0.peerID == session.peerID })
@@ -50,6 +54,25 @@ extension NativeSessionTests { @Suite struct SessionTrackerTests {
 			}
 		} catch { try? await session.close(); await fixture.close(); await udpTracker?.close(); throw error }
 		await fixture.close(); await udpTracker?.close()
+	}
+
+	@Test func shutdownFinishesHybridCompletionAfterCancellingAnAnnounce() async throws {
+		let fixture = try TrackerSessionFixture(version: 3, isPrivate: false), tracker = RecordingTracker(), clock = EngineClock()
+		do {
+			let seed = try await fixture.seed(), port = try await seed.snapshot().network.port
+			await tracker.setPeer(try TrackerPeer(address: "127.0.0.1", port: port))
+			let v2 = Data(try #require(fixture.metadata.hashes.v2).prefix(20)), v1 = try #require(fixture.metadata.hashes.v1)
+			await tracker.holdNextCompletion(v1)
+			let down = try await fixture.download(tiers: [["http://tracker.test/announce"]], tracker: tracker, clock: clock)
+			try await down.run(id: "transfer", running: true)
+			try await eventually { try await down.snapshot().transfers.first?.state.transfer?.complete == true }
+			clock.advance(1)
+			try await eventually { await tracker.completionHeld }
+			try await down.close()
+			let requests = await tracker.requests.map(\.1)
+			for hash in [v1, v2] { #expect(requests.filter { $0.infoHash == hash }.map(\.event) == [.started, .completed, .stopped]) }
+		} catch { await fixture.close(); throw error }
+		await fixture.close()
 	}
 
 	@Test func verifiedPrivateMagnetOnlyConnectsToTheNewTrackerResponse() async throws {
@@ -280,10 +303,17 @@ private actor RecordingTracker: TrackerAnnouncing {
 	var peer: TrackerPeer?
 	var metadataPeer: TrackerPeer?
 	var rejectedHash: Data?
+	private var heldHash: Data?
+	private(set) var completionHeld = false
 	func setPeer(_ peer: TrackerPeer) { self.peer = peer }
 	func setMetadataPeer(_ peer: TrackerPeer) { metadataPeer = peer }
 	func reject(_ hash: Data?) { rejectedHash = hash }
-	func announce(to url: URL, request: TrackerRequest) throws -> TrackerResponse {
+	func holdNextCompletion(_ hash: Data) { heldHash = hash }
+	func announce(to url: URL, request: TrackerRequest) async throws -> TrackerResponse {
+		if request.event == .completed, request.infoHash == heldHash {
+			heldHash = nil; completionHeld = true
+			try await Task.sleep(for: .seconds(60))
+		}
 		requests.append((url, request))
 		if request.infoHash == rejectedHash { throw HTTPServiceError.trackerFailure("fixture rejected identifier") }
 		if url.host == "broken.test" { throw HTTPServiceError.trackerFailure("fixture failure") }

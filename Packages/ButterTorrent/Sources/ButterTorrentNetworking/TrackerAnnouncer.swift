@@ -172,11 +172,11 @@ public actor TrackerAnnouncer {
 		let event: TrackerEvent? = contacted.contains(key) ? (completionPending && !completed.contains(key) ? .completed : nil) : .started
 		var message = TrackerRequest(infoHash: key.hash, peerID: request.peerID, port: request.port, counters: counters, event: event, trackerID: trackerIDs[key], wantedPeers: request.wantedPeers)
 		var response = try await client.announce(to: key.url, request: message)
-		try Task.checkCancellation(); record(response, key: key, event: event)
+		record(response, key: key, event: event); try Task.checkCancellation()
 		if completionPending && event == .started {
 			message.event = .completed; message.trackerID = trackerIDs[key]
 			response = try await client.announce(to: key.url, request: message)
-			try Task.checkCancellation(); record(response, key: key, event: .completed)
+			record(response, key: key, event: .completed); try Task.checkCancellation()
 		}
 		return response
 	}

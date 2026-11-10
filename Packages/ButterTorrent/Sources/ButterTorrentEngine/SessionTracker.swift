@@ -92,8 +92,8 @@ actor SessionTracker {
 		if let owner, let snapshot = try? await owner.snapshot() { counters = Self.counters(snapshot, metadata: owner.metadata, baseline: baseline) }
 		guard started else { return }
 		do {
-			let counters = counters, announcer = announcer, clock = clock, complete = !completion && initial.left > 0 && counters.left == 0
-			if complete { completion = true }
+			// The cancelled loop may have acknowledged completion for only one hybrid identity.
+			let counters = counters, announcer = announcer, clock = clock, complete = initial.left > 0 && counters.left == 0
 			try await withThrowingTaskGroup(of: Void.self) { group in
 				group.addTask {
 					try await Self.stopBudget.acquire()
