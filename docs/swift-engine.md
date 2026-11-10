@@ -1124,3 +1124,9 @@ and destination. Restore validates the requested identity and reapplies the
 saved destination and discovery hints. Pending tracker additions and moves are
 written before they take effect in memory. A live row holds an exclusive lease,
 and resolved transfers restore from the published torrent and checkpoint.
+
+Exports of running sparse v2 and hybrid transfers wait up to 15 seconds for
+authenticated piece layers. Durable hash updates wake overlapping requests
+without holding the transfer command gate while they wait. Removal, shutdown
+and caller cancellation settle waiting requests. Unresolved magnets still return
+the reference engine's metadata-resolving error.

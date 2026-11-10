@@ -21,6 +21,16 @@ public struct SessionTransferSnapshot: Sendable {
 
 public enum SessionTransferActivity: Sendable, Equatable { case checking, moving, renaming }
 
+public enum SessionExportFailure: Error, LocalizedError, Sendable {
+	case stopped, timedOut
+	public var errorDescription: String? {
+		switch self {
+		case .stopped: "The transfer stopped during export."
+		case .timedOut: "Export timed out waiting for authenticated piece layers. Retry after the transfer has obtained them."
+		}
+	}
+}
+
 public struct SessionEvent: Sendable {
 	public let kind: String
 	public let id: String
@@ -90,6 +100,7 @@ public actor TorrentSession {
 	private var pendingMagnets: [SessionPendingMagnet] = []
 	private var events: [SessionEvent] = []
 	private var peerHints: PeerCandidateQueue<SessionPeerHint>?
+	private var exports: [UUID: (id: String, signal: AsyncStream<Void>.Continuation)] = [:]
 	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
 		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient(), webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil, localDiscoveryFactory: LocalDiscoveryFactory? = nil, storageEvent: @escaping @Sendable (String, StorageEvent) -> Void = { _, _ in }) {
 		repository = TransferRepository(root: storage); self.configuration = configuration; self.resources = resources; budget = TCPPeerBudget(limit: maximumPeers)
@@ -166,7 +177,10 @@ public actor TorrentSession {
 		var owner: ManagedTransfer?
 		do {
 			let managed = try await ManagedTransfer.open(metadata: metadata, destination: destination, stateDirectory: prepared.directory,
-				selected: selected, configuration: configuration, resources: resources, budget: budget, preparedState: prepared, peerID: peerID, clock: clock, webSeedTransport: webSeedTransport, event: { self.storageEvent(id, $0) }); owner = managed
+				selected: selected, configuration: configuration, resources: resources, budget: budget, preparedState: prepared, peerID: peerID, clock: clock, webSeedTransport: webSeedTransport, event: { [weak self, storageEvent] event in
+					if event == .pieceLayersChanged { Task { await self?.signalExports(id: id) } }
+					else { storageEvent(id, event) }
+				}); owner = managed
 			await observeDiscovery(id: id, owner: managed)
 			var snapshot = try await managed.snapshot()
 			if !snapshot.storage.needsRecovery { try await managed.recheck(); snapshot = try await managed.snapshot() }
@@ -252,11 +266,44 @@ public actor TorrentSession {
 		}
 	}
 	public func export(id: String) async throws -> Data {
-		try await serial(id: id) {
-			let entry = try self.entry(id)
-			let data = try await entry.owner.exportMetadata(), metadata = try TorrentMetadata(data)
-			return metadata.trackerTiers == entry.metadata.trackerTiers ? data : try metadata.withTrackerTiers(entry.metadata.trackerTiers)
+		guard exports.count < 64 else { throw StorageFailure.limit("pending exports") }
+		let key = UUID(), update = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+		exports[key] = (id, update.continuation)
+		defer { exports.removeValue(forKey: key)?.signal.finish() }
+		if let data = try await exportIfReady(id: id, key: key) { return data }
+		let clock = clock
+		return try await withThrowingTaskGroup(of: Data.self) { group in
+			group.addTask {
+				for await _ in update.stream {
+					if let data = try await self.exportIfReady(id: id, key: key) { return data }
+				}
+				try Task.checkCancellation()
+				throw SessionExportFailure.stopped
+			}
+			group.addTask {
+				try await clock.sleep(for: 15)
+				throw SessionExportFailure.timedOut
+			}
+			defer { group.cancelAll() }
+			return try await group.next()!
 		}
+	}
+	private func exportIfReady(id: String, key: UUID) async throws -> Data? {
+		try await serial(id: id) {
+			guard self.exports[key] != nil else { throw SessionExportFailure.stopped }
+			let entry = try self.entry(id)
+			do {
+				let data = try await entry.owner.exportMetadata(), metadata = try TorrentMetadata(data)
+				return metadata.trackerTiers == entry.metadata.trackerTiers ? data : try metadata.withTrackerTiers(entry.metadata.trackerTiers)
+			} catch MetadataError.invalid("piece layers are incomplete") where entry.running { return nil }
+		}
+	}
+	private func signalExports(id: String) {
+		for export in exports.values where export.id == id { export.signal.yield(()) }
+	}
+	private func stopExports(id: String? = nil) {
+		let keys = exports.filter { id == nil || $0.value.id == id }.keys
+		for key in keys { exports.removeValue(forKey: key)?.signal.finish() }
 	}
 	public func appendTracker(id: String, tracker: String) async throws {
 		try await serial(id: id, publishing: true) {
@@ -313,6 +360,7 @@ public actor TorrentSession {
 			}
 			let entry = try self.entry(id)
 			do {
+				self.stopExports(id: id)
 				entry.running = false; try await self.refreshRouting()
 				if !entry.closed {
 					try await self.pauseEntry(entry)
@@ -330,6 +378,7 @@ public actor TorrentSession {
 	}
 	public func shutdown() async throws {
 		try await serial {
+			self.stopExports()
 			var failure: Error?
 			for pending in self.pendingMagnets { pending.running = false; await self.stopMagnet(pending) }
 			for entry in self.entries { entry.running = false }; try await self.refreshRouting()
@@ -426,6 +475,7 @@ public actor TorrentSession {
 		let token = try await commands.acquire()
 		do {
 			if !closed {
+				stopExports()
 				networkChanging = true; defer { networkChanging = false }
 				for pending in pendingMagnets { pending.running = false; await stopMagnet(pending) }
 				for entry in entries { entry.running = false; await entry.tracker?.halt() }

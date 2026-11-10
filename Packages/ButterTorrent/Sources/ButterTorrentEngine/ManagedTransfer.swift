@@ -125,8 +125,9 @@ public actor ManagedTransfer {
 	public func exportMetadata() async throws -> Data {
 		try await serial {
 			// Exporting does not mutate payload or picker state and need not disconnect peers.
+			let data = try await self.storage.exportMetadata()
 			try await self.checkpoint()
-			return try await self.storage.exportMetadata()
+			return data
 		}
 	}
 	public func save() async throws { try await serial { try await self.checkpoint() } }

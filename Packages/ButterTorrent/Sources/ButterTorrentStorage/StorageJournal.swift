@@ -7,6 +7,7 @@ public enum StorageEvent: Sendable, Equatable {
 	case entryDurable(Int)
 	case checkpointDurable
 	case sourceRemoved(Int)
+	case pieceLayersChanged
 }
 
 struct StorageJournal: Codable {

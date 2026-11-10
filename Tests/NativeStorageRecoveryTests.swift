@@ -47,6 +47,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		case .entryDurable(let index): "entry-\(index)"
 		case .checkpointDurable: "checkpoint"
 		case .sourceRemoved(let index): "removed-\(index)"
+		case .pieceLayersChanged: "piece-layers"
 		}
 	}
 	static func files(in directory: URL) throws -> [Data] {

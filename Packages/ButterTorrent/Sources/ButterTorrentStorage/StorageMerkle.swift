@@ -22,6 +22,7 @@ extension TorrentStorage {
 			let bytes = try encoder.encode(HashCheckpoint(identity: state.record.metadataHash, records: candidate.records))
 			guard bytes.count <= 100_663_296 else { throw StorageFailure.limit("hash checkpoint") }
 			try state.state.atomic(bytes, path: "hashes.plist"); state.merkle = candidate
+			state.event(.pieceLayersChanged)
 		}
 	}
 	public func hashResponse(_ request: MerkleHashRequest) async throws -> Data? {
