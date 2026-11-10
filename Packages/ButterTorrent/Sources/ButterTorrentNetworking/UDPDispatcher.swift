@@ -17,13 +17,20 @@ public actor UDPDispatcher {
 	private let transport: any DatagramTransport
 	private let clock: any TransportClock
 	private var pending: [Key: NetworkWaiter<NetworkDatagram>] = [:]
-	private var subscribers: [UUID: (UDPChannel, AsyncStream<NetworkDatagram>.Continuation)] = [:]
+	private var subscribers: [UUID: (UDPChannel, AsyncStream<NetworkDatagram>.Continuation, UUID?)] = [:]
 	private var pump: Task<Void, Never>?
 	private var closed = false
 	private var dropped: UInt64 = 0
 	private var utpOwner: UUID?
 	func claimUTP(_ owner: UUID) throws { guard !closed else { throw NetworkFailure.closed }; guard utpOwner == nil else { throw NetworkFailure.busy }; utpOwner = owner }
-	func releaseUTP(_ owner: UUID) { if utpOwner == owner { utpOwner = nil } }
+	func releaseUTP(_ owner: UUID) {
+		guard utpOwner == owner else { return }; utpOwner = nil
+		for id in subscribers.filter({ $0.value.2 == owner }).keys { subscribers.removeValue(forKey: id)?.1.finish() }
+	}
+	var subscriberCount: Int { subscribers.count }
+	func subscribeUTP(_ owner: UUID) throws -> AsyncStream<NetworkDatagram> {
+		guard utpOwner == owner else { throw NetworkFailure.busy }; return try subscription(.utp, owner: owner)
+	}
 	public var pendingCount: Int { pending.count }
 	public var droppedPackets: UInt64 { dropped }
 	public init(transport: any DatagramTransport, clock: any TransportClock = ContinuousTransportClock()) {
@@ -53,15 +60,18 @@ public actor UDPDispatcher {
 		try await transport.send(data, to: peer)
 	}
 	public func subscribe(_ channel: UDPChannel) throws -> AsyncStream<NetworkDatagram> {
+		try subscription(channel)
+	}
+	private func subscription(_ channel: UDPChannel, owner: UUID? = nil) throws -> AsyncStream<NetworkDatagram> {
 		guard !closed else { throw NetworkFailure.closed }
 		guard subscribers.count < 16 else { throw NetworkFailure.limit("UDP subscribers") }
 		let id = UUID(), pair = AsyncStream<NetworkDatagram>.makeStream(bufferingPolicy: .bufferingNewest(channel == .utp ? 256 : 32))
 		pair.continuation.onTermination = { [weak self] _ in Task { await self?.unsubscribe(id) } }
-		subscribers[id] = (channel, pair.continuation); start(); return pair.stream
+		subscribers[id] = (channel, pair.continuation, owner); start(); return pair.stream
 	}
 	private func unsubscribe(_ id: UUID) { subscribers[id] = nil }
 	private func publish(_ packet: NetworkDatagram, to channel: UDPChannel) {
-		for (_, (kind, continuation)) in subscribers where kind == channel {
+		for (_, (kind, continuation, _)) in subscribers where kind == channel {
 			if case .dropped = continuation.yield(packet) { dropped &+= 1 }
 		}
 	}
@@ -89,7 +99,7 @@ public actor UDPDispatcher {
 	private func ended() {
 		closed = true
 		for waiter in pending.values { waiter.resolve(.failure(NetworkFailure.closed)) }
-		for (_, continuation) in subscribers.values { continuation.finish() }
+		for (_, continuation, _) in subscribers.values { continuation.finish() }
 		subscribers.removeAll()
 	}
 	public func shutdown() async throws {

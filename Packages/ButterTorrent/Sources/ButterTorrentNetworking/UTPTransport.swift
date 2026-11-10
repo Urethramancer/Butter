@@ -62,7 +62,7 @@ public actor UTPTransport {
 		try Task.checkCancellation()
 		try await dispatcher.claimUTP(ownership)
 		do {
-			let packets = try await dispatcher.subscribe(.utp), clock = clock, dispatcher = dispatcher, outgoing = outbound.stream
+			let packets = try await dispatcher.subscribeUTP(ownership), clock = clock, dispatcher = dispatcher, outgoing = outbound.stream
 			try Task.checkCancellation()
 			pump = Task { [weak self] in for await packet in packets { if Task.isCancelled { break }; await self?.receive(packet) }; await self?.transportEnded() }
 			ticker = Task { [weak self] in do { while !Task.isCancelled { try await clock.sleep(for: 0.05); if let self { await self.tick() } else { return } } } catch {} }

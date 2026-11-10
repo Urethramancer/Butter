@@ -8,6 +8,17 @@ func utpRead(_ stream: UTPStream, count: Int) async throws -> Data {
 }
 
 @Suite struct UTPTransportTests {
+	@Test func ownerReleaseRemovesEvenAnUnconsumedSubscription() async throws {
+		let transport = try InjectedDatagrams(), dispatcher = UDPDispatcher(transport: transport)
+		let observer = try await dispatcher.subscribe(.dht)
+		for _ in 0..<32 {
+			let owner = UUID(); try await dispatcher.claimUTP(owner)
+			_ = try await dispatcher.subscribeUTP(owner)
+			await dispatcher.releaseUTP(owner)
+			#expect(await dispatcher.subscriberCount == 1)
+		}
+		withExtendedLifetime(observer) {}; try await dispatcher.shutdown()
+	}
 	@Test(arguments: ["127.0.0.1", "::1"]) func bidirectionalStreamsAndGracefulFIN(_ host: String) async throws {
 		let aSocket = try DatagramSocket(bind: NetworkEndpoint(host, port: 0)), bSocket = try DatagramSocket(bind: NetworkEndpoint(host, port: 0))
 		let aUDP = UDPDispatcher(transport: aSocket), bUDP = UDPDispatcher(transport: bSocket)
