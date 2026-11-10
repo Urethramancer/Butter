@@ -125,20 +125,9 @@ actor NativeSnapshotMapper {
 		var rows: [TransferSnapshot] = [], nextTransfers: [String: Sample] = [:], nextPeers: [UUID: Sample] = [:]
 		for row in snapshot.transfers {
 			let disk = row.state.storage, wire = row.state.transfer, metadata = row.metadata
-			let files = metadata.inspection.files, length = metadata.pieceLength, total = files.reduce(Int64(0)) { $0 + $1.size }
-			let count = Int(total / length + (total % length == 0 ? 0 : 1)), verified = disk.verifiedPieces
-			var prefix = [Int64](repeating: 0, count: count + 1)
-			for piece in 0..<count { prefix[piece + 1] = prefix[piece] + (verified.contains(piece) ? min(length, total - Int64(piece) * length) : 0) }
-			func completeBytes(_ offset: Int64) -> Int64 {
-				let piece = Int(offset / length), tail = offset % length
-				return prefix[min(piece, count)] + (piece < count && verified.contains(piece) ? tail : 0)
-			}
-			var offset: Int64 = 0, mappedFiles: [TransferFile] = [], wanted: Int64 = 0, done: Int64 = 0
-			for file in files {
-				let completed = completeBytes(offset + file.size) - completeBytes(offset), selected = disk.selected[file.index] && !file.pad
-				mappedFiles.append(TransferFile(index: file.index, path: disk.paths[file.index], original: file.path, size: file.size, done: completed, selected: selected, pad: file.pad))
-				if selected { wanted += file.size; done += completed }; offset += file.size
-			}
+			let progress = TransferProgress(metadata: metadata, storage: disk), verified = disk.verifiedPieces
+			let count = progress.pieceCount, total = progress.total, wanted = progress.wanted, done = progress.done
+			let mappedFiles = progress.files.map { TransferFile(index: $0.metadata.index, path: $0.path, original: $0.metadata.path, size: $0.metadata.size, done: $0.done, selected: $0.selected, pad: $0.metadata.pad) }
 			let sample = Sample(time: now, down: wire?.downloaded ?? disk.downloaded, up: wire?.uploaded ?? disk.uploaded)
 			let rates = speed(sample, after: transfers[row.id]); nextTransfers[row.id] = sample
 			let mappedPeers = (wire?.peers ?? []).map { peer in
@@ -152,7 +141,7 @@ actor NativeSnapshotMapper {
 				down: row.state.running ? rates.0 : 0, up: row.state.running ? rates.1 : 0, downloaded: sample.down, uploaded: sample.up,
 				demand: wire?.peers.contains(where: \.remoteInterested) ?? false, hashes: metadata.hashes.hex,
 				pieces: (0..<count).map { verified.contains($0) ? 1 : wire?.pieceStates[$0] == 1 ? 0 : wire?.pieceStates[$0] ?? 0 }, files: mappedFiles,
-				trackers: metadata.trackerTiers.flatMap({ $0 }).map { TrackerSnapshot(url: $0, message: "") }, peers: mappedPeers))
+				trackers: row.trackers.map { TrackerSnapshot(url: $0.url, message: $0.message) }, peers: mappedPeers))
 		}
 		transfers = nextTransfers; peers = nextPeers
 		return EngineSnapshot(transfers: rows, events: snapshot.events.map { EngineEvent(kind: $0.kind, id: $0.id, path: $0.path) }, port: Int(snapshot.network.port), udp: snapshot.network.udp, networkError: snapshot.network.error, creationProgress: progress)

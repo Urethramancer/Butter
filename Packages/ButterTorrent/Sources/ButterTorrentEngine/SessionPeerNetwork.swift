@@ -125,6 +125,10 @@ actor SessionPeerNetwork {
 		guard !closed, let transport = endpoint.address.isIPv6 ? utp6 : utp4 else { throw NetworkFailure.closed }; return transport
 	}
 	func setFilter(_ filter: PeerAddressFilter) { self.filter = filter }
+	func trackers(http: any TrackerAnnouncing) throws -> TrackerClient {
+		guard !closed else { throw NetworkFailure.closed }
+		return TrackerClient(http: http, udp: try UDPTrackerClient(dispatchers: [listener.udp4, listener.udp6], clock: clock, timeout: 10))
+	}
 	func snapshot() -> SessionNetworkSnapshot {
 		SessionNetworkSnapshot(port: closed ? 0 : listener.port, udp: !closed, error: failure, pendingHandshakes: opening.count, peers: listener.peers.count)
 	}

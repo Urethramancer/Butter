@@ -27,6 +27,7 @@ public actor TrackerAnnouncer {
 	private var next: TimeInterval = 0
 	private var failures = 0
 	private var lastError: String?
+	private var endpointMessages: [URL: String] = [:]
 	private var initialLeft: Int64 = 0
 	private var completionPending = false
 	private var completionSent = false
@@ -34,13 +35,23 @@ public actor TrackerAnnouncer {
 		clock: any HTTPServiceClock = MonotonicHTTPClock(), order: @Sendable ([URL]) -> [URL] = { $0.shuffled() }) throws {
 		guard tiers.count <= 32, tiers.reduce(0, { $0 + $1.count }) <= 128 else { throw HTTPServiceError.limit("tracker count") }
 		for url in tiers.flatMap({ $0 }) {
-			if url.scheme?.lowercased() == "udp" { _ = try UDPTrackerClient.destination(url); try request.validateFields() }
-			else { _ = try request.url(for: url) }
+			try Self.validate(tracker: url, request: request)
 		}
 		self.tiers = tiers.filter { !$0.isEmpty }.map(order)
 		self.request = request; self.client = client; self.clock = clock
 	}
 	public var status: Status { Status(phase: phase, nextAnnounce: next, consecutiveFailures: failures, lastError: lastError) }
+	public var messages: [URL: String] { endpointMessages }
+	public func append(_ url: URL) throws {
+		if tiers.flatMap({ $0 }).contains(url) { return }
+		guard tiers.count < 32, tiers.reduce(0, { $0 + $1.count }) < 128 else { throw HTTPServiceError.limit("tracker count") }
+		try Self.validate(tracker: url, request: request)
+		tiers.append([url]); next = min(next, clock.now())
+	}
+	public static func validate(tracker: URL, request: TrackerRequest) throws {
+		if tracker.scheme?.lowercased() == "udp" { _ = try UDPTrackerClient.destination(tracker); try request.validateFields() }
+		else { _ = try request.url(for: tracker) }
+	}
 	@discardableResult public func start(_ counters: TrackerCounters) async throws -> TrackerResponse {
 		guard !busy else { throw HTTPServiceError.busy }
 		try validate(counters)
@@ -75,9 +86,11 @@ public actor TrackerAnnouncer {
 				_ = try await client.announce(to: url, request: message)
 				try Task.checkCancellation()
 				contacted.remove(url)
+				endpointMessages[url] = nil
 			} catch {
 				if isCancellation(error) { throw CancellationError() }
 				failure = error
+				endpointMessages[url] = error.localizedDescription
 			}
 		}
 		if let failure { lastError = failure.localizedDescription; throw failure }
@@ -105,11 +118,13 @@ public actor TrackerAnnouncer {
 					if completionPending { completionPending = false; completionSent = true }
 					tiers[tier].removeAll { $0 == url }; tiers[tier].insert(url, at: 0)
 					failures = 0; lastError = nil
+					endpointMessages[url] = response.warning
 					next = clock.now() + max(30, response.interval, response.minimumInterval)
 					return response
 				} catch {
 					if isCancellation(error) { throw CancellationError() }
 					failure = error
+					endpointMessages[url] = error.localizedDescription
 				}
 			}
 		}

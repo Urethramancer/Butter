@@ -90,6 +90,9 @@ import ButterTorrentStorage
 			#expect(try Data(contentsOf: unknown) == sentinel && Data(contentsOf: legacy) == sentinel)
 			let failed = try #require(await session.snapshot().transfers.first); #expect(!failed.error.isEmpty && !failed.state.running)
 			await #expect(throws: StorageFailure.self) { try await session.forget(id: "transfer") }
+			try await session.retry(id: "transfer")
+			let retried = try #require(await session.snapshot().transfers.first); #expect(retried.error.isEmpty && !retried.state.running)
+			#expect(try Data(contentsOf: unknown) == sentinel)
 			try FileManager.default.removeItem(at: unknown); _ = try await session.remove(id: "transfer")
 			#expect(!FileManager.default.fileExists(atPath: state.path))
 			#expect(try Data(contentsOf: legacy) == sentinel)

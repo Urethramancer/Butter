@@ -78,6 +78,19 @@ actor ScriptedTracker: TrackerAnnouncing {
 }
 
 @Suite struct TrackerLifecycleTests {
+	@Test func appendingATrackerRecoversAnActiveFailedLifecycle() async throws {
+		let a = URL(string: "https://a.invalid/announce")!, b = URL(string: "https://b.invalid/announce")!
+		let client = ScriptedTracker(), clock = TestClock()
+		await client.fail(["a.invalid"])
+		let session = try TrackerAnnouncer(tiers: [[a]], request: trackerRequest(), client: client, clock: clock)
+		await #expect(throws: (any Error).self) { try await session.start(TrackerCounters(left: 3)) }
+		try await session.append(b); try await session.append(b)
+		#expect(try await session.announceIfDue(TrackerCounters(left: 3)) != nil)
+		try await session.stop(TrackerCounters(left: 3))
+		let calls = await client.calls.filter { $0.url == b }
+		#expect(calls.map { $0.request.event } == [.started, .stopped])
+		#expect(await session.messages[a] != nil)
+	}
 	@Test func tiersPromotionAndLifecycle() async throws {
 		let a = URL(string: "https://a.invalid/announce")!, b = URL(string: "https://b.invalid/announce")!, c = URL(string: "https://c.invalid/announce")!
 		let client = ScriptedTracker(), clock = TestClock()

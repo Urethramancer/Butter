@@ -210,6 +210,7 @@ public actor TCPTransfer {
 	@discardableResult public func connect(to endpoint: NetworkEndpoint, utp: UTPTransport? = nil) async throws -> UUID {
 		try Task.checkCancellation()
 		guard configuration.addressFilter.allows(endpoint.address) else { throw PeerFailure.invalid("blocked peer") }
+		if let existing = peers.first(where: { !$0.value.closing && $0.value.peerID != nil && $0.value.session.stream.remoteEndpoint == endpoint }) { return existing.key }
 		guard !stopping, storageError == nil, peers.count + openings.count < configuration.maximumPeers else { throw PeerFailure.limit("active and connecting peers") }
 		let id = UUID(), budget = budget, clock = clock, hash = hello.infoHash, encryption = configuration.encryption
 		let task = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption, clock: clock, budget: budget, utp: utp) }; openings[id] = task
