@@ -3,6 +3,21 @@ import Testing
 @testable import ButterTorrentNetworking
 
 @Suite struct UTPFailureTests {
+	@Test func aggregateWriteAdmissionBoundsRetainedDataAndPacketCopies() async throws {
+		let fixture = try await UTPLinkFixture(impaired: false)
+		var clients: [UTPStream] = [], servers: [UTPStream] = [], writes: [Task<Void, Error>] = []
+		do {
+			for _ in 0..<9 { let pair = try await fixture.pair(); clients.append(pair.0); servers.append(pair.1) }
+			let bytes = Data(repeating: 71, count: 1_048_576)
+			for client in clients.prefix(8) { writes.append(Task { try await client.write(bytes, timeout: 120) }) }
+			try await deadline { while await fixture.a.snapshot().outgoingBytes < 8_388_608 { try await Task.sleep(for: .milliseconds(1)) } }
+			await #expect(throws: NetworkFailure.backpressure) { try await clients[8].write(bytes) }
+			#expect(await fixture.a.snapshot().outgoingBytes <= 16_777_216)
+			for task in writes { task.cancel() }; for task in writes { _ = try? await task.value }
+			#expect(await fixture.a.snapshot().outgoingBytes == 0)
+		} catch { for task in writes { task.cancel(); _ = try? await task.value }; for stream in clients + servers { stream.close() }; await fixture.close(); throw error }
+		for stream in clients + servers { stream.close() }; await fixture.close()
+	}
 	@Test func deterministicLossDelayDuplicationAndReorderingPreserveBytes() async throws {
 		let fixture = try await UTPLinkFixture(impaired: true)
 		do {
