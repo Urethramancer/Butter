@@ -9,7 +9,8 @@ public actor TorrentStorage {
 	let state: StorageState
 	public nonisolated let layout: StorageLayout
 	public nonisolated let infoHashes: InfoHashes
-	private init(state: StorageState, worker: StorageWorker) { self.state = state; self.worker = worker; layout = state.layout; infoHashes = state.metadata.hashes }
+	public nonisolated let merkleIndex: MerkleIndex
+	private init(state: StorageState, worker: StorageWorker) { self.state = state; self.worker = worker; layout = state.layout; infoHashes = state.metadata.hashes; merkleIndex = state.merkle.index }
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
 		coordinator: StorageCoordinator = .shared, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TorrentStorage {
 		let worker = StorageWorker()
@@ -57,6 +58,7 @@ final class StorageState: @unchecked Sendable {
 	let state: StorageDirectory
 	var payload: StorageDirectory
 	var record: StorageCheckpoint
+	var merkle: MerkleCatalog
 	let coordinator: StorageCoordinator
 	let owner = UUID()
 	let event: @Sendable (StorageEvent) -> Void
@@ -65,6 +67,7 @@ final class StorageState: @unchecked Sendable {
 	var hasJournal = false
 	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
 		self.metadata = metadata; self.layout = layout; self.coordinator = coordinator; self.event = event
+		merkle = try MerkleCatalog(metadata: metadata)
 		state = try StorageDirectory(stateDirectory)
 		lease = try StorageLease(directory: state)
 		do {
@@ -90,6 +93,7 @@ final class StorageState: @unchecked Sendable {
 		} catch { throw error }
 		do {
 			try claim()
+			try restoreHashes()
 			hasJournal = try state.inspect("operation.plist") != nil
 			if !hasJournal {
 				try prepareEmptyFiles()
@@ -102,6 +106,7 @@ final class StorageState: @unchecked Sendable {
 					do { record.set(piece, try checkedPiece(piece, check: check).valid) }
 					catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { }
 					catch StorageFailure.invalid("short payload read") { }
+					catch StorageFailure.missingHashes { }
 				}
 				try save()
 			}
@@ -228,13 +233,21 @@ final class StorageState: @unchecked Sendable {
 	}
 	private func checkedPiece(_ piece: Int, range: Range<Int>? = nil, check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
 		let length = try layout.length(of: piece)
-		guard let hashes = metadata.document.root["info"]?["pieces"]?.bytes, piece < hashes.count / 20 else { throw StorageFailure.invalid("v2 verification requires the phase 8 hash exchange layer") }
+		let hashes = metadata.document.root["info"]?["pieces"]?.bytes
+		let mapping = merkle.index.pieces[piece]
+		if merkle.index.enabled && merkle.expected(piece) == nil { throw StorageFailure.missingHashes }
 		let before = try stamps()
-		var hash = Insecure.SHA1(), offset = 0, result = Data()
+		var hash = Insecure.SHA1(), offset = 0, result = Data(), leaves: [Data] = []
 		while offset < length {
 			try check(); let count = min(65536, length - offset)
 			let data = try read(piece: piece, offset: offset, count: count, verifiedOnly: false, check: check)
 			hash.update(data: data)
+			if let mapping {
+				for block in stride(from: offset, to: min(offset + count, mapping.length), by: 16384) {
+					let end = min(block + 16384, mapping.length)
+					leaves.append(Data(SHA256.hash(data: data.subdata(in: (block - offset)..<(end - offset)))))
+				}
+			}
 			if let range {
 				let lower = max(offset, range.lowerBound), upper = min(offset + count, range.upperBound)
 				if lower < upper { result.append(data.subdata(in: (lower - offset)..<(upper - offset))) }
@@ -242,7 +255,11 @@ final class StorageState: @unchecked Sendable {
 			offset += count
 		}
 		guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
-		let valid = Data(hash.finalize()) == hashes.subdata(in: (piece * 20)..<(piece * 20 + 20))
+		var valid = hashes.map { Data(hash.finalize()) == $0.subdata(in: (piece * 20)..<(piece * 20 + 20)) } ?? true
+		if let mapping, let file = merkle.index.files[mapping.root] {
+			leaves += Array(repeating: Data(repeating: 0, count: 32), count: (1 << file.base) - leaves.count)
+			valid = try valid && MerkleMath.root(leaves) == merkle.expected(piece)
+		}
 		return (valid, result)
 	}
 }

@@ -60,6 +60,12 @@ public struct BencodeDocument: Sendable {
 		guard parser.offset == original.count else { throw MetadataError.invalid("trailing bytes") }
 		self.original = original; infoRange = parser.infoRange
 	}
+	/// Decodes one bounded value and reports its end, retaining a binary message suffix.
+	public static func prefix(_ data: Data, limits: BencodeLimits = .init()) throws -> (value: BencodeValue, length: Int) {
+		guard data.count <= limits.bytes else { throw MetadataError.limit("byte") }
+		var parser = BencodeParser(data: Data(data), limits: limits)
+		let value = try parser.read(depth: 0); return (value, parser.offset)
+	}
 }
 
 private struct BencodeParser {

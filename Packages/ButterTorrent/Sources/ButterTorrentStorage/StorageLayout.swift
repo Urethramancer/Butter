@@ -3,6 +3,7 @@ import ButterTorrentMetadata
 
 public enum StorageFailure: Error, LocalizedError, Equatable, Sendable {
 	case invalid(String), collision(String), shared(String), recoveryRequired(String), limit(String), closed
+	case missingHashes
 	public var errorDescription: String? {
 		switch self {
 		case .invalid(let text): "Invalid storage data: \(text)."
@@ -11,6 +12,7 @@ public enum StorageFailure: Error, LocalizedError, Equatable, Sendable {
 		case .recoveryRequired(let text): "Storage recovery needs review: \(text). Files were retained."
 		case .limit(let text): "Storage exceeded the \(text) limit."
 		case .closed: "The torrent storage is closed."
+		case .missingHashes: "Authenticated piece hashes are still missing."
 		}
 	}
 }

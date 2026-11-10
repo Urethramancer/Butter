@@ -22,6 +22,7 @@ public struct TorrentMetadata: Sendable {
 	public let webSeeds: [String]
 	public let httpSeeds: [String]
 	public let pieceLayers: [Data: Data]
+	public let fileRoots: [Int: Data]
 	public var originalInfo: Data { document.infoBytes! }
 
 	public init(_ data: Data, limits: BencodeLimits = .init()) throws {
@@ -60,6 +61,7 @@ public struct TorrentMetadata: Sendable {
 			}
 		}
 		var files = v1Files
+		var rootsByPath: [String: Data] = [:]
 		if v2 {
 			guard let tree = info["file tree"]?.dictionary, !tree.isEmpty else { throw MetadataError.invalid("missing file tree") }
 			var v2Files: [File] = []
@@ -79,6 +81,7 @@ public struct TorrentMetadata: Sendable {
 							}
 						}
 						v2Files.append(File(index: v2Files.count, path: path.joined(separator: "/"), size: size, pad: false))
+						if let root = leaf["pieces root"]?.bytes { rootsByPath[path.joined(separator: "/")] = root }
 						// Match the reference layout, including virtual tail padding in v2-only metadata.
 						if size % pieceLength != 0 {
 							let padding = pieceLength - size % pieceLength
@@ -119,6 +122,7 @@ public struct TorrentMetadata: Sendable {
 			}
 		}
 		pieceLayers = layers
+		fileRoots = Dictionary(uniqueKeysWithValues: files.compactMap { file in rootsByPath[file.path].map { (file.index, $0) } })
 	}
 
 	/// Reads at most the configured metadata bound, even when the file changes during reading.
