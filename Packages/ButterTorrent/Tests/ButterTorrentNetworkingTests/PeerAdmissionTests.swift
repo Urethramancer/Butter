@@ -1,8 +1,27 @@
 import Foundation
+import Network
 import Testing
 @testable import ButterTorrentNetworking
 
 @Suite struct PeerAdmissionTests {
+	@Test(arguments: [false, true]) func ephemeralTCPBindingCollisionsAreRetriedButFixedPortsFail(_ fixed: Bool) async throws {
+		let listener = try await TCPListener.listen(loopbackOnly: true)
+		let candidate = FailedPortCandidate(listener: listener)
+		do {
+			if fixed {
+				await #expect(throws: NWError.posix(.EADDRINUSE)) {
+					try await ListeningPort.select(port: listener.port, loopbackOnly: true, clock: ContinuousTransportClock(), budget: TCPPeerBudget(limit: 2), incomingTCP: true) { try await candidate.next() }
+				}
+				#expect(await candidate.count == 1)
+			} else {
+				let selected = try await ListeningPort.select(port: 0, loopbackOnly: true, clock: ContinuousTransportClock(), budget: TCPPeerBudget(limit: 2), incomingTCP: true) { try await candidate.next() }
+				#expect(selected.port == listener.port)
+				#expect(await candidate.count == 2)
+				try await selected.shutdown()
+			}
+		} catch { try? await listener.shutdown(); throw error }
+		try await listener.shutdown()
+	}
 	@Test func automaticPortSelectionSkipsAUDPPortCollisionAndDrainsItsTCPListener() async throws {
 		let reserved = try await ListeningPort.bind(loopbackOnly: true), available = try await ListeningPort.bind(loopbackOnly: true)
 		let candidates = PortCandidates(first: reserved.tcp, second: available.tcp)
@@ -37,6 +56,18 @@ import Testing
 		#expect(throws: NetworkFailure.self) { try PeerSwarmCatalog(hashes: []) }
 		#expect(throws: NetworkFailure.self) { try PeerSwarmCatalog(hashes: [Data(repeating: 0, count: 19)]) }
 		#expect(throws: NetworkFailure.self) { try PeerSwarmCatalog(hashes: Array(repeating: Data(repeating: 0, count: 20), count: 20_001)) }
+	}
+}
+
+private actor FailedPortCandidate {
+	let listener: TCPListener
+	var count = 0
+	init(listener: TCPListener) { self.listener = listener }
+	func next() throws -> TCPListener {
+		count += 1
+		if count == 1 { throw NWError.posix(.EADDRINUSE) }
+		guard count == 2 else { throw NetworkFailure.invalid("unexpected TCP bind retry") }
+		return listener
 	}
 }
 

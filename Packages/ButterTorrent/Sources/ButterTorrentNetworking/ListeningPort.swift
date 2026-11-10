@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+@preconcurrency import Network
 
 /// ListeningPort owns TCP plus IPv4/IPv6 UDP on one port, rolling back partial binds.
 public final class ListeningPort: Sendable {
@@ -24,16 +25,18 @@ public final class ListeningPort: Sendable {
 		let deadline = clock.now() + 10
 		for attempt in 0..<8 {
 			try Task.checkCancellation(); guard clock.now() < deadline else { throw NetworkFailure.timedOut }
-			let tcp = try await listener(); var sockets: [DatagramSocket] = []
+			var tcp: TCPListener?, sockets: [DatagramSocket] = []
 			do {
-				let v4 = try DatagramSocket(bind: NetworkEndpoint(loopbackOnly ? "127.0.0.1" : "0.0.0.0", port: tcp.port)); sockets.append(v4)
-				let v6 = try DatagramSocket(bind: NetworkEndpoint(loopbackOnly ? "::1" : "::", port: tcp.port)); sockets.append(v6)
-				let owner = ListeningPort(tcp: tcp, udp4: UDPDispatcher(transport: v4, clock: clock), udp6: UDPDispatcher(transport: v6, clock: clock), peers: budget)
-				if !incomingTCP { try await tcp.shutdown() }; return owner
+				let selected = try await listener(); tcp = selected
+				let v4 = try DatagramSocket(bind: NetworkEndpoint(loopbackOnly ? "127.0.0.1" : "0.0.0.0", port: selected.port)); sockets.append(v4)
+				let v6 = try DatagramSocket(bind: NetworkEndpoint(loopbackOnly ? "::1" : "::", port: selected.port)); sockets.append(v6)
+				let owner = ListeningPort(tcp: selected, udp4: UDPDispatcher(transport: v4, clock: clock), udp6: UDPDispatcher(transport: v6, clock: clock), peers: budget)
+				if !incomingTCP { try await selected.shutdown() }; return owner
 			} catch {
-				for socket in sockets { try? await socket.shutdown() }; try? await tcp.shutdown()
+				for socket in sockets { try? await socket.shutdown() }; try? await tcp?.shutdown()
 				// TCP's ephemeral allocator cannot know whether UDP already owns that port.
-				guard port == 0, error as? NetworkFailure == .system(EADDRINUSE), attempt < 7 else { throw error }
+				let collision = error as? NetworkFailure == .system(EADDRINUSE) || error as? NWError == .posix(.EADDRINUSE)
+				guard port == 0, collision, attempt < 7 else { throw error }
 			}
 		}
 		throw NetworkFailure.timedOut

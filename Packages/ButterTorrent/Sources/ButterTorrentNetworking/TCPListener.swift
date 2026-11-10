@@ -43,7 +43,7 @@ public final class TCPListener: @unchecked Sendable {
 		owner.listener.newConnectionHandler = { [weak owner] connection in owner?.receive(connection) }
 		owner.listener.start(queue: owner.queue)
 		do { _ = try await owner.opened.value(timeout: 10, clock: clock) }
-		catch { owner.close(); throw error }
+		catch { try? await owner.shutdown(); throw error }
 		return owner
 	}
 	public func accept(timeout: TimeInterval = 30) async throws -> TCPStream {
