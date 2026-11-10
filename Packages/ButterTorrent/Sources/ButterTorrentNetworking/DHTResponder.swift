@@ -3,7 +3,8 @@ import ButterTorrentMetadata
 
 extension DHTNode {
 	func receiveQuery(_ packet: NetworkDatagram) async {
-		guard !closed, !permitted.isEmpty, !Task.isCancelled, packet.payload.count <= 4096,
+		guard !closed, !updating, !permitted.isEmpty, !Task.isCancelled, packet.payload.count <= 4096,
+			addressFilter.allows(packet.source.address),
 			let root = try? DHTWire.decode(packet.payload), root["y"]?.text == "q", let transaction = root["t"]?.bytes,
 			!transaction.isEmpty, transaction.count <= 8, let method = root["q"]?.text,
 			let args = root["a"], args.dictionary != nil, let id = args["id"]?.bytes,
@@ -24,11 +25,11 @@ extension DHTNode {
 				let wanted = args["want"]?.list?.compactMap(\.text) ?? [packet.source.address.isIPv6 ? "n6" : "n4"]
 				let contacts = table.closest(target, now: clock.now())
 				for (flag, key, family) in [("n4", "nodes", false), ("n6", "nodes6", true)] where wanted.contains(flag) {
-					var bytes = Data(); for node in contacts where node.endpoint.address.isIPv6 == family { bytes.append(node.id); bytes.append(DHTWire.compact(node.endpoint)) }; response[key] = .bytes(bytes)
+					var bytes = Data(); for node in contacts where node.endpoint.address.isIPv6 == family && addressFilter.allows(node.endpoint.address) { bytes.append(node.id); bytes.append(DHTWire.compact(node.endpoint)) }; response[key] = .bytes(bytes)
 				}
 				if method == "get_peers" {
 					if DHTIdentity.valid(id, address: packet.source.address) { response["token"] = .bytes(tokens.token(address: packet.source.address, bucket: Int64(clock.now() / 300))) }
-					let peers = peerCache[target, default: [:]].filter { clock.now() - $0.value < 1800 }
+					let peers = peerCache[target, default: [:]].filter { clock.now() - $0.value < 1800 && addressFilter.allows($0.key.address) }
 					if !peers.isEmpty { response["values"] = .list(peers.keys.filter { $0.address.isIPv6 == packet.source.address.isIPv6 }.prefix(packet.source.address.isIPv6 ? 16 : 32).map { .bytes(DHTWire.compact($0)) }) }
 				}
 			case "announce_peer":
@@ -49,7 +50,7 @@ extension DHTNode {
 		} catch {
 			fields["y"] = .bytes(Data("e".utf8)); fields["e"] = .list([.integer(203), .bytes(Data("Invalid query".utf8))])
 		}
-		do { try Task.checkCancellation(); guard !closed, !permitted.isEmpty else { return }; try await dispatcher.send(DHTWire.encode(fields), to: packet.source) }
+		do { try Task.checkCancellation(); guard !closed, !permitted.isEmpty, addressFilter.allows(packet.source.address) else { return }; try await dispatcher.send(DHTWire.encode(fields), to: packet.source) }
 		catch is CancellationError {} catch { lastFailure = String(describing: error) }
 	}
 }

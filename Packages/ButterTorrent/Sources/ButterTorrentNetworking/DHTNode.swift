@@ -8,6 +8,7 @@ public actor DHTNode {
 	let clock: any TransportClock
 	let resolver: any AddressResolving
 	let bootstrap: [NetworkEndpoint]?
+	var addressFilter: PeerAddressFilter
 	var table: DHTRoutingTable
 	var permitted: Set<Data> = [], forbidden: Set<Data> = []
 	var pump: Task<Void, Never>?
@@ -29,9 +30,10 @@ public actor DHTNode {
 	public var nodeID: Data { table.id }
 	public var contactCount: Int { table.closest(table.id, now: clock.now(), count: 1280).count }
 	public init(dispatcher: UDPDispatcher, externalAddress: IPAddress? = nil, bootstrap: [NetworkEndpoint]? = nil,
-		resolver: any AddressResolving = SystemAddressResolver(), clock: any TransportClock = ContinuousTransportClock()) throws {
+		resolver: any AddressResolving = SystemAddressResolver(), clock: any TransportClock = ContinuousTransportClock(), addressFilter: PeerAddressFilter = .init()) throws {
 		guard bootstrap?.count ?? 0 <= 16, externalAddress == nil || externalAddress!.isIPv6 == dispatcher.localEndpoint.address.isIPv6 else { throw NetworkFailure.invalid("DHT configuration") }
 		self.dispatcher = dispatcher; self.bootstrap = bootstrap; self.resolver = resolver; self.clock = clock
+		self.addressFilter = addressFilter
 		let local = dispatcher.localEndpoint.address
 		table = DHTRoutingTable(id: try DHTIdentity.make(address: externalAddress ?? (local.isUnspecified ? nil : local)))
 		fixedAddress = externalAddress != nil || local.isLoopback || !local.isLocal
@@ -39,7 +41,7 @@ public actor DHTNode {
 	public func setTorrents(_ metadata: [TorrentMetadata]) async throws {
 		guard !closed else { throw NetworkFailure.closed }; guard !updating else { throw NetworkFailure.busy }
 		updating = true; defer { updating = false }
-		guard metadata.count <= 2048 else { throw NetworkFailure.limit("DHT registered swarms") }
+		guard metadata.count <= 10_000 else { throw NetworkFailure.limit("DHT registered swarms") }
 		var allowed: Set<Data> = [], blocked: Set<Data> = []
 		for item in metadata {
 			for hash in [item.hashes.v1, item.hashes.v2.map { Data($0.prefix(20)) }].compactMap({ $0 }) {
@@ -50,17 +52,23 @@ public actor DHTNode {
 		results = results.filter { permitted.contains($0.key) }; announced = announced.filter { permitted.contains($0.key) }
 		for hash in blocked { peerCache[hash] = nil; results[hash] = nil; announced[hash] = nil }
 		// Any registration change cancels lookups before another packet can be sent.
-		for job in jobs.values { job.cancel() }
-		if permitted.isEmpty { pump?.cancel(); pump = nil; return }
+		let active = Array(jobs.values); for job in active { job.cancel() }; for job in active { _ = try? await job.value }
+		let previous = pump; pump = nil; previous?.cancel(); await previous?.value
+		guard !closed else { throw NetworkFailure.closed }; if permitted.isEmpty { return }
 		if pump == nil {
 			let stream = try await dispatcher.subscribe(.dht)
 			guard !closed else { throw NetworkFailure.closed }
 			pump = Task { [weak self] in for await packet in stream { if Task.isCancelled { break }; await self?.receiveQuery(packet) } }
 		}
 	}
+	/// Changes endpoint filtering after the owner has drained its discovery work.
+	public func setAddressFilter(_ filter: PeerAddressFilter) {
+		addressFilter = filter; results.removeAll()
+		peerCache = peerCache.mapValues { $0.filter { filter.allows($0.key.address) } }
+	}
 	/// Queries only identities from registered public metadata. An optional port announces this peer.
 	public func getPeers(for metadata: TorrentMetadata, announcePort: UInt16? = nil) async throws -> [NetworkEndpoint] {
-		try Task.checkCancellation(); guard !closed else { throw NetworkFailure.closed }
+		try Task.checkCancellation(); guard !closed else { throw NetworkFailure.closed }; guard !updating else { throw NetworkFailure.busy }
 		if metadata.inspection.private { return [] }
 		let hashes = Array(Set([metadata.hashes.v1, metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }))
 		guard hashes.allSatisfy({ permitted.contains($0) }), announcePort != 0 else { throw NetworkFailure.invalid("unregistered DHT swarm or announce port") }
@@ -73,6 +81,7 @@ public actor DHTNode {
 	}
 	/// Challenges a node learned from a connected peer's PORT message before routing through it.
 	public func addNode(_ endpoint: NetworkEndpoint, for metadata: TorrentMetadata) async throws {
+		guard !updating else { throw NetworkFailure.busy }
 		guard !metadata.inspection.private, let hash = metadata.hashes.v1 ?? metadata.hashes.v2.map({ Data($0.prefix(20)) }) else { return }
 		_ = try await query("ping", arguments: [:], peer: endpoint, deadline: clock.now() + 3, hash: hash)
 	}
@@ -83,7 +92,7 @@ public actor DHTNode {
 	}
 	func query(_ name: String, arguments: [String: BencodeValue], peer: NetworkEndpoint, deadline: TimeInterval, hash: Data) async throws -> BencodeValue {
 		try authorised(hash)
-		guard queries < 16, peer.port > 0, peer.address.isIPv6 == dispatcher.localEndpoint.address.isIPv6, !peer.address.isUnspecified, !peer.address.isMulticast else { throw NetworkFailure.invalid("DHT query endpoint or admission") }
+		guard queries < 16, peer.port > 0, peer.address.isIPv6 == dispatcher.localEndpoint.address.isIPv6, !peer.address.isUnspecified, !peer.address.isMulticast, addressFilter.allows(peer.address) else { throw NetworkFailure.invalid("DHT query endpoint or admission") }
 		let remaining = deadline - clock.now(); guard remaining > 0 else { throw NetworkFailure.timedOut }
 		var transaction = Data()
 		repeat { transaction = Data((0..<4).map { _ in UInt8.random(in: 0...255) }) } while transactions.contains(transaction)
@@ -96,6 +105,7 @@ public actor DHTNode {
 		do {
 			let packet = try await dispatcher.exchange(bytes, with: peer, reply: .dht(transaction), timeout: min(3, remaining))
 			try authorised(hash)
+			guard addressFilter.allows(peer.address) else { throw NetworkFailure.invalid("blocked DHT node") }
 			let root = try DHTWire.decode(packet.payload)
 			observe(root["ip"]?.bytes, source: peer)
 			guard root["y"]?.text == "r", let response = root["r"], response.dictionary != nil, let id = response["id"]?.bytes, DHTIdentity.valid(id, address: peer.address) else { throw NetworkFailure.invalid("DHT error or invalid responder identity") }
@@ -151,7 +161,7 @@ public actor DHTNode {
 						for value in list {
 							guard let bytes = value.bytes else { throw NetworkFailure.invalid("DHT peer") }
 							let peer = try DHTWire.endpoint(bytes)
-							if (contact.endpoint.address.isLocal || !peer.address.isLocal), peers.count < 256 { peers.insert(peer) }
+							if (contact.endpoint.address.isLocal || !peer.address.isLocal), addressFilter.allows(peer.address), peers.count < 256 { peers.insert(peer) }
 						}
 					}
 					if let token = response["token"]?.bytes, !token.isEmpty, token.count <= 64, let id = response["id"]?.bytes { responders.append((DHTContact(id: id, endpoint: contact.endpoint), token)) }

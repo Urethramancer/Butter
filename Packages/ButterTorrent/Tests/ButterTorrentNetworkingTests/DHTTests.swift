@@ -8,6 +8,21 @@ func dhtMetadata(_ isPrivate: Bool = false) throws -> TorrentMetadata {
 }
 
 @Suite struct DHTTests {
+	@Test func blockedNodesCannotQueryOrReceiveRepliesAndLimitsRemainExplicit() async throws {
+		let serverSocket = try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0)), serverUDP = UDPDispatcher(transport: serverSocket)
+		let clientUDP = UDPDispatcher(transport: try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0)))
+		let address = try IPAddress("127.0.0.1"), filter = try PeerAddressFilter(ranges: [PeerAddressRange(first: address, last: address)])
+		let server = try DHTNode(dispatcher: serverUDP, bootstrap: [], addressFilter: filter), metadata = try dhtMetadata()
+		do {
+			await #expect(throws: NetworkFailure.limit("DHT registered swarms")) { try await server.setTorrents(Array(repeating: metadata, count: 10_001)) }
+			try await server.setTorrents([metadata])
+			let transaction = Data([1]), query = try DHTWire.encode(["t": .bytes(transaction), "y": .bytes(Data("q".utf8)), "q": .bytes(Data("ping".utf8)), "a": DHTWire.dictionary(["id": .bytes(Data(repeating: 0, count: 20))])])
+			await #expect(throws: NetworkFailure.timedOut) { try await clientUDP.exchange(query, with: serverSocket.localEndpoint, reply: .dht(transaction), timeout: 0.1) }
+			await server.setAddressFilter(.init())
+			let reply = try await clientUDP.exchange(query, with: serverSocket.localEndpoint, reply: .dht(transaction), timeout: 1)
+			#expect(try DHTWire.decode(reply.payload)["y"]?.text == "r")
+		} catch { await server.shutdown(); try? await serverUDP.shutdown(); try? await clientUDP.shutdown(); throw error }; await server.shutdown(); try await serverUDP.shutdown(); try await clientUDP.shutdown()
+	}
 	@Test func externalAddressVotesRequireIndependentNetworksAndDeadlinesDrain() async throws {
 		let socket = try DatagramSocket(bind: NetworkEndpoint("0.0.0.0", port: 0)), udp = UDPDispatcher(transport: socket)
 		let node = try DHTNode(dispatcher: udp, bootstrap: []), initial = await node.nodeID
