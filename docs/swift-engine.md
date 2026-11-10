@@ -927,7 +927,7 @@ Sanitizer pass all 94 engine tests with those configurations running concurrentl
 The audit retains the earlier failures and explains the fixture changes. Failed
 logs remain available; successful logs are removed automatically.
 
-Magnet imports, local discovery, mapping, tracker accounting and the
+Magnet imports, local discovery, mapping and the
 remaining phase 11 acceptance work stay in TODO.md. Production still uses
 libtorrent. The user's latest release instruction authorises committing, tagging
 and pushing each of phases 11 and 12 once its complete gate passes.
@@ -935,8 +935,7 @@ and pushing each of phases 11 and 12 once its complete gate passes.
 Private tracker integration now drains old peers and pending connections before
 contacting a replacement, and keeps its successful tracker until failure across
 tier boundaries. The failover audit records wire, cancellation, Debug, Release and
-Thread Sanitizer verification. Remaining tracker work concerns hybrid dual-identity
-announces.
+Thread Sanitizer verification.
 
 Tracker payload accounting now persists corrupt and redundant byte totals alongside
 raw traffic counters. HTTP/UDP download reports exclude unusable data, while UI
@@ -947,3 +946,26 @@ late-reply and malformed-checkpoint cases, all 215 Debug package tests, 62 focus
 Release/Thread Sanitizer checks, the shared app contract and 36 exact-payload
 reference comparisons. The reference's late-metadata redundancy is checked
 separately from file payload.
+
+Hybrid tracker announces now cover the v1 SHA-1 and truncated v2 SHA-256 identities.
+Each identity retains its own tracker ID, minimum interval, failure backoff and
+completion event. Partial acceptance keeps the working swarm available; private
+torrents use one shared tracker selection and drain peers once when switching
+endpoints. Fresh responses share a bounded, interleaved peer list. Oversized lists
+are sampled so neither swarm permanently excludes the other, and cached responses
+never replay stale peer contacts.
+
+Sixteen new private hybrid/libtorrent transfers use HTTP/UDP trackers as their only
+peer source, across TCP/µTP and both directions. Half the trackers reject v2
+registration; the v1 swarm still transfers successfully. Native port ownership,
+both identifiers, completed/stopped events and flushed file bytes are verified.
+`BUTTER_REFERENCE_FILTER=session-trackers` selects these cases, with an optional
+`BUTTER_TRACKER_FILTER` substring. The harness now contains 410 transfers plus two
+DHT protocol comparisons. All 223 Debug package tests pass, along with focused
+Release/Thread Sanitizer tracker tests and the shared app contract. These are
+incremental checks; the complete phase 11 acceptance gate remains open.
+
+The updated magnet policy permits DHT lookup for unresolved magnets when DHT is
+enabled. Discovery must be cancelled and drained when private metadata arrives,
+before the resolved transfer is published to the app. Session magnet integration
+and its race tests remain in TODO.md.

@@ -180,7 +180,7 @@ actor ScriptedTracker: TrackerAnnouncing {
 	}
 }
 
-private actor TrackerSwitchRecorder {
+actor TrackerSwitchRecorder {
 	var urls: [URL] = []
 	func record(_ url: URL) { urls.append(url) }
 }

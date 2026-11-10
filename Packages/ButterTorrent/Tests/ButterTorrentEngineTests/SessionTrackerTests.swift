@@ -6,6 +6,12 @@ import ButterTorrentMetadata
 
 // Each case owns several sessions; keep independent fixtures within the process-wide disk budget.
 extension NativeSessionTests { @Suite struct SessionTrackerTests {
+	@Test(arguments: [1, 2, 3], [false, true]) func trackersAnnounceEveryMetadataIdentityAndMergeTheirPeers(_ version: Int, _ udp: Bool) async throws {
+		try await trackerIdentityFixture(version: version, udp: udp, isPrivate: true, rejectV2: false)
+	}
+	@Test(arguments: [false, true], [false, true]) func hybridTransfersContinueWhenTheTrackerOnlyAcceptsV1(_ isPrivate: Bool, _ udp: Bool) async throws {
+		try await trackerIdentityFixture(version: 3, udp: udp, isPrivate: isPrivate, rejectV2: true)
+	}
 	@Test(arguments: [false, true]) func corruptPayloadIsExcludedFromAnnouncesAcrossPauseAndResume(_ udp: Bool) async throws {
 		let fixture = try TrackerSessionFixture(), tracker = RecordingTracker(), clock = ContinuousTransportClock()
 		let udpTracker = udp ? LocalUDPTracker(socket: try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0))) : nil
@@ -47,8 +53,8 @@ extension NativeSessionTests { @Suite struct SessionTrackerTests {
 			#expect(state.downloaded == Int64(fixture.source.bytes.count + 32768) && state.corruptBytes == 32768)
 		} catch { await fixture.close(); await udpTracker?.close(); throw error }; await fixture.close(); await udpTracker?.close()
 	}
-	@Test(arguments: [false, true]) func privateFailoverDrainsOldPeersBeforeContactingTheReplacement(_ initialFailure: Bool) async throws {
-		let fixture = try TrackerSessionFixture(), clock = EngineClock()
+	@Test(arguments: [false, true], [1, 3]) func privateFailoverDrainsOldPeersBeforeContactingTheReplacement(_ initialFailure: Bool, _ version: Int) async throws {
+		let fixture = try TrackerSessionFixture(version: version), clock = EngineClock()
 		do {
 			let old = try await fixture.seed(empty: true), seed = try await fixture.seed()
 			let oldPort = try await old.snapshot().network.port, newPort = try await seed.snapshot().network.port
@@ -70,7 +76,8 @@ extension NativeSessionTests { @Suite struct SessionTrackerTests {
 			await tracker.failPrimary(false)
 			let previous = await tracker.hosts.count; clock.advance(31)
 			try await eventually { await tracker.hosts.count > previous }
-			#expect(await tracker.hosts.filter { $0 == "old.test" }.count == (initialFailure ? 1 : 2))
+			let identities = version == 3 ? 2 : 1
+			#expect(await tracker.hosts.filter { $0 == "old.test" }.count == (initialFailure ? 1 : 2) * identities)
 		} catch { await fixture.close(); throw error }; await fixture.close()
 	}
 	@Test(arguments: [true, false]) func settingsRestartTrackersAfterPeerAdmissionReopens(_ rebind: Bool) async throws {
@@ -205,9 +212,12 @@ private actor BlockingSessionTracker: TrackerAnnouncing {
 private actor RecordingTracker: TrackerAnnouncing {
 	var requests: [(URL, TrackerRequest)] = []
 	var peer: TrackerPeer?
+	var rejectedHash: Data?
 	func setPeer(_ peer: TrackerPeer) { self.peer = peer }
+	func reject(_ hash: Data?) { rejectedHash = hash }
 	func announce(to url: URL, request: TrackerRequest) throws -> TrackerResponse {
 		requests.append((url, request))
+		if request.infoHash == rejectedHash { throw HTTPServiceError.trackerFailure("fixture rejected identifier") }
 		if url.host == "broken.test" { throw HTTPServiceError.trackerFailure("fixture failure") }
 		let peers = peer.map { [BencodeValue.dictionary([Data("ip".utf8): .bytes(Data($0.address.utf8)), Data("port".utf8): .integer(Int64($0.port))])] } ?? []
 		return try TrackerResponse(BencodeValue.dictionary([Data("interval".utf8): .integer(30), Data("peers".utf8): .list(peers)]).encoded())
@@ -224,7 +234,7 @@ private actor SwitchingSessionTracker: TrackerAnnouncing {
 	private var failing = false
 	private var check: (@Sendable () async throws -> Bool)?
 	init(old: TrackerPeer, new: TrackerPeer, initialFailure: Bool) { self.old = old; self.new = new; self.initialFailure = initialFailure }
-	func releaseInitialFailure() { initialFailure = false }
+	func releaseInitialFailure() { initialFailure = false; failing = true }
 	func failPrimary(_ failure: Bool) { failing = failure }
 	func checkBeforeReplacement(_ check: @escaping @Sendable () async throws -> Bool) { self.check = check }
 	func announce(to url: URL, request: TrackerRequest) async throws -> TrackerResponse {
@@ -246,10 +256,19 @@ private final class TrackerSessionFixture {
 	let source: TransferFixture
 	let metadata: TorrentMetadata
 	private var sessions: [TorrentSession] = []
-	init() throws {
+	init(version: Int = 1, isPrivate: Bool = true) throws {
 		source = try TransferFixture()
-		var info = source.metadata.document.root["info"]!.dictionary!; info[Data("private".utf8)] = .integer(1)
-		metadata = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
+		if version == 1 {
+			var info = source.metadata.document.root["info"]!.dictionary!
+			if isPrivate { info[Data("private".utf8)] = .integer(1) }
+			metadata = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
+		} else {
+			let created = try TorrentMetadata(TorrentCreator.create(source: source.root.appendingPathComponent("source/bundle"), trackers: isPrivate ? ["http://tracker.test/announce"] : [], isPrivate: isPrivate, pieceLength: 32768))
+			var fields = created.document.root.dictionary!, info = created.document.root["info"]!.dictionary!
+			if version == 2 { for key in ["files", "length", "pieces"] { info[Data(key.utf8)] = nil } }
+			fields[Data("info".utf8)] = .dictionary(info); fields[Data("announce".utf8)] = nil; fields[Data("announce-list".utf8)] = nil
+			metadata = try TorrentMetadata(BencodeValue.dictionary(fields).encoded())
+		}
 	}
 	func seed(empty: Bool = false) async throws -> TorrentSession {
 		let session = TorrentSession(storage: source.root.appendingPathComponent(empty ? "empty-seed-library" : "seed-library"), configuration: plainTransferConfiguration(), loopbackOnly: true); sessions.append(session)
@@ -266,15 +285,55 @@ private final class TrackerSessionFixture {
 	func close() async { for session in sessions { try? await session.close() }; await source.clean() }
 }
 
+private func trackerIdentityFixture(version: Int, udp: Bool, isPrivate: Bool, rejectV2: Bool) async throws {
+	let fixture = try TrackerSessionFixture(version: version, isPrivate: isPrivate), tracker = RecordingTracker(), clock = EngineClock()
+	let udpTracker = udp ? LocalUDPTracker(socket: try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0))) : nil
+	await udpTracker?.start()
+	do {
+		let seed = try await fixture.seed(), port = try await seed.snapshot().network.port
+		await tracker.setPeer(try TrackerPeer(address: "127.0.0.1", port: port)); await udpTracker?.setPeer(try NetworkEndpoint("127.0.0.1", port: port))
+		let rejected = rejectV2 ? fixture.metadata.hashes.v2.map { Data($0.prefix(20)) } : nil
+		await tracker.reject(rejected); await udpTracker?.reject(rejected)
+		let url = udpTracker.map { "udp://127.0.0.1:\($0.socket.localEndpoint.port)/announce" } ?? "http://tracker.test/announce"
+		let down = try await fixture.download(tiers: [[url]], tracker: tracker, clock: clock)
+		try await down.run(id: "transfer", running: true)
+		try await eventually { try await down.snapshot().transfers[0].state.transfer?.complete == true }
+		let snapshot = try await down.snapshot().transfers[0]
+		#expect(snapshot.error.isEmpty && snapshot.state.transfer?.peers.count == 1)
+		if rejectV2 { #expect(snapshot.trackers[0].message.contains("fixture rejected identifier")) }
+		try await down.pause(id: "transfer") // Flush completion before stopping both identities.
+		let hashes = [fixture.metadata.hashes.v1, fixture.metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }
+		if let udpTracker {
+			let requests = await udpTracker.requests
+			#expect(Set(requests.map(\.infoHash)) == Set(hashes))
+			for hash in hashes {
+				let events = requests.filter { $0.infoHash == hash }.map(\.event)
+				#expect(events == (hash == rejected ? [2, 2] : [2, 1, 3]))
+			}
+			#expect(await udpTracker.failure == nil)
+		} else {
+			let requests = await tracker.requests.map(\.1)
+			#expect(Set(requests.map(\.infoHash)) == Set(hashes))
+			for hash in hashes {
+				let events = requests.filter { $0.infoHash == hash }.map(\.event)
+				#expect(events == (hash == rejected ? [.started, .started] : [.started, .completed, .stopped]))
+			}
+		}
+	} catch { await fixture.close(); await udpTracker?.close(); throw error }
+	await fixture.close(); await udpTracker?.close()
+}
+
 private actor LocalUDPTracker {
-	struct Request: Sendable { let source: NetworkEndpoint; let peerID: Data; let port: UInt16; let event: UInt32; let downloaded: Int64; let left: Int64 }
+	struct Request: Sendable { let source: NetworkEndpoint; let peerID: Data; let port: UInt16; let event: UInt32; let downloaded: Int64; let left: Int64; let infoHash: Data }
 	let socket: DatagramSocket
 	var peer: NetworkEndpoint?
+	var rejectedHash: Data?
 	var requests: [Request] = []
 	var failure: String?
 	var pump: Task<Void, Never>?
 	init(socket: DatagramSocket) { self.socket = socket }
 	func setPeer(_ peer: NetworkEndpoint) { self.peer = peer }
+	func reject(_ hash: Data?) { rejectedHash = hash }
 	func start() {
 		pump = Task { [weak self, socket] in for await packet in socket.datagrams { await self?.receive(packet) } }
 	}
@@ -285,7 +344,12 @@ private actor LocalUDPTracker {
 			if action == 0 { PacketBytes.append(UInt64(123), to: &response) }
 			else {
 				guard packet.payload.count >= 98, action == 1 else { throw NetworkFailure.invalid("fixture announce") }
-				requests.append(Request(source: packet.source, peerID: packet.payload.subdata(in: 36..<56), port: try PacketBytes.uint16(packet.payload, at: 96), event: try PacketBytes.uint32(packet.payload, at: 80), downloaded: Int64(bitPattern: try PacketBytes.uint64(packet.payload, at: 56)), left: Int64(bitPattern: try PacketBytes.uint64(packet.payload, at: 64))))
+				let hash = packet.payload.subdata(in: 16..<36)
+				requests.append(Request(source: packet.source, peerID: packet.payload.subdata(in: 36..<56), port: try PacketBytes.uint16(packet.payload, at: 96), event: try PacketBytes.uint32(packet.payload, at: 80), downloaded: Int64(bitPattern: try PacketBytes.uint64(packet.payload, at: 56)), left: Int64(bitPattern: try PacketBytes.uint64(packet.payload, at: 64)), infoHash: hash))
+				if hash == rejectedHash {
+					var failure = Data(); PacketBytes.append(UInt32(3), to: &failure); PacketBytes.append(id, to: &failure); failure.append(Data("fixture rejected identifier".utf8))
+					try await socket.send(failure, to: packet.source); return
+				}
 				for value in [UInt32(30), 0, 1] { PacketBytes.append(value, to: &response) }
 				if let peer { response.append(peer.address.bytes); PacketBytes.append(peer.port, to: &response) }
 			}

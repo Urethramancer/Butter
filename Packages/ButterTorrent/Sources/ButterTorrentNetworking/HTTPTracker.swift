@@ -140,6 +140,22 @@ public struct TrackerResponse: Sendable {
 		}
 		complete = try counter("complete"); incomplete = try counter("incomplete")
 	}
+	// Keep the representative reply's fields; the announcer owns per-identity timing.
+	init(merging responses: [TrackerResponse], peerResponses: [TrackerResponse]) throws {
+		guard let first = responses.first, responses.count <= 2, peerResponses.count <= 2 else { throw HTTPServiceError.invalid("combined tracker response") }
+		interval = first.interval; minimumInterval = first.minimumInterval; trackerID = first.trackerID
+		warning = first.warning; complete = first.complete; incomplete = first.incomplete
+		var seen: Set<TrackerPeer> = [], merged: [TrackerPeer] = []
+		let truncated = peerResponses.reduce(0) { $0 + $1.peers.count } > 2000
+		let lists = peerResponses.map { truncated ? $0.peers.shuffled() : $0.peers }
+		for index in 0..<(lists.map(\.count).max() ?? 0) {
+			for list in lists where index < list.count && merged.count < 2000 {
+				if seen.insert(list[index]).inserted { merged.append(list[index]) }
+			}
+			if merged.count == 2000 { break }
+		}
+		peers = merged
+	}
 }
 
 public protocol TrackerAnnouncing: Sendable {

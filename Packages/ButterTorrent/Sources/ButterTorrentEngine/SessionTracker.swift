@@ -32,6 +32,7 @@ actor SessionTracker {
 		announcer = try TrackerAnnouncer(tiers: metadata.trackerTiers.map { tier in
 			try tier.map { guard let url = URL(string: $0) else { throw HTTPServiceError.invalid("tracker URL") }; return url }
 		}, request: TrackerRequest(infoHash: hash, peerID: peerID, port: port, counters: counters), client: client, clock: clock,
+			additionalInfoHashes: [metadata.hashes.v1, metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }.filter { $0 != hash },
 			privateTorrent: metadata.inspection.private, beforeSwitch: { _ in await candidates.reset(); try await owner.disconnectPeers() })
 	}
 	func start() {

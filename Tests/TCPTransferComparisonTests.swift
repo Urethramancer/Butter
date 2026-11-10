@@ -156,6 +156,7 @@ struct ReferenceStatus: Decodable {
 		let filter = ProcessInfo.processInfo.environment["BUTTER_REFERENCE_FILTER"]
 		if filter == nil || filter == "DHT" || filter == "session-dht" { try await runDHTComparisons(root: root, binary: binary) }
 		if filter == nil || filter == "session" { try await runSessionComparisons(root: root, binary: binary) }
+		if filter == nil || filter == "session-trackers" { try await runTrackerComparisons(root: root, binary: binary) }
 		if filter == nil || filter == "session-dht" { try await runSessionDHTComparisons(root: root, binary: binary) }
 		if filter == nil || filter == "hints" { try await runHintComparisons(root: root, binary: binary) }
 		if filter == nil || filter == "webseed" { try await runWebSeedComparisons(root: root, binary: binary) }
