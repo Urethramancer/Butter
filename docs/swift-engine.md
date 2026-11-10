@@ -989,3 +989,17 @@ The broader engine run passed 100 tests before a subsequent run exposed a sessio
 DHT deadline failure and an ephemeral TCP bind collision. These retained failures
 remain acceptance work; they are not hidden by automatic retries. Phase 11 remains
 in progress and production still uses libtorrent.
+
+### Explicit unresolved-magnet DHT lookup
+
+`DHTNode.setTorrents(_:unresolved:)` accepts bounded, explicit unknown identities.
+`getPeers(for: Magnet)` permits lookup without announcing an unresolved transfer.
+Registered private metadata overrides unresolved registrations, cancels and drains
+outstanding queries, and clears cached peers before returning. The default remains
+no unknown discovery unless the owner registers it; session settings must opt in.
+
+IPv4/IPv6 fixtures now discover an announced peer through an unresolved magnet.
+An injected pending lookup verifies that private metadata prevents a second send,
+drains the dispatcher and denies later lookups even if the unknown registration
+is retained. The optional headless libtorrent DHT comparisons use this API too.
+Session pending rows and metadata publication remain separate integration work.

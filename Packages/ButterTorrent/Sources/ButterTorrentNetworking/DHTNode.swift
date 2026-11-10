@@ -2,7 +2,7 @@ import Foundation
 import ButterTorrentMetadata
 
 /// DHTNode owns a bounded BEP 5/32/42 node on one address family's shared UDP port.
-/// Register verified metadata before starting discovery; unknown magnets have no discovery API.
+/// Unknown magnets require explicit registration; verified private metadata always takes precedence.
 public actor DHTNode {
 	let dispatcher: UDPDispatcher
 	let clock: any TransportClock
@@ -38,11 +38,12 @@ public actor DHTNode {
 		table = DHTRoutingTable(id: try DHTIdentity.make(address: externalAddress ?? (local.isUnspecified ? nil : local)))
 		fixedAddress = externalAddress != nil || local.isLoopback || !local.isLocal
 	}
-	public func setTorrents(_ metadata: [TorrentMetadata]) async throws {
+	public func setTorrents(_ metadata: [TorrentMetadata], unresolved: [InfoHashes] = []) async throws {
 		guard !closed else { throw NetworkFailure.closed }; guard !updating else { throw NetworkFailure.busy }
 		updating = true; defer { updating = false }
-		guard metadata.count <= 10_000 else { throw NetworkFailure.limit("DHT registered swarms") }
+		guard metadata.count <= 10_000, unresolved.count <= 10_000 - metadata.count else { throw NetworkFailure.limit("DHT registered swarms") }
 		var allowed: Set<Data> = [], blocked: Set<Data> = []
+		for hashes in unresolved { allowed.formUnion(Self.wireHashes(hashes)) }
 		for item in metadata {
 			for hash in [item.hashes.v1, item.hashes.v2.map { Data($0.prefix(20)) }].compactMap({ $0 }) {
 				if item.inspection.private { blocked.insert(hash) } else { allowed.insert(hash) }
@@ -70,7 +71,17 @@ public actor DHTNode {
 	public func getPeers(for metadata: TorrentMetadata, announcePort: UInt16? = nil) async throws -> [NetworkEndpoint] {
 		try Task.checkCancellation(); guard !closed else { throw NetworkFailure.closed }; guard !updating else { throw NetworkFailure.busy }
 		if metadata.inspection.private { return [] }
-		let hashes = Array(Set([metadata.hashes.v1, metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }))
+		return try await getPeers(hashes: Self.wireHashes(metadata.hashes), announcePort: announcePort)
+	}
+	/// Looks up an explicitly registered magnet without announcing an unresolved transfer.
+	public func getPeers(for magnet: Magnet) async throws -> [NetworkEndpoint] {
+		try await getPeers(hashes: Self.wireHashes(magnet.hashes), announcePort: nil)
+	}
+	private static func wireHashes(_ hashes: InfoHashes) -> [Data] {
+		Array(Set([hashes.v1, hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }))
+	}
+	private func getPeers(hashes: [Data], announcePort: UInt16?) async throws -> [NetworkEndpoint] {
+		try Task.checkCancellation(); guard !closed else { throw NetworkFailure.closed }; guard !updating else { throw NetworkFailure.busy }
 		guard hashes.allSatisfy({ permitted.contains($0) }), announcePort != 0 else { throw NetworkFailure.invalid("unregistered DHT swarm or announce port") }
 		guard jobs.count < 4 else { throw NetworkFailure.limit("DHT searches") }
 		guard activeHashes.isDisjoint(with: hashes) else { throw NetworkFailure.busy }

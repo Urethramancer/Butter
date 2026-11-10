@@ -15,6 +15,7 @@ func dhtMetadata(_ isPrivate: Bool = false) throws -> TorrentMetadata {
 		let server = try DHTNode(dispatcher: serverUDP, bootstrap: [], addressFilter: filter), metadata = try dhtMetadata()
 		do {
 			await #expect(throws: NetworkFailure.limit("DHT registered swarms")) { try await server.setTorrents(Array(repeating: metadata, count: 10_001)) }
+			await #expect(throws: NetworkFailure.limit("DHT registered swarms")) { try await server.setTorrents([metadata], unresolved: Array(repeating: metadata.hashes, count: 10_000)) }
 			try await server.setTorrents([metadata])
 			let transaction = Data([1]), query = try DHTWire.encode(["t": .bytes(transaction), "y": .bytes(Data("q".utf8)), "q": .bytes(Data("ping".utf8)), "a": DHTWire.dictionary(["id": .bytes(Data(repeating: 0, count: 20))])])
 			await #expect(throws: NetworkFailure.timedOut) { try await clientUDP.exchange(query, with: serverSocket.localEndpoint, reply: .dht(transaction), timeout: 0.1) }
@@ -73,8 +74,10 @@ func dhtMetadata(_ isPrivate: Bool = false) throws -> TorrentMetadata {
 			try await server.setTorrents([metadata]); try await client.setTorrents([metadata])
 			#expect(try await client.getPeers(for: metadata, announcePort: 6881).isEmpty)
 			// A second client must discover the announced TCP endpoint, not the UDP source port.
-			try await observer.setTorrents([metadata])
-			let found = try await observer.getPeers(for: metadata)
+			let magnet = Magnet(hashes: metadata.hashes)
+			await #expect(throws: NetworkFailure.self) { try await observer.getPeers(for: magnet) }
+			try await observer.setTorrents([], unresolved: [magnet.hashes])
+			let found = try await observer.getPeers(for: magnet)
 			#expect(found == [NetworkEndpoint(address: clientSocket.localEndpoint.address, port: 6881)])
 			#expect(await server.contactCount == 1)
 			let bad = try DHTWire.encode(["t": .bytes(Data([1])), "y": .bytes(Data("q".utf8)), "q": .bytes(Data("announce_peer".utf8)), "a": DHTWire.dictionary(["id": .bytes(await client.nodeID), "info_hash": .bytes(hash), "port": .integer(9999), "token": .bytes(Data(repeating: 0, count: 8))])])
@@ -102,6 +105,23 @@ func dhtMetadata(_ isPrivate: Bool = false) throws -> TorrentMetadata {
 		#expect(await transport.sentCount == 1)
 		#expect(await udp.pendingCount == 0)
 		try await udp.shutdown()
+	}
+	@Test func privateArrivalRevokesUnknownMagnetLookupEvenIfItRemainsRegistered() async throws {
+		let transport = try InjectedDatagrams(), udp = UDPDispatcher(transport: transport)
+		let node = try DHTNode(dispatcher: udp, bootstrap: [NetworkEndpoint("127.0.0.1", port: 54321)])
+		let metadata = try dhtMetadata(true), magnet = Magnet(hashes: metadata.hashes)
+		do {
+			try await node.setTorrents([], unresolved: [magnet.hashes])
+			let lookup = Task { try await node.getPeers(for: magnet) }
+			let packet = try await transport.nextSent()
+			#expect(try DHTWire.decode(packet.0)["q"]?.text == "get_peers")
+			try await node.setTorrents([metadata], unresolved: [magnet.hashes])
+			await #expect(throws: (any Error).self) { try await lookup.value }
+			await #expect(throws: NetworkFailure.self) { try await node.getPeers(for: magnet) }
+			#expect(await udp.pendingCount == 0)
+			#expect(await transport.sentCount == 1)
+		} catch { await node.shutdown(); try? await udp.shutdown(); throw error }
+		await node.shutdown(); try await udp.shutdown()
 	}
 	@Test func rejectsSpoofedResponsesAndUnprovenRoutingReferrals() async throws {
 		let transport = try InjectedDatagrams(), udp = UDPDispatcher(transport: transport)

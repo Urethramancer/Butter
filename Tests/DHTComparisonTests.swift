@@ -41,10 +41,11 @@ func runDHTComparisons(root: URL, binary: URL) async throws {
 				try await TCPTransferComparisonTests.wait { await router.contactCount >= 2 }
 			}
 			let observer = try DHTNode(dispatcher: observerUDP, bootstrap: [target]); nodes.append(observer)
-			try await observer.setTorrents([metadata]); let found = try await observer.getPeers(for: metadata)
+			let magnet = Magnet(hashes: metadata.hashes)
+			try await observer.setTorrents([], unresolved: [magnet.hashes]); let found = try await observer.getPeers(for: magnet)
 			guard found.contains(where: { $0.port == (referenceClient ? 6999 : 6881) }) else { throw NetworkFailure.invalid("cross-engine DHT peer was not returned") }
 			try await TCPTransferComparisonTests.stop(process)
-			print("PASS: \(label), independent token, announce and peer lookup")
+			print("PASS: \(label), independent token, announce and unresolved-magnet lookup")
 		} catch {
 			if let data = try? Data(contentsOf: statusURL) { try? FileHandle.standardError.write(contentsOf: data) }
 			if process.isRunning { process.terminate(); try? await TCPTransferComparisonTests.stop(process) }
