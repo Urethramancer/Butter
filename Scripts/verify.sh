@@ -11,6 +11,7 @@ case "$mode" in
 	client|engine|contract|metadata|metadata-reference|creation|http|native-storage|peer|peer-reference|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
 	version) exec sh Tests/git-version.sh ;;
 	final)
+		sh Tests/test-log.sh
 		sh Tests/git-version.sh
 		Scripts/test-metadata.sh
 		Scripts/test-native-storage.sh
@@ -23,6 +24,7 @@ case "$mode" in
 		Scripts/verify.sh sanitizers "${2:-final}"
 		;;
 	all)
+		sh Tests/test-log.sh
 		sh Tests/git-version.sh
 		for suite in client storage disk engine metadata native-storage metadata-reference creation peer-reference contract interruption lifecycle interface ui build; do "Scripts/test-$suite.sh"; done
 		Scripts/verify.sh sanitizers all
