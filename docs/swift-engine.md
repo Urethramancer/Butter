@@ -969,3 +969,23 @@ The updated magnet policy permits DHT lookup for unresolved magnets when DHT is
 enabled. Discovery must be cancelled and drained when private metadata arrives,
 before the resolved transfer is published to the app. Session magnet integration
 and its race tests remain in TODO.md.
+
+### Hybrid peer identity fallback
+
+Outgoing hybrid transfers try the other wire identity once when the remote closes
+or times out before its handshake. Required MSE encryption is retained across the
+second connection; malformed identities and resource/admission errors do not
+trigger a retry. Private tracker changes, pause and shutdown cancel and drain
+opening retries. A v1 retry advertises the BEP 52 upgrade capability when enabled.
+
+Focused real TCP/µTP tests cover plaintext and required RC4 transfers, both rejected
+identities, single-identity torrents and cancellation during alternate plain/MSE
+handshakes. Four new libtorrent comparisons force v1 framing for hybrid multi-file
+torrents at two piece sizes, checking all file bytes after shutdown in both
+directions. Select these with `BUTTER_REFERENCE_FILTER=identities`. The reference
+harness now contains 414 transfers plus two DHT protocol comparisons.
+
+The broader engine run passed 100 tests before a subsequent run exposed a session
+DHT deadline failure and an ephemeral TCP bind collision. These retained failures
+remain acceptance work; they are not hidden by automatic retries. Phase 11 remains
+in progress and production still uses libtorrent.

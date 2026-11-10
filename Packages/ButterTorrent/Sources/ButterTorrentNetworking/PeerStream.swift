@@ -1,7 +1,21 @@
 import Foundation
+@preconcurrency import Network
+import Darwin
 
 /// PeerStream applies negotiated MSE beneath peer framing, with one reader and one writer.
 public final class PeerStream: @unchecked Sendable {
+	package static func allowsIdentityRetry(after error: Error) -> Bool {
+		let resets: [Int32] = [ECONNRESET, ECONNABORTED, EPIPE, ETIMEDOUT]
+		if let failure = error as? NetworkFailure {
+			switch failure {
+			case .closed, .timedOut: return true
+			case .system(let code): return resets.contains(code)
+			default: return false
+			}
+		}
+		if let failure = error as? NWError, case .posix(let code) = failure { return resets.contains(code.rawValue) }
+		return false
+	}
 	public let raw: any PeerByteStream
 	public let mode: PeerEncryptionMode
 	public let negotiatedInfoHash: Data?

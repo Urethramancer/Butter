@@ -57,7 +57,10 @@ final class PeerSession: @unchecked Sendable {
 				var decoder = PeerWireDecoder(), ready = false, frames = 0
 				while true {
 					let bytes = try await channel.read(timeout: ready ? idleTimeout : 10)
-					if bytes.isEmpty { try decoder.finish(); return }
+					if bytes.isEmpty {
+						guard ready else { throw NetworkFailure.closed }
+						try decoder.finish(); return
+					}
 					try decoder.feed(bytes)
 					if !ready {
 						guard let handshake = try decoder.handshake() else { continue }

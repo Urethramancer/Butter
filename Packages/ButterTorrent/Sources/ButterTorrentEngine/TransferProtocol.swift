@@ -196,7 +196,7 @@ extension TCPTransfer {
 			if let peer = peers[id] { peer.timeouts += 1; peer.retryAfter = now + configuration.requestTimeout; if peer.timeouts >= 2 { drop(id, error: PeerFailure.invalid("repeated request timeout")) } }
 		}
 		for (id, peer) in peers {
-			if peer.peerID == nil, now - peer.connectedAt >= 10 { drop(id, error: NetworkFailure.timedOut); continue }
+			if peer.peerID == nil, now - peer.connectedAt >= 10 { drop(id, error: NetworkFailure.timedOut, retryIdentity: true); continue }
 			peer.recent = peer.recent.filter { $0.value >= now }
 			for (request, time) in peer.hashRequests where now - time >= configuration.requestTimeout {
 				peer.hashRequests[request] = nil; if hashOwners[request] == id { hashOwners[request] = nil }; peer.retryAfter = now + configuration.requestTimeout
