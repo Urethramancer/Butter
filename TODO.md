@@ -4,7 +4,7 @@
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
   Complete magnet-import commands and native discovery/mapping settings (enabled
   DHT, LSD and mapping currently reject explicitly in the adapter).
-  Coordinate web-seed, discovery and mapping lifecycles in that session.
+  Coordinate discovery and mapping lifecycles in that session.
   Complete tracker accounting for corrupt/redundant bytes and hybrid dual-identity
   announces; current session announces use its selected wire identity.
   Keep snapshots and unrelated commands responsive during long filesystem operations.
@@ -17,6 +17,8 @@
   complete `.torrent` piece layers. Connect tracker-derived private peers only
   after metadata arrival; untrusted magnet hints are not reconnected.
 - Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
+  Measure web-seed request overhead; current bounded downloads request 16 KiB
+  blocks and open a connection for each HTTP request, without range coalescing.
   Preserve `v0.3.0`; create an annotated minor tag after each completed phase;
   do not push. Details and gates are in
   [the migration record](docs/swift-engine.md).

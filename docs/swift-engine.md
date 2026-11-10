@@ -797,7 +797,8 @@ Tracker `left` counts all unverified pieces, including unselected files; complet
 a selection does not announce a complete torrent. Persistent totals survive
 restart, while announce counters subtract the session import baseline. Counter
 accounting for corrupt/redundant bytes and hybrid dual-identity announces remain
-unfinished. Web seeds, discovery and router mapping still need session wiring.
+unfinished. Discovery and router mapping still need session wiring. Web-seed
+integration follows below.
 
 Session interoperability adds 36 independent libtorrent transfers: TCP/µTP,
 disabled/required RC4/negotiated plaintext, v1/v2/hybrid metadata and both
@@ -809,3 +810,42 @@ peer-admission and tracker tests under Thread Sanitizer and five independent
 fail-fast runs, the three-backend app contract and all 36 session/libtorrent
 comparisons. These checks do not complete phase 11; no new tag or production
 backend switch is made.
+
+### Session-owned web seeds
+
+Native transfers now fetch BEP 19 file ranges and BEP 17 piece ranges through
+the same picker, storage admission and hash verifier as TCP/µTP blocks. URL seeds
+support v1, v2 and hybrid metadata; HTTP piece seeds require a v1 identity and
+therefore support v1/hybrid torrents. Sparse v2 downloads wait for authenticated
+piece hashes. Original metadata paths form remote URLs even after local renames.
+Padding is generated locally for URL seeds, and selective boundary data uses the
+existing storage safeguards. Only verified pieces are advertised or checkpointed
+as complete. Corrupt contributors are disabled, with bans retained by the managed
+owner across pause and storage/controller changes.
+
+One worker per transfer uses at most three shared HTTP request slots and a
+bounded admission queue. It requests at most 16 KiB per range, honours source
+backoff and consumes the existing download rate limiter after releasing the HTTP
+slot. Counters include each successful response even when a later file range
+fails, and exclude locally generated padding. Pause, removal, storage changes and
+shutdown cancel and drain HTTP, rate waits and disk writes before changing files.
+Active web seeds appear in the existing peer display; package snapshots also
+expose per-source errors and ban state. Native HTTP transports apply the current
+address filter to pinned DNS endpoints at every redirect hop, after draining old
+requests on settings changes.
+
+The local interoperability harness now downloads through real HTTP redirects and
+chunked responses, then seeds those verified files into libtorrent using metadata
+without web-seed URLs. Ten cases cover single/multi-file layouts, all three
+metadata formats for URL seeds and v1/hybrid piece seeds. Select them with
+`BUTTER_REFERENCE_FILTER=webseed`. The complete reference harness now contains
+358 transfer cases plus two DHT comparisons. HTTP connections currently close
+after each range; request coalescing and performance measurements remain phase 12
+work. Source failure/ban state is runtime state and is not stored in checkpoints.
+
+Verification passes 190 package tests in Debug and Release, 39 focused HTTP,
+session and storage/peer tests under Thread Sanitizer and five independent
+fail-fast runs, the shared three-backend command contract and all ten new
+HTTP/native/libtorrent comparisons. The entire 358-case reference matrix has not
+been rerun for this slice. Phase 11 remains in progress, with no new tag or
+production cut-over.
