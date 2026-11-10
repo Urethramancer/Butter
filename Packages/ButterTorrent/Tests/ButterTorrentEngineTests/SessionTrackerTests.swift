@@ -114,8 +114,12 @@ extension NativeSessionTests { @Suite struct SessionTrackerTests {
 			try await down.run(id: "transfer", running: true)
 			let bad = WirePeer(stream: try await listener.accept(timeout: 3)); defer { bad.stream.close() }
 			try await bad.hello(hash: fixture.metadata.hashes.v1!, identity: 13)
-			try await bad.seed(pieceCount: 3)
-			for block in try await bad.requests(6) where block.piece == 0 { try await bad.reply(block, bytes: fixture.source.bytes, corrupt: block.offset == 0) }
+			try await bad.send(.bitfield(PieceBitfield(count: 3, pieces: [0]).bytes))
+			try await bad.send(.unchoke)
+			for block in try await bad.requests(2) {
+				try #require(block.piece == 0)
+				try await bad.reply(block, bytes: fixture.source.bytes, corrupt: block.offset == 0)
+			}
 			try await eventually { try await down.snapshot().transfers[0].state.transfer?.corruptBytes == 32768 }
 			try await down.pause(id: "transfer")
 			if let udpTracker { #expect(await udpTracker.requests.last?.downloaded == 0) }
