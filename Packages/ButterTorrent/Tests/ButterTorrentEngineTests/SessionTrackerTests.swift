@@ -5,7 +5,7 @@ import ButterTorrentMetadata
 @testable import ButterTorrentEngine
 
 // Each case owns several sessions; keep independent fixtures within the process-wide disk budget.
-@Suite(.serialized) struct SessionTrackerTests {
+extension NativeSessionTests { @Suite struct SessionTrackerTests {
 	@Test(arguments: [true, false]) func settingsRestartTrackersAfterPeerAdmissionReopens(_ rebind: Bool) async throws {
 		let fixture = try TrackerSessionFixture(), tracker = RecordingTracker(), clock = EngineClock()
 		do {
@@ -116,6 +116,8 @@ import ButterTorrentMetadata
 			#expect(await restoredTracker.requests.compactMap { $0.1.event } == [.started, .stopped])
 		} catch { await fixture.close(); throw error }; await fixture.close()
 	}
+}
+
 }
 
 private actor BlockingSessionTracker: TrackerAnnouncing {

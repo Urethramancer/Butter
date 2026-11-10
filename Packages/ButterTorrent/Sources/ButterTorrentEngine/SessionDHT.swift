@@ -36,6 +36,7 @@ actor SessionDHT {
 	private var revision = UUID()
 	private var updating = false
 	private var closed = false
+	private var hinted: [NetworkEndpoint: TimeInterval] = [:]
 	init(dispatchers: [UDPDispatcher], port: UInt16, bootstrap: [NetworkEndpoint]?, filter: PeerAddressFilter,
 		clock: any TransportClock, connect: @escaping @Sendable (SessionDHTTarget, NetworkEndpoint) async -> Void) throws {
 		nodes = try dispatchers.map { try DHTNode(dispatcher: $0, bootstrap: bootstrap, clock: clock, addressFilter: filter) }
@@ -49,6 +50,7 @@ actor SessionDHT {
 			wanted.allSatisfy({ id, target in targets[id]?.owner === target.owner }) { return }
 		updating = true; defer { updating = false }; revision = UUID()
 		await drain(); targets.removeAll(); self.policy = []
+		hinted.removeAll()
 		for node in nodes { try await node.setTorrents(metadata) }
 		guard !closed else { throw NetworkFailure.closed }
 		targets = wanted; self.policy = policy
@@ -96,6 +98,22 @@ actor SessionDHT {
 	func setFilter(_ filter: PeerAddressFilter) async {
 		for node in nodes { await node.setAddressFilter(filter) }
 		next.removeAll(); failures.removeAll(); errors.removeAll()
+	}
+	func learnNode(_ endpoint: NetworkEndpoint, for target: SessionDHTTarget) async throws {
+		try Task.checkCancellation()
+		guard !closed, !updating, targets[target.id]?.owner === target.owner, !target.metadata.inspection.private else { return }
+		let family = endpoint.address.isIPv6 ? 1 : 0, key = Key(family: endpoint.address.isIPv6 ? 1 : 0, id: target.id), revision = revision
+		hinted = hinted.filter { $0.value > clock.now() }
+		guard hinted[endpoint] == nil else { return }
+		guard hinted.count < 256 else { throw NetworkFailure.limit("DHT node hints") }
+		hinted[endpoint] = clock.now() + 60
+		do { try await nodes[family].addNode(endpoint, for: target.metadata) }
+		catch { if revision == self.revision { hinted[endpoint] = nil }; throw error }
+		guard !closed, !updating, revision == self.revision, targets[target.id]?.owner === target.owner else { return }
+		if let previous = jobs[key] { previous.cancel(); await previous.value }
+		guard !closed, !updating, revision == self.revision else { return }
+		failures[key] = nil; errors[key] = nil
+		next[key] = clock.now(); launch()
 	}
 	func snapshot() async -> SessionDHTSnapshot {
 		var contacts = 0; for node in nodes { contacts += await node.contactCount }

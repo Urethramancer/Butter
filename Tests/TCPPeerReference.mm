@@ -10,11 +10,17 @@
 #include <libtorrent/settings_pack.hpp>
 #include <libtorrent/magnet_uri.hpp>
 #include <libtorrent/peer_info.hpp>
+#include <libtorrent/extensions.hpp>
 #include <csignal>
 #include <thread>
 #include <chrono>
 #include <stdexcept>
 namespace lt = libtorrent;
+// Introducers exchange discovery messages while never supplying torrent payload.
+struct NoPayloadPeer : lt::peer_plugin { bool on_request(lt::peer_request const&) override { return true; } };
+struct NoPayloadTorrent : lt::torrent_plugin {
+	std::shared_ptr<lt::peer_plugin> new_connection(lt::peer_connection_handle const&) override { return std::make_shared<NoPayloadPeer>(); }
+};
 static volatile sig_atomic_t stopping = 0;
 static void stop(int) { stopping = 1; }
 static void require(bool value, char const* message) { if (!value) throw std::runtime_error(message); }
@@ -92,7 +98,7 @@ int main(int argc, char** argv) { @autoreleasepool { try {
 	for (auto setting : {lt::settings_pack::enable_dht, lt::settings_pack::enable_lsd, lt::settings_pack::enable_upnp, lt::settings_pack::enable_natpmp, lt::settings_pack::enable_incoming_utp, lt::settings_pack::enable_outgoing_utp}) settings.set_bool(setting, false);
 	settings.set_bool(lt::settings_pack::enable_incoming_tcp, true); settings.set_bool(lt::settings_pack::enable_outgoing_tcp, true);
 	bool utp = [job[@"transport"] isEqualToString:@"utp"];
-	bool dhtEnabled = [job[@"dhtPort"] intValue] > 0;
+	bool dhtEnabled = [job[@"dht"] boolValue] || [job[@"dhtPort"] intValue] > 0;
 	if (dhtEnabled) {
 		settings.set_bool(lt::settings_pack::enable_dht, true); settings.set_str(lt::settings_pack::dht_bootstrap_nodes, "");
 		for (auto setting : {lt::settings_pack::dht_restrict_routing_ips, lt::settings_pack::dht_restrict_search_ips, lt::settings_pack::dht_ignore_dark_internet}) settings.set_bool(setting, false);
@@ -106,33 +112,42 @@ int main(int argc, char** argv) { @autoreleasepool { try {
 	settings.set_int(lt::settings_pack::in_enc_policy, policy); settings.set_int(lt::settings_pack::out_enc_policy, policy);
 	settings.set_int(lt::settings_pack::allowed_enc_level, [encryption isEqualToString:@"rc4"] ? lt::settings_pack::pe_rc4 : lt::settings_pack::pe_both);
 	settings.set_bool(lt::settings_pack::prefer_rc4, [encryption isEqualToString:@"prefer-rc4"]);
-	settings.set_int(lt::settings_pack::alert_mask, static_cast<std::uint32_t>(lt::alert_category::error | lt::alert_category::storage | lt::alert_category::status | (dhtEnabled ? lt::alert_category::dht : lt::alert_category_t{})));
+	bool diagnostics = [job[@"diagnostics"] boolValue];
+	settings.set_int(lt::settings_pack::alert_mask, static_cast<std::uint32_t>(lt::alert_category::error | lt::alert_category::storage | lt::alert_category::status | (dhtEnabled ? lt::alert_category::dht : lt::alert_category_t{}) | (diagnostics ? lt::alert_category::peer | lt::alert_category::connect : lt::alert_category_t{})));
 	lt::session session(settings);
-	if (dhtEnabled) session.add_dht_node({"127.0.0.1", [job[@"dhtPort"] intValue]});
+	if ([job[@"dhtPort"] intValue] > 0) session.add_dht_node({"127.0.0.1", [job[@"dhtPort"] intValue]});
 	lt::error_code error;
 	lt::add_torrent_params params;
 	if (job[@"magnet"]) lt::parse_magnet_uri([job[@"magnet"] UTF8String], params, error);
 	else params.ti = std::make_shared<lt::torrent_info>([job[@"torrent"] UTF8String], error);
 	require(!error, "Reference rejected torrent metadata or magnet");
 	params.save_path = [job[@"destination"] UTF8String]; params.flags &= ~(lt::torrent_flags::paused | lt::torrent_flags::auto_managed);
+	if (job[@"pex"] && ![job[@"pex"] boolValue]) params.flags |= lt::torrent_flags::disable_pex;
+	if ([job[@"noPayload"] boolValue]) params.extensions.push_back([](lt::torrent_handle const&, lt::client_data_t) { return std::make_shared<NoPayloadTorrent>(); });
 	if (NSArray* selected = job[@"selected"]) for (NSNumber* value in selected) params.file_priorities.push_back(value.boolValue ? lt::default_priority : lt::dont_download);
 	auto handle = session.add_torrent(params, error); require(!error, "Cannot add reference torrent");
-	bool connected = false, dhtAnnounced = false;
+	bool connected = false, dhtAnnounced = false; int dhtAnnounces = 0;
+	NSMutableArray<NSString*>* peerErrors = [NSMutableArray array];
 	auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(45);
 	while (!stopping && std::chrono::steady_clock::now() < deadline) {
 		auto status = handle.status(); require(!status.errc, status.errc.message().c_str());
-		if (dhtEnabled && !dhtAnnounced) {
-			session.post_dht_stats(); std::vector<lt::alert*> alerts; session.pop_alerts(&alerts);
+		if (dhtEnabled || diagnostics) {
+			if (dhtEnabled && !dhtAnnounced) session.post_dht_stats(); std::vector<lt::alert*> alerts; session.pop_alerts(&alerts);
 			int contacts = 0; for (auto alert : alerts) if (auto stats = lt::alert_cast<lt::dht_stats_alert>(alert)) for (auto const& bucket : stats->routing_table) contacts += bucket.num_nodes;
-			if (contacts > 0 && status.state != lt::torrent_status::checking_files && status.state != lt::torrent_status::checking_resume_data) { handle.force_dht_announce(); dhtAnnounced = true; }
+			for (auto alert : alerts) if (lt::alert_cast<lt::dht_announce_alert>(alert)) ++dhtAnnounces;
+			for (auto alert : alerts) if (lt::alert_cast<lt::peer_error_alert>(alert) || lt::alert_cast<lt::peer_disconnected_alert>(alert)) {
+				if (peerErrors.count == 64) [peerErrors removeObjectAtIndex:0]; [peerErrors addObject:[NSString stringWithUTF8String:alert->message().c_str()]];
+			}
+			if (!dhtAnnounced && contacts > 0 && status.state != lt::torrent_status::checking_files && status.state != lt::torrent_status::checking_resume_data) { handle.force_dht_announce(); dhtAnnounced = true; }
 		}
 		if (!connected && [job[@"remotePort"] intValue] && status.state != lt::torrent_status::checking_files && status.state != lt::torrent_status::checking_resume_data) {
 			handle.connect_peer({lt::make_address([job[@"remoteHost"] UTF8String]), static_cast<unsigned short>([job[@"remotePort"] intValue])}); connected = true;
 		}
-		int rc4 = 0, negotiated = 0, utpPeers = 0, tcpPeers = 0, dhtPeers = 0; std::vector<lt::peer_info> peers; handle.get_peer_info(peers);
-		for (auto const& peer : peers) { if (peer.flags & lt::peer_info::rc4_encrypted) ++rc4; if (peer.flags & lt::peer_info::plaintext_encrypted) ++negotiated; if (peer.flags & lt::peer_info::utp_socket) ++utpPeers; else ++tcpPeers; if (peer.source & lt::peer_info::dht) ++dhtPeers; }
+		int rc4 = 0, negotiated = 0, utpPeers = 0, tcpPeers = 0, dhtPeers = 0, pexPeers = 0, readyPeers = 0; std::vector<lt::peer_info> peers; handle.get_peer_info(peers);
+		for (auto const& peer : peers) { if (peer.flags & lt::peer_info::rc4_encrypted) ++rc4; if (peer.flags & lt::peer_info::plaintext_encrypted) ++negotiated; if (peer.flags & lt::peer_info::utp_socket) ++utpPeers; else ++tcpPeers; if (peer.source & lt::peer_info::dht) ++dhtPeers; if (peer.source & lt::peer_info::pex) ++pexPeers; }
+		for (auto const& peer : peers) if (!(peer.flags & (lt::peer_info::handshake | lt::peer_info::connecting))) ++readyPeers;
 		publish(@{@"port":@(session.listen_port()), @"complete":@(status.has_metadata && status.is_finished), @"seeding":@(status.is_seeding), @"rc4":@(rc4), @"negotiated":@(negotiated), @"utp":@(utpPeers), @"tcp":@(tcpPeers),
-			@"downloaded":@(status.total_payload_download), @"uploaded":@(status.total_payload_upload), @"done":@(status.total_wanted_done), @"wanted":@(status.total_wanted), @"dhtPeers":@(dhtPeers)}, job[@"status"]);
+			@"downloaded":@(status.total_payload_download), @"uploaded":@(status.total_payload_upload), @"done":@(status.total_wanted_done), @"wanted":@(status.total_wanted), @"dhtPeers":@(dhtPeers), @"pexPeers":@(pexPeers), @"dhtAnnounces":@(dhtAnnounces), @"readyPeers":@(readyPeers), @"peerErrors":peerErrors}, job[@"status"]);
 		std::this_thread::sleep_for(std::chrono::milliseconds(20));
 	}
 	require(stopping, "Reference job exceeded its bounded lifetime");

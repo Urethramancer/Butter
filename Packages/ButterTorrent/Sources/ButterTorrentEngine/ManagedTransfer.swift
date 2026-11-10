@@ -29,9 +29,12 @@ public actor ManagedTransfer {
 	private let nativeWebTransport: NetworkHTTPTransport?
 	private let commands = TransferPermits(1)
 	private var configuration: TCPTransferConfiguration
-	private var transfer: TCPTransfer?
-	private var closed = false
-	private var pauseFailed = false
+	var transfer: TCPTransfer?
+	var closed = false
+	var pauseFailed = false
+	var discoveryHandler: (@Sendable (ManagedDiscoveryNotice) async -> Void)?
+	var discoveryRevision = UUID()
+	var discoveryPumps: [Task<Void, Never>] = []
 	private init(metadata: TorrentMetadata, storage: TorrentStorage, configuration: TCPTransferConfiguration,
 		resources: TransferResources, budget: TCPPeerBudget?, peerID: Data, clock: any TransportClock, webSeedTransport: (any HTTPTransport)?) {
 		self.metadata = metadata; self.storage = storage; self.configuration = configuration
@@ -63,10 +66,11 @@ public actor ManagedTransfer {
 			try await self.transfer?.setLimits(download: download, upload: upload); self.configuration = candidate
 		}
 	}
-	public func configurePeers(maximum: Int, pex: Bool, port: UInt16, allowSameIP: Bool, addressFilter: PeerAddressFilter = .init()) async throws {
+	public func configurePeers(maximum: Int, pex: Bool, port: UInt16, allowSameIP: Bool, addressFilter: PeerAddressFilter = .init(), dhtPort: UInt16 = 0) async throws {
 		try await serial {
 			var candidate = self.configuration; candidate.maximumPeers = maximum; candidate.enablePEX = pex; candidate.listenPort = port; candidate.allowSameIP = allowSameIP
 			candidate.addressFilter = addressFilter
+			candidate.dhtPort = dhtPort
 			try candidate.validate(); let running = self.transfer != nil
 			try await self.quiesce(); self.configuration = candidate
 			await self.nativeWebTransport?.setAddressFilter(addressFilter)
@@ -142,8 +146,10 @@ public actor ManagedTransfer {
 	private func resume() async throws {
 		try Task.checkCancellation()
 		transfer = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration, peerID: peerID, budget: budget, resources: resources, clock: clock, webSeedClient: webClient)
+		startDiscovery(transfer!)
 	}
 	private func quiesce() async throws {
+		await stopDiscovery()
 		guard let transfer else { return }
 		do { try await transfer.shutdown(); self.transfer = nil; pauseFailed = false }
 		catch { pauseFailed = true; throw error }
@@ -172,4 +178,5 @@ public actor ManagedTransfer {
 			let result = try await body(); await commands.release(); return result
 		} catch { await commands.release(); throw error }
 	}
+	deinit { for task in discoveryPumps { task.cancel() } }
 }

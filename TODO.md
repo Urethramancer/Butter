@@ -5,13 +5,13 @@
   Complete magnet-import commands and native local-discovery/mapping settings
   (enabled LSD and mapping currently reject explicitly in the adapter).
   Coordinate local-discovery and mapping lifecycles in that session.
-  Connect managed-controller PEX and peer PORT hints to session discovery;
-  session DHT currently uses explicit bootstrap nodes or the built-in bootstrap.
   Complete tracker accounting for corrupt/redundant bytes and hybrid dual-identity
   announces; current session announces use its selected wire identity.
   Drain existing private peers when tracker failover changes the supplying tracker.
   Keep snapshots and unrelated commands responsive during long filesystem operations.
   Verify interruption and disk-failure recovery during repository publication/discard.
+  Resolve the intermittent closed stream in the controlled crossed-µTP/MSE fixture
+  under concurrent suite load; stage diagnostics are now retained on failure.
   Resolve inherited PCP-before-NAT-PMP behaviour from the pinned reference;
   the Swift mapping clients currently implement UPnP and NAT-PMP.
   Select or retry hybrid wire identities automatically. Hybrid magnets with
@@ -22,8 +22,8 @@
 - Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
   Measure web-seed request overhead; current bounded downloads request 16 KiB
   blocks and open a connection for each HTTP request, without range coalescing.
-  Preserve `v0.3.0`; create an annotated minor tag after each completed phase;
-  do not push. Details and gates are in
+  Preserve `v0.3.0`; commit, create an annotated minor tag and push after phase 11,
+  then do the same for phase 12. Details and gates are in
   [the migration record](docs/swift-engine.md).
 
 ## Filesystem integration

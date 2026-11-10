@@ -13,12 +13,15 @@ import ButterTorrentNetworking
 			var configuration = plainTransferConfiguration(); configuration.encryption = .init(incoming: .disabled, outgoing: .required)
 			let engine = try await fixture.transfer("download", configuration: configuration)
 			let connecting = Task { try await engine.connect(to: right.localEndpoint, utp: left) }
+			var stage = "accept outgoing"
 			do {
 				// Hold outgoing MSE until the opposite direction has completed its wire handshake.
 				let pending = try await right.accept(timeout: 3)
+				stage = "open incoming"
 				let incoming = Task { try await engine.attach(left.accept(timeout: 3)) }
 				let remote = try await right.connect(to: left.localEndpoint, timeout: 3), peer = WirePeer(stream: remote)
 				let retained: UUID?
+				stage = "admit incoming"
 				if localPortIsLower {
 					await #expect(throws: (any Error).self) { try await incoming.value }; retained = nil
 				} else {
@@ -27,19 +30,22 @@ import ButterTorrentNetworking
 					try await eventually { await engine.snapshot().peers.contains { $0.id == retained && $0.peerID != nil } }
 				}
 				let negotiated: PeerStream?
+				stage = "finish outgoing MSE"
 				do { negotiated = try await PeerStream.accept(pending, hashes: [fixture.metadata.hashes.v1!], configuration: .init(incoming: .required)) }
 				catch { guard !localPortIsLower, error as? NetworkFailure == .closed else { throw error }; negotiated = nil }
 				let connected = try await connecting.value
+				stage = "wire handshake"
 				let serving: WirePeer
 				if localPortIsLower { serving = WirePeer(channel: try #require(negotiated)); try await serving.hello(hash: fixture.metadata.hashes.v1!, identity: 77) }
 				else { #expect(connected == retained); serving = peer }
 				#expect(await engine.snapshot().peers.count == 1)
+				stage = "payload transfer"
 				try await serving.seed(pieceCount: 3)
 				for block in try await serving.requests(6) { try await serving.reply(block, bytes: fixture.bytes) }
 				try await eventually { await engine.snapshot().complete }
 				negotiated?.close(); peer.stream.close()
 			} catch {
-				connecting.cancel(); await left.shutdown(); await right.shutdown(); try? await leftUDP.shutdown(); try? await rightUDP.shutdown(); throw error
+				connecting.cancel(); await left.shutdown(); await right.shutdown(); try? await leftUDP.shutdown(); try? await rightUDP.shutdown(); throw PeerFailure.invalid("crossed µTP \(stage): \(error)")
 			}
 			await left.shutdown(); await right.shutdown(); try await leftUDP.shutdown(); try await rightUDP.shutdown()
 		}

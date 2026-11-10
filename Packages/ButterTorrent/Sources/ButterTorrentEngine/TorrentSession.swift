@@ -73,6 +73,7 @@ public actor TorrentSession {
 	private let commands = TransferPermits(1)
 	private var entries: [SessionEntry] = []
 	private var events: [SessionEvent] = []
+	private var peerHints: PeerCandidateQueue<SessionPeerHint>?
 	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
 		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient(), webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil) {
 		repository = TransferRepository(root: storage); self.configuration = configuration; self.resources = resources; budget = TCPPeerBudget(limit: maximumPeers)
@@ -106,6 +107,7 @@ public actor TorrentSession {
 			do {
 				let managed = try await ManagedTransfer.open(metadata: metadata, destination: destination, stateDirectory: prepared.directory,
 					selected: selected, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport); owner = managed
+				await self.observeDiscovery(id: id, owner: managed)
 				var snapshot = try await managed.snapshot()
 				if !snapshot.storage.needsRecovery { try await managed.recheck(); snapshot = try await managed.snapshot() }
 				try Task.checkCancellation()
@@ -152,6 +154,7 @@ public actor TorrentSession {
 			if entry.closed {
 				entry.owner = try await ManagedTransfer.open(metadata: entry.metadata, destination: entry.last.storage.destination,
 					stateDirectory: entry.prepared.directory, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: entry.prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport)
+				await self.observeDiscovery(id: id, owner: entry.owner)
 				entry.closed = false
 			}
 			try await entry.owner.pause()
@@ -224,6 +227,7 @@ public actor TorrentSession {
 		try await serial {
 			var failure: Error?
 			for entry in self.entries { entry.running = false }; try await self.refreshRouting()
+			await self.drainPeerHints()
 			for entry in self.entries { await entry.tracker?.halt() }
 			for entry in self.entries where !entry.closed {
 				do { try await entry.owner.pause() } catch { entry.error = error.localizedDescription; failure = failure ?? error }
@@ -270,8 +274,9 @@ public actor TorrentSession {
 					}
 			} catch { self.networkError = error.localizedDescription; bindError = error }
 			let port = await self.network?.snapshot().port ?? 0; self.configuration.listenPort = port
+			self.configuration.dhtPort = settings.dht ? port : 0
 			for entry in self.entries where !entry.closed {
-				try await entry.owner.configurePeers(maximum: self.configuration.maximumPeers, pex: settings.pex, port: port, allowSameIP: settings.allowSameIP, addressFilter: self.configuration.addressFilter)
+				try await entry.owner.configurePeers(maximum: self.configuration.maximumPeers, pex: settings.pex, port: port, allowSameIP: settings.allowSameIP, addressFilter: self.configuration.addressFilter, dhtPort: self.configuration.dhtPort)
 			}
 			for entry in running { try await entry.owner.start() }
 			try await self.refreshRouting()
@@ -289,7 +294,7 @@ public actor TorrentSession {
 			self.configuration.addressFilter = filter; await self.network?.setFilter(filter)
 			for entry in self.entries where !entry.closed {
 				try await entry.owner.configurePeers(maximum: self.configuration.maximumPeers, pex: self.configuration.enablePEX,
-					port: self.configuration.listenPort, allowSameIP: self.configuration.allowSameIP, addressFilter: filter)
+					port: self.configuration.listenPort, allowSameIP: self.configuration.allowSameIP, addressFilter: filter, dhtPort: self.configuration.dhtPort)
 			}
 			for entry in running { try await entry.owner.start() }; try await self.refreshRouting()
 			self.networkChanging = false
@@ -305,6 +310,7 @@ public actor TorrentSession {
 				for entry in entries { entry.running = false; await entry.tracker?.halt() }
 				var failure: Error?
 				try? await refreshRouting()
+				await drainPeerHints()
 				for entry in entries where !entry.closed {
 					do { try await entry.owner.pause() } catch { entry.error = error.localizedDescription; failure = failure ?? error }
 				}
@@ -336,7 +342,39 @@ public actor TorrentSession {
 			entry.running, !entry.closed, entry.error.isEmpty, !entry.metadata.inspection.private else { return }
 		_ = try? await connect(id: entry.id, to: endpoint)
 	}
+	private func observeDiscovery(id: String, owner: ManagedTransfer) async {
+		await owner.setDiscoveryHandler { [weak self, weak owner] notice in
+			guard let self, let owner else { return }; await self.receiveDiscovery(id: id, owner: owner, notice: notice)
+		}
+	}
+	private func receiveDiscovery(id: String, owner: ManagedTransfer, notice: ManagedDiscoveryNotice) async {
+		guard await owner.acceptsDiscovery(notice.revision), !closed, !networkChanging,
+			let entry = entries.first(where: { $0.id == id }), entry.owner === owner,
+			entry.running, entry.error.isEmpty, !entry.metadata.inspection.private else { return }
+		switch notice.hint {
+		case .peer(let peer):
+			guard configuration.enablePEX else { return }
+			if peerHints == nil { peerHints = PeerCandidateQueue { [weak self] hint in await self?.connectHint(hint) } }
+			await peerHints?.enqueue([SessionPeerHint(id: id, owner: owner, revision: notice.revision, endpoint: peer.endpoint, flags: peer.flags)])
+		case .node(let endpoint):
+			guard peerSettings?.dht == true, configuration.addressFilter.allows(endpoint.address) else { return }
+			try? await network?.learnNode(endpoint, for: SessionDHTTarget(id: id, metadata: entry.metadata, owner: owner))
+		}
+	}
+	private func connectHint(_ hint: SessionPeerHint) async {
+		guard !closed, !networkChanging, configuration.enablePEX, configuration.addressFilter.allows(hint.endpoint.address),
+			let entry = entries.first(where: { $0.id == hint.id }), entry.owner === hint.owner, entry.running, !entry.closed,
+			entry.error.isEmpty, !entry.metadata.inspection.private else { return }
+		do {
+			var utp: UTPTransport?
+			if peerSettings?.utp == true && (hint.flags & 4 != 0 || peerSettings?.tcp == false) { utp = try await network?.transport(for: hint.endpoint) }
+			else if peerSettings?.tcp == false { return }
+			_ = try await hint.owner.connectDiscovered(to: hint.endpoint, revision: hint.revision, utp: utp)
+		} catch { }
+	}
+	private func drainPeerHints() async { let previous = peerHints; peerHints = nil; await previous?.stop() }
 	private func pauseForSettings() async throws -> [SessionEntry] {
+		await drainPeerHints()
 		let running = entries.filter { $0.running && !$0.closed && $0.error.isEmpty }
 		if let network { do { await network.suspendDiscovery(); try await network.setTargets([]) } catch NetworkFailure.closed { } }
 		for entry in entries { await entry.tracker?.halt() }
@@ -381,7 +419,7 @@ public actor TorrentSession {
 				configuration.listenPort = await network!.snapshot().port; peerSettings = settings
 				for existing in entries where !existing.closed {
 					try await existing.owner.configurePeers(maximum: configuration.maximumPeers, pex: configuration.enablePEX, port: configuration.listenPort,
-						allowSameIP: configuration.allowSameIP, addressFilter: configuration.addressFilter)
+						allowSameIP: configuration.allowSameIP, addressFilter: configuration.addressFilter, dhtPort: configuration.dhtPort)
 				}
 				try await refreshRouting()
 			}

@@ -4,7 +4,7 @@ import ButterTorrentMetadata
 @testable import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
-@Suite(.serialized) struct SessionDHTTests {
+extension NativeSessionTests { @Suite struct SessionDHTTests {
 	@Test func failedDiscoveryRegistrationLeavesTheSharedUDPPortUsable() async throws {
 		let fixture = try TransferFixture(), clock = ContinuousTransportClock()
 		var settings = SessionPeerSettings(); settings.dht = true
@@ -134,7 +134,9 @@ import ButterTorrentMetadata
 	}
 }
 
-private actor SessionDHTRouter {
+}
+
+actor SessionDHTRouter {
 	struct Announce { let port: UInt16; let source: NetworkEndpoint }
 	let endpoint: NetworkEndpoint
 	let udp: UDPDispatcher

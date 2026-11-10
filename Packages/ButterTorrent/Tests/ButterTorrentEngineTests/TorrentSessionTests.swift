@@ -4,7 +4,7 @@ import ButterTorrentMetadata
 import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
-@Suite struct TorrentSessionTests {
+extension NativeSessionTests { @Suite struct TorrentSessionTests {
 	@Test(arguments: [2, 3]) func sparseDownloadsAcquireHashesAndRestoreNativeCounters(_ version: Int) async throws {
 		let fixture = try V2Fixture(version: version), library = fixture.root.appendingPathComponent("library"), source = fixture.root.appendingPathComponent("input.torrent")
 		let sparse = try TorrentMetadata(infoBytes: fixture.metadata.originalInfo, expected: fixture.metadata.hashes)
@@ -123,4 +123,5 @@ import ButterTorrentStorage
 		try await session.shutdown()
 		for entry in try await session.snapshot().transfers { _ = try await session.remove(id: entry.id, retainState: true) }
 	}
+}
 }

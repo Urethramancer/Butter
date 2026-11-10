@@ -79,6 +79,7 @@ actor SessionPeerNetwork {
 		catch { discoveryFailure = error.localizedDescription; await dht.shutdown(); self.dht = nil }
 	}
 	func suspendDiscovery() async { await updateDiscovery([], metadata: []) }
+	func learnNode(_ endpoint: NetworkEndpoint, for target: SessionDHTTarget) async throws { try await dht?.learnNode(endpoint, for: target) }
 	private func start(tcp: Bool) {
 		if tcp {
 			let listener = listener.tcp

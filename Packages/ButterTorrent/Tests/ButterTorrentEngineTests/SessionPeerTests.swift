@@ -5,7 +5,7 @@ import ButterTorrentMetadata
 import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
-@Suite struct SessionPeerTests {
+extension NativeSessionTests { @Suite struct SessionPeerTests {
 	@Test func bindingFailureRecoversAndUnchangedSettingsPreservePendingHandshakes() async throws {
 		let fixture = try SessionPeerFixture()
 		do {
@@ -110,6 +110,8 @@ import ButterTorrentNetworking
 			try await eventually { try await seed.snapshot().transfers[0].state.transfer?.peers.contains { $0.peerID == down.peerID } == true }
 		} catch { await fixture.close(); throw error }; await fixture.close()
 	}
+}
+
 }
 
 private final class SessionPeerFixture {

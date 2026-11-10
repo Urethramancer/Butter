@@ -891,3 +891,42 @@ the existing 36 session peer transfers. Reference DHT cases use IPv4; native
 loopback fixtures also cover IPv6. The full 370-case transfer matrix, UI and
 performance acceptance have not been rerun for this slice. No phase 11 tag,
 production switch or push is made.
+
+## Managed peer discovery hints (phase 11)
+
+Managed controllers now consume PEX and peer PORT streams through a generation
+that changes whenever the peer engine is replaced. Pending work is cancelled and
+drained on pause, storage changes, settings changes and shutdown. Session admission
+rechecks the current owner, generation, running state, privacy and address filter
+before opening a connection. The shared candidate queue bounds pending contacts
+and simultaneous connection attempts. A missing PEX µTP flag does not prohibit
+trying µTP when TCP is disabled.
+
+PORT hints challenge the advertised DHT endpoint before using it, deduplicate
+recent hints and trigger a new lookup through the resulting route. Only running
+public torrents advertise the owned DHT port. Private torrents and disabled
+discovery settings never send the hinted traffic. Native fixtures cover IPv6,
+settings changes, stale generations and missing PEX capability flags.
+
+The reference harness adds 24 PEX/PORT transfers across all metadata formats,
+both transports and both directions. The introducer supplies no payload; PORT
+cases have no external DHT bootstrap. All 24 pass against the unmodified pinned
+reference. The complete harness now contains 394 transfers plus two DHT protocol
+comparisons. This integration also exposed the active-piece starvation and crossed
+µTP connection failures recorded in the audit. Package session suites share one
+serial parent to respect the process-wide disk admission bound; individual cases
+continue to exercise concurrent transfers and commands.
+
+Verification passes 209 package tests in Debug and Release, nine focused tests
+under Thread Sanitizer, the three-backend app contract, five fail-fast concurrent
+engine-suite runs and five isolated reference runs of the previously failing
+pure-v2 µTP case. An earlier concurrent full-suite run also closed the controlled
+MSE regression stream unexpectedly. Subsequent runs have not reproduced it;
+stage diagnostics and the remaining investigation are recorded in TODO.md rather
+than treating repetition as a fix. Failed logs remain available; successful logs
+are removed automatically.
+
+Magnet imports, local discovery, mapping, tracker failover/accounting and the
+remaining phase 11 acceptance work stay in TODO.md. Production still uses
+libtorrent. The user's latest release instruction authorises committing, tagging
+and pushing each of phases 11 and 12 once its complete gate passes.

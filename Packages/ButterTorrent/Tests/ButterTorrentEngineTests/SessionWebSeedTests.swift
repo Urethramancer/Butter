@@ -6,7 +6,7 @@ import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 // Independent multi-session fixtures share the production disk and HTTP budgets.
-@Suite(.serialized) struct SessionWebSeedTests {
+extension NativeSessionTests { @Suite struct SessionWebSeedTests {
 	@Test func partialRangeFailureRetainsReceivedCountersAndHonoursBackoff() async throws {
 		try await transferFixture { fixture in
 			let transport = try SeedFileTransport(metadata: fixture.metadata, root: fixture.root.appendingPathComponent("source")), clock = EngineClock()
@@ -157,6 +157,8 @@ import ButterTorrentStorage
 			} catch { for session in sessions { try? await session.close() }; throw error }
 		}
 	}
+}
+
 }
 
 private func webMetadata(_ metadata: TorrentMetadata, urls: [String], pieces: [String] = []) throws -> TorrentMetadata {
