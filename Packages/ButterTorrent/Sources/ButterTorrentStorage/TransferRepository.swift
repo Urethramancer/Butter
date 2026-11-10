@@ -45,6 +45,16 @@ public actor TransferRepository {
 			return try TorrentMetadata(contentsOf: source)
 		}
 	}
+	/// A resolved magnet can restore its retained torrent without a source file.
+	public func retainedMetadata(id: String) async throws -> TorrentMetadata? {
+		try Self.validateID(id); let root = root
+		return try await worker.run(bulk: true) { _ in
+			let directory = try StorageDirectory(root)
+			let lease = try StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
+			guard try Self.record(id, in: directory) != nil else { return nil }
+			return try TorrentMetadata(directory.read(id + ".torrent", maximum: 33_554_432))
+		}
+	}
 	public func prepare(id: String, restore: Bool) async throws -> PreparedTransferState {
 		try Self.validateID(id); let root = root
 		return try await worker.run(bulk: true) { _ in

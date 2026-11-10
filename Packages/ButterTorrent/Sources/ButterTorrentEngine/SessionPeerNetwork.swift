@@ -85,10 +85,10 @@ actor SessionPeerNetwork {
 	private func enableDHT(bootstrap: [NetworkEndpoint]?, connect: @escaping @Sendable (SessionDHTTarget, NetworkEndpoint) async -> Void) throws {
 		dht = try SessionDHT(dispatchers: [listener.udp4, listener.udp6], port: listener.port, bootstrap: bootstrap, filter: filter, clock: clock, connect: connect)
 	}
-	func updateDiscovery(_ targets: [SessionDHTTarget], metadata: [TorrentMetadata]) async {
+	func updateDiscovery(_ targets: [SessionDHTTarget], metadata: [TorrentMetadata], magnets: [SessionMagnetTarget] = []) async {
 		guard !closed else { return }
 		if let dht {
-			do { try await dht.update(targets, metadata: metadata) }
+			do { try await dht.update(targets, metadata: metadata, magnets: magnets) }
 			catch { discoveryFailure = error.localizedDescription; await dht.shutdown(); self.dht = nil }
 		}
 		if let localDiscovery {

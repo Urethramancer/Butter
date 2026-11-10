@@ -4,9 +4,9 @@ import ButterTorrentMetadata
 import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
-private enum MetadataBehaviour: String, CaseIterable { case good, corrupt, wrongTotal, unsolicited, resized, silent }
+enum MetadataBehaviour: String, CaseIterable { case good, corrupt, wrongTotal, unsolicited, resized, silent }
 
-private func metadataProvider(_ fixture: V2Fixture, behaviour: MetadataBehaviour) async throws -> (NetworkEndpoint, Task<Void, Error>) {
+func metadataProvider(_ fixture: V2Fixture, behaviour: MetadataBehaviour, beforeReply: @escaping @Sendable () async throws -> Void = {}) async throws -> (NetworkEndpoint, Task<Void, Error>) {
 	let listener = try await TCPListener.listen(address: IPAddress("127.0.0.1")); fixture.listeners.append(listener)
 	let metadata = fixture.metadata
 	let work = Task {
@@ -29,6 +29,7 @@ private func metadataProvider(_ fixture: V2Fixture, behaviour: MetadataBehaviour
 				let number = behaviour == .unsolicited ? piece + 1 : piece
 				let total = info.count + (behaviour == .wrongTotal ? 1 : 0)
 				let header = extensionDictionary(["msg_type": .integer(1), "piece": .integer(number), "total_size": .integer(Int64(total))])
+				try await beforeReply()
 				try await peer.send(.extended(1, header.encoded() + info)); return
 			}
 		}

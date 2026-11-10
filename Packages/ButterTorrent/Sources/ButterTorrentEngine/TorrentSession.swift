@@ -24,10 +24,13 @@ public struct SessionEvent: Sendable {
 	public let kind: String
 	public let id: String
 	public let path: String?
+	public let existingID: String?
+	init(kind: String, id: String, path: String? = nil, existingID: String? = nil) { self.kind = kind; self.id = id; self.path = path; self.existingID = existingID }
 }
 
 public struct TorrentSessionSnapshot: Sendable {
 	public let transfers: [SessionTransferSnapshot]
+	public let magnets: [SessionMagnetSnapshot]
 	public let events: [SessionEvent]
 	public let network: SessionNetworkSnapshot
 }
@@ -80,7 +83,9 @@ public actor TorrentSession {
 	private let publication = TransferPermits(1)
 	private let routing = TransferPermits(1)
 	private let trackerSetup = TransferPermits(1)
+	private let metadataPermits = TransferPermits(4)
 	private var entries: [SessionEntry] = []
+	private var pendingMagnets: [SessionPendingMagnet] = []
 	private var events: [SessionEvent] = []
 	private var peerHints: PeerCandidateQueue<SessionPeerHint>?
 	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
@@ -104,41 +109,90 @@ public actor TorrentSession {
 		let selected = selected?.isEmpty == true ? nil : selected
 		guard destination.isFileURL, destination.path.hasPrefix("/"), !destination.path.utf8.contains(0) else { throw StorageFailure.invalid("absolute destination") }
 		return try await serial(id: id, publishing: true) {
-			guard !self.entries.contains(where: { $0.id == id }) else { throw StorageFailure.collision("transfer identifier") }
-			guard self.entries.count < 10_000 else { throw PeerFailure.limit("session transfers") }
-			var metadata = try await self.repository.metadata(id: id, source: source, restore: restore)
-			if let selected, selected.count != metadata.inspection.files.count { throw StorageFailure.invalid("selection count") }
-			if let existing = self.entries.first(where: { Self.overlaps($0.metadata.hashes, metadata.hashes) }) {
-				guard existing.metadata.originalInfo == metadata.originalInfo else { throw MetadataError.invalid("conflicting verified swarm identity") }
+			try self.checkAdmission(id)
+			let metadata = try await self.repository.metadata(id: id, source: source, restore: restore)
+			return try await self.addMetadata(id: id, metadata: metadata, destination: destination, restore: restore, selected: selected, tracker: tracker)
+		}
+	}
+	private func checkAdmission(_ id: String) throws {
+		guard !entries.contains(where: { $0.id == id }), pending(id) == nil else { throw StorageFailure.collision("transfer identifier") }
+		guard entries.count + pendingMagnets.count < 10_000 else { throw PeerFailure.limit("session transfers") }
+	}
+	public func add(id: String, magnet: Magnet, destination: URL, restore: Bool = false, tracker: String? = nil) async throws -> SessionImport {
+		try TransferRepository.validateID(id)
+		guard destination.isFileURL, destination.path.hasPrefix("/"), !destination.path.utf8.contains(0) else { throw StorageFailure.invalid("absolute destination") }
+		return try await serial(id: id, publishing: true) {
+			try self.checkAdmission(id)
+			if let stored = try await self.repository.retainedMetadata(id: id) {
+				guard restore else { throw StorageFailure.collision("retained native state; restore or forget it first") }
+				guard Self.matches(magnet.hashes, stored.hashes) else { throw MetadataError.invalid("retained magnet identity") }
+				return try await self.addMetadata(id: id, metadata: stored, destination: destination, restore: true, selected: nil, tracker: tracker)
+			}
+			if let existing = self.entries.first(where: { Self.overlaps($0.metadata.hashes, magnet.hashes) }) {
+				guard Self.matches(magnet.hashes, existing.metadata.hashes) else { throw MetadataError.invalid("conflicting magnet identity") }
 				return SessionImport(id: existing.id, duplicate: true, hashes: [])
 			}
-			if let tracker, !metadata.inspection.private { metadata = try self.appending(tracker, to: metadata) }
-			let prepared = try await self.repository.prepare(id: id, restore: restore)
-			var owner: ManagedTransfer?
-			do {
-				let managed = try await ManagedTransfer.open(metadata: metadata, destination: destination, stateDirectory: prepared.directory,
-					selected: selected, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport, event: { self.storageEvent(id, $0) }); owner = managed
-				await self.observeDiscovery(id: id, owner: managed)
-				var snapshot = try await managed.snapshot()
-				if !snapshot.storage.needsRecovery { try await managed.recheck(); snapshot = try await managed.snapshot() }
-				try Task.checkCancellation()
-				try await self.repository.publish(id: id, metadata: metadata, state: prepared)
-				let entry = SessionEntry(id: id, metadata: metadata, prepared: prepared, owner: managed, last: snapshot, configuration: self.configuration)
-				if snapshot.storage.needsRecovery { entry.error = StorageFailure.recoveryRequired("a filesystem operation is pending").localizedDescription }
-				self.entries.append(entry)
-				try await self.refreshRouting()
-				return SessionImport(id: id, duplicate: false, hashes: metadata.hashes.hex)
-			} catch {
-				// Cleanup runs independently of caller cancellation and never discards a published checkpoint.
-				let repository = self.repository, cleanup = Task { if let owner { try await owner.close() }; try await repository.abandon(prepared) }
-				do { try await cleanup.value }
-				catch let cleanupError { throw StorageFailure.recoveryRequired("import failed (\(error.localizedDescription)); native state cleanup also failed (\(cleanupError.localizedDescription))") }
-				throw error
+			if let existing = self.pendingMagnets.first(where: { Self.overlaps($0.magnet.hashes, magnet.hashes) }) {
+				let a = existing.magnet.hashes, b = magnet.hashes
+				guard a.v1 == nil || b.v1 == nil || a.v1 == b.v1, a.v2 == nil || b.v2 == nil || a.v2 == b.v2 else { throw MetadataError.invalid("conflicting magnet identity") }
+				return SessionImport(id: existing.id, duplicate: true, hashes: [])
 			}
+			var magnet = magnet
+			if let tracker, !magnet.trackers.contains(tracker) { try self.validateTracker(tracker, hashes: magnet.hashes); magnet.trackers.append(tracker) }
+			guard magnet.trackers.count <= 128, magnet.webSeeds.count <= 128, magnet.peers.count <= 128 else { throw MetadataError.limit("magnet discovery hints") }
+			self.pendingMagnets.append(SessionPendingMagnet(id: id, magnet: magnet, destination: destination, configuration: self.configuration))
+			return SessionImport(id: id, duplicate: false, hashes: magnet.hashes.hex)
+		}
+	}
+	private func addMetadata(id: String, metadata: TorrentMetadata, destination: URL, restore: Bool, selected: [Bool]?, tracker: String?) async throws -> SessionImport {
+		var metadata = metadata
+		if let selected, selected.count != metadata.inspection.files.count { throw StorageFailure.invalid("selection count") }
+		if let existing = entries.first(where: { Self.overlaps($0.metadata.hashes, metadata.hashes) }) {
+			guard existing.metadata.originalInfo == metadata.originalInfo else { throw MetadataError.invalid("conflicting verified swarm identity") }
+			return SessionImport(id: existing.id, duplicate: true, hashes: [])
+		}
+		if let existing = pendingMagnets.first(where: { Self.overlaps($0.magnet.hashes, metadata.hashes) }) {
+			guard Self.matches(existing.magnet.hashes, metadata.hashes) else { throw MetadataError.invalid("conflicting magnet identity") }
+			return SessionImport(id: existing.id, duplicate: true, hashes: [])
+		}
+		if let tracker, !metadata.inspection.private { metadata = try appending(tracker, to: metadata) }
+		let entry = try await publishMetadata(id: id, metadata: metadata, destination: destination, restore: restore, selected: selected, configuration: configuration)
+		entries.append(entry); try await refreshRouting()
+		return SessionImport(id: id, duplicate: false, hashes: metadata.hashes.hex)
+	}
+	private func publishMetadata(id: String, metadata: TorrentMetadata, destination: URL, restore: Bool, selected: [Bool]? = nil, configuration: TCPTransferConfiguration) async throws -> SessionEntry {
+		let prepared = try await repository.prepare(id: id, restore: restore)
+		var owner: ManagedTransfer?
+		do {
+			let managed = try await ManagedTransfer.open(metadata: metadata, destination: destination, stateDirectory: prepared.directory,
+				selected: selected, configuration: configuration, resources: resources, budget: budget, preparedState: prepared, peerID: peerID, clock: clock, webSeedTransport: webSeedTransport, event: { self.storageEvent(id, $0) }); owner = managed
+			await observeDiscovery(id: id, owner: managed)
+			var snapshot = try await managed.snapshot()
+			if !snapshot.storage.needsRecovery { try await managed.recheck(); snapshot = try await managed.snapshot() }
+			try Task.checkCancellation()
+			try await repository.publish(id: id, metadata: metadata, state: prepared)
+			let entry = SessionEntry(id: id, metadata: metadata, prepared: prepared, owner: managed, last: snapshot, configuration: configuration)
+			if snapshot.storage.needsRecovery { entry.error = StorageFailure.recoveryRequired("a filesystem operation is pending").localizedDescription }
+			return entry
+		} catch {
+			// Cleanup runs independently of caller cancellation and never discards a published checkpoint.
+			let repository = repository, cleanup = Task { if let owner { try await owner.close() }; try await repository.abandon(prepared) }
+			do { try await cleanup.value }
+			catch let cleanupError { throw StorageFailure.recoveryRequired("import failed (\(error.localizedDescription)); native state cleanup also failed (\(cleanupError.localizedDescription))") }
+			throw error
 		}
 	}
 	public func run(id: String, running: Bool, downloadLimit: Int? = nil, uploadLimit: Int? = nil) async throws {
 		try await serial(id: id) {
+			if let pending = self.pending(id) {
+				var configuration = self.configuration
+				configuration.downloadLimit = downloadLimit ?? pending.downloadLimit; configuration.uploadLimit = uploadLimit ?? pending.uploadLimit
+				try configuration.validate(); pending.downloadLimit = configuration.downloadLimit; pending.uploadLimit = configuration.uploadLimit
+				pending.running = running && pending.error.isEmpty
+				if pending.running { try await self.startMagnet(pending) }
+				else { await self.stopMagnet(pending); try await self.refreshRouting() }
+				return
+			}
 			let entry = try self.entry(id)
 			if downloadLimit != nil || uploadLimit != nil {
 				let down = downloadLimit ?? entry.downloadLimit, up = uploadLimit ?? entry.uploadLimit
@@ -152,9 +206,12 @@ public actor TorrentSession {
 		}
 	}
 	public func pause(id: String) async throws {
-		try await serial(id: id) { try await self.pauseEntry(self.entry(id)) }
+		try await serial(id: id) {
+			if let pending = self.pending(id) { pending.running = false; await self.stopMagnet(pending); try await self.refreshRouting() }
+			else { try await self.pauseEntry(self.entry(id)) }
+		}
 	}
-	public func save(id: String) async throws { try await serial(id: id) { try await self.entry(id).owner.save() } }
+	public func save(id: String) async throws { try await serial(id: id) { if self.pending(id) == nil { try await self.entry(id).owner.save() } } }
 	public func recheck(id: String) async throws {
 		try await serial(id: id) {
 			let entry = try self.entry(id); entry.activity = .checking; defer { entry.activity = nil }
@@ -163,6 +220,7 @@ public actor TorrentSession {
 	}
 	public func retry(id: String) async throws {
 		try await serial(id: id) {
+			if let pending = self.pending(id) { await self.stopMagnet(pending); pending.running = false; pending.error = ""; try await self.refreshRouting(); return }
 			let entry = try self.entry(id)
 			if !entry.closed { try await self.pauseEntry(entry) }
 			if entry.closed {
@@ -178,6 +236,10 @@ public actor TorrentSession {
 	}
 	public func changeStorage(id: String, change: TransferStorageChange) async throws {
 		try await serial(id: id) {
+			if let pending = self.pending(id), case .move(let destination) = change {
+				guard destination.isFileURL, destination.path.hasPrefix("/"), !destination.path.utf8.contains(0) else { throw StorageFailure.invalid("absolute destination") }
+				pending.destination = destination; self.emit(SessionEvent(kind: "moved", id: id, path: destination.path)); return
+			}
 			let entry = try self.entry(id)
 			switch change { case .move: entry.activity = .moving; case .rename: entry.activity = .renaming; default: break }
 			defer { entry.activity = nil }
@@ -197,6 +259,15 @@ public actor TorrentSession {
 	}
 	public func appendTracker(id: String, tracker: String) async throws {
 		try await serial(id: id, publishing: true) {
+			if let pending = self.pending(id) {
+				guard pending.verified?.0.inspection.private != true else { throw MetadataError.invalid("private trackers cannot be appended") }
+				try self.validateTracker(tracker, hashes: pending.magnet.hashes)
+				if !pending.magnet.trackers.contains(tracker) {
+					guard pending.magnet.trackers.count < 128 else { throw MetadataError.limit("tracker hints") }
+					pending.magnet.trackers.append(tracker)
+				}
+				return
+			}
 			let entry = try self.entry(id)
 			guard !entry.metadata.inspection.private else { throw MetadataError.invalid("private trackers cannot be appended") }
 			let candidate = try self.appending(tracker, to: entry.metadata)
@@ -206,11 +277,18 @@ public actor TorrentSession {
 		}
 	}
 	public func magnet(id: String) async throws -> String {
-		try await serial(id: id) { let entry = try self.entry(id); return Magnet(hashes: entry.metadata.hashes, name: entry.metadata.inspection.name, trackers: entry.metadata.trackerTiers.flatMap({ $0 })).uri }
+		try await serial(id: id) {
+			if let pending = self.pending(id) { return pending.magnet.uri }
+			let entry = try self.entry(id); return Magnet(hashes: entry.metadata.hashes, name: entry.metadata.inspection.name, trackers: entry.metadata.trackerTiers.flatMap({ $0 })).uri
+		}
 	}
 	@discardableResult public func connect(id: String, to endpoint: NetworkEndpoint, utp: UTPTransport? = nil) async throws -> UUID {
 		guard !closed, !networkChanging else { throw NetworkFailure.busy }
 		guard configuration.addressFilter.allows(endpoint.address) else { throw PeerFailure.invalid("blocked peer") }
+		if let pending = pending(id), pending.running, let resolver = pending.resolver {
+			if utp != nil, peerSettings?.utp == false { throw NetworkFailure.invalid("µTP is disabled") }
+			await resolver.enqueue([endpoint], utp: utp); return resolver.id
+		}
 		let entry = try entry(id); guard entry.running, !entry.closed else { throw PeerFailure.closed }; let owner = entry.owner
 		if let settings = peerSettings {
 			if let utp { guard settings.utp else { throw NetworkFailure.invalid("µTP is disabled") }; return try await owner.connect(to: endpoint, utp: utp) }
@@ -222,6 +300,12 @@ public actor TorrentSession {
 	}
 	public func remove(id: String, trash: Bool = false, retainState: Bool = false, trashDirectory: URL? = nil) async throws -> [URL] {
 		try await serial(id: id, publishing: true) {
+			if let pending = self.pending(id) {
+				guard !trash else { throw StorageFailure.invalid("cannot delete files without metadata") }
+				pending.running = false; await self.stopMagnet(pending)
+				if !retainState { try await self.repository.discard(id: id) }
+				self.pendingMagnets.removeAll { $0 === pending }; try await self.refreshRouting(); return []
+			}
 			let entry = try self.entry(id)
 			do {
 				entry.running = false; try await self.refreshRouting()
@@ -237,11 +321,12 @@ public actor TorrentSession {
 	}
 	public func forget(id: String) async throws {
 		try TransferRepository.validateID(id)
-		try await serial(id: id, publishing: true) { guard !self.entries.contains(where: { $0.id == id }) else { throw StorageFailure.invalid("cannot forget a live transfer") }; try await self.repository.discard(id: id) }
+		try await serial(id: id, publishing: true) { guard !self.entries.contains(where: { $0.id == id }), self.pending(id) == nil else { throw StorageFailure.invalid("cannot forget a live transfer") }; try await self.repository.discard(id: id) }
 	}
 	public func shutdown() async throws {
 		try await serial {
 			var failure: Error?
+			for pending in self.pendingMagnets { pending.running = false; await self.stopMagnet(pending) }
 			for entry in self.entries { entry.running = false }; try await self.refreshRouting()
 			await self.drainPeerHints()
 			for entry in self.entries { await entry.tracker?.halt() }
@@ -257,7 +342,7 @@ public actor TorrentSession {
 		var snapshots: [SessionTransferSnapshot] = []
 		for entry in self.entries {
 			var sampled = false
-			if !entry.closed, let token = await commands.tryAcquire(entry.id) {
+			if !entry.closed, pending(entry.id) == nil, let token = await commands.tryAcquire(entry.id) {
 				guard !entry.closed, entries.contains(where: { $0 === entry }) else { await commands.release(token); continue }
 				do { entry.last = try await entry.owner.snapshot(); sampled = true; await commands.release(token) }
 				catch { await commands.release(token); throw error }
@@ -271,7 +356,8 @@ public actor TorrentSession {
 		let wire = await self.network?.snapshot()
 		let status = SessionNetworkSnapshot(port: wire?.port ?? 0, udp: wire?.udp ?? false, error: wire?.error.isEmpty == false ? wire!.error : self.networkError,
 			pendingHandshakes: wire?.pendingHandshakes ?? 0, peers: self.budget.count, discovery: wire?.discovery ?? .disabled, localDiscovery: wire?.localDiscovery ?? false)
-		let result = TorrentSessionSnapshot(transfers: snapshots, events: self.events, network: status); self.events.removeAll(); return result
+		let ready = Set(snapshots.map(\.id)), magnets = pendingMagnets.filter { !ready.contains($0.id) }.map(\.snapshot)
+		let result = TorrentSessionSnapshot(transfers: snapshots, magnets: magnets, events: self.events, network: status); self.events.removeAll(); return result
 	}
 	@discardableResult public func configurePeers(_ settings: SessionPeerSettings) async throws -> UInt16 {
 		try settings.validate()
@@ -304,6 +390,7 @@ public actor TorrentSession {
 			self.networkChanging = false
 			try await self.refreshRouting()
 			for entry in running { await self.startTracker(entry) }
+			try await self.restartMagnets()
 			if let bindError { throw bindError }; return port
 		}
 	}
@@ -321,6 +408,7 @@ public actor TorrentSession {
 			self.networkChanging = false
 			try await self.refreshRouting()
 			for entry in running { await self.startTracker(entry) }
+			try await self.restartMagnets()
 		}
 	}
 	public func close() async throws {
@@ -328,6 +416,7 @@ public actor TorrentSession {
 		do {
 			if !closed {
 				networkChanging = true; defer { networkChanging = false }
+				for pending in pendingMagnets { pending.running = false; await stopMagnet(pending) }
 				for entry in entries { entry.running = false; await entry.tracker?.halt() }
 				var failure: Error?
 				try? await refreshRouting()
@@ -359,9 +448,103 @@ public actor TorrentSession {
 			try await network.setTargets(targets)
 			let publicEntries = networkChanging ? [] : entries.filter { $0.running && !$0.closed && $0.error.isEmpty && !$0.metadata.inspection.private }
 			let discovery = publicEntries.map { SessionDHTTarget(id: $0.id, metadata: $0.metadata, owner: $0.owner) }
-			await network.updateDiscovery(discovery, metadata: publicEntries.map(\.metadata) + entries.filter { $0.metadata.inspection.private }.map(\.metadata))
+			let magnets: [SessionMagnetTarget] = networkChanging ? [] : pendingMagnets.compactMap { pending in
+				guard pending.running, pending.error.isEmpty, pending.verified == nil, let resolver = pending.resolver else { return nil }
+				return SessionMagnetTarget(id: pending.id, magnet: pending.magnet, revision: pending.revision) { await resolver.enqueue($0) }
+			}
+			var seen = Set(entries.map { $0.metadata.hashes })
+			let verifiedPrivate = pendingMagnets.compactMap { $0.verified?.0 }.filter { $0.inspection.private && seen.insert($0.hashes).inserted }
+			await network.updateDiscovery(discovery, metadata: publicEntries.map(\.metadata) + entries.filter { $0.metadata.inspection.private }.map(\.metadata) + verifiedPrivate, magnets: magnets)
 		}
 		catch NetworkFailure.closed { let state = await network.snapshot(); networkError = state.error.isEmpty ? NetworkFailure.closed.localizedDescription : state.error }
+	}
+	private func pending(_ id: String) -> SessionPendingMagnet? { pendingMagnets.first { $0.id == id } }
+
+	private func startMagnet(_ pending: SessionPendingMagnet, refresh: Bool = true) async throws {
+		guard pending.running, pending.error.isEmpty, pending.resolver == nil else { return }
+		if pending.verified != nil { schedulePromotion(pending); return }
+		let id = pending.id, revision = pending.revision, settings = peerSettings, network = network
+		let resolver = SessionMagnetResolver(magnet: pending.magnet, budget: budget, permits: metadataPermits, configuration: configuration, clock: clock, transport: { endpoint in
+			if settings?.tcp != false { return nil }
+			guard settings?.utp == true, let network else { throw NetworkFailure.closed }
+			return try await network.transport(for: endpoint)
+		}) { [weak self] metadata, endpoint in
+			await self?.receivedMetadata(id, revision: revision, metadata: metadata, endpoint: endpoint)
+		}
+		pending.resolver = resolver
+		if refresh { try await refreshRouting() }
+		await resolver.enqueue(pending.magnet.peers.compactMap(SessionMagnetResolver.endpoint))
+	}
+
+	private func restartMagnets() async throws {
+		guard pendingMagnets.contains(where: \.running) else { return }
+		for pending in pendingMagnets where pending.running { try await startMagnet(pending, refresh: false) }
+		try await refreshRouting()
+	}
+
+	private func stopMagnet(_ pending: SessionPendingMagnet, cancelPromotion: Bool = true) async {
+		let resolver = pending.resolver; pending.resolver = nil
+		let task = cancelPromotion ? pending.promotion : nil
+		if cancelPromotion { pending.revision = UUID(); pending.promotion = nil; task?.cancel() }
+		await resolver?.stop(); await task?.value
+	}
+
+	private func receivedMetadata(_ id: String, revision: UUID, metadata: TorrentMetadata, endpoint: NetworkEndpoint) {
+		guard !closed, !networkChanging, let pending = pending(id), pending.revision == revision, pending.running, pending.verified == nil else { return }
+		pending.verified = (metadata, endpoint); schedulePromotion(pending)
+	}
+
+	private func schedulePromotion(_ pending: SessionPendingMagnet) {
+		guard pending.promotion == nil else { return }
+		let id = pending.id, revision = pending.revision
+		pending.promotion = Task { [weak self] in await self?.promoteMagnet(id, revision: revision) }
+	}
+
+	private func promoteMagnet(_ id: String, revision: UUID) async {
+		do {
+			// Retire discovery immediately, even if repository publication is busy.
+			try await refreshRouting()
+			try await serial(id: id, publishing: true) {
+				guard let source = self.pending(id), source.revision == revision, let verified = source.verified else { return }
+				let aliases = self.pendingMagnets.filter { Self.matches($0.magnet.hashes, verified.0.hashes) }
+				guard let winner = aliases.first else { throw MetadataError.invalid("resolved magnet identity") }
+				for alias in aliases { alias.verified = verified; await self.stopMagnet(alias, cancelPromotion: alias !== source) }
+				try await self.refreshRouting()
+				let existing = self.entries.first { Self.overlaps($0.metadata.hashes, verified.0.hashes) }
+				let entry: SessionEntry
+				if let existing {
+					guard existing.metadata.originalInfo == verified.0.originalInfo else { throw MetadataError.invalid("conflicting verified swarm identity") }
+					entry = existing
+				} else {
+					var metadata = verified.0
+					if winner.magnet.trackers != metadata.trackerTiers.flatMap({ $0 }) || winner.magnet.webSeeds != metadata.webSeeds {
+						metadata = try TorrentMetadata(infoBytes: metadata.originalInfo, expected: metadata.hashes, trackers: winner.magnet.trackers, webSeeds: winner.magnet.webSeeds)
+					}
+					var configuration = self.configuration; configuration.downloadLimit = winner.downloadLimit; configuration.uploadLimit = winner.uploadLimit
+					let stored = try await self.repository.retainedMetadata(id: winner.id)
+					guard stored == nil || stored?.originalInfo == metadata.originalInfo else { throw MetadataError.invalid("retained magnet identity") }
+					entry = try await self.publishMetadata(id: winner.id, metadata: metadata, destination: winner.destination, restore: stored != nil, configuration: configuration)
+					self.entries.append(entry)
+					if winner.running, entry.error.isEmpty {
+						do { try await entry.owner.start(); entry.running = true }
+						catch { entry.error = error.localizedDescription }
+					}
+				}
+				let resolved = Set(aliases.map(\.id))
+				self.pendingMagnets.removeAll { resolved.contains($0.id) }
+				for alias in aliases where alias.id != entry.id { self.emit(SessionEvent(kind: "duplicate", id: alias.id, existingID: entry.id)) }
+				try await self.refreshRouting()
+				if existing == nil, entry.running {
+					await self.startTracker(entry)
+					if !entry.metadata.inspection.private { _ = try? await self.connect(id: entry.id, to: verified.1) }
+				}
+			}
+		} catch {
+			if let pending = pending(id), pending.revision == revision {
+				pending.promotion = nil
+				if !(error is CancellationError) { pending.error = error.localizedDescription; pending.running = false }
+			}
+		}
 	}
 	private func connectDiscovered(_ target: SessionDHTTarget, to endpoint: NetworkEndpoint) async {
 		guard !closed, !networkChanging, let entry = entries.first(where: { $0.id == target.id }), entry.owner === target.owner,
@@ -403,6 +586,7 @@ public actor TorrentSession {
 		await drainPeerHints()
 		let running = entries.filter { $0.running && !$0.closed && $0.error.isEmpty }
 		if let network { do { await network.suspendDiscovery(); try await network.setTargets([]) } catch NetworkFailure.closed { } }
+		for pending in pendingMagnets { await stopMagnet(pending) }
 		for entry in entries { await entry.tracker?.halt() }
 		var failure: Error?
 		for entry in entries where !entry.closed {
@@ -414,6 +598,7 @@ public actor TorrentSession {
 			networkChanging = false
 			try? await refreshRouting()
 			for entry in running where entry.error.isEmpty { await startTracker(entry) }
+			try? await restartMagnets()
 			throw failure
 		}
 		return running
@@ -463,22 +648,28 @@ public actor TorrentSession {
 		} catch { entry.trackerFailure = error.localizedDescription }
 	}
 	private func entry(_ id: String) throws -> SessionEntry {
-		guard let entry = entries.first(where: { $0.id == id }) else { throw StorageFailure.invalid("transfer no longer exists") }; return entry
+		if let entry = entries.first(where: { $0.id == id }) { return entry }
+		if pending(id) != nil { throw MetadataError.invalid("metadata is still resolving") }
+		throw StorageFailure.invalid("transfer no longer exists")
+	}
+	private func validateTracker(_ tracker: String, hashes: InfoHashes) throws {
+		guard let url = URL(string: tracker), ["http", "https", "udp"].contains(url.scheme?.lowercased() ?? ""), url.host != nil, url.user == nil, url.password == nil else { throw MetadataError.invalid("tracker URL") }
+		let hash = hashes.v1 ?? Data(hashes.v2!.prefix(20))
+		try TrackerAnnouncer.validate(tracker: url, request: TrackerRequest(infoHash: hash, peerID: peerID, port: max(1, configuration.listenPort), counters: TrackerCounters(left: 0)))
 	}
 	private func appending(_ tracker: String, to metadata: TorrentMetadata) throws -> TorrentMetadata {
-		guard let url = URL(string: tracker), ["http", "https", "udp"].contains(url.scheme?.lowercased() ?? ""), url.host != nil, url.user == nil, url.password == nil else { throw MetadataError.invalid("tracker URL") }
-		let hash = metadata.hashes.v1 ?? Data(metadata.hashes.v2!.prefix(20))
-		try TrackerAnnouncer.validate(tracker: url, request: TrackerRequest(infoHash: hash, peerID: peerID, port: max(1, configuration.listenPort), counters: TrackerCounters(left: 0)))
+		try validateTracker(tracker, hashes: metadata.hashes)
 		if metadata.trackerTiers.flatMap({ $0 }).contains(tracker) { return metadata }
 		return try TorrentMetadata(metadata.withTrackerTiers(metadata.trackerTiers + [[tracker]]))
 	}
 	private func emit(_ event: SessionEvent) { if events.count >= 1024 { events.removeFirst() }; events.append(event) }
 	private static func overlaps(_ a: InfoHashes, _ b: InfoHashes) -> Bool { (a.v1 != nil && a.v1 == b.v1) || (a.v2 != nil && a.v2 == b.v2) }
+	private static func matches(_ expected: InfoHashes, _ actual: InfoHashes) -> Bool { (expected.v1 == nil || expected.v1 == actual.v1) && (expected.v2 == nil || expected.v2 == actual.v2) }
 	private func serial<T: Sendable>(id: String? = nil, publishing: Bool = false, _ body: () async throws -> T) async throws -> T {
 		let token = try await commands.acquire(id); var ownsPublication = false
 		do {
 			try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }
-			if publishing { try await publication.acquire(); ownsPublication = true }
+			if publishing || id.map({ pending($0) != nil }) == true { try await publication.acquire(); ownsPublication = true }
 			try Task.checkCancellation()
 			let result = try await body()
 			if let id { await cache(id) }

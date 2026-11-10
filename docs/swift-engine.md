@@ -1079,3 +1079,26 @@ v1 wire and then transfer exact multi-file payloads. The four original private
 hybrid transfer cases remain. The reference harness now contains 428 transfers
 plus two DHT protocol comparisons. Sparse v2 layer reconstruction from legacy
 payloads remains in TODO.md.
+
+### Pending magnet rows and DHT publication barrier
+
+The Swift adapter accepts magnet imports and shows paused or resolving rows
+without claiming file metadata or progress. Numeric peer hints and enabled DHT
+feed a bounded metadata resolver. The shared DHT owner queries unresolved
+identities without announcing them; private metadata overrides a stale pending
+registration and drains both queries and peer delivery.
+
+Verified metadata is published only after pending discovery and connections have
+stopped. Private rows do not reconnect DHT or explicit hints. Disjoint v1/v2
+aliases resolve to the older row and destination, with one duplicate event for
+each removed alias. Standard metadata and checkpoints restore resolved magnets
+without their original source files. An invalid destination retains verified
+metadata for an explicit retry and leaves the original file untouched.
+
+The shared command contract checks pending add, duplicate, run, pause and safe
+removal against both engines. Six native trackerless cases cover IPv4/IPv6,
+v1/v2/hybrid and TCP/µTP. Twelve new libtorrent comparisons resolve magnets
+using DHT alone in both directions and verify exact flushed payloads. The harness
+now contains 440 transfers plus two DHT protocol comparisons. Package tests and
+focused Release/Thread Sanitizer checks pass. Tracker-only pending discovery,
+incoming metadata, unresolved persistence and waiting exports remain in TODO.md.

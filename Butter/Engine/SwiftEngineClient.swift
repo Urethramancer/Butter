@@ -1,6 +1,7 @@
 #if canImport(ButterTorrentEngine)
 import Foundation
 import ButterTorrentEngine
+import ButterTorrentMetadata
 import ButterTorrentNetworking
 import ButterTorrentStorage
 
@@ -40,8 +41,13 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 			switch command {
 			case "add":
 				let destination = try input.absolutePath("destination"), source = try input.text("source")
-				let result = try await session.add(id: id, source: URL(fileURLWithPath: source), destination: destination,
-					restore: input.flag("restore"), selected: input.selection(required: false), tracker: input.optionalText("tracker"))
+				let result: SessionImport
+				if source.hasPrefix("magnet:") {
+					result = try await session.add(id: id, magnet: ButterTorrentMetadata.Magnet(source), destination: destination, restore: input.flag("restore"), tracker: input.optionalText("tracker"))
+				} else {
+					result = try await session.add(id: id, source: URL(fileURLWithPath: source), destination: destination,
+						restore: input.flag("restore"), selected: input.selection(required: false), tracker: input.optionalText("tracker"))
+				}
 				var response: [String: Any] = ["id": result.id, "duplicate": result.duplicate]
 				if !result.duplicate { response["hashes"] = result.hashes }; return try JSONSerialization.data(withJSONObject: response)
 			case "run": try await session.run(id: id, running: input.flag("running"), downloadLimit: input.optionalInteger("downloadLimit"), uploadLimit: input.optionalInteger("uploadLimit"))
@@ -148,8 +154,14 @@ actor NativeSnapshotMapper {
 				pieces: (0..<count).map { verified.contains($0) ? 1 : wire?.pieceStates[$0] == 1 ? 0 : wire?.pieceStates[$0] ?? 0 }, files: mappedFiles,
 				trackers: row.trackers.map { TrackerSnapshot(url: $0.url, message: $0.message) }, peers: mappedPeers))
 		}
+		for row in snapshot.magnets {
+			rows.append(TransferSnapshot(id: row.id, name: row.magnet.name.isEmpty ? row.magnet.hashes.hex[0] : row.magnet.name, path: row.destination.path,
+				state: row.running ? "Resolving metadata" : "Paused", error: row.error, metadata: false, private: false, complete: false,
+				progress: 0, wanted: 0, done: 0, total: 0, down: 0, up: 0, downloaded: 0, uploaded: 0, demand: false,
+				hashes: row.magnet.hashes.hex, pieces: [], files: [], trackers: row.magnet.trackers.map { TrackerSnapshot(url: $0, message: "") }, peers: []))
+		}
 		transfers = nextTransfers; peers = nextPeers
-		return EngineSnapshot(transfers: rows, events: snapshot.events.map { EngineEvent(kind: $0.kind, id: $0.id, path: $0.path) }, port: Int(snapshot.network.port), udp: snapshot.network.udp,
+		return EngineSnapshot(transfers: rows, events: snapshot.events.map { EngineEvent(kind: $0.kind, id: $0.id, path: $0.path, existingID: $0.existingID) }, port: Int(snapshot.network.port), udp: snapshot.network.udp,
 			networkError: snapshot.network.error.isEmpty ? snapshot.network.discovery.error : snapshot.network.error, creationProgress: progress)
 	}
 	private func speed(_ sample: Sample, after previous: Sample?) -> (Int, Int) {

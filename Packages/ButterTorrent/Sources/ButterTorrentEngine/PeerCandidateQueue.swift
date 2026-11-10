@@ -3,16 +3,19 @@ import Foundation
 // A bounded, cancellable connector shared by tracker and discovery services.
 actor PeerCandidateQueue<Item: Hashable & Sendable> {
 	private let connect: @Sendable (Item) async -> Void
+	private let maximumPending: Int
 	private var pending: [Item] = []
 	private var queued: Set<Item> = []
 	private var worker: Task<Void, Never>?
 	private var closed = false
 	private var resetting: Task<Void, Never>?
-	init(connect: @escaping @Sendable (Item) async -> Void) { self.connect = connect }
+	init(maximumPending: Int = 2000, connect: @escaping @Sendable (Item) async -> Void) {
+		precondition(maximumPending > 0); self.maximumPending = maximumPending; self.connect = connect
+	}
 	func enqueue(_ items: [Item]) {
 		guard !closed, resetting == nil else { return }
 		for item in items.shuffled() where !queued.contains(item) {
-			if pending.count >= 2000 { queued.remove(pending.removeFirst()) }; pending.append(item); queued.insert(item)
+			if pending.count >= maximumPending { queued.remove(pending.removeFirst()) }; pending.append(item); queued.insert(item)
 		}
 		start()
 	}

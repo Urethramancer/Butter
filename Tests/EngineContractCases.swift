@@ -54,6 +54,21 @@ enum EngineContractCases {
 		try require(preview.name == "fixture.bin" && !preview.private, "Incorrect metadata preview")
 		try require(preview.hashes.map(\.count) == [40, 64], "Creation must retain hybrid identity")
 		try require(preview.files.count == 1 && preview.files[0].size == Int64(bytes.count) && !preview.files[0].pad, "Incorrect file layout")
+		let pendingSource = Magnet(hashes: try InfoHashes(hex: preview.hashes), name: "Pending fixture").uri
+		let pendingDestination = root.appendingPathComponent("pending-data")
+		let pendingImport = try object(await engine.perform("add", ["id": "pending", "source": pendingSource, "destination": pendingDestination.path]))
+		try require(pendingImport["duplicate"] as? Bool == false && pendingImport["hashes"] as? [String] == preview.hashes, "Magnet import lost pending identity")
+		let pendingDuplicate = try object(await engine.perform("add", ["id": "pending-duplicate", "source": pendingSource, "destination": pendingDestination.path]))
+		try require(pendingDuplicate["duplicate"] as? Bool == true && pendingDuplicate["id"] as? String == "pending", "Pending duplicate created another row")
+		let pending = try await wait(engine) { $0.transfers.first?.state == "Paused" }
+		try require(pending.transfers.count == 1 && !pending.transfers[0].metadata && pending.transfers[0].files.isEmpty && pending.transfers[0].name == "Pending fixture", "Pending magnet snapshot differs")
+		_ = try await engine.perform("run", ["id": "pending", "running": true])
+		_ = try await wait(engine) { $0.transfers.first?.state == "Resolving metadata" }
+		_ = try await engine.perform("pause", ["id": "pending"])
+		_ = try await wait(engine) { $0.transfers.first?.state == "Paused" }
+		try await reject(engine, "remove", ["id": "pending", "trash": true])
+		_ = try await engine.perform("remove", ["id": "pending"])
+		_ = try await wait(engine) { $0.transfers.isEmpty }
 		for id in ["", "../escape", "/absolute", "a/b", ".", "a.b"] {
 			try await reject(engine, "add", ["id": id, "source": torrent, "destination": seed.path])
 		}
