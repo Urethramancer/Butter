@@ -1137,3 +1137,8 @@ locator commits, then restore the published checkpoint. The standard torrent
 remains readable across the handoff. Killed-child fixtures cover four durable
 publication boundaries, and the disposable volume verifies failed publication
 under ENOSPC followed by a successful retry.
+
+Discard journals the owned checkpoint directory and repository file identities
+before removing state. Restore rejects a partially discarded record until the
+discard is retried. The retry checks the remaining identities and preserves
+replacement files, unrelated entries, legacy resume data and payload bytes.

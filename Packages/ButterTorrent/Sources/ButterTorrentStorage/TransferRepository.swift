@@ -30,12 +30,19 @@ public struct PendingMagnetState: Sendable {
 
 public enum RepositoryEvent: Sendable, Equatable {
 	case stagingDurable, checkpointDirectoryDurable, torrentDurable, locatorDurable
+	case discardDurable, discardCheckpointRemoved, discardFilesRemoved
 }
 
 /// TransferRepository retains standard torrent files beside isolated native checkpoints.
 public actor TransferRepository {
 	private struct Record: Codable { let version: Int; let directory: String }
 	private struct StagingRecord: Codable { let version: Int; let directory: String; let identity: FileStamp? }
+	private struct DiscardRecord: Codable {
+		let version: Int
+		let directory: String?
+		let identity: FileStamp?
+		let files: [String: FileStamp]
+	}
 	private struct MagnetRecord: Codable { let version: Int; let uri: String; let destination: String }
 	private static let magnetRecordLimit = 2 * 1024 * 1024
 	private let root: URL
@@ -48,6 +55,7 @@ public actor TransferRepository {
 	public static func publishCreatedTorrent(_ data: Data, id: String, root: URL) throws {
 		try validateID(id)
 		let directory = try StorageDirectory(root), lease = try StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
+		try requireStable(id, in: directory)
 		guard data.count <= 33_554_432 else { throw StorageFailure.limit("torrent bytes") }
 		guard try directory.inspect(magnetRecord(id)) == nil else { throw StorageFailure.collision("retained pending magnet") }
 		guard try directory.inspect(stagingPath(id)) == nil else { throw StorageFailure.recoveryRequired("finish the interrupted transfer publication") }
@@ -120,6 +128,7 @@ public actor TransferRepository {
 			let directory = try StorageDirectory(root, create: false)
 			let reservation = try StorageLease(directory: directory, path: ".native.lock"); defer { reservation.release() }
 			try Self.validate(state, id: state.id, in: directory)
+			try Self.requireStable(state.id, in: directory)
 			try Self.removeMagnet(state.id, in: directory)
 		}
 	}
@@ -188,28 +197,65 @@ public actor TransferRepository {
 	}
 	/// Discards only recognised native state and the standard torrent; legacy resume files remain intact.
 	public func discard(id: String, pending: PendingMagnetState? = nil) async throws {
-		try Self.validateID(id); let root = root
+		try Self.validateID(id); let root = root, event = event
 		try await worker.run(bulk: true) { _ in
 			let directory = try StorageDirectory(root)
 			let lease = try StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
-			if let pending { try Self.validate(pending, id: id, in: directory) }
+			let paths = [id + ".torrent", Self.magnetRecord(id), id + ".native.plist", Self.magnetLock(id)]
+			let journal = Self.discardPath(id), saved = try Self.discardRecord(journal, paths: paths, in: directory)
+			let files = try paths.compactMap { path in try directory.inspect(path).map { (path, $0) } }
+			if let pending {
+				guard pending.id == id, try pending.parentIdentity.sameFile(directory.identity()) else { throw StorageFailure.recoveryRequired("pending magnet repository was replaced") }
+				if saved == nil && files.isEmpty { return } // A retry after the final directory flush failed.
+				if let lock = try directory.inspect(Self.magnetLock(id)) {
+					guard pending.lockIdentity.sameFile(lock) else { throw StorageFailure.recoveryRequired("pending magnet lock was replaced") }
+				} else {
+					guard let lock = saved?.files[Self.magnetLock(id)], pending.lockIdentity.sameFile(lock) else { throw StorageFailure.recoveryRequired("pending magnet lock was removed") }
+				}
+			}
 			let pendingLock = try pending?.lease ?? (directory.inspect(Self.magnetLock(id)) == nil ? nil : StorageLease(directory: directory, path: Self.magnetLock(id)))
 			defer { withExtendedLifetime(pendingLock) {} }
-			let published = try Self.record(id, in: directory)
-			try Self.recoverStaging(id, published: published, in: directory)
-			if let record = published {
-				do { try Self.discardChild(record.directory, in: directory) }
-				catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { } // An interrupted discard may have removed the directory.
+			let transaction: DiscardRecord, child: StorageDirectory?
+			if let saved {
+				guard files.allSatisfy({ saved.files[$0.0] == $0.1 }) else { throw StorageFailure.recoveryRequired("repository files changed during discard") }
+				child = try saved.directory.flatMap { try Self.checkpointDirectory($0, in: directory) }
+				if let child {
+					guard try Self.readLocator(id, in: directory)?.directory == saved.directory,
+						try saved.identity?.sameFile(child.identity()) == true else { throw StorageFailure.recoveryRequired("discard checkpoint directory was replaced") }
+				}
+				transaction = saved
+			} else {
+				let published = try Self.record(id, in: directory)
+				try Self.recoverStaging(id, published: published, in: directory)
+				guard !files.isEmpty else { return }
+				child = try published.flatMap { try Self.checkpointDirectory($0.directory, in: directory) }
+				transaction = DiscardRecord(version: 1, directory: published?.directory, identity: try child?.identity(), files: Dictionary(uniqueKeysWithValues: files))
 			}
-			for name in [id + ".native.plist", id + ".torrent"] {
-				if let stamp = try directory.inspect(name) { try directory.remove(name, expected: stamp) }
+			let begin = {
+				if saved == nil { try Self.write(transaction, to: journal, in: directory); event(.discardDurable) }
 			}
-			try Self.removeMagnet(id, in: directory)
+			if let child, let name = transaction.directory { try Self.discardChild(name, in: directory, child: child, beforeRemoval: begin) }
+			else { try begin() }
+			event(.discardCheckpointRemoved)
+			for (path, stamp) in files { try directory.remove(path, expected: stamp) }
+			event(.discardFilesRemoved)
+			if let stamp = try directory.inspect(journal) { try directory.remove(journal, expected: stamp) }
 		}
 	}
 	private static func magnetRecord(_ id: String) -> String { id + ".native-magnet.plist" }
 	private static func magnetLock(_ id: String) -> String { id + ".native-magnet.lock" }
 	private static func stagingPath(_ id: String) -> String { id + ".native-stage.plist" }
+	private static func discardPath(_ id: String) -> String { id + ".native-discard.plist" }
+	private static func requireStable(_ id: String, in directory: StorageDirectory) throws {
+		guard try directory.inspect(discardPath(id)) == nil else { throw StorageFailure.recoveryRequired("retry the interrupted repository discard") }
+	}
+	private static func discardRecord(_ journal: String, paths: [String], in directory: StorageDirectory) throws -> DiscardRecord? {
+		guard try directory.inspect(journal) != nil else { return nil }
+		let saved = try PropertyListDecoder().decode(DiscardRecord.self, from: directory.read(journal, maximum: 8192))
+		guard saved.version == 1, !saved.files.isEmpty, saved.files.keys.allSatisfy(paths.contains),
+			saved.directory.map(validCheckpointName) ?? (saved.identity == nil) else { throw StorageFailure.invalid("native discard journal") }
+		return saved
+	}
 	private static func write<T: Encodable>(_ record: T, to path: String, in directory: StorageDirectory) throws {
 		let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
 		try directory.atomic(encoder.encode(record), path: path)
@@ -259,6 +305,10 @@ public actor TransferRepository {
 		guard magnet.trackers.count <= 128, magnet.webSeeds.count <= 128, magnet.peers.count <= 128 else { throw MetadataError.limit("magnet discovery hints") }
 	}
 	private static func record(_ id: String, in directory: StorageDirectory) throws -> Record? {
+		try requireStable(id, in: directory)
+		return try readLocator(id, in: directory)
+	}
+	private static func readLocator(_ id: String, in directory: StorageDirectory) throws -> Record? {
 		let name = id + ".native.plist"
 		guard try directory.inspect(name) != nil else { return nil }
 		let record = try PropertyListDecoder().decode(Record.self, from: directory.read(name, maximum: 4096))
@@ -272,7 +322,7 @@ public actor TransferRepository {
 		do { return try directory.child(name) }
 		catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
 	}
-	private static func discardChild(_ name: String, in directory: StorageDirectory, child: StorageDirectory? = nil) throws {
+	private static func discardChild(_ name: String, in directory: StorageDirectory, child: StorageDirectory? = nil, beforeRemoval: () throws -> Void = {}) throws {
 		let child = try child ?? directory.child(name), lease = try StorageLease(directory: child); defer { lease.release() }
 		let names = try child.names()
 		guard !names.contains("operation.plist") else { throw StorageFailure.recoveryRequired("recover the filesystem journal before forgetting state") }
@@ -284,6 +334,7 @@ public actor TransferRepository {
 		// Preflight every file before removing anything; inspect refuses links and nonregular files.
 		let files = try names.filter { $0 != "unwanted" }.map { ($0, try child.inspect($0)) }
 		let spill = try unwantedNames.map { ($0, try unwanted!.inspect($0)) }
+		try beforeRemoval()
 		for (path, stamp) in spill { if let stamp { try unwanted!.remove(path, expected: stamp) } }
 		if let unwanted { try child.removeChild("unwanted", expected: unwanted) }
 		for (path, stamp) in files { if let stamp { try child.remove(path, expected: stamp) } }

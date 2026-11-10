@@ -59,13 +59,12 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 	}
 	static func child(root: URL, operation: String, boundary: String, target: URL) async throws {
 		let metadata = try TorrentMetadata(contentsOf: root.appendingPathComponent("fixture.torrent"))
-		if operation == "repository-publish" {
+		if operation == "repository-publish" || operation == "repository-discard" {
 			let repository = TransferRepository(root: root.appendingPathComponent("library"), event: { event in
 				if String(describing: event) == boundary { stopAtBoundary(root) }
 			})
-			let state = try await repository.prepare(id: "transfer", restore: false)
-			try await openRepositoryStorage(state, metadata: metadata, destination: root.appendingPathComponent("data"))
-			try await repository.publish(id: "transfer", metadata: metadata, state: state)
+			if operation == "repository-discard" { try await repository.discard(id: "transfer") }
+			else { _ = try await publishRepositoryStorage(repository, id: "transfer", metadata: metadata, destination: root.appendingPathComponent("data")) }
 			return
 		}
 		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), event: { event in
@@ -95,6 +94,12 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 	static func openRepositoryStorage(_ state: PreparedTransferState, metadata: TorrentMetadata, destination: URL) async throws {
 		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state.directory, preparedState: state)
 		try await storage.shutdown()
+	}
+	@discardableResult static func publishRepositoryStorage(_ repository: TransferRepository, id: String, metadata: TorrentMetadata, destination: URL) async throws -> PreparedTransferState {
+		let state = try await repository.prepare(id: id, restore: false)
+		try await openRepositoryStorage(state, metadata: metadata, destination: destination)
+		try await repository.publish(id: id, metadata: metadata, state: state)
+		return state
 	}
 	static func stopChild(_ root: URL, operation: String, boundary: String, target: URL) async throws {
 		let process = Process()
@@ -167,6 +172,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		}
 		print("PASS: four atomic-checkpoint child interruptions")
 		try await repositoryPublicationInterruptions(root: root)
+		try await repositoryDiscardInterruptions(root: root)
 	}
 	static func repositoryPublicationInterruptions(root: URL) async throws {
 		for boundary in ["stagingDurable", "checkpointDirectoryDurable", "torrentDurable", "locatorDurable"] {
@@ -185,6 +191,34 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			try require(try await repository.retainedMetadata(id: "transfer")?.originalInfo == metadata.originalInfo, "Recovered identity differs")
 			for index in 0..<8 { try require(try Data(contentsOf: destination.appendingPathComponent("bundle/" + name(index))) == contents(index), "Publication recovery changed payload bytes") }
 			print("PASS: killed repository publication at \(boundary); recovered one checkpoint and exact payloads")
+		}
+	}
+	static func repositoryDiscardInterruptions(root: URL) async throws {
+		for boundary in ["discardDurable", "discardCheckpointRemoved", "discardFilesRemoved"] {
+			let work = root.appendingPathComponent("repository-\(boundary)")
+			let metadata = try await prepare(work), library = work.appendingPathComponent("library"), destination = work.appendingPathComponent("data")
+			let repository = TransferRepository(root: library)
+			let state = try await publishRepositoryStorage(repository, id: "transfer", metadata: metadata, destination: destination)
+			let legacy = library.appendingPathComponent("transfer.resume"), other = library.appendingPathComponent("other")
+			try Data([12]).write(to: legacy); try Data([34]).write(to: other)
+			try await stopChild(work, operation: "repository-discard", boundary: boundary, target: work)
+			var rejected = false
+			do { _ = try await repository.retainedMetadata(id: "transfer") } catch StorageFailure.recoveryRequired { rejected = true }
+			try require(rejected, "A partially discarded transfer remained restorable")
+			if boundary == "discardFilesRemoved" {
+				let replacement = library.appendingPathComponent("transfer.torrent")
+				try Data([42]).write(to: replacement)
+				rejected = false
+				do { try await repository.discard(id: "transfer") } catch StorageFailure.recoveryRequired { rejected = true }
+				try require(rejected && (try Data(contentsOf: replacement)) == Data([42]), "Discard deleted a replacement file")
+				try fm.removeItem(at: replacement)
+			}
+			try await repository.discard(id: "transfer")
+			try require(try await repository.retainedMetadata(id: "transfer") == nil, "Discard did not remove the locator")
+			try require(!fm.fileExists(atPath: state.directory.path) && !fm.fileExists(atPath: library.appendingPathComponent("transfer.native-discard.plist").path), "Discard did not retire its checkpoint and journal")
+			try require(try Data(contentsOf: legacy) == Data([12]) && Data(contentsOf: other) == Data([34]), "Discard touched unrelated repository files")
+			for index in 0..<8 { try require(try Data(contentsOf: destination.appendingPathComponent("bundle/" + name(index))) == contents(index), "Discard changed payload bytes") }
+			print("PASS: killed repository discard at \(boundary); retry preserved payload, replacement and legacy files")
 		}
 	}
 	static func copyCorruption(root: URL, target: URL) async throws {
@@ -213,6 +247,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		let checkpoint = state.appendingPathComponent("checkpoint.plist"), original = try Data(contentsOf: checkpoint)
 		let library = volume.appendingPathComponent("library"), repository = TransferRepository(root: library)
 		let repositoryDestination = volume.appendingPathComponent("repository-data")
+		let discard = try await publishRepositoryStorage(repository, id: "discard", metadata: metadata, destination: volume.appendingPathComponent("discard-data"))
 		let prepared = try await repository.prepare(id: "transfer", restore: false)
 		try await openRepositoryStorage(prepared, metadata: metadata, destination: repositoryDestination)
 		let filler = volume.appendingPathComponent("filler")
@@ -234,8 +269,13 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		rejected = false
 		do { try await repository.publish(id: "transfer", metadata: metadata, state: prepared) } catch { guard full(error) else { throw error }; rejected = true }
 		try require(rejected && !fm.fileExists(atPath: library.appendingPathComponent("transfer.native.plist").path), "ENOSPC published an incomplete locator")
-		try await repository.abandon(prepared)
+		rejected = false
+		do { try await repository.discard(id: "discard") } catch { guard full(error) else { throw error }; rejected = true }
+		try require(rejected && fm.fileExists(atPath: discard.directory.appendingPathComponent("checkpoint.plist").path), "ENOSPC removed the checkpoint before journalling discard")
 		try fm.removeItem(at: filler)
+		try await repository.abandon(prepared)
+		try await repository.discard(id: "discard")
+		try require(!fm.fileExists(atPath: discard.directory.path), "Discard did not recover after freeing space")
 		let retry = try await repository.prepare(id: "transfer", restore: false)
 		try await openRepositoryStorage(retry, metadata: metadata, destination: repositoryDestination)
 		try await repository.publish(id: "transfer", metadata: metadata, state: retry)
@@ -244,6 +284,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		try await storage.shutdown()
 		print("PASS: real ENOSPC preserves checkpoint and verified bytes; writes recover after space is freed")
 		print("PASS: real ENOSPC prevents repository publication; the same transfer publishes after space is freed")
+		print("PASS: real ENOSPC preserves the checkpoint before discard; retry completes after space is freed")
 	}
 	static func readOnly(volume: URL) async throws {
 		let state = volume.appendingPathComponent("state"), before = try Data(contentsOf: state.appendingPathComponent("checkpoint.plist"))
