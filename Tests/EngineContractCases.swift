@@ -25,6 +25,48 @@ enum EngineContractCases {
 		}
 		throw Failure(description: "Engine contract deadline")
 	}
+	static func runSimultaneous(makeEngine: (URL) -> any EngineOperations) async throws {
+		let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("ButterConcurrent-\(UUID().uuidString)")
+		let seedData = root.appendingPathComponent("seed"), download = root.appendingPathComponent("download")
+		try fm.createDirectory(at: seedData, withIntermediateDirectories: true)
+		defer { try? fm.removeItem(at: root) }
+		let seed = makeEngine(root.appendingPathComponent("seed-library")), down = makeEngine(root.appendingPathComponent("download-library"))
+		let settings: [String: Any] = ["port": 0, "peers": 8, "torrentPeers": 4, "tcp": true, "utp": false, "dht": false, "lsd": false, "mapping": false, "pex": false]
+		let bound = try object(await seed.perform("settings", settings))
+		guard let port = bound["port"] as? UInt16, port > 0 else { throw Failure(description: "Seed has no owned port") }
+		_ = try await down.perform("settings", settings)
+		let compact = Data([127, 0, 0, 1, UInt8(port >> 8), UInt8(truncatingIfNeeded: port)])
+		let tracker = try await HTTPFixture.start { request in
+			let announcesSeed = request.target.split(separator: "&").contains { $0 == "port=\(port)" }
+			let peers = announcesSeed ? Data() : compact
+			return .init(body: Data("d8:intervali60e5:peers\(peers.count):".utf8) + peers + Data("e".utf8))
+		}
+		let ids = ["first", "second"]
+		do {
+			for (index, id) in ids.enumerated() {
+				let input = seedData.appendingPathComponent(id), torrent = root.appendingPathComponent(id + ".torrent")
+				try Data(repeating: UInt8(index + 9), count: 1_048_576).write(to: input)
+				let metadata = try TorrentCreator.create(source: input, trackers: [tracker.url.appendingPathComponent("announce").absoluteString], isPrivate: false, pieceLength: 65536)
+				try metadata.write(to: torrent)
+				_ = try await seed.perform("add", ["id": id, "source": torrent.path, "destination": seedData.path])
+				_ = try await down.perform("add", ["id": id, "source": torrent.path, "destination": download.path])
+				_ = try await seed.perform("run", ["id": id, "running": true])
+			}
+			_ = try await wait(seed) { $0.transfers.count == 2 && $0.transfers.allSatisfy(\.complete) }
+			for id in ids { _ = try await down.perform("run", ["id": id, "running": true, "downloadLimit": 393216]) }
+			_ = try await wait(down) { $0.transfers.count == 2 && $0.transfers.allSatisfy { $0.downloaded > 0 && !$0.complete } }
+			_ = try await wait(down) { $0.transfers.allSatisfy(\.complete) }
+			_ = try await down.perform("shutdown"); _ = try await seed.perform("shutdown")
+			for id in ids {
+				let received = try Data(contentsOf: download.appendingPathComponent(id))
+				try require(received == Data(contentsOf: seedData.appendingPathComponent(id)), "Simultaneous transfer changed payload")
+			}
+		} catch {
+			_ = try? await down.perform("shutdown"); _ = try? await seed.perform("shutdown")
+			await tracker.stop(); throw error
+		}
+		await tracker.stop()
+	}
 	static func run(makeEngine: (URL) -> any EngineOperations) async throws {
 		let fm = FileManager.default
 		let root = fm.temporaryDirectory.appendingPathComponent("ButterContract-\(UUID().uuidString)")

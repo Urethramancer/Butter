@@ -39,7 +39,10 @@ private final class ReferenceEngineClient: EngineOperations, @unchecked Sendable
 		}
 	}
 	static func check(_ name: String, makeEngine: (URL) -> any EngineOperations) async throws {
-		do { try await EngineContractCases.run(makeEngine: makeEngine) }
+		do {
+			try await EngineContractCases.run(makeEngine: makeEngine)
+			try await EngineContractCases.runSimultaneous(makeEngine: makeEngine)
+		}
 		catch { throw EngineContractCases.Failure(description: "\(name): \(error)") }
 	}
 }
