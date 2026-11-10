@@ -17,22 +17,29 @@ private actor RouterHTTP: HTTPTransport {
 	let description: Data
 	var replies: [HTTPResponse]
 	var posts: [HTTPRequest] = []
+	var blockAdd = false
 	init(description: Data = deviceXML(), replies: [HTTPResponse]) { self.description = description; self.replies = replies }
+	func configure(replies: [HTTPResponse], blockAdd: Bool = false) { self.replies = replies; self.blockAdd = blockAdd }
 	func get(_ request: HTTPRequest) async throws -> HTTPResponse { HTTPResponse(status: 200, body: description) }
 	func post(_ request: HTTPRequest) async throws -> HTTPResponse {
 		posts.append(request)
+		if blockAdd, request.headers["SOAPAction"]?.contains("#AddPortMapping") == true { try await Task.sleep(for: .seconds(60)) }
 		guard !replies.isEmpty else { throw NetworkFailure.invalid("router fixture exhausted") }
 		return replies.removeFirst()
 	}
 }
 
 @Suite struct UPnPTests {
-	let owned = ["NewInternalClient": "192.168.1.2", "NewInternalPort": "6881", "NewPortMappingDescription": "Butter"]
+	private func owned(_ client: UPnPClient) -> [String: String] {
+		["NewInternalClient": "192.168.1.2", "NewInternalPort": "6881", "NewPortMappingDescription": client.mappingDescription]
+	}
 	private func candidate() throws -> UPnPCandidate { try UPnPCandidate(location: URL(string: "http://192.168.1.1/root.xml")!, gateway: IPAddress("192.168.1.1"), expires: 1000, bootID: 1) }
 	@Test func mappingRenewalDeletionAndOwnership() async throws {
-		let router = RouterHTTP(replies: [soapFault(714), soapReply("AddPortMapping"), soapReply("GetSpecificPortMappingEntry", fields: owned), soapReply("AddPortMapping"), soapReply("GetSpecificPortMappingEntry", fields: owned), soapReply("DeletePortMapping")])
+		let router = RouterHTTP(replies: [])
 		let service = try await UPnPService.load(candidate(), transport: router), clock = TestClock()
 		let client = try UPnPClient(service: service, internalClient: IPAddress("192.168.1.2"), transport: router, clock: clock)
+		let ownership = soapReply("GetSpecificPortMappingEntry", fields: owned(client))
+		await router.configure(replies: [soapFault(714), soapReply("AddPortMapping"), ownership, soapReply("AddPortMapping"), ownership, soapReply("DeletePortMapping")])
 		let mapping = try await client.map(.tcp, internalPort: 6881, externalPort: 6881, lifetime: 60)
 		#expect(mapping.renewAt == 145)
 		do { _ = try await client.map(.tcp, internalPort: 6882, externalPort: 6882); Issue.record("Changing ports orphaned the previous mapping") } catch { #expect(error is NetworkFailure) }
@@ -40,11 +47,23 @@ private actor RouterHTTP: HTTPTransport {
 		let posts = await router.posts
 		#expect(posts.count == 6 && posts.allSatisfy { $0.url.host == "192.168.1.1" && $0.maximumRedirects == 0 })
 		#expect(String(decoding: posts[1].body, as: UTF8.self).contains("<NewInternalClient>192.168.1.2</NewInternalClient>"))
-		let foreign = RouterHTTP(replies: [soapReply("GetSpecificPortMappingEntry", fields: owned)])
+		let foreign = RouterHTTP(replies: [ownership])
 		let other = try UPnPClient(service: service, internalClient: IPAddress("192.168.1.2"), transport: foreign)
 		do { _ = try await other.map(.tcp, internalPort: 6881, externalPort: 6881); Issue.record("Foreign mapping overwritten") }
 		catch { #expect(error as? UPnPFailure == .mappingOwnedByAnotherClient) }
 		#expect(await foreign.posts.count == 1)
+	}
+	@Test func cancelledAddStillAllowsDeletionAfterAnOwnershipCheck() async throws {
+		let router = RouterHTTP(replies: []), source = try IPAddress("192.168.1.2")
+		let client = try await UPnPClient(service: UPnPService.load(candidate(), transport: router), internalClient: source, transport: router)
+		await router.configure(replies: [soapFault(714), soapReply("GetSpecificPortMappingEntry", fields: owned(client)), soapReply("DeletePortMapping")], blockAdd: true)
+		let map = Task { try await client.map(.tcp, internalPort: 6881, externalPort: 6881) }; defer { map.cancel() }
+		let deadline = ProcessInfo.processInfo.systemUptime + 3
+		while await router.posts.count < 2, ProcessInfo.processInfo.systemUptime < deadline { try await Task.sleep(for: .milliseconds(5)) }
+		try #require(await router.posts.count == 2)
+		map.cancel(); await #expect(throws: CancellationError.self) { try await map.value }
+		try await client.remove(.tcp)
+		#expect(await router.posts.last?.headers["SOAPAction"]?.contains("#DeletePortMapping") == true)
 	}
 	@Test func permanentLeaseFallbackAndRebootRecovery() async throws {
 		let router = RouterHTTP(replies: [soapFault(714), soapFault(725), soapReply("AddPortMapping"), soapFault(714), soapReply("AddPortMapping")])

@@ -2,8 +2,6 @@
 
 ## Swift torrent engine replacement
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
-  Complete native router-mapping settings (currently rejected by the adapter).
-  Coordinate mapping lifecycles in that session.
   Hybrid magnets with only legacy v1 providers need reconstruction of missing v2 piece layers from
   SHA-1-verified file data; the current harness requires a v2 hash provider or
   complete `.torrent` piece layers.

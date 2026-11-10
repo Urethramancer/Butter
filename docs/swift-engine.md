@@ -1148,3 +1148,12 @@ on an IPv4 unsupported-version reply. PCP exchanges are scoped to the gateway
 and mapping nonce, which is retained for renewal and removal. Injected packets
 cover IPv4 and IPv6 mapping, nonce mismatch, renewal, removal and IPv4 fallback.
 [RFC 6887](https://www.rfc-editor.org/rfc/rfc6887.html)
+
+The adapter's mapping setting starts discovery for the session's bound port.
+The session maps TCP when its listener is enabled and UDP for the owned datagram
+port. It renews mappings and drains deletion attempts on listener rebind,
+gateway changes, blocklist changes and shutdown. PCP and NAT-PMP use the selected
+source address. UPnP accepts only the selected gateway and uses a per-client
+ownership description to recover an add whose reply was lost. The loopback
+gateway and Thread Sanitizer tests cover the session lifecycle. Physical router
+verification remains in TODO.md.

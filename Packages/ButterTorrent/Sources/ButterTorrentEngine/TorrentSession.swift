@@ -84,6 +84,7 @@ public actor TorrentSession {
 	private let webSeedTransport: (any HTTPTransport)?
 	private let dhtBootstrap: [NetworkEndpoint]?
 	private let localDiscoveryFactory: LocalDiscoveryFactory?
+	private let routerMappingRoutes: SessionRouterMapping.Routes?
 	private let storageEvent: @Sendable (String, StorageEvent) -> Void
 	private var trackerClient: TrackerClient?
 	private var network: SessionPeerNetwork?
@@ -102,13 +103,15 @@ public actor TorrentSession {
 	private var peerHints: PeerCandidateQueue<SessionPeerHint>?
 	private var exports: [UUID: (id: String, signal: AsyncStream<Void>.Continuation)] = [:]
 	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
-		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient(), webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil, localDiscoveryFactory: LocalDiscoveryFactory? = nil, storageEvent: @escaping @Sendable (String, StorageEvent) -> Void = { _, _ in }) {
+		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient(), webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil, localDiscoveryFactory: LocalDiscoveryFactory? = nil,
+		routerMappingRoutes: (@Sendable () async throws -> [RouterMappingRoute])? = nil, storageEvent: @escaping @Sendable (String, StorageEvent) -> Void = { _, _ in }) {
 		repository = TransferRepository(root: storage); self.configuration = configuration; self.resources = resources; budget = TCPPeerBudget(limit: maximumPeers)
 		self.loopbackOnly = loopbackOnly; self.clock = clock
 		self.httpTracker = httpTracker
 		self.webSeedTransport = webSeedTransport
 		self.dhtBootstrap = dhtBootstrap
 		self.localDiscoveryFactory = localDiscoveryFactory
+		self.routerMappingRoutes = routerMappingRoutes
 		self.storageEvent = storageEvent
 		peerID = Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
 	}
@@ -204,7 +207,7 @@ public actor TorrentSession {
 				configuration.downloadLimit = downloadLimit ?? pending.downloadLimit; configuration.uploadLimit = uploadLimit ?? pending.uploadLimit
 				try configuration.validate(); pending.downloadLimit = configuration.downloadLimit; pending.uploadLimit = configuration.uploadLimit
 				pending.running = running && pending.error.isEmpty
-				if pending.running { try await self.startMagnet(pending) }
+				if pending.running { try await self.startMagnet(pending); await self.network?.resumeMapping() }
 				else { await self.stopMagnet(pending); try await self.refreshRouting() }
 				return
 			}
@@ -216,6 +219,7 @@ public actor TorrentSession {
 			if running && entry.error.isEmpty {
 				try await entry.owner.start(); entry.running = true
 				do { try await self.refreshRouting() } catch { entry.running = false; try? await entry.owner.pause(); throw error }
+				await self.network?.resumeMapping()
 				await self.startTracker(entry)
 			} else { try await self.pauseEntry(entry) }
 		}
@@ -388,6 +392,7 @@ public actor TorrentSession {
 				do { try await entry.owner.pause() } catch { entry.error = error.localizedDescription; failure = failure ?? error }
 			}
 			await self.stopTrackers(self.entries)
+			await self.network?.suspendMapping()
 			if let failure { throw failure }
 		}
 	}
@@ -409,7 +414,7 @@ public actor TorrentSession {
 		}
 		let wire = await self.network?.snapshot()
 		let status = SessionNetworkSnapshot(port: wire?.port ?? 0, udp: wire?.udp ?? false, error: wire?.error.isEmpty == false ? wire!.error : self.networkError,
-			pendingHandshakes: wire?.pendingHandshakes ?? 0, peers: self.budget.count, discovery: wire?.discovery ?? .disabled, localDiscovery: wire?.localDiscovery ?? false)
+			pendingHandshakes: wire?.pendingHandshakes ?? 0, peers: self.budget.count, discovery: wire?.discovery ?? .disabled, localDiscovery: wire?.localDiscovery ?? false, routerMapped: wire?.routerMapped ?? false)
 		let ready = Set(snapshots.map(\.id))
 		var magnets: [SessionMagnetSnapshot] = []
 		for pending in pendingMagnets where !ready.contains(pending.id) {
@@ -424,7 +429,7 @@ public actor TorrentSession {
 		return try await serial {
 			if settings.port != 0, settings == self.peerSettings, let network = self.network {
 				let state = await network.snapshot()
-				if state.port == settings.port && state.error.isEmpty && state.discovery.enabled == settings.dht && state.localDiscovery == settings.lsd { return state.port }
+				if state.port == settings.port && state.error.isEmpty && state.discovery.enabled == settings.dht && state.localDiscovery == settings.lsd { await network.resumeMapping(); return state.port }
 			}
 			self.networkChanging = true; defer { self.networkChanging = false }
 			let running = try await self.pauseForSettings()
@@ -436,7 +441,7 @@ public actor TorrentSession {
 			var bindError: Error?
 			do {
 				self.network = try await SessionPeerNetwork.open(settings: settings, budget: self.budget, encryption: self.configuration.encryption,
-					filter: self.configuration.addressFilter, loopbackOnly: self.loopbackOnly, clock: self.clock, bootstrap: self.dhtBootstrap, localDiscoveryFactory: self.localDiscoveryFactory) { [weak self] target, endpoint in
+					filter: self.configuration.addressFilter, loopbackOnly: self.loopbackOnly, clock: self.clock, bootstrap: self.dhtBootstrap, localDiscoveryFactory: self.localDiscoveryFactory, mappingRoutes: self.routerMappingRoutes) { [weak self] target, endpoint in
 						await self?.connectDiscovered(target, to: endpoint)
 					}
 			} catch { self.networkError = error.localizedDescription; bindError = error }

@@ -40,11 +40,14 @@ public struct UPnPService: Sendable {
 
 /// UPnPClient maps only its own ports and verifies ownership again before renewals/removal.
 public actor UPnPClient {
+	private struct Ports { let internalPort: UInt16; let externalPort: UInt16 }
 	private let service: UPnPService
 	private let client: IPAddress
 	private let transport: any HTTPTransport
 	private let clock: any HTTPServiceClock
 	private var mappings: [MappedTransport: PortMapping] = [:]
+	private var attempts: [MappedTransport: Ports] = [:]
+	nonisolated let mappingDescription = "Butter " + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(16)
 	private var busy = false
 	private var bootID: UInt32?
 	private var bootGeneration: UInt64 = 0
@@ -71,7 +74,7 @@ public actor UPnPClient {
 	@discardableResult public func map(_ kind: MappedTransport, internalPort: UInt16, externalPort: UInt16, lifetime: UInt32 = 3600) async throws -> PortMapping {
 		guard !busy else { throw NetworkFailure.busy }; busy = true; defer { busy = false }
 		guard internalPort > 0, externalPort > 0, lifetime <= 86400 else { throw NetworkFailure.invalid("UPnP mapping") }
-		if let current = mappings[kind], current.internalPort != internalPort || current.externalPort != externalPort { throw NetworkFailure.invalid("remove the previous UPnP mapping before changing ports") }
+		if let current = attempts[kind], current.internalPort != internalPort || current.externalPort != externalPort { throw NetworkFailure.invalid("remove the previous UPnP mapping before changing ports") }
 		let generation = bootGeneration
 		let mapping = try await add(kind, internalPort: internalPort, externalPort: externalPort, lifetime: lifetime)
 		let retained = generation == bootGeneration ? mapping : due(mapping)
@@ -89,26 +92,28 @@ public actor UPnPClient {
 	private func due(_ mapping: PortMapping) -> PortMapping { PortMapping(transport: mapping.transport, internalPort: mapping.internalPort, externalPort: mapping.externalPort, lifetime: mapping.lifetime, renewAt: 0) }
 	public func remove(_ kind: MappedTransport) async throws {
 		guard !busy else { throw NetworkFailure.busy }; busy = true; defer { busy = false }
-		guard let mapping = mappings[kind] else { return }
+		guard let mapping = attempts[kind] else { return }
 		if try await owns(kind, internalPort: mapping.internalPort, externalPort: mapping.externalPort) {
 			_ = try await soap("DeletePortMapping", identity(kind, port: mapping.externalPort))
 		}
-		mappings[kind] = nil
+		mappings[kind] = nil; attempts[kind] = nil
 	}
 	private func identity(_ kind: MappedTransport, port: UInt16) -> [(String, String)] { [("NewRemoteHost", ""), ("NewExternalPort", String(port)), ("NewProtocol", kind.rawValue)] }
 	private func owns(_ kind: MappedTransport, internalPort: UInt16, externalPort: UInt16) async throws -> Bool {
 		do {
 			let existing = try await soap("GetSpecificPortMappingEntry", identity(kind, port: externalPort))
-			guard mappings[kind]?.externalPort == externalPort, existing.fields["NewInternalClient"] == client.description,
-				existing.fields["NewInternalPort"].flatMap(UInt16.init) == internalPort, existing.fields["NewPortMappingDescription"] == "Butter" else { throw UPnPFailure.mappingOwnedByAnotherClient }
+			guard attempts[kind]?.externalPort == externalPort, existing.fields["NewInternalClient"] == client.description,
+				existing.fields["NewInternalPort"].flatMap(UInt16.init) == internalPort, existing.fields["NewPortMappingDescription"] == mappingDescription else { throw UPnPFailure.mappingOwnedByAnotherClient }
 			return true
 		} catch UPnPFailure.result(714) { return false }
 	}
 	private func add(_ kind: MappedTransport, internalPort: UInt16, externalPort: UInt16, lifetime: UInt32) async throws -> PortMapping {
 		_ = try await owns(kind, internalPort: internalPort, externalPort: externalPort)
+		// A router may commit the operation before its response is lost or cancelled.
+		attempts[kind] = Ports(internalPort: internalPort, externalPort: externalPort)
 		var duration = lifetime
 		func arguments(_ duration: UInt32) -> [(String, String)] {
-			identity(kind, port: externalPort) + [("NewInternalPort", String(internalPort)), ("NewInternalClient", client.description), ("NewEnabled", "1"), ("NewPortMappingDescription", "Butter"), ("NewLeaseDuration", String(duration))]
+			identity(kind, port: externalPort) + [("NewInternalPort", String(internalPort)), ("NewInternalClient", client.description), ("NewEnabled", "1"), ("NewPortMappingDescription", mappingDescription), ("NewLeaseDuration", String(duration))]
 		}
 		do { _ = try await soap("AddPortMapping", arguments(duration)) }
 		catch UPnPFailure.result(725) { duration = 0; _ = try await soap("AddPortMapping", arguments(0)) }

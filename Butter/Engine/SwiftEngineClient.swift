@@ -26,13 +26,12 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 			if command == "shutdown" { await creation.waitForCompletion(); try await session.shutdown(); return Data("{}".utf8) }
 			if command == "settings" {
 				let dht = try input.flag("dht"), lsd = try input.flag("lsd"), mapping = try input.optionalInteger("mapping") ?? 1
-				guard mapping == 0 else { throw NetworkFailure.invalid("router mapping is unavailable") }
 				let port = try input.integer("port"); guard (0...65535).contains(port) else { throw NetworkFailure.invalid("listening port") }
 				var settings = await session.currentPeerSettings; settings.port = UInt16(port)
 				settings.maximumPeers = min(5000, max(1, try input.optionalInteger("peers") ?? 0))
 				settings.torrentPeers = min(1000, min(settings.maximumPeers, max(1, try input.optionalInteger("torrentPeers") ?? 0)))
 				settings.tcp = try input.optionalInteger("tcp").map { $0 != 0 } ?? settings.tcp
-				settings.utp = try input.flag("utp"); settings.pex = try input.flag("pex"); settings.dht = dht; settings.lsd = lsd
+				settings.utp = try input.flag("utp"); settings.pex = try input.flag("pex"); settings.dht = dht; settings.lsd = lsd; settings.mapping = mapping != 0
 				settings.allowSameIP = try input.optionalInteger("allowSameIP").map { $0 != 0 } ?? settings.allowSameIP
 				return try JSONEncoder().encode(["port": await session.configurePeers(settings)])
 			}

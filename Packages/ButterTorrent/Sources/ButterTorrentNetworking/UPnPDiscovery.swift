@@ -28,10 +28,13 @@ public actor UPnPDiscovery {
 		let pair = AsyncStream<UPnPCandidate>.makeStream(bufferingPolicy: .bufferingNewest(16)); devices = pair.stream; continuation = pair.continuation
 	}
 	public static func open(interface: NetworkInterfaceAddress) throws -> UPnPDiscovery {
-		let socket = try DatagramSocket(bind: NetworkEndpoint(address: interface.address, port: 0))
-		do { try socket.configureMulticast(interfaceAddress: interface.address, interfaceIndex: interface.index) }
+		try open(interfaceAddress: interface.address, interfaceIndex: interface.index, clock: ContinuousTransportClock())
+	}
+	public static func open(interfaceAddress: IPAddress, interfaceIndex: UInt32, clock: any TransportClock) throws -> UPnPDiscovery {
+		let socket = try DatagramSocket(bind: NetworkEndpoint(address: interfaceAddress, port: 0))
+		do { try socket.configureMulticast(interfaceAddress: interfaceAddress, interfaceIndex: interfaceIndex) }
 		catch { socket.close(); throw error }
-		return UPnPDiscovery(dispatcher: UDPDispatcher(transport: socket), ownsTransport: true)
+		return UPnPDiscovery(dispatcher: UDPDispatcher(transport: socket, clock: clock), clock: clock, ownsTransport: true)
 	}
 	@discardableResult public func searchIfDue() async throws -> Bool {
 		guard !closed else { throw NetworkFailure.closed }
