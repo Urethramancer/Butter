@@ -13,10 +13,7 @@ actor SessionTracker {
 	private let owner: ManagedTransfer
 	private let announcer: TrackerAnnouncer
 	private let clock: any TransportClock
-	private let peer: @Sendable (TrackerPeer) async -> Void
-	private var pending: [TrackerPeer] = []
-	private var queued: Set<TrackerPeer> = []
-	private var connector: Task<Void, Never>?
+	private let candidates: PeerCandidateQueue<TrackerPeer>
 	private let initial: TrackerCounters
 	private let baseline: TrackerCounters
 	private var counters: TrackerCounters
@@ -28,7 +25,7 @@ actor SessionTracker {
 	private var lastFailure = ""
 	init(metadata: TorrentMetadata, owner: ManagedTransfer, peerID: Data, port: UInt16, preferV2: Bool, initial: ManagedTransferSnapshot,
 		baseline: TrackerCounters, client: any TrackerAnnouncing, clock: any TransportClock, peer: @escaping @Sendable (TrackerPeer) async -> Void) throws {
-		self.owner = owner; self.clock = clock; self.peer = peer
+		self.owner = owner; self.clock = clock; candidates = PeerCandidateQueue(connect: peer)
 		self.baseline = baseline; counters = Self.counters(initial, metadata: metadata, baseline: baseline); self.initial = counters
 		let hash = preferV2 ? metadata.hashes.v2.map { Data($0.prefix(20)) } ?? metadata.hashes.v1! : metadata.hashes.v1 ?? Data(metadata.hashes.v2!.prefix(20))
 		announcer = try TrackerAnnouncer(tiers: metadata.trackerTiers.map { tier in
@@ -45,7 +42,7 @@ actor SessionTracker {
 		}
 	}
 	func append(_ url: URL) async throws { try await announcer.append(url) }
-	func halt() { stopped = true; loop?.cancel(); connector?.cancel() }
+	func halt() async { stopped = true; loop?.cancel(); await candidates.halt() }
 	func messages() async -> [URL: String] { await announcer.messages }
 	func failure() -> String { lastFailure }
 	private func tick() async {
@@ -59,17 +56,17 @@ actor SessionTracker {
 			else { response = try await announcer.announceIfDue(counters) }
 			guard !stopped, !Task.isCancelled else { return }
 			lastFailure = ""
-			if let response { enqueue(response.peers) }
+			if let response { await candidates.enqueue(response.peers) }
 		} catch { if !Task.isCancelled { lastFailure = error.localizedDescription } }
 	}
 	func stop() async {
 		let task: Task<Void, Never>
 		if let stopping { task = stopping }
-		else { halt(); task = Task { await self.finish() }; stopping = task }
+		else { stopped = true; loop?.cancel(); task = Task { await self.finish() }; stopping = task }
 		await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
 	}
 	private func finish() async {
-		await loop?.value; loop = nil; await connector?.value; connector = nil; pending.removeAll(); queued.removeAll()
+		await candidates.halt(); await loop?.value; loop = nil; await candidates.stop()
 		if let snapshot = try? await owner.snapshot() { counters = Self.counters(snapshot, metadata: owner.metadata, baseline: baseline) }
 		guard started else { return }
 		do {
@@ -92,29 +89,5 @@ actor SessionTracker {
 		let disk = snapshot.storage, progress = TransferProgress(metadata: metadata, storage: disk)
 		return TrackerCounters(uploaded: max(0, (snapshot.transfer?.uploaded ?? disk.uploaded) - baseline.uploaded), downloaded: max(0, (snapshot.transfer?.downloaded ?? disk.downloaded) - baseline.downloaded), left: progress.total - progress.verifiedBytes)
 	}
-	private func enqueue(_ peers: [TrackerPeer]) {
-		for peer in peers.shuffled() where !queued.contains(peer) {
-			if pending.count >= 2000 { queued.remove(pending.removeFirst()) }; pending.append(peer); queued.insert(peer)
-		}
-		startConnector()
-	}
-	private func startConnector() {
-		guard connector == nil, !stopped, !pending.isEmpty else { return }
-		connector = Task { [weak self] in await self?.connectPeers() }
-	}
-	private func nextPeer() -> TrackerPeer? {
-		guard !stopped, !Task.isCancelled, let peer = pending.popLast() else { return nil }; queued.remove(peer); return peer
-	}
-	private func connectPeers() async {
-		let connect = peer
-		await withTaskGroup(of: Void.self) { group in
-			for _ in 0..<2 { if let peer = nextPeer() { group.addTask { await connect(peer) } } }
-			while await group.next() != nil {
-				if Task.isCancelled { group.cancelAll(); break }
-				if let peer = nextPeer() { group.addTask { await connect(peer) } }
-			}
-		}
-		connector = nil; startConnector()
-	}
-	deinit { loop?.cancel(); connector?.cancel() }
+	deinit { loop?.cancel(); let candidates = candidates; Task { await candidates.stop() } }
 }
