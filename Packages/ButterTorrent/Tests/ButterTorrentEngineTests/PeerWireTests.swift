@@ -38,6 +38,17 @@ func pickerLayout(pieces: Int = 3, pieceLength: Int64 = 32768) throws -> Storage
 }
 
 @Suite struct PiecePickerTests {
+	@Test func saturatedActiveBudgetLetsANewPeerRescueBlocksWithoutUnboundedDuplication() throws {
+		let layout = try pickerLayout(), a = UUID(), b = UUID(), c = UUID()
+		var picker = PiecePicker(layout: layout, wanted: [0, 1, 2], completed: [], maximumActive: 1)
+		for peer in [a, b, c] { picker.update(peer, bits: try PieceBitfield(count: 3, pieces: [0, 1, 2])) }
+		let stalled = picker.allocate(a, limit: 2, now: 0), rescue = picker.allocate(b, limit: 2, now: 1)
+		#expect(stalled == rescue && rescue.count == 2)
+		#expect(picker.allocate(c, limit: 2, now: 1).isEmpty)
+		for block in rescue { #expect(picker.begin(b, block: block) == [a]); _ = picker.written(block) }
+		_ = picker.verified(0, valid: true)
+		#expect(picker.allocate(b, limit: 2, now: 2).allSatisfy { $0.piece == 1 })
+	}
 	@Test func rarestFirstPipelinesDisconnectAndCorruptionReset() throws {
 		let layout = try pickerLayout(), a = UUID(), b = UUID()
 		var picker = PiecePicker(layout: layout, wanted: [0, 1, 2], completed: [], maximumActive: 1)

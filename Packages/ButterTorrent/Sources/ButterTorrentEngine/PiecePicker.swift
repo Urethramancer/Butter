@@ -66,9 +66,11 @@ struct PiecePicker {
 				}
 			}
 		}
-		// Duplicate only the final bounded tail, after every remaining piece is active.
+		// Duplicate the final bounded tail, or rescue a saturated active-piece budget
+		// when a stalled owner otherwise prevents a newly available peer making progress.
 		let remaining = wanted.subtracting(completed)
-		if remaining.allSatisfy({ active[$0] != nil }), remaining.reduce(0, { $0 + blocks($1).count - active[$1]!.received.count }) <= 32 {
+		let tail = remaining.allSatisfy({ active[$0] != nil }) && remaining.reduce(0, { $0 + blocks($1).count - active[$1]!.received.count }) <= 32
+		if tail || (result.isEmpty && active.count >= maximumActive) {
 			for piece in candidates where active[piece]?.verifying == false {
 				for block in blocks(piece) where !active[piece]!.received.contains(block.offset) && !active[piece]!.writing.contains(block.offset) {
 					let owners = active[piece]!.owners[block.offset, default: [:]]
