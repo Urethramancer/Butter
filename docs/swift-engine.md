@@ -775,8 +775,8 @@ routes TCP and µTP connections to running swarms, and selects encrypted swarms
 through an indexed MSE catalogue. Incoming negotiation, unidentified connections,
 same-address admission and total peers have explicit bounds. Settings and
 blocklists drain affected peers before rebuilding controllers; unchanged fixed-port
-settings preserve pending handshakes. The adapter rejects enabled DHT, LSD and
-mapping until their session integration is complete.
+settings preserve pending handshakes. At this stage the adapter rejected enabled
+DHT, LSD and mapping; DHT integration follows below.
 
 Automatic port allocation checks both TCP and UDP ownership. A TCP ephemeral port
 can already be occupied by an unrelated UDP socket. Only this automatic-port
@@ -849,3 +849,45 @@ fail-fast runs, the shared three-backend command contract and all ten new
 HTTP/native/libtorrent comparisons. The entire 358-case reference matrix has not
 been rerun for this slice. Phase 11 remains in progress, with no new tag or
 production cut-over.
+
+### Session-owned DHT discovery
+
+The native DHT setting now owns one node per address family on the session's
+existing UDP dispatchers. Running public transfers announce the actual owned
+listening port and feed discovered endpoints into the existing TCP/µTP admission
+path. Private identities remain forbidden even when their imports are paused
+beside running public transfers. Empty and private-only sessions perform no
+outgoing DHT searches. Loopback-only sessions use an empty bootstrap by default;
+tests inject disposable local routers instead of using the public DHT.
+
+At most two searches run per family. Successful searches recur after five
+minutes; failures back off from 30 seconds to 15 minutes. The node retains its
+15-minute announce interval. Unchanged Run commands preserve in-flight searches.
+Pause, removal, settings changes and shutdown cancel and drain lookups, responder
+work and connection attempts before changing discovery policy. The DHT metadata
+registration bound now matches the session's 10,000-transfer limit. Endpoint
+filters cover outgoing nodes, incoming queries, returned peers and referrals.
+Discovery registration failures disable DHT with a diagnostic while leaving the
+shared listening port available to the other services.
+
+Trackers and DHT now reuse a bounded candidate queue, with at most 2,000 pending
+items and two active connection attempts per queue. Session snapshots report DHT
+contacts, searches and errors; the adapter maps failures into the existing network
+diagnostic. Managed-controller PEX/PORT hints, local discovery, mapping and magnet
+imports remain in TODO.md. The session does not enable the peer PORT extension
+by default while its hint-consumption path is unfinished.
+
+Twelve independent session/libtorrent transfers cover v1/v2/hybrid metadata,
+TCP/µTP and both directions without explicit peer connections. The reference
+fixture enables DHT only when given a local bootstrap, disables its public
+bootstrap and records DHT-sourced peers. `BUTTER_REFERENCE_FILTER=session-dht`
+selects these transfers and the two existing DHT protocol comparisons. The full
+reference harness now contains 370 transfer cases plus those two comparisons.
+
+Verification passes 199 package tests in Debug and Release, 26 focused tests under
+Thread Sanitizer and five independent fail-fast runs, the three-backend app
+contract, 12 DHT-discovered session transfers, both DHT protocol comparisons and
+the existing 36 session peer transfers. Reference DHT cases use IPv4; native
+loopback fixtures also cover IPv6. The full 370-case transfer matrix, UI and
+performance acceptance have not been rerun for this slice. No phase 11 tag,
+production switch or push is made.
