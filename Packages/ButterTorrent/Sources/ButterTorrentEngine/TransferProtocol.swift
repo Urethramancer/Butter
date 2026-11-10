@@ -135,14 +135,26 @@ extension TCPTransfer {
 		do { try await storage.write(piece: block.piece, offset: block.offset, data: bytes) }
 		catch { picker.abortedWrite(block); discardUnretainedPayload(); diskFailed(error); throw error }
 		guard picker.written(block) else { return }
+		let piece = block.piece
+		var staged = legacyHybrid && !hashReady.contains(piece)
 		let valid: Bool
-		do { valid = try await storage.verify(piece: block.piece) } catch { _ = picker.verified(block.piece, valid: false); diskFailed(error); throw error }
-		let contributors = picker.verified(block.piece, valid: valid)
+		do {
+			if staged {
+				let candidate = try await storage.verifyLegacyCandidate(piece: piece)
+				if candidate, hashReady.contains(piece) { staged = false; valid = try await storage.verify(piece: piece) }
+				else { valid = candidate }
+			} else { valid = try await storage.verify(piece: piece) }
+		} catch { _ = picker.verified(piece, valid: false); discardUnretainedPayload(); diskFailed(error); throw error }
+		let contributors = staged && valid ? picker.stage(piece) : picker.verified(piece, valid: valid)
 		let received = activePayloadBytes.removeValue(forKey: block.piece) ?? 0
 		if !valid { recordUnusablePayload(received, corrupt: true) }
 		if valid {
 			for contributor in contributors { peers[contributor]?.score += try picker.layout.length(of: block.piece) / max(1, contributors.count) }
-			for (peerID, peer) in peers where peer.peerID != nil && !peer.closing { do { try send(peerID, .have(block.piece)) } catch { drop(peerID, error: error) } }
+			if !staged { advertise(piece) }
+			if legacyHybrid {
+				do { try await recoverLegacyLayer(after: piece, staged: staged) }
+				catch { diskFailed(error); throw error }
+			}
 		} else {
 			corruptPieces += 1
 			for contributor in contributors {
@@ -167,7 +179,8 @@ extension TCPTransfer {
 			guard interested, clock.now() >= peer.retryAfter else { return }
 			try requestHashes(id)
 			guard !peer.remoteChoking || !peer.allowedOutgoing.isEmpty else { return }
-			for block in picker.allocate(id, limit: min(configuration.pipeline, peer.extensions.queueLimit) - peer.pending.count, now: clock.now(), eligible: hashReady, allowed: peer.remoteChoking ? peer.allowedOutgoing : nil, suggestions: peer.suggestions) { peer.pending.insert(block); try send(id, .request(block)) }
+			let eligible = legacyHybrid && !peer.features.v2 ? nil : hashReady
+			for block in picker.allocate(id, limit: min(configuration.pipeline, peer.extensions.queueLimit) - peer.pending.count, now: clock.now(), eligible: eligible, allowed: peer.remoteChoking ? peer.allowedOutgoing : nil, suggestions: peer.suggestions) { peer.pending.insert(block); try send(id, .request(block)) }
 		} catch { drop(id, error: error) }
 	}
 	func fillAll() { for id in peers.keys { fill(id) } }

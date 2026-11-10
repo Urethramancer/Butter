@@ -14,6 +14,7 @@ struct PiecePicker {
 	let maximumActive: Int
 	let lengths: [Int: Int]
 	private(set) var completed: Set<Int>
+	private(set) var staged: Set<Int> = []
 	private(set) var active: [Int: Active] = [:]
 	private var peers: [UUID: PieceBitfield] = [:]
 	private(set) var availability: [Int]
@@ -39,7 +40,7 @@ struct PiecePicker {
 	mutating func release(_ peer: UUID) {
 		for piece in active.keys { for block in active[piece]!.owners.keys { active[piece]!.owners[block]![peer] = nil } }
 	}
-	func interested(_ peer: UUID) -> Bool { peers[peer]?.pieces.contains(where: { wanted.contains($0) && !completed.contains($0) }) == true }
+	func interested(_ peer: UUID) -> Bool { peers[peer]?.pieces.contains(where: { wanted.contains($0) && !completed.contains($0) && !staged.contains($0) }) == true }
 	func has(_ peer: UUID, piece: Int) -> Bool { peers[peer]?.contains(piece) == true }
 	func blocks(_ piece: Int) -> [PeerBlock] {
 		let length = lengths[piece] ?? ((try? layout.length(of: piece)) ?? 0)
@@ -48,7 +49,8 @@ struct PiecePicker {
 	mutating func allocate(_ peer: UUID, limit: Int, now: TimeInterval, eligible: Set<Int>? = nil, allowed: Set<Int>? = nil, suggestions: Set<Int> = []) -> [PeerBlock] {
 		guard let bits = peers[peer], limit > 0 else { return [] }
 		var result: [PeerBlock] = []
-		let candidates = wanted.subtracting(completed).filter { bits.contains($0) && (eligible?.contains($0) ?? true) && (allowed?.contains($0) ?? true) }.sorted {
+		let remaining = wanted.subtracting(completed).subtracting(staged)
+		let candidates = remaining.filter { bits.contains($0) && (eligible?.contains($0) ?? true) && (allowed?.contains($0) ?? true) }.sorted {
 			let a = active[$0] != nil, b = active[$1] != nil
 			if a != b { return a }
 			if availability[$0] != availability[$1] { return availability[$0] < availability[$1] }
@@ -68,7 +70,6 @@ struct PiecePicker {
 		}
 		// Duplicate the final bounded tail, or rescue a saturated active-piece budget
 		// when a stalled owner otherwise prevents a newly available peer making progress.
-		let remaining = wanted.subtracting(completed)
 		let tail = remaining.allSatisfy({ active[$0] != nil }) && remaining.reduce(0, { $0 + blocks($1).count - active[$1]!.received.count }) <= 32
 		if tail || (result.isEmpty && active.count >= maximumActive) {
 			for piece in candidates where active[piece]?.verifying == false {
@@ -104,6 +105,15 @@ struct PiecePicker {
 	mutating func verified(_ piece: Int, valid: Bool) -> Set<UUID> {
 		let contributors = active.removeValue(forKey: piece)?.contributors ?? []
 		if valid { completed.insert(piece) }; return contributors
+	}
+	mutating func stage(_ piece: Int) -> Set<UUID> {
+		staged.insert(piece)
+		return active.removeValue(forKey: piece)?.contributors ?? []
+	}
+	mutating func settleStaged(_ piece: Int, valid: Bool) -> Bool {
+		guard staged.remove(piece) != nil else { return false }
+		if valid { completed.insert(piece) }
+		return true
 	}
 	mutating func expired(now: TimeInterval, timeout: TimeInterval) -> [(UUID, PeerBlock)] {
 		var expired: [(UUID, PeerBlock)] = []

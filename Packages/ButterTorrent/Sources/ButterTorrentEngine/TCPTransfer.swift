@@ -120,6 +120,8 @@ public actor TCPTransfer {
 	let cache: VerifiedPieceCache
 	var picker: PiecePicker
 	var hashReady: Set<Int>
+	var legacyRemaining: [Int: Int] = [:]
+	var reconstructingLegacyFiles: Set<Int> = []
 	var hashOwners: [MerkleHashRequest: UUID] = [:]
 	public nonisolated let discoveredPeers: AsyncStream<ExchangedPeer>
 	let discovery: AsyncStream<ExchangedPeer>.Continuation
@@ -268,7 +270,7 @@ public actor TCPTransfer {
 	}
 	public func snapshot() -> TCPTransferSnapshot {
 		TCPTransferSnapshot(webSeeds: webSeeds.map { $0.snapshot }, complete: picker.complete, verifiedPieces: picker.completed, wantedPieces: picker.wanted,
-			pieceStates: (0..<storage.layout.pieceCount).map { picker.completed.contains($0) ? 1 : picker.active[$0] != nil ? 2 : peers.isEmpty ? 0 : picker.availability[$0] > 0 ? 3 : 4 },
+			pieceStates: (0..<storage.layout.pieceCount).map { picker.completed.contains($0) ? 1 : picker.active[$0] != nil || picker.staged.contains($0) ? 2 : peers.isEmpty ? 0 : picker.availability[$0] > 0 ? 3 : 4 },
 			peers: peers.map { id, peer in TCPPeerSnapshot(id: id, endpoint: peer.session.stream.remoteEndpoint, client: peer.extensions.client, remoteInterested: peer.remoteInterested, peerID: peer.peerID, remoteChoking: peer.remoteChoking, choking: peer.choking,
 				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded, v2: peer.features.v2, fast: peer.features.fast, encryption: peer.encryption, transport: peer.session.stream.kind) },
 			downloaded: downloaded, uploaded: uploaded, corruptBytes: corruptBytes, redundantBytes: redundantBytes, corruptPieces: corruptPieces, writingBlocks: picker.active.values.reduce(0) { $0 + $1.writing.count }, lastPeerError: lastPeerError, storageError: storageError, stopped: stopped)

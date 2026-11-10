@@ -2,8 +2,7 @@
 
 ## Swift torrent engine replacement
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
-  Connect hybrid layer reconstruction to the legacy peer picker and prove
-  sparse magnet downloads against the reference engine.
+  Run the consolidated reference matrix before tagging.
 - Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
   Measure web-seed request overhead; current bounded downloads request 16 KiB
   blocks and open a connection for each HTTP request, without range coalescing.

@@ -1162,5 +1162,11 @@ Storage can check a hybrid candidate against SHA-1 and reconstruct the complete
 v2 layer from one file. It authenticates the layer against the original v2 file
 root before persisting it or marking pieces verified. Storage tests cover a
 corrupt piece, conflicting but individually authenticated v1 data, and verified
-progress and layer export after restart. Peer scheduling for this path remains
-in TODO.md.
+progress and layer export after restart.
+
+Legacy wire peers can fill hybrid pieces while the v2 layer is missing. The
+picker stages SHA-1-checked pieces outside verified progress and upload
+availability. It releases them after an authenticated v2 proof or full file
+layer reconstruction. Six legacy wire comparisons pass against libtorrent,
+including BEP 9 sparse metadata and exact reconstructed layers at 16 KiB and
+64 KiB piece lengths.

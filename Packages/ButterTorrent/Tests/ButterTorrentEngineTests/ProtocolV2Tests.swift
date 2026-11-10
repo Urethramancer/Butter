@@ -82,14 +82,39 @@ final class V2Fixture {
 			#expect(try Data(contentsOf: fixture.root.appendingPathComponent("download/Bundle/b")) == Data(repeating: 17, count: 200003))
 		} catch { await fixture.close(); throw error }; await fixture.close()
 	}
-	@Test func hybridUsesLegacyIdentityWhileVerifyingBothHashFormats() async throws {
+	@Test(arguments: [false, true]) func hybridUsesLegacyIdentityWhileVerifyingBothHashFormats(_ sparse: Bool) async throws {
 		let fixture = try V2Fixture(version: 3)
 		do {
-			let seed = try await fixture.engine("seed", seed: true, preferV2: false), down = try await fixture.engine("download", seed: false, preferV2: false)
+			let seed = try await fixture.engine("seed", seed: true, preferV2: false), down = try await fixture.engine("download", seed: false, sparse: sparse, preferV2: false)
 			let (endpoint, serving) = try await fixture.provider(seed)
 			_ = try await down.connect(to: endpoint); try await serving.value
 			try await eventually { await down.snapshot().complete }
 			#expect(await down.snapshot().peers.allSatisfy { !$0.v2 })
+			#expect(try TorrentMetadata(await fixture.stores[1].exportMetadata()).pieceLayers == fixture.metadata.pieceLayers)
+		} catch { await fixture.close(); throw error }; await fixture.close()
+	}
+	@Test func stagedLegacyPieceWaitsForAuthenticationAndCanUseAV2PeerProof() async throws {
+		let fixture = try V2Fixture(version: 3)
+		do {
+			let down = try await fixture.engine("download", seed: false, sparse: true)
+			let (endpoint, accepting) = try await fixture.provider(down)
+			let wire = WirePeer(stream: try await TCPStream.connect(to: endpoint)); defer { wire.stream.close() }
+			try await wire.hello(hash: try #require(fixture.metadata.hashes.v1), identity: 77); try await accepting.value
+			let storage = fixture.stores[0]
+			try await wire.send(.bitfield(PieceBitfield(count: storage.layout.pieceCount, pieces: [1]).bytes))
+			try await wire.send(.unchoke)
+			for request in try await wire.requests(4) {
+				try #require(request.piece == 1)
+				try await wire.send(.piece(1, request.offset, Data(repeating: 17, count: request.length)))
+			}
+			try await eventually { await down.picker.staged.contains(1) }
+			#expect(await down.snapshot().verifiedPieces.isEmpty)
+			#expect(try await storage.snapshot().verifiedPieces.isEmpty)
+			wire.stream.close()
+			let seed = try await fixture.engine("seed", seed: true), (good, serving) = try await fixture.provider(seed)
+			_ = try await down.connect(to: good); try await serving.value
+			try await eventually { await down.snapshot().complete }
+			#expect(try TorrentMetadata(await storage.exportMetadata()).pieceLayers == fixture.metadata.pieceLayers)
 		} catch { await fixture.close(); throw error }; await fixture.close()
 	}
 	@Test func fastCancellationRepliesOnceWithoutWaitingForPayloadThrottle() async throws {

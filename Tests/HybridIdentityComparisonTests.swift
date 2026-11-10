@@ -20,7 +20,8 @@ extension TCPTransferComparisonTests {
 				source = work.appendingPathComponent("public.torrent"); try metadata.document.original.write(to: source)
 			}
 			let destination = work.appendingPathComponent("native-data")
-			let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: work.appendingPathComponent("state"))
+			let transferMetadata = fetchMetadata ? try TorrentMetadata(infoBytes: metadata.originalInfo, expected: metadata.hashes) : metadata
+			let storage = try await TorrentStorage.open(metadata: transferMetadata, destination: destination, stateDirectory: work.appendingPathComponent("state"))
 			if nativeSeed {
 				try await storage.importFiles(from: root.appendingPathComponent("reference-seed"))
 				for piece in 0..<storage.layout.pieceCount {
@@ -28,7 +29,7 @@ extension TCPTransferComparisonTests {
 				}
 			}
 			var configuration = TCPTransferConfiguration(); configuration.encryption = .disabled
-			let engine = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration)
+			let engine = try await TCPTransfer.open(metadata: transferMetadata, storage: storage, configuration: configuration)
 			let listener = try await TCPListener.listen(address: IPAddress("127.0.0.1"))
 			let record = work.appendingPathComponent("status.json"), jobURL = work.appendingPathComponent("job.json")
 			let process = Process(); process.executableURL = binary; process.arguments = ["--run", jobURL.path]
@@ -49,7 +50,7 @@ extension TCPTransferComparisonTests {
 						let metadataRelay = try await TCPFragmentingRelay.open(host: "127.0.0.1", target: target, legacyHash: metadata.hashes.v1!, rejectHash: Data(metadata.hashes.v2!.prefix(20)))
 						do {
 							let resolved = try await MetadataExchange(encryption: .disabled).fetch(Magnet(hashes: metadata.hashes), peers: [NetworkEndpoint("127.0.0.1", port: metadataRelay.port)], timeout: 10)
-							guard resolved.originalInfo == metadata.originalInfo, await metadataRelay.rejectedIdentity else { throw PeerFailure.invalid("reference legacy metadata fallback differed") }
+							guard resolved.document.original == transferMetadata.document.original, resolved.pieceLayers.isEmpty, await metadataRelay.rejectedIdentity else { throw PeerFailure.invalid("reference legacy sparse metadata fallback differed") }
 						} catch {
 							let failure = await metadataRelay.failure
 							await metadataRelay.close(); throw PeerFailure.invalid("metadata fallback: \(error); relay: \(failure)")
@@ -63,6 +64,10 @@ extension TCPTransferComparisonTests {
 				try await wait { nativeSeed ? try status(record, process: process)?.complete == true : await engine.snapshot().complete }
 				let snapshot = await engine.snapshot(), rejected = await relay!.rejectedIdentity
 				guard snapshot.peers.contains(where: { $0.peerID != nil && !$0.v2 }), nativeSeed || rejected else { throw PeerFailure.invalid("legacy wire identity or initial rejection missing") }
+				if fetchMetadata {
+					let exported = try TorrentMetadata(await storage.exportMetadata())
+					guard exported.pieceLayers == metadata.pieceLayers else { throw PeerFailure.invalid("reconstructed layers differ from reference metadata") }
+				}
 				try await engine.shutdown(); try await storage.shutdown(); try await stop(process)
 				let output = nativeSeed ? work.appendingPathComponent("reference-data") : destination
 				for file in metadata.inspection.files where !file.pad {

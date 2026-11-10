@@ -90,7 +90,8 @@ extension TCPTransfer {
 		peer.hashRequests[request] = .infinity
 		try await disk.acquire()
 		do {
-			try await storage.installHashes(request, hashes: bytes); hashReady = try await storage.availableHashes()
+			try await storage.installHashes(request, hashes: bytes)
+			try await refreshAuthenticatedPieces()
 		} catch {
 			await disk.release()
 			if !(error is MetadataError) { diskFailed(error) }; throw error
