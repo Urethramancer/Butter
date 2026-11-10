@@ -6,6 +6,7 @@ final class UTPRecord {
 	let id = UUID()
 	let endpoint: NetworkEndpoint
 	let leases: [TCPPeerLease]
+	let end = UTPReadEnd()
 	var state: UTPState
 	let created: TimeInterval
 	var claimed = false
@@ -87,7 +88,7 @@ public actor UTPTransport {
 	func enqueue(_ packet: UTPPacket, to endpoint: NetworkEndpoint, id: UUID? = nil) {
 		if case .dropped = outbound.continuation.yield(UTPOutbound(id: id, endpoint: endpoint, packet: packet)) { droppedPackets += 1 }
 	}
-	func stream(_ record: UTPRecord) -> UTPStream { UTPStream(owner: self, id: record.id, endpoint: record.endpoint, leases: record.leases) }
+	func stream(_ record: UTPRecord) -> UTPStream { UTPStream(owner: self, id: record.id, endpoint: record.endpoint, leases: record.leases, end: record.end) }
 	public func connect(to peer: NetworkEndpoint, timeout: TimeInterval = 10, budget extra: TCPPeerBudget? = nil) async throws -> UTPStream {
 		try Task.checkCancellation(); guard !closed, !failed else { throw NetworkFailure.closed }
 		guard peer.port > 0, !peer.address.isUnspecified, !peer.address.isMulticast, peer.address.isIPv6 == localEndpoint.address.isIPv6 else { throw NetworkFailure.invalid("µTP endpoint") }

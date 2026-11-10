@@ -1,12 +1,21 @@
 import Foundation
 import Darwin
 import ButterTorrentMetadata
-import ButterTorrentNetworking
+@testable import ButterTorrentNetworking
 import ButterTorrentStorage
 import ButterTorrentEngine
 
 private func require(_ value: Bool, _ message: String) throws {
 	if !value { throw NSError(domain: "Butter.TCPComparison", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+}
+extension UTPTransport {
+	func comparisonDiagnostics() -> String {
+		records.values.map { record in
+			let state = record.state
+			let flights = state.flights.map { "\($0.sequence)/\($0.payload.count)/\($0.transmissions)/\(clock.now() - $0.sent)" }.joined(separator: ",")
+			return "µTP \(record.endpoint) id=\(state.receiveID)/\(state.sendID) phase=\(state.phase) send=\(state.next) ack=\(state.acknowledged) receive=\(state.received) peerWindow=\(state.remoteWindow) cwnd=\(state.congestion.window) RTO=\(state.congestion.retransmitAfter) ready=\(state.ready.count) reordered=\(state.reordered.keys.sorted()) write=\(record.writer?.offset ?? 0)/\(record.writer?.bytes.count ?? 0) flights=\(flights)"
+		}.joined(separator: "\n")
+	}
 }
 struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let seeding: Bool; let downloaded: Int64; let uploaded: Int64; let rc4: Int; let negotiated: Int; let utp: Int; let tcp: Int }
 
@@ -129,6 +138,7 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 				cases += 1; print("PASS: \(label), verified bytes after both shutdown barriers")
 			} catch {
 				if let impaired { try? FileHandle.standardError.write(contentsOf: Data((await impaired.diagnostics() + "\n").utf8)) }
+				if let utp { try? FileHandle.standardError.write(contentsOf: Data((await utp.comparisonDiagnostics() + "\n").utf8)) }
 				let snapshot = await engine.snapshot()
 				let detail = "FAIL: \(label): \(error); native peer=\(snapshot.lastPeerError ?? "none") disk=\(snapshot.storageError ?? "none") up=\(snapshot.uploaded) down=\(snapshot.downloaded) peers=\(snapshot.peers.count)\n"
 				try? FileHandle.standardError.write(contentsOf: Data(detail.utf8))

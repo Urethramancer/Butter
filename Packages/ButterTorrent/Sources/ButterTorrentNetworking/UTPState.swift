@@ -22,6 +22,8 @@ struct UTPState: Sendable {
 	var acknowledged: UInt16
 	var received: UInt16
 	var remoteWindow = 262_144
+	var windowTimestamp: UInt32?
+	var windowSequence: UInt16 = 0
 	var replyDelay: UInt32 = 0
 	var flights: [UTPFlight] = []
 	var reordered: [UInt16: UTPPacket] = [:]
@@ -43,7 +45,7 @@ struct UTPState: Sendable {
 		next = outgoing ? sequence &+ 1 : sequence; acknowledged = sequence &- 1
 		received = outgoing ? 0 : syn!.sequence; lastActivity = now
 		if outgoing { flights = [UTPFlight(sequence: sequence, type: .syn, payload: Data(), sent: now)] }
-		else { remoteWindow = Int(syn!.window); replyDelay = utpTimestamp(now) &- syn!.timestamp; needsACK = true }
+		else { remoteWindow = Int(syn!.window); windowTimestamp = syn!.timestamp; windowSequence = syn!.sequence; replyDelay = utpTimestamp(now) &- syn!.timestamp; needsACK = true }
 	}
 	var buffered: Int { ready.count + reordered.values.reduce(0) { $0 + $1.payload.count } }
 	var inFlight: Int { flights.reduce(0) { $0 + $1.payload.count } }
@@ -73,7 +75,12 @@ struct UTPState: Sendable {
 		let ack = incoming.acknowledgement, last = next &- 1
 		let validACK = !utpBefore(ack, acknowledged) && utpDistance(ack, acknowledged) <= utpDistance(last, acknowledged)
 		if incoming.type == .reset { if validACK { throw NetworkFailure.closed }; return }
-		lastActivity = now; replyDelay = utpTimestamp(now) &- incoming.timestamp; remoteWindow = Int(incoming.window)
+		lastActivity = now; replyDelay = utpTimestamp(now) &- incoming.timestamp
+		// A delayed or duplicated zero-window announcement must not replace a newer update.
+		let windowAge = windowTimestamp.map { Int32(bitPattern: incoming.timestamp &- $0) }
+		if windowAge == nil || windowAge! > 0 || (windowAge == 0 && !utpBefore(incoming.sequence, windowSequence)) {
+			remoteWindow = Int(incoming.window); windowTimestamp = incoming.timestamp; windowSequence = incoming.sequence
+		}
 		if validACK {
 			var removed: [UTPFlight] = []
 			flights.removeAll { flight in

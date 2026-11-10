@@ -47,6 +47,7 @@ extension UTPTransport {
 				record.reader = nil; waiter.resolve(.success(bytes)); record.state.needsACK = true
 			} else if record.state.eof { record.reader = nil; waiter.resolve(.success(Data())) }
 		}
+		if record.state.eof { record.end.finish() }
 		if var write = record.writer {
 			let packets = record.state.send(write.bytes, offset: &write.offset, window: window(record), now: now)
 			record.writer = write

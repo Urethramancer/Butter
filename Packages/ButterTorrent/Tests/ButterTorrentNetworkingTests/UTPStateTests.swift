@@ -3,6 +3,15 @@ import Testing
 @testable import ButterTorrentNetworking
 
 @Suite struct UTPStateTests {
+	@Test func reorderedWindowAnnouncementsCannotUndoANewerUpdateAcrossTimestampWrap() throws {
+		var state = UTPState(outgoing: true, id: 7, sequence: 1, now: 0)
+		let zero = UTPPacket(type: .state, connection: 7, timestamp: 0xfffffff0, window: 0, sequence: 20, acknowledgement: 1)
+		try state.receive(zero, capacity: 262144, now: 0.01)
+		#expect(state.remoteWindow == 0)
+		try state.receive(UTPPacket(type: .state, connection: 7, timestamp: 0x10, window: 4096, sequence: 20, acknowledgement: 1), capacity: 262144, now: 0.02)
+		try state.receive(zero, capacity: 262144, now: 0.03)
+		#expect(state.remoteWindow == 4096)
+	}
 	@Test func selectiveACKTriggersFastRetransmissionAndFINWaitsForMissingData() throws {
 		var sender = UTPState(outgoing: true, id: 7, sequence: 1, now: 0)
 		let syn = sender.initial(window: 262144, now: 0)

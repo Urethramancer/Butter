@@ -1,5 +1,12 @@
 import Foundation
 
+final class UTPReadEnd: @unchecked Sendable {
+	private let lock = NSLock()
+	private var ended = false
+	var isEOF: Bool { lock.withLock { ended } }
+	func finish() { lock.withLock { ended = true } }
+}
+
 /// UTPStream carries an ordered stream through its shared UDP owner.
 public final class UTPStream: PeerByteStream, @unchecked Sendable {
 	public let remoteEndpoint: NetworkEndpoint?
@@ -7,9 +14,10 @@ public final class UTPStream: PeerByteStream, @unchecked Sendable {
 	let id: UUID
 	private let owner: UTPTransport
 	private let leases: [TCPPeerLease]
+	private let end: UTPReadEnd
 	private let lock = NSLock()
 	private var closed = false, reading = false, writing = false, readEOF = false
-	init(owner: UTPTransport, id: UUID, endpoint: NetworkEndpoint, leases: [TCPPeerLease]) { self.owner = owner; self.id = id; remoteEndpoint = endpoint; self.leases = leases }
+	init(owner: UTPTransport, id: UUID, endpoint: NetworkEndpoint, leases: [TCPPeerLease], end: UTPReadEnd) { self.owner = owner; self.id = id; remoteEndpoint = endpoint; self.leases = leases; self.end = end }
 	public var isClosed: Bool { lock.withLock { closed } }
 	public func read(maximumBytes: Int = 65_536, timeout: TimeInterval = 30) async throws -> Data {
 		try Task.checkCancellation()
@@ -17,7 +25,7 @@ public final class UTPStream: PeerByteStream, @unchecked Sendable {
 			guard !closed else { throw NetworkFailure.closed }; guard !reading else { throw NetworkFailure.busy }; reading = true; return readEOF
 		}
 		defer { lock.withLock { reading = false } }
-		if eof { return Data() }
+		if eof || end.isEOF { return Data() }
 		do { let bytes = try await owner.read(id, maximum: maximumBytes, timeout: timeout); if bytes.isEmpty { lock.withLock { readEOF = true } }; return bytes }
 		catch { close(); throw error }
 	}

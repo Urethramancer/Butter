@@ -3,6 +3,21 @@ import Testing
 @testable import ButterTorrentNetworking
 
 @Suite struct UTPFailureTests {
+	@Test func gracefulEOFRemainsReadableAfterProtocolStateRetires() async throws {
+		let fixture = try await UTPLinkFixture(impaired: false)
+		do {
+			let (client, server) = try await fixture.pair()
+			async let clientFin = client.finish(timeout: 20), serverFin = server.finish(timeout: 20)
+			try await clientFin; try await serverFin
+			try await deadline {
+				while true { let a = await fixture.a.snapshot(), b = await fixture.b.snapshot(); if a.connections == 0 && b.connections == 0 { return }; try await Task.sleep(for: .milliseconds(1)) }
+			}
+			let retirement = fixture.clock.now() + 6
+			try await deadline { while fixture.clock.now() < retirement { try await Task.sleep(for: .milliseconds(1)) } }
+			let a = try await client.read(), b = try await server.read(); #expect(a.isEmpty && b.isEmpty)
+			try await client.shutdown(); try await server.shutdown()
+		} catch { await fixture.close(); throw error }; await fixture.close()
+	}
 	@Test func aggregateWriteAdmissionBoundsRetainedDataAndPacketCopies() async throws {
 		let fixture = try await UTPLinkFixture(impaired: false)
 		var clients: [UTPStream] = [], servers: [UTPStream] = [], writes: [Task<Void, Error>] = []
