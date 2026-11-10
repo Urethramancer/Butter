@@ -21,7 +21,8 @@ actor UTPImpairingRelay {
 	private var received: [Bool: Int] = [:]
 	private var syns: [String] = []
 	private var sendError: String?
-	func diagnostics() -> String { "UDP proxy received=\(received) dropped=\(dropped) duplicated=\(duplicated) reordered=\(reordered) SYN=\(syns) error=\(sendError ?? "none")" }
+	private var trace: [String] = []
+	func diagnostics() -> String { "UDP proxy received=\(received) dropped=\(dropped) duplicated=\(duplicated) reordered=\(reordered) SYN=\(syns) error=\(sendError ?? "none") trace=\(trace)" }
 	private init(front: DatagramSocket, back: DatagramSocket, target: NetworkEndpoint, loseSYN: Bool, loseSYNACK: Bool) {
 		self.front = front; self.back = back; self.target = target; self.loseSYN = loseSYN; self.loseSYNACK = loseSYNACK; port = front.localEndpoint.port
 	}
@@ -38,6 +39,8 @@ actor UTPImpairingRelay {
 	private func forward(_ packet: NetworkDatagram, outgoing: Bool) async {
 		guard !closed, (20...4096).contains(packet.payload.count), packet.payload[0] & 15 == 1 else { return }
 		let type = packet.payload[0] >> 4
+		trace.append("\(outgoing ? "front" : "back") \(packet.payload.prefix(20).map { String(format: "%02x", $0) }.joined()) bytes=\(packet.payload.count)")
+		if trace.count > 64 { trace.removeFirst() }
 		received[outgoing, default: 0] += 1
 		if outgoing {
 			if client == nil { guard type == 4, packet.source.address.isLoopback else { return }; client = packet.source }

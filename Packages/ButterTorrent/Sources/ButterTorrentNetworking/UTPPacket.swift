@@ -29,7 +29,9 @@ struct UTPPacket: Sendable {
 			let kind = next, length = Int(bytes[cursor + 1]); next = bytes[cursor]; cursor += 2
 			guard length <= bytes.count - cursor else { throw NetworkFailure.invalid("µTP extension length") }
 			if kind == 1 {
-				guard selective.isEmpty, length >= 4, length % 4 == 0, length <= 252 else { throw NetworkFailure.invalid("µTP selective acknowledgement") }
+				// Libtorrent emits compact bitmaps, including a single byte. Keep our output
+				// padded to BEP 29's four-byte units, but accept its bounded wire format.
+				guard selective.isEmpty, length > 0 else { throw NetworkFailure.invalid("µTP selective acknowledgement") }
 				selective = bytes.subdata(in: cursor..<cursor + length)
 			}
 			cursor += length

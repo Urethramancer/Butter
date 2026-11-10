@@ -3,6 +3,18 @@ import Testing
 @testable import ButterTorrentNetworking
 
 @Suite struct UTPStateTests {
+	@Test(arguments: [1, 2, 3, 5, 255]) func compactReferenceSelectiveACKAdvancesTheSender(length: Int) throws {
+		var sender = UTPState(outgoing: true, id: 7, sequence: 1, now: 0)
+		try sender.receive(UTPPacket(type: .state, connection: 7, sequence: 20, acknowledgement: 1), capacity: 262144, now: 0.01)
+		sender.congestion.window = 4720; var offset = 0
+		let packets = sender.send(Data(repeating: 7, count: 4720), offset: &offset, window: 262144, now: 0.02)
+		#expect(packets.map(\.sequence) == [2, 3, 4, 5])
+		var wire = try UTPPacket(type: .state, connection: 7, sequence: 20, acknowledgement: 2).encoded()
+		wire[1] = 1; wire.append(contentsOf: [0, UInt8(length)]); wire.append(1)
+		wire.append(Data(repeating: 0, count: length - 1)) // ACK 2, missing 3, SACK 4.
+		try sender.receive(UTPPacket(wire), capacity: 262144, now: 0.03)
+		#expect(sender.acknowledged == 2 && sender.flights.map(\.sequence) == [3, 5])
+	}
 	@Test func reorderedWindowAnnouncementsCannotUndoANewerUpdateAcrossTimestampWrap() throws {
 		var state = UTPState(outgoing: true, id: 7, sequence: 1, now: 0)
 		let zero = UTPPacket(type: .state, connection: 7, timestamp: 0xfffffff0, window: 0, sequence: 20, acknowledgement: 1)
@@ -40,7 +52,7 @@ import Testing
 		#expect(try packet.encoded() == bytes)
 		var unknown = bytes; unknown[1] = 99; unknown.append(contentsOf: [0, 3, 1, 2, 3])
 		#expect(try UTPPacket(unknown).payload.isEmpty)
-		for suffix in [Data([0, 3, 1, 2, 3]), Data([0, 4, 1]), Data([1, 4, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0])] {
+		for suffix in [Data([0, 0]), Data([0, 4, 1]), Data([1, 4, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0])] {
 			var malformed = bytes; malformed[1] = 1; malformed.append(suffix)
 			#expect(throws: (any Error).self) { try UTPPacket(malformed) }
 		}
