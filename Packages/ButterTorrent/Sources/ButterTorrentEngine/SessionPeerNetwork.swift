@@ -1,4 +1,5 @@
 import Foundation
+import ButterTorrentMetadata
 import ButterTorrentNetworking
 
 public struct SessionPeerSettings: Sendable, Equatable {
@@ -8,6 +9,7 @@ public struct SessionPeerSettings: Sendable, Equatable {
 	public var maximumPeers = 300
 	public var torrentPeers = 80
 	public var pex = true
+	public var dht = false
 	public var allowSameIP = false
 	public init() {}
 	func validate() throws {
@@ -21,6 +23,7 @@ public struct SessionNetworkSnapshot: Sendable {
 	public let error: String
 	public let pendingHandshakes: Int
 	public let peers: Int
+	public let discovery: SessionDHTSnapshot
 }
 
 struct SessionPeerTarget: Sendable {
@@ -46,11 +49,14 @@ actor SessionPeerNetwork {
 	private var closed = false
 	private var failure = ""
 	private var stopping: Task<Void, Never>?
+	private var dht: SessionDHT?
+	private var discoveryFailure = ""
 	private init(listener: ListeningPort, utp4: UTPTransport?, utp6: UTPTransport?, encryption: PeerEncryptionConfiguration, filter: PeerAddressFilter, clock: any TransportClock) {
 		self.listener = listener; self.utp4 = utp4; self.utp6 = utp6; self.encryption = encryption; self.clock = clock
 		self.filter = filter
 	}
-	static func open(settings: SessionPeerSettings, budget: TCPPeerBudget, encryption: PeerEncryptionConfiguration, filter: PeerAddressFilter, loopbackOnly: Bool, clock: any TransportClock) async throws -> SessionPeerNetwork {
+	static func open(settings: SessionPeerSettings, budget: TCPPeerBudget, encryption: PeerEncryptionConfiguration, filter: PeerAddressFilter, loopbackOnly: Bool, clock: any TransportClock,
+		bootstrap: [NetworkEndpoint]?, connect: @escaping @Sendable (SessionDHTTarget, NetworkEndpoint) async -> Void) async throws -> SessionPeerNetwork {
 		try settings.validate()
 		let listener = try await ListeningPort.bind(port: settings.port, maximumPeers: settings.maximumPeers, loopbackOnly: loopbackOnly, clock: clock, budget: budget, incomingTCP: settings.tcp)
 		var v4: UTPTransport?, v6: UTPTransport?
@@ -60,9 +66,19 @@ actor SessionPeerNetwork {
 				v6 = try await UTPTransport.open(dispatcher: listener.udp6, maximumConnections: min(200, settings.maximumPeers), budget: budget, clock: clock)
 			}
 			let owner = SessionPeerNetwork(listener: listener, utp4: v4, utp6: v6, encryption: encryption, filter: filter, clock: clock)
+			if settings.dht { try await owner.enableDHT(bootstrap: bootstrap ?? (loopbackOnly ? [] : nil), connect: connect) }
 			await owner.start(tcp: settings.tcp); return owner
 		} catch { await v4?.shutdown(); await v6?.shutdown(); try? await listener.shutdown(); throw error }
 	}
+	private func enableDHT(bootstrap: [NetworkEndpoint]?, connect: @escaping @Sendable (SessionDHTTarget, NetworkEndpoint) async -> Void) throws {
+		dht = try SessionDHT(dispatchers: [listener.udp4, listener.udp6], port: listener.port, bootstrap: bootstrap, filter: filter, clock: clock, connect: connect)
+	}
+	func updateDiscovery(_ targets: [SessionDHTTarget], metadata: [TorrentMetadata]) async {
+		guard !closed, let dht else { return }
+		do { try await dht.update(targets, metadata: metadata) }
+		catch { discoveryFailure = error.localizedDescription; await dht.shutdown(); self.dht = nil }
+	}
+	func suspendDiscovery() async { await updateDiscovery([], metadata: []) }
 	private func start(tcp: Bool) {
 		if tcp {
 			let listener = listener.tcp
@@ -124,13 +140,14 @@ actor SessionPeerNetwork {
 	func transport(for endpoint: NetworkEndpoint) throws -> UTPTransport {
 		guard !closed, let transport = endpoint.address.isIPv6 ? utp6 : utp4 else { throw NetworkFailure.closed }; return transport
 	}
-	func setFilter(_ filter: PeerAddressFilter) { self.filter = filter }
+	func setFilter(_ filter: PeerAddressFilter) async { self.filter = filter; await dht?.setFilter(filter) }
 	func trackers(http: any TrackerAnnouncing) throws -> TrackerClient {
 		guard !closed else { throw NetworkFailure.closed }
 		return TrackerClient(http: http, udp: try UDPTrackerClient(dispatchers: [listener.udp4, listener.udp6], clock: clock, timeout: 10))
 	}
-	func snapshot() -> SessionNetworkSnapshot {
-		SessionNetworkSnapshot(port: closed ? 0 : listener.port, udp: !closed, error: failure, pendingHandshakes: opening.count, peers: listener.peers.count)
+	func snapshot() async -> SessionNetworkSnapshot {
+		SessionNetworkSnapshot(port: closed ? 0 : listener.port, udp: !closed, error: failure, pendingHandshakes: opening.count, peers: listener.peers.count,
+			discovery: await dht?.snapshot() ?? SessionDHTSnapshot(enabled: false, contacts: 0, searches: 0, error: discoveryFailure))
 	}
 	private func failed(_ error: Error) {
 		guard !closed, !(error is CancellationError) else { return }
@@ -147,7 +164,7 @@ actor SessionPeerNetwork {
 	}
 	private func finish() async {
 		closed = true; for task in pumps { task.cancel() }
-		await drainOpening(); await utp4?.shutdown(); await utp6?.shutdown(); try? await listener.shutdown()
+		await drainOpening(); await dht?.shutdown(); await utp4?.shutdown(); await utp6?.shutdown(); try? await listener.shutdown()
 		for task in pumps { await task.value }; pumps.removeAll(); routes.removeAll(); catalog = nil
 	}
 }

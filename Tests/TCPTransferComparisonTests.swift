@@ -17,7 +17,7 @@ extension UTPTransport {
 		}.joined(separator: "\n")
 	}
 }
-struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let seeding: Bool; let downloaded: Int64; let uploaded: Int64; let rc4: Int; let negotiated: Int; let utp: Int; let tcp: Int }
+struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let seeding: Bool; let downloaded: Int64; let uploaded: Int64; let rc4: Int; let negotiated: Int; let utp: Int; let tcp: Int; let dhtPeers: Int }
 
 @main struct TCPTransferComparisonTests {
 	static func main() async {
@@ -149,8 +149,9 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 		} } } } } } } }
 		print("PASS: \(cases) independent libtorrent-to-Swift and Swift-to-libtorrent peer fixtures")
 		let filter = ProcessInfo.processInfo.environment["BUTTER_REFERENCE_FILTER"]
-		if filter == nil || filter == "DHT" { try await runDHTComparisons(root: root, binary: binary) }
+		if filter == nil || filter == "DHT" || filter == "session-dht" { try await runDHTComparisons(root: root, binary: binary) }
 		if filter == nil || filter == "session" { try await runSessionComparisons(root: root, binary: binary) }
+		if filter == nil || filter == "session-dht" { try await runSessionDHTComparisons(root: root, binary: binary) }
 		if filter == nil || filter == "webseed" { try await runWebSeedComparisons(root: root, binary: binary) }
 	}
 }

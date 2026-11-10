@@ -1,0 +1,161 @@
+import Foundation
+import Testing
+import ButterTorrentMetadata
+@testable import ButterTorrentNetworking
+@testable import ButterTorrentEngine
+
+@Suite(.serialized) struct SessionDHTTests {
+	@Test func failedDiscoveryRegistrationLeavesTheSharedUDPPortUsable() async throws {
+		let fixture = try TransferFixture(), clock = ContinuousTransportClock()
+		var settings = SessionPeerSettings(); settings.dht = true
+		let network = try await SessionPeerNetwork.open(settings: settings, budget: TCPPeerBudget(limit: 4), encryption: .disabled, filter: .init(), loopbackOnly: true, clock: clock, bootstrap: []) { _, _ in Issue.record("Unregistered discovery connected a peer") }
+		let receiver = try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0))
+		do {
+			await network.updateDiscovery([], metadata: Array(repeating: fixture.metadata, count: 10_001))
+			let snapshot = await network.snapshot()
+			#expect(snapshot.udp && snapshot.port > 0 && !snapshot.discovery.enabled && !snapshot.discovery.error.isEmpty)
+			try await network.listener.udp4.send(Data([42]), to: receiver.localEndpoint)
+			let packet = try await engineDeadline { for await packet in receiver.datagrams { return packet }; throw NetworkFailure.closed }
+			#expect(packet.payload == Data([42]) && packet.source.port == snapshot.port)
+		} catch { await network.shutdown(); try? await receiver.shutdown(); await fixture.clean(); throw error }; await network.shutdown(); try await receiver.shutdown(); await fixture.clean()
+	}
+	@Test func searchesStayBoundedAndRepeatedRunCommandsDoNotRestartThem() async throws {
+		let fixture = try TransferFixture(), v4 = try await SessionDHTRouter.open(host: "127.0.0.1", metadata: nil), v6 = try await SessionDHTRouter.open(host: "::1", metadata: nil)
+		let clock = EngineClock(), session = TorrentSession(storage: fixture.root.appendingPathComponent("library"), configuration: plainTransferConfiguration(), loopbackOnly: true, clock: clock, dhtBootstrap: [v4.endpoint, v6.endpoint])
+		do {
+			var settings = SessionPeerSettings()
+			settings.port = try await session.configurePeers(settings)
+			for index in 0..<3 {
+				var fields = fixture.metadata.document.root.dictionary!, info = fixture.metadata.document.root["info"]!.dictionary!
+				info[Data("name".utf8)] = .bytes(Data("bundle\(index)".utf8)); fields[Data("info".utf8)] = .dictionary(info)
+				let source = fixture.root.appendingPathComponent("\(index).torrent"); try BencodeValue.dictionary(fields).encoded().write(to: source)
+				_ = try await session.add(id: "transfer\(index)", source: source, destination: fixture.root.appendingPathComponent("download\(index)"))
+			}
+			for index in 0..<3 { try await session.run(id: "transfer\(index)", running: true) }
+			settings.dht = true; _ = try await session.configurePeers(settings)
+			try await eventually { try await session.snapshot().network.discovery.searches == 4 }
+			// All four queries must have reached the routers before taking the baseline.
+			try await eventually { let a = await v4.packets.count, b = await v6.packets.count; return a == 2 && b == 2 }
+			for _ in 0..<5 { for index in 0..<3 { try await session.run(id: "transfer\(index)", running: true) } }
+			_ = try await session.configurePeers(settings)
+			#expect(try await session.snapshot().network.discovery.searches == 4)
+			#expect(await v4.packets.count == 2); #expect(await v6.packets.count == 2)
+			settings.dht = false; _ = try await session.configurePeers(settings)
+			#expect(try await !session.snapshot().network.discovery.enabled)
+			try await session.close()
+		} catch { try? await session.close(); await v4.close(); await v6.close(); await fixture.clean(); throw error }; await v4.close(); await v6.close(); await fixture.clean()
+	}
+	@Test func pausedPrivateIdentitiesRemainForbiddenBesideRunningPublicTransfers() async throws {
+		let fixture = try TransferFixture(), router = try await SessionDHTRouter.open(host: "127.0.0.1", metadata: nil)
+		let clock = EngineClock(), session = TorrentSession(storage: fixture.root.appendingPathComponent("library"), configuration: plainTransferConfiguration(), loopbackOnly: true, clock: clock, dhtBootstrap: [router.endpoint])
+		let probe = UDPDispatcher(transport: try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0)))
+		do {
+			var settings = SessionPeerSettings(); settings.dht = true
+			let port = try await session.configurePeers(settings)
+			let source = fixture.root.appendingPathComponent("public.torrent"); try fixture.metadata.document.original.write(to: source)
+			_ = try await session.add(id: "public", source: source, destination: fixture.root.appendingPathComponent("download")); try await session.run(id: "public", running: true)
+			var info = fixture.metadata.document.root["info"]!.dictionary!; info[Data("private".utf8)] = .integer(1)
+			let secret = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
+			let secretURL = fixture.root.appendingPathComponent("private.torrent"); try secret.document.original.write(to: secretURL)
+			_ = try await session.add(id: "private", source: secretURL, destination: fixture.root.appendingPathComponent("private-download"))
+			for (hash, kind) in [(fixture.metadata.hashes.v1!, "r"), (secret.hashes.v1!, "e")] {
+				let transaction = Data(hash.prefix(4))
+				let query = try DHTWire.encode(["t": .bytes(transaction), "y": .bytes(Data("q".utf8)), "q": .bytes(Data("get_peers".utf8)), "a": DHTWire.dictionary(["id": .bytes(Data(repeating: 0, count: 20)), "info_hash": .bytes(hash)])])
+				let reply = try await probe.exchange(query, with: NetworkEndpoint("127.0.0.1", port: port), reply: .dht(transaction), timeout: 1)
+				#expect(try DHTWire.decode(reply.payload)["y"]?.text == kind)
+			}
+			try await session.close()
+			#expect(await router.packets.allSatisfy { (try? BencodeDocument($0.payload).root["a"]?["info_hash"]?.bytes) != secret.hashes.v1 })
+		} catch { try? await session.close(); try? await probe.shutdown(); await router.close(); await fixture.clean(); throw error }; try await probe.shutdown(); await router.close(); await fixture.clean()
+	}
+	@Test(arguments: [1, 2, 3], [false, true]) func sharedPortDiscoveryTransfersWithoutExplicitPeerConnections(_ version: Int, _ utp: Bool) async throws {
+		let fixture = try V2Fixture(version: version), host = version == 2 ? "::1" : "127.0.0.1"
+		let router = try await SessionDHTRouter.open(host: host, metadata: fixture.metadata)
+		let seed = TorrentSession(storage: fixture.root.appendingPathComponent("seed-library"), configuration: plainTransferConfiguration(), loopbackOnly: true, dhtBootstrap: [router.endpoint])
+		let down = TorrentSession(storage: fixture.root.appendingPathComponent("down-library"), configuration: plainTransferConfiguration(), loopbackOnly: true, dhtBootstrap: [router.endpoint])
+		do {
+			var settings = SessionPeerSettings(); settings.dht = true; settings.pex = false; settings.utp = utp; settings.tcp = !utp
+			let source = fixture.root.appendingPathComponent("input.torrent"); try fixture.metadata.document.original.write(to: source)
+			let seedPort = try await seed.configurePeers(settings)
+			_ = try await seed.add(id: "transfer", source: source, destination: fixture.root.appendingPathComponent("source")); try await seed.run(id: "transfer", running: true)
+			try await eventually { await router.announces.contains { $0.port == seedPort && $0.source.port == seedPort } }
+			let downPort = try await down.configurePeers(settings)
+			_ = try await down.add(id: "transfer", source: source, destination: fixture.root.appendingPathComponent("download")); try await down.run(id: "transfer", running: true)
+			try await eventually { try await down.snapshot().transfers[0].state.transfer?.complete == true }
+			let snapshot = try await down.snapshot()
+			#expect(snapshot.network.discovery.enabled && snapshot.network.discovery.contacts > 0 && snapshot.network.discovery.error.isEmpty)
+			#expect(snapshot.transfers[0].state.transfer?.peers.contains { $0.peerID != nil && $0.transport == (utp ? .utp : .tcp) } == true)
+			try await eventually { await router.announces.contains { $0.port == downPort && $0.source.port == downPort } }
+			try await down.shutdown(); #expect(try await down.snapshot().network.discovery.searches == 0)
+			try await down.close(); try await seed.close()
+			for file in fixture.metadata.inspection.files where !file.pad {
+				#expect(try Data(contentsOf: fixture.root.appendingPathComponent("download/" + file.path)) == Data(contentsOf: fixture.root.appendingPathComponent("source/" + file.path)))
+			}
+		} catch { try? await down.close(); try? await seed.close(); await router.close(); await fixture.close(); throw error }
+		await router.close(); await fixture.close()
+	}
+	@Test func privateMetadataAndEmptySessionsNeverSendDiscoveryTraffic() async throws {
+		let fixture = try V2Fixture(version: 3, isPrivate: true), router = try await SessionDHTRouter.open(host: "127.0.0.1", metadata: fixture.metadata)
+		let clock = EngineClock(), session = TorrentSession(storage: fixture.root.appendingPathComponent("library"), configuration: plainTransferConfiguration(), loopbackOnly: true, clock: clock, dhtBootstrap: [router.endpoint])
+		do {
+			var settings = SessionPeerSettings(); settings.dht = true
+			_ = try await session.configurePeers(settings)
+			#expect(try await session.snapshot().network.discovery.searches == 0)
+			let source = fixture.root.appendingPathComponent("private.torrent"); try fixture.metadata.withTrackerTiers([]).write(to: source)
+			_ = try await session.add(id: "transfer", source: source, destination: fixture.root.appendingPathComponent("source")); try await session.run(id: "transfer", running: true)
+			clock.advance(1800)
+			#expect(try await session.snapshot().network.discovery.searches == 0)
+			try await session.close(); #expect(await router.packets.isEmpty)
+		} catch { try? await session.close(); await router.close(); await fixture.close(); throw error }; await router.close(); await fixture.close()
+	}
+	@Test func pauseDrainsStalledSearchesAndBlocklistsPreventBootstrapTraffic() async throws {
+		let fixture = try TransferFixture(), router = try await SessionDHTRouter.open(host: "127.0.0.1", metadata: nil)
+		let clock = EngineClock(), session = TorrentSession(storage: fixture.root.appendingPathComponent("library"), configuration: plainTransferConfiguration(), loopbackOnly: true, clock: clock, dhtBootstrap: [router.endpoint])
+		do {
+			var settings = SessionPeerSettings(); settings.dht = true
+			_ = try await session.configurePeers(settings)
+			let source = fixture.root.appendingPathComponent("input.torrent"); try fixture.metadata.document.original.write(to: source)
+			_ = try await session.add(id: "transfer", source: source, destination: fixture.root.appendingPathComponent("download")); try await session.run(id: "transfer", running: true)
+			try await eventually { await router.packets.count == 1 }
+			try await engineDeadline { try await session.pause(id: "transfer") }
+			#expect(try await session.snapshot().network.discovery.searches == 0)
+			let address = try IPAddress("127.0.0.1")
+			try await session.setBlocklist([PeerAddressRange(first: address, last: address)])
+			try await session.run(id: "transfer", running: true)
+			try await eventually { try await !session.snapshot().network.discovery.error.isEmpty }
+			clock.advance(300); try await session.pause(id: "transfer")
+			#expect(await router.packets.count == 1)
+			try await session.setBlocklist([]); try await session.run(id: "transfer", running: true)
+			try await eventually { await router.packets.count == 2 }
+			try await engineDeadline { try await session.shutdown() }
+			#expect(try await session.snapshot().network.discovery.searches == 0)
+			try await engineDeadline { try await session.close() }
+		} catch { try? await session.close(); await router.close(); await fixture.clean(); throw error }; await router.close(); await fixture.clean()
+	}
+}
+
+private actor SessionDHTRouter {
+	struct Announce { let port: UInt16; let source: NetworkEndpoint }
+	let endpoint: NetworkEndpoint
+	let udp: UDPDispatcher
+	let node: DHTNode?
+	var packets: [NetworkDatagram] = []
+	var announces: [Announce] = []
+	var pump: Task<Void, Never>?
+	init(endpoint: NetworkEndpoint, udp: UDPDispatcher, node: DHTNode?) { self.endpoint = endpoint; self.udp = udp; self.node = node }
+	static func open(host: String, metadata: TorrentMetadata?) async throws -> SessionDHTRouter {
+		let socket = try DatagramSocket(bind: NetworkEndpoint(host, port: 0)), udp = UDPDispatcher(transport: socket)
+		let node = try metadata.map { _ in try DHTNode(dispatcher: udp, bootstrap: []) }
+		do {
+			if let metadata { try await node?.setTorrents([metadata]) }
+			let router = SessionDHTRouter(endpoint: socket.localEndpoint, udp: udp, node: node), incoming = try await udp.subscribe(.raw)
+			await router.start(incoming); return router
+		} catch { await node?.shutdown(); try? await udp.shutdown(); throw error }
+	}
+	func start(_ incoming: AsyncStream<NetworkDatagram>) { pump = Task { [weak self] in for await packet in incoming { await self?.receive(packet) } } }
+	func receive(_ packet: NetworkDatagram) {
+		packets.append(packet)
+		if let root = try? BencodeDocument(packet.payload).root, root["q"]?.text == "announce_peer", let port = root["a"]?["port"]?.integer, let number = UInt16(exactly: port) { announces.append(Announce(port: number, source: packet.source)) }
+	}
+	func close() async { pump?.cancel(); await pump?.value; pump = nil; await node?.shutdown(); try? await udp.shutdown() }
+}
