@@ -12,6 +12,7 @@ public struct TransferResourceSnapshot: Sendable {
 public final class TransferResources: Sendable {
 	public static let shared = try! TransferResources()
 	let disk: TransferPermits
+	let web = TransferPermits(3)
 	let pieces: SharedPieceCache
 	public init(maximumDiskOperations: Int = 8, maximumCachedBytes: Int = 64 * 1024 * 1024) throws {
 		guard (1...64).contains(maximumDiskOperations), (16 * 1024 * 1024...256 * 1024 * 1024).contains(maximumCachedBytes) else { throw PeerFailure.invalid("session resource limits") }

@@ -107,7 +107,7 @@ extension TCPTransfer {
 		peer.recent[block] = clock.now() + configuration.requestTimeout * 2
 	}
 	func receiveBlock(_ id: UUID, block: PeerBlock, bytes: Data) async throws {
-		guard !stopping, peers[id]?.closing == false else { throw PeerFailure.closed }
+		guard !stopping, peers[id]?.closing == false || webSeeds.contains(where: { $0.id == id && !$0.banned }) else { throw PeerFailure.closed }
 		var cursor = 0
 		for segment in try picker.layout.segments(piece: block.piece, offset: block.offset, count: block.length) {
 			if segment.padding, bytes[cursor..<(cursor + segment.count)].contains(where: { $0 != 0 }) { throw PeerFailure.corruptPiece(block.piece) }; cursor += segment.count
@@ -128,6 +128,7 @@ extension TCPTransfer {
 		} else {
 			corruptPieces += 1
 			for contributor in contributors {
+				if let seed = webSeeds.first(where: { $0.id == contributor }) { await banWebSeed(seed) }
 				if let identity = peers[contributor]?.peerID, bannedIDs.count < 1024 { bannedIDs.insert(identity) }
 				drop(contributor, error: PeerFailure.corruptPiece(block.piece))
 			}

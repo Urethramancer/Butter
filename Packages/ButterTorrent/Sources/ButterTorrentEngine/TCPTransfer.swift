@@ -44,6 +44,7 @@ public struct TCPPeerSnapshot: Sendable {
 	public let transport: PeerTransportKind
 }
 public struct TCPTransferSnapshot: Sendable {
+	public let webSeeds: [WebSeedSnapshot]
 	public let complete: Bool
 	public let verifiedPieces: Set<Int>
 	public let wantedPieces: Set<Int>
@@ -132,6 +133,10 @@ public actor TCPTransfer {
 	var stopped = false
 	var ticker: Task<Void, Never>?
 	var shutdownTask: (UUID, Task<Void, Error>)?
+	var webSeeds: [TransferWebSeed] = []
+	var webTask: Task<Void, Never>?
+	var webClient: WebSeedClient?
+	var webAdmission: TransferPermits?
 	var lastChoke: TimeInterval
 	var rotation = 0
 	private init(metadata: TorrentMetadata, storage: TorrentStorage, initial: StorageSnapshot, hashes: Set<Int>, configuration: TCPTransferConfiguration,
@@ -160,7 +165,7 @@ public actor TCPTransfer {
 		downloaded = initial.downloaded; uploaded = initial.uploaded; lastChoke = clock.now()
 	}
 	public static func open(metadata: TorrentMetadata, storage: TorrentStorage, configuration: TCPTransferConfiguration = .init(),
-		peerID: Data? = nil, budget: TCPPeerBudget? = nil, resources: TransferResources = .shared, clock: any TransportClock = ContinuousTransportClock()) async throws -> TCPTransfer {
+		peerID: Data? = nil, budget: TCPPeerBudget? = nil, resources: TransferResources = .shared, clock: any TransportClock = ContinuousTransportClock(), webSeedClient: WebSeedClient? = nil) async throws -> TCPTransfer {
 		try configuration.validate()
 		guard storage.infoHashes == metadata.hashes else { throw PeerFailure.invalid("metadata/storage identity") }
 		let initial = try await storage.snapshot()
@@ -169,7 +174,9 @@ public actor TCPTransfer {
 		let hashes = try await storage.availableHashes()
 		let transfer = try TCPTransfer(metadata: metadata, storage: storage, initial: initial, hashes: hashes, configuration: configuration,
 			peerID: identity, budget: budget ?? TCPPeerBudget(limit: configuration.maximumPeers), resources: resources, clock: clock)
-		await transfer.startTicker(); return transfer
+		await transfer.startTicker()
+		await transfer.startWebSeeds(client: webSeedClient ?? WebSeedClient(transport: NetworkHTTPTransport(clock: clock, addressFilter: configuration.addressFilter), clock: clock, maximumBytes: 16384), admission: resources.web)
+		return transfer
 	}
 	func startTicker() {
 		let clock = clock, interval = min(1, configuration.requestTimeout / 2)
@@ -221,7 +228,7 @@ public actor TCPTransfer {
 		} onCancel: { task.cancel() }
 	}
 	public func snapshot() -> TCPTransferSnapshot {
-		TCPTransferSnapshot(complete: picker.complete, verifiedPieces: picker.completed, wantedPieces: picker.wanted,
+		TCPTransferSnapshot(webSeeds: webSeeds.map { $0.snapshot }, complete: picker.complete, verifiedPieces: picker.completed, wantedPieces: picker.wanted,
 			pieceStates: (0..<storage.layout.pieceCount).map { picker.completed.contains($0) ? 1 : picker.active[$0] != nil ? 2 : peers.isEmpty ? 0 : picker.availability[$0] > 0 ? 3 : 4 },
 			peers: peers.map { id, peer in TCPPeerSnapshot(id: id, endpoint: peer.session.stream.remoteEndpoint, client: peer.extensions.client, remoteInterested: peer.remoteInterested, peerID: peer.peerID, remoteChoking: peer.remoteChoking, choking: peer.choking,
 				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded, v2: peer.features.v2, fast: peer.features.fast, encryption: peer.encryption, transport: peer.session.stream.kind) },
@@ -239,7 +246,7 @@ public actor TCPTransfer {
 		do { try await entry.1.value } catch { if shutdownTask?.0 == entry.0 { shutdownTask = nil }; throw error }
 	}
 	private func finishShutdown() async throws {
-		stopping = true; ticker?.cancel()
+		stopping = true; ticker?.cancel(); webTask?.cancel()
 		discovery.finish(); nodeDiscovery.finish()
 		let connecting = Array(openings.values), running = peers.values.compactMap(\.task), uploads = uploadJobs.values.map(\.1)
 		for task in connecting { task.cancel() }
@@ -248,6 +255,7 @@ public actor TCPTransfer {
 		await disk.close(); await cache.close()
 		for task in connecting { if let stream = try? await task.value { stream.close() } }
 		for task in running { await task.value }; for task in uploads { await task.value }
+		await webTask?.value; webTask = nil
 		if let ticker { await ticker.value }; ticker = nil
 		try await storage.checkpoint(downloaded: downloaded, uploaded: uploaded); stopped = true
 	}
@@ -267,6 +275,7 @@ public actor TCPTransfer {
 	func diskFailed(_ error: Error) {
 		guard !stopping, !(error is CancellationError), storageError == nil else { return }
 		storageError = error.localizedDescription
+		webTask?.cancel()
 		for id in peers.keys { drop(id, error: error) }
 	}
 }

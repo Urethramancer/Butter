@@ -151,5 +151,6 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 		let filter = ProcessInfo.processInfo.environment["BUTTER_REFERENCE_FILTER"]
 		if filter == nil || filter == "DHT" { try await runDHTComparisons(root: root, binary: binary) }
 		if filter == nil || filter == "session" { try await runSessionComparisons(root: root, binary: binary) }
+		if filter == nil || filter == "webseed" { try await runWebSeedComparisons(root: root, binary: binary) }
 	}
 }

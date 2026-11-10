@@ -25,25 +25,30 @@ public actor ManagedTransfer {
 	private let budget: TCPPeerBudget?
 	private let clock: any TransportClock
 	private let peerID: Data
+	private let webClient: WebSeedClient
+	private let nativeWebTransport: NetworkHTTPTransport?
 	private let commands = TransferPermits(1)
 	private var configuration: TCPTransferConfiguration
 	private var transfer: TCPTransfer?
 	private var closed = false
 	private var pauseFailed = false
 	private init(metadata: TorrentMetadata, storage: TorrentStorage, configuration: TCPTransferConfiguration,
-		resources: TransferResources, budget: TCPPeerBudget?, peerID: Data, clock: any TransportClock) {
+		resources: TransferResources, budget: TCPPeerBudget?, peerID: Data, clock: any TransportClock, webSeedTransport: (any HTTPTransport)?) {
 		self.metadata = metadata; self.storage = storage; self.configuration = configuration
 		self.resources = resources; self.budget = budget; self.clock = clock
 		self.peerID = peerID
+		let native = webSeedTransport == nil ? NetworkHTTPTransport(clock: clock, addressFilter: configuration.addressFilter) : nil
+		nativeWebTransport = native
+		webClient = WebSeedClient(transport: webSeedTransport ?? native!, clock: clock, maximumBytes: 16384)
 	}
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
 		configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared,
-		budget: TCPPeerBudget? = nil, preparedState: PreparedTransferState? = nil, peerID: Data? = nil, clock: any TransportClock = ContinuousTransportClock()) async throws -> ManagedTransfer {
+		budget: TCPPeerBudget? = nil, preparedState: PreparedTransferState? = nil, peerID: Data? = nil, clock: any TransportClock = ContinuousTransportClock(), webSeedTransport: (any HTTPTransport)? = nil) async throws -> ManagedTransfer {
 		try configuration.validate()
 		let identity = peerID ?? Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
 		guard identity.count == 20 else { throw PeerFailure.invalid("peer identifier") }
 		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory, selected: selected, preparedState: preparedState)
-		return ManagedTransfer(metadata: metadata, storage: storage, configuration: configuration, resources: resources, budget: budget, peerID: identity, clock: clock)
+		return ManagedTransfer(metadata: metadata, storage: storage, configuration: configuration, resources: resources, budget: budget, peerID: identity, clock: clock, webSeedTransport: webSeedTransport)
 	}
 	public func start() async throws {
 		try await serial {
@@ -64,6 +69,7 @@ public actor ManagedTransfer {
 			candidate.addressFilter = addressFilter
 			try candidate.validate(); let running = self.transfer != nil
 			try await self.quiesce(); self.configuration = candidate
+			await self.nativeWebTransport?.setAddressFilter(addressFilter)
 			if running { try await self.resume() }
 		}
 	}
@@ -135,7 +141,7 @@ public actor ManagedTransfer {
 	}
 	private func resume() async throws {
 		try Task.checkCancellation()
-		transfer = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration, peerID: peerID, budget: budget, resources: resources, clock: clock)
+		transfer = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration, peerID: peerID, budget: budget, resources: resources, clock: clock, webSeedClient: webClient)
 	}
 	private func quiesce() async throws {
 		guard let transfer else { return }

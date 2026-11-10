@@ -9,6 +9,7 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 	private var time: TimeInterval = 100
 	private var pending: [UUID: (TimeInterval, CheckedContinuation<Void, Error>)] = [:]
 	let sleeps = AsyncStream<TimeInterval>.makeStream(bufferingPolicy: .bufferingNewest(256))
+	var sleepingCount: Int { lock.withLock { pending.count } }
 	func now() -> TimeInterval { lock.withLock { time } }
 	func sleep(for seconds: TimeInterval) async throws {
 		let id = UUID()

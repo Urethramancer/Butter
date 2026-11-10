@@ -130,9 +130,13 @@ actor NativeSnapshotMapper {
 			let mappedFiles = progress.files.map { TransferFile(index: $0.metadata.index, path: $0.path, original: $0.metadata.path, size: $0.metadata.size, done: $0.done, selected: $0.selected, pad: $0.metadata.pad) }
 			let sample = Sample(time: now, down: wire?.downloaded ?? disk.downloaded, up: wire?.uploaded ?? disk.uploaded)
 			let rates = speed(sample, after: transfers[row.id]); nextTransfers[row.id] = sample
-			let mappedPeers = (wire?.peers ?? []).map { peer in
+			var mappedPeers = (wire?.peers ?? []).map { peer in
 				let sample = Sample(time: now, down: peer.downloaded, up: peer.uploaded), rates = speed(sample, after: peers[peer.id]); nextPeers[peer.id] = sample
 				return PeerSnapshot(address: peer.endpoint?.address.description ?? "", client: peer.client, down: rates.0, up: rates.1, utp: peer.transport == .utp)
+			}
+			for seed in wire?.webSeeds ?? [] where seed.active {
+				let sample = Sample(time: now, down: seed.downloaded, up: 0), rates = speed(sample, after: peers[seed.id]); nextPeers[seed.id] = sample
+				mappedPeers.append(PeerSnapshot(address: URL(string: seed.url)?.host ?? "", client: "Web seed", down: rates.0, up: 0, utp: false))
 			}
 			let complete = done == wanted
 			rows.append(TransferSnapshot(id: row.id, name: metadata.inspection.name, path: disk.destination.path,

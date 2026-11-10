@@ -62,6 +62,7 @@ public actor TorrentSession {
 	private let clock: any TransportClock
 	private let loopbackOnly: Bool
 	private let httpTracker: any TrackerAnnouncing
+	private let webSeedTransport: (any HTTPTransport)?
 	private var trackerClient: TrackerClient?
 	private var network: SessionPeerNetwork?
 	private var peerSettings: SessionPeerSettings?
@@ -72,10 +73,11 @@ public actor TorrentSession {
 	private var entries: [SessionEntry] = []
 	private var events: [SessionEvent] = []
 	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
-		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient()) {
+		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient(), webSeedTransport: (any HTTPTransport)? = nil) {
 		repository = TransferRepository(root: storage); self.configuration = configuration; self.resources = resources; budget = TCPPeerBudget(limit: maximumPeers)
 		self.loopbackOnly = loopbackOnly; self.clock = clock
 		self.httpTracker = httpTracker
+		self.webSeedTransport = webSeedTransport
 		peerID = Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
 	}
 	public var currentPeerSettings: SessionPeerSettings {
@@ -101,7 +103,7 @@ public actor TorrentSession {
 			var owner: ManagedTransfer?
 			do {
 				let managed = try await ManagedTransfer.open(metadata: metadata, destination: destination, stateDirectory: prepared.directory,
-					selected: selected, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: prepared, peerID: self.peerID, clock: self.clock); owner = managed
+					selected: selected, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport); owner = managed
 				var snapshot = try await managed.snapshot()
 				if !snapshot.storage.needsRecovery { try await managed.recheck(); snapshot = try await managed.snapshot() }
 				try Task.checkCancellation()
@@ -146,7 +148,7 @@ public actor TorrentSession {
 			if !entry.closed { try await self.pauseEntry(entry) }
 			if entry.closed {
 				entry.owner = try await ManagedTransfer.open(metadata: entry.metadata, destination: entry.last.storage.destination,
-					stateDirectory: entry.prepared.directory, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: entry.prepared, peerID: self.peerID, clock: self.clock)
+					stateDirectory: entry.prepared.directory, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: entry.prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport)
 				entry.closed = false
 			}
 			try await entry.owner.pause()
