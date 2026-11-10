@@ -132,7 +132,7 @@ public actor ManagedTransfer {
 	public func save() async throws { try await serial { try await self.checkpoint() } }
 	private func checkpoint() async throws {
 		if let transfer {
-			let counters = await transfer.snapshot(); try await storage.checkpoint(downloaded: counters.downloaded, uploaded: counters.uploaded)
+			let counters = await transfer.snapshot(); try await storage.checkpoint(downloaded: counters.downloaded, uploaded: counters.uploaded, corruptBytes: counters.corruptBytes, redundantBytes: counters.redundantBytes)
 		} else {
 			let counters = try await storage.snapshot(); try await storage.checkpoint(downloaded: counters.downloaded, uploaded: counters.uploaded)
 		}

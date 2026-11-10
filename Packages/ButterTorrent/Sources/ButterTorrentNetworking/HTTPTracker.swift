@@ -9,8 +9,11 @@ public struct TrackerCounters: Sendable {
 	public let uploaded: Int64
 	public let downloaded: Int64
 	public let left: Int64
-	public init(uploaded: Int64 = 0, downloaded: Int64 = 0, left: Int64) {
+	public let corrupt: Int64
+	public let redundant: Int64
+	public init(uploaded: Int64 = 0, downloaded: Int64 = 0, left: Int64, corrupt: Int64 = 0, redundant: Int64 = 0) {
 		self.uploaded = uploaded; self.downloaded = downloaded; self.left = left
+		self.corrupt = corrupt; self.redundant = redundant
 	}
 }
 
@@ -34,15 +37,15 @@ public struct TrackerRequest: Sendable {
 		var fields = [
 			("info_hash", HTTPURL.encode(infoHash)), ("peer_id", HTTPURL.encode(peerID)), ("port", String(port)),
 			("uploaded", String(counters.uploaded)), ("downloaded", String(counters.downloaded)),
-			("left", String(counters.left)), ("compact", "1"), ("numwant", String(wantedPeers))
+			("left", String(counters.left)), ("corrupt", String(counters.corrupt)), ("redundant", String(counters.redundant)), ("compact", "1"), ("numwant", String(wantedPeers))
 		]
 		if let event { fields.append(("event", event.rawValue)) }
 		if let trackerID { fields.append(("trackerid", HTTPURL.encode(trackerID))) }
-		return try HTTPURL.query(tracker, fields: fields, reserved: ["info_hash", "peer_id", "port", "uploaded", "downloaded", "left", "compact", "numwant", "event", "trackerid", "ip", "ipv4", "ipv6", "key", "supportcrypto", "no_peer_id"])
+		return try HTTPURL.query(tracker, fields: fields, reserved: ["info_hash", "peer_id", "port", "uploaded", "downloaded", "left", "corrupt", "redundant", "compact", "numwant", "event", "trackerid", "ip", "ipv4", "ipv6", "key", "supportcrypto", "no_peer_id"])
 	}
 	func validateFields() throws {
 		guard infoHash.count == 20, peerID.count == 20, port > 0, counters.uploaded >= 0,
-			counters.downloaded >= 0, counters.left >= 0, (0...200).contains(wantedPeers),
+			counters.downloaded >= 0, counters.left >= 0, counters.corrupt >= 0, counters.redundant >= 0, (0...200).contains(wantedPeers),
 			(trackerID?.count ?? 0) <= 1024 else { throw HTTPServiceError.invalid("announce fields") }
 	}
 }

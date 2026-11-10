@@ -89,7 +89,9 @@ actor SessionTracker {
 	}
 	private static func counters(_ snapshot: ManagedTransferSnapshot, metadata: TorrentMetadata, baseline: TrackerCounters) -> TrackerCounters {
 		let disk = snapshot.storage, progress = TransferProgress(metadata: metadata, storage: disk)
-		return TrackerCounters(uploaded: max(0, (snapshot.transfer?.uploaded ?? disk.uploaded) - baseline.uploaded), downloaded: max(0, (snapshot.transfer?.downloaded ?? disk.downloaded) - baseline.downloaded), left: progress.total - progress.verifiedBytes)
+		let corrupt = max(0, (snapshot.transfer?.corruptBytes ?? disk.corruptBytes) - baseline.corrupt), redundant = max(0, (snapshot.transfer?.redundantBytes ?? disk.redundantBytes) - baseline.redundant)
+		let received = max(0, (snapshot.transfer?.downloaded ?? disk.downloaded) - baseline.downloaded)
+		return TrackerCounters(uploaded: max(0, (snapshot.transfer?.uploaded ?? disk.uploaded) - baseline.uploaded), downloaded: max(0, received - corrupt - redundant), left: progress.total - progress.verifiedBytes, corrupt: corrupt, redundant: redundant)
 	}
 	deinit { loop?.cancel(); let candidates = candidates; Task { await candidates.stop() } }
 }

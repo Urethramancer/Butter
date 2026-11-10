@@ -6,6 +6,47 @@ import ButterTorrentMetadata
 
 // Each case owns several sessions; keep independent fixtures within the process-wide disk budget.
 extension NativeSessionTests { @Suite struct SessionTrackerTests {
+	@Test(arguments: [false, true]) func corruptPayloadIsExcludedFromAnnouncesAcrossPauseAndResume(_ udp: Bool) async throws {
+		let fixture = try TrackerSessionFixture(), tracker = RecordingTracker(), clock = ContinuousTransportClock()
+		let udpTracker = udp ? LocalUDPTracker(socket: try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0))) : nil
+		await udpTracker?.start()
+		do {
+			let listener = try await fixture.source.listen()
+			await tracker.setPeer(try TrackerPeer(address: "127.0.0.1", port: listener.port))
+			await udpTracker?.setPeer(try NetworkEndpoint("127.0.0.1", port: listener.port))
+			let url = udpTracker.map { "udp://127.0.0.1:\($0.socket.localEndpoint.port)/announce" } ?? "http://tracker.test/announce"
+			let down = try await fixture.download(tiers: [[url]], tracker: tracker, clock: clock)
+			try await down.run(id: "transfer", running: true)
+			let bad = WirePeer(stream: try await listener.accept(timeout: 3)); defer { bad.stream.close() }
+			try await bad.hello(hash: fixture.metadata.hashes.v1!, identity: 13)
+			try await bad.seed(pieceCount: 3)
+			for block in try await bad.requests(6) where block.piece == 0 { try await bad.reply(block, bytes: fixture.source.bytes, corrupt: block.offset == 0) }
+			try await eventually { try await down.snapshot().transfers[0].state.transfer?.corruptBytes == 32768 }
+			try await down.pause(id: "transfer")
+			if let udpTracker { #expect(await udpTracker.requests.last?.downloaded == 0) }
+			else {
+				let stopped = await tracker.requests.last!.1.counters
+				#expect(stopped.downloaded == 0 && stopped.corrupt == 32768 && stopped.redundant == 0)
+			}
+			let seed = try await fixture.seed()
+			await tracker.setPeer(try TrackerPeer(address: "127.0.0.1", port: seed.snapshot().network.port))
+			await udpTracker?.setPeer(try NetworkEndpoint("127.0.0.1", port: seed.snapshot().network.port))
+			try await down.run(id: "transfer", running: true)
+			try await eventually { try await down.snapshot().transfers[0].state.transfer?.complete == true }
+			if let udpTracker { try await eventually { await udpTracker.requests.contains { $0.event == 1 } } }
+			else { try await eventually { await tracker.requests.contains { $0.1.event == .completed } } }
+			try await down.pause(id: "transfer")
+			if let udpTracker {
+				let completed = await udpTracker.requests.last!
+				#expect(completed.downloaded == Int64(fixture.source.bytes.count) && completed.left == 0)
+			} else {
+				let completed = await tracker.requests.last!.1.counters
+				#expect(completed.downloaded == Int64(fixture.source.bytes.count) && completed.corrupt == 32768 && completed.redundant == 0)
+			}
+			let state = try await down.snapshot().transfers[0].state.storage
+			#expect(state.downloaded == Int64(fixture.source.bytes.count + 32768) && state.corruptBytes == 32768)
+		} catch { await fixture.close(); await udpTracker?.close(); throw error }; await fixture.close(); await udpTracker?.close()
+	}
 	@Test(arguments: [false, true]) func privateFailoverDrainsOldPeersBeforeContactingTheReplacement(_ initialFailure: Bool) async throws {
 		let fixture = try TrackerSessionFixture(), clock = EngineClock()
 		do {
@@ -226,7 +267,7 @@ private final class TrackerSessionFixture {
 }
 
 private actor LocalUDPTracker {
-	struct Request: Sendable { let source: NetworkEndpoint; let peerID: Data; let port: UInt16; let event: UInt32 }
+	struct Request: Sendable { let source: NetworkEndpoint; let peerID: Data; let port: UInt16; let event: UInt32; let downloaded: Int64; let left: Int64 }
 	let socket: DatagramSocket
 	var peer: NetworkEndpoint?
 	var requests: [Request] = []
@@ -244,7 +285,7 @@ private actor LocalUDPTracker {
 			if action == 0 { PacketBytes.append(UInt64(123), to: &response) }
 			else {
 				guard packet.payload.count >= 98, action == 1 else { throw NetworkFailure.invalid("fixture announce") }
-				requests.append(Request(source: packet.source, peerID: packet.payload.subdata(in: 36..<56), port: try PacketBytes.uint16(packet.payload, at: 96), event: try PacketBytes.uint32(packet.payload, at: 80)))
+				requests.append(Request(source: packet.source, peerID: packet.payload.subdata(in: 36..<56), port: try PacketBytes.uint16(packet.payload, at: 96), event: try PacketBytes.uint32(packet.payload, at: 80), downloaded: Int64(bitPattern: try PacketBytes.uint64(packet.payload, at: 56)), left: Int64(bitPattern: try PacketBytes.uint64(packet.payload, at: 64))))
 				for value in [UInt32(30), 0, 1] { PacketBytes.append(value, to: &response) }
 				if let peer { response.append(peer.address.bytes); PacketBytes.append(peer.port, to: &response) }
 			}

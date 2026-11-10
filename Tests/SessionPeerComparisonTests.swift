@@ -14,6 +14,7 @@ extension TCPTransferComparisonTests {
 		for transport in ["tcp", "utp"] { for encryption in ["disabled", "rc4", "negotiated"] { for version in [1, 2, 3] { for nativeSeed in [false, true] {
 			let suffix = version == 1 ? "" : version == 2 ? "-v2" : "-hybrid", host = version == 1 ? "127.0.0.1" : "::1"
 			let label = "session-v\(version)-\(nativeSeed ? "up" : "down")-\(transport)-\(encryption)", work = root.appendingPathComponent(label)
+			if let filter = ProcessInfo.processInfo.environment["BUTTER_SESSION_FILTER"], !label.contains(filter) { continue }
 			try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
 			let source = root.appendingPathComponent("single-16384\(suffix).torrent"), metadata = try TorrentMetadata(contentsOf: source)
 			var config = TCPTransferConfiguration()
@@ -41,9 +42,18 @@ extension TCPTransferComparisonTests {
 				try await wait {
 					let reference = try status(record, process: process), native = try await session.snapshot().transfers[0]
 					try sessionRequire(native.error.isEmpty && native.state.transfer?.storageError == nil, "native session storage error")
-					return nativeSeed ? reference?.complete == true : native.state.transfer?.complete == true && (reference?.uploaded ?? 0) > 0
+					guard let reference, let wire = native.state.transfer else { return false }
+					let downloaded = nativeSeed ? reference.downloaded : wire.downloaded - wire.corruptBytes - wire.redundantBytes
+					let uploaded = nativeSeed ? wire.uploaded : reference.uploaded
+					let expected = metadata.inspection.files.filter { !$0.pad }.reduce(Int64(0)) { $0 + $1.size }
+					return (nativeSeed ? reference.complete : wire.complete) && downloaded == expected && uploaded == expected
 				}
 				let native = try await session.snapshot().transfers[0], reference = try status(record, process: process)!
+				try sessionRequire(native.state.transfer?.corruptBytes == 0 && native.state.transfer?.redundantBytes == 0 && reference.failedBytes == 0, "healthy fixture recorded unusable file payload")
+				// libtorrent also charges late ut_metadata replies to its redundant counter,
+				// although they are excluded from total_payload_download. Keep that protocol
+				// accounting distinct from the exact file-payload assertions above.
+				try sessionRequire(reference.redundantBytes == 0 || (nativeSeed && version > 1 && reference.redundantBytes % Int64(metadata.originalInfo.count) == 0), "reference redundancy is not a complete metadata reply")
 				let mode: PeerEncryptionMode = encryption == "rc4" ? .rc4 : encryption == "negotiated" ? .negotiatedPlaintext : .plaintext
 				try sessionRequire(native.state.transfer?.peers.contains { $0.peerID != nil && $0.encryption == mode && $0.transport == (transport == "utp" ? .utp : .tcp) } == true, "routed native transport or encryption differs")
 				if transport == "utp" { try sessionRequire(reference.utp > 0 && reference.tcp == 0, "session comparison used TCP with TCP disabled") }
@@ -56,9 +66,12 @@ extension TCPTransferComparisonTests {
 					let expected = try Data(contentsOf: root.appendingPathComponent("reference-seed").appendingPathComponent(file.path))
 					try sessionRequire(try Data(contentsOf: output.appendingPathComponent(file.path)) == expected, "routed session bytes differ")
 				}
-				cases += 1; print("PASS: \(label), independent session bytes verified after shutdown")
+				cases += 1; print("PASS: \(label), independent payload counters matched and bytes verified after shutdown")
 			} catch {
 				try? FileHandle.standardError.write(contentsOf: Data("FAIL: \(label): \(error)\n".utf8))
+				if let wire = try? await session.snapshot().transfers[0].state.transfer {
+					try? FileHandle.standardError.write(contentsOf: Data("Native payload: down=\(wire.downloaded) up=\(wire.uploaded) corrupt=\(wire.corruptBytes) redundant=\(wire.redundantBytes); info=\(metadata.originalInfo.count) bytes; peer=\(wire.lastPeerError ?? "")\n".utf8))
+				}
 				if let status = try? Data(contentsOf: record) { try? FileHandle.standardError.write(contentsOf: status) }
 				try? await session.close(); await relay?.close()
 				if process.isRunning { process.terminate(); try? await stop(process); if process.isRunning { kill(process.processIdentifier, SIGKILL) } }; throw error

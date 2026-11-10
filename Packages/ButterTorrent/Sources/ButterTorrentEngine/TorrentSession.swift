@@ -48,7 +48,7 @@ private final class SessionEntry {
 	init(id: String, metadata: TorrentMetadata, prepared: PreparedTransferState, owner: ManagedTransfer, last: ManagedTransferSnapshot, configuration: TCPTransferConfiguration) {
 		self.id = id; self.metadata = metadata; self.prepared = prepared; self.owner = owner; self.last = last
 		downloadLimit = configuration.downloadLimit; uploadLimit = configuration.uploadLimit
-		trackerBaseline = TrackerCounters(uploaded: last.storage.uploaded, downloaded: last.storage.downloaded, left: 0)
+		trackerBaseline = TrackerCounters(uploaded: last.storage.uploaded, downloaded: last.storage.downloaded, left: 0, corrupt: last.storage.corruptBytes, redundant: last.storage.redundantBytes)
 	}
 }
 

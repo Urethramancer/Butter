@@ -36,10 +36,12 @@ public actor TorrentStorage {
 	@discardableResult public func verify(piece: Int) async throws -> Bool {
 		try await worker.run { [state] cancellation in try state.verify(piece: piece, check: cancellation.check) }
 	}
-	public func checkpoint(downloaded: Int64, uploaded: Int64) async throws {
+	public func checkpoint(downloaded: Int64, uploaded: Int64, corruptBytes: Int64? = nil, redundantBytes: Int64? = nil) async throws {
 		try await worker.run { [state] cancellation in
 			try state.ready(); try cancellation.check()
-			guard downloaded >= 0, uploaded >= 0 else { throw StorageFailure.invalid("negative counters") }
+			let corrupt = corruptBytes ?? state.record.corruptBytes ?? 0, redundant = redundantBytes ?? state.record.redundantBytes ?? 0
+			guard downloaded >= 0, uploaded >= 0, corrupt >= 0, redundant >= 0, corrupt <= downloaded, redundant <= downloaded - corrupt else { throw StorageFailure.invalid("payload counters") }
+			state.record.corruptBytes = corrupt; state.record.redundantBytes = redundant
 			state.record.downloaded = downloaded; state.record.uploaded = uploaded; try state.save()
 		}
 	}
@@ -165,6 +167,7 @@ final class StorageState: @unchecked Sendable {
 		if !hasJournal { try invalidateChangedFiles() }
 		return StorageSnapshot(destination: payload.url, paths: record.paths, selected: record.selected,
 			verifiedPieces: hasJournal ? [] : Set((0..<layout.pieceCount).filter { record.contains($0) }), downloaded: record.downloaded, uploaded: record.uploaded,
+			corruptBytes: record.corruptBytes ?? 0, redundantBytes: record.redundantBytes ?? 0,
 			trashReceipts: record.receipts.map { URL(fileURLWithPath: $0) }, needsRecovery: hasJournal)
 	}
 	func read(piece: Int, offset: Int, count: Int, verifiedOnly: Bool, check: () throws -> Void) throws -> Data {

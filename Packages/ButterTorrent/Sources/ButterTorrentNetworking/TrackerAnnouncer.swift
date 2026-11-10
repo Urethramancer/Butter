@@ -145,7 +145,7 @@ public actor TrackerAnnouncer {
 		throw failure
 	}
 	private func validate(_ counters: TrackerCounters) throws {
-		guard counters.uploaded >= 0, counters.downloaded >= 0, counters.left >= 0 else { throw HTTPServiceError.invalid("announce counters") }
+		guard counters.uploaded >= 0, counters.downloaded >= 0, counters.left >= 0, counters.corrupt >= 0, counters.redundant >= 0 else { throw HTTPServiceError.invalid("announce counters") }
 	}
 }
 

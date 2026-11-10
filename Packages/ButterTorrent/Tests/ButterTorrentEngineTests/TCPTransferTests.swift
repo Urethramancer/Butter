@@ -123,9 +123,13 @@ import ButterTorrentNetworking
 			try await first.reply(requests[0], bytes: fixture.bytes)
 			var canceled: PeerBlock?
 			while canceled == nil { if case .cancel(let block) = try await second.next() { canceled = block } }
-			#expect(canceled == requests[0]); second.stream.close()
+			#expect(canceled == requests[0])
+			try await second.reply(requests[0], bytes: fixture.bytes)
+			try await eventually { await engine.snapshot().redundantBytes == Int64(requests[0].length) }
+			second.stream.close()
 			for block in requests.dropFirst() { try await first.reply(block, bytes: fixture.bytes) }
 			try await eventually { await engine.snapshot().complete }
+			#expect(await engine.snapshot().downloaded == Int64(fixture.bytes.count + requests[0].length))
 		}
 	}
 	@Test func corruptPeerIsDroppedAndGoodPeerRecovers() async throws {
@@ -136,9 +140,14 @@ import ButterTorrentNetworking
 			for block in requests.filter({ $0.piece == 0 }) { try await bad.reply(block, bytes: fixture.bytes, corrupt: block.offset == 0) }
 			try await eventually { await engine.snapshot().corruptPieces == 1 }
 			#expect(await engine.snapshot().verifiedPieces.isEmpty)
+			#expect(await engine.snapshot().corruptBytes == 32768)
 			let good = try await fixture.transfer("seed", seed: true); try await fixture.join(engine, good)
 			try await eventually { await engine.snapshot().complete }
 			#expect(await engine.snapshot().storageError == nil)
+			try await engine.shutdown()
+			let restored = try await TCPTransfer.open(metadata: fixture.metadata, storage: fixture.stores[0], configuration: plainTransferConfiguration()); fixture.engines.append(restored)
+			let counters = await restored.snapshot()
+			#expect(counters.corruptBytes == 32768 && counters.redundantBytes == 0 && counters.downloaded == Int64(fixture.bytes.count + 32768))
 		}
 	}
 	@Test func chokeAndLateBlockDoNotPoisonRecovery() async throws {

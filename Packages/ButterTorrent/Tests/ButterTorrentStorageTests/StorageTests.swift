@@ -25,6 +25,8 @@ func storageMetadata(_ root: URL) throws -> (TorrentMetadata, Data) {
 			let selected = metadata.inspection.files.map { !$0.pad && $0.path.hasSuffix("/a") }
 			let destination = root.appendingPathComponent("download"), state = root.appendingPathComponent("state")
 			var storage: TorrentStorage? = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state, selected: selected)
+			let original = try PropertyListDecoder().decode(StorageCheckpoint.self, from: Data(contentsOf: state.appendingPathComponent("checkpoint.plist")))
+			#expect(original.corruptBytes == nil && original.redundantBytes == nil)
 			let payload = bytes + Data(repeating: 0, count: 32768 - bytes.count) + Data([1, 2, 3]) + Data(repeating: 0, count: 16384 - 3)
 			for piece in 0..<layout.pieceCount {
 				let count = try layout.length(of: piece)
@@ -34,11 +36,18 @@ func storageMetadata(_ root: URL) throws -> (TorrentMetadata, Data) {
 			#expect(!FileManager.default.fileExists(atPath: destination.appendingPathComponent("source/b").path))
 			#expect(try Data(contentsOf: destination.appendingPathComponent("source/a")) == bytes)
 			#expect(try await storage!.read(piece: 0, offset: 7, count: 17) == bytes.subdata(in: 7..<24))
-			try await storage!.checkpoint(downloaded: 20003, uploaded: 9)
+			try await storage!.checkpoint(downloaded: 20003, uploaded: 9, corruptBytes: 13, redundantBytes: 17)
 			try await storage!.shutdown(); storage = nil
 			let restored = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state)
 			let snapshot = try await restored.snapshot()
 			#expect(snapshot.selected == selected && snapshot.verifiedPieces.count == layout.pieceCount && snapshot.uploaded == 9)
+			#expect(snapshot.downloaded == 20003 && snapshot.corruptBytes == 13 && snapshot.redundantBytes == 17)
+			for (received, corrupt, redundant): (Int64, Int64, Int64) in [(-1, 0, 0), (1, -1, 0), (1, 0, -1), (1, 2, 0), (1, 1, 1), (.max, .max, 1)] {
+				await #expect(throws: StorageFailure.self) { try await restored.checkpoint(downloaded: received, uploaded: 9, corruptBytes: corrupt, redundantBytes: redundant) }
+			}
+			try await restored.checkpoint(downloaded: 20003, uploaded: 10)
+			let retained = try await restored.snapshot()
+			#expect(retained.downloaded == 20003 && retained.corruptBytes == 13 && retained.redundantBytes == 17)
 			try Data([7]).write(to: destination.appendingPathComponent("source/a"))
 			#expect(try await restored.snapshot().verifiedPieces == [2])
 			try await restored.shutdown()

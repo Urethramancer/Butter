@@ -935,5 +935,15 @@ and pushing each of phases 11 and 12 once its complete gate passes.
 Private tracker integration now drains old peers and pending connections before
 contacting a replacement, and keeps its successful tracker until failure across
 tier boundaries. The failover audit records wire, cancellation, Debug, Release and
-Thread Sanitizer verification. Remaining tracker work concerns corrupt/redundant
-payload accounting and hybrid dual-identity announces.
+Thread Sanitizer verification. Remaining tracker work concerns hybrid dual-identity
+announces.
+
+Tracker payload accounting now persists corrupt and redundant byte totals alongside
+raw traffic counters. HTTP/UDP download reports exclude unusable data, while UI
+traffic totals remain raw. Checkpoints validate both counters against received
+bytes, accept older records without the optional fields and preserve the totals
+through pause and restart. The audit records padding, partial HTTP, corruption,
+late-reply and malformed-checkpoint cases, all 215 Debug package tests, 62 focused
+Release/Thread Sanitizer checks, the shared app contract and 36 exact-payload
+reference comparisons. The reference's late-metadata redundancy is checked
+separately from file payload.

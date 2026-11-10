@@ -18,6 +18,7 @@ extension NativeSessionTests { @Suite struct SessionWebSeedTests {
 				try await eventually { await transport.requests.count == 2 && clock.sleepingCount == 2 }
 				let failed = try await session.snapshot().transfers[0].state
 				#expect(failed.transfer?.downloaded == 10003 && failed.storage.verifiedPieces.isEmpty)
+				#expect(failed.transfer?.redundantBytes == 10003)
 				clock.advance(29)
 				try await eventually { clock.sleepingCount == 2 }
 				#expect(await transport.requests.count == 2)
@@ -97,6 +98,7 @@ extension NativeSessionTests { @Suite struct SessionWebSeedTests {
 			try await eventually { try await session.snapshot().transfers[0].state.transfer?.complete == true }
 			let snapshot = try await session.snapshot().transfers[0].state.transfer
 			#expect(snapshot?.corruptPieces == 1 && snapshot?.webSeeds.first?.banned == true)
+			#expect(snapshot?.corruptBytes == 10003)
 			let before = await transport.requests.filter { $0.url.path.hasPrefix("/bad/") }.count
 			try await session.pause(id: "transfer")
 			let file = metadata.inspection.files.first { !$0.pad && $0.size > 0 }!

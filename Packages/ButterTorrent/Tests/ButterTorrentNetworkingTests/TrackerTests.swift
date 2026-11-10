@@ -6,12 +6,14 @@ import ButterTorrentMetadata
 @Suite struct TrackerTests {
 	@Test func binaryAnnounceAndExistingPasskey() throws {
 		var request = trackerRequest()
+		request.counters = TrackerCounters(downloaded: 17, left: 3, corrupt: 5, redundant: 9)
 		request.event = .started; request.trackerID = Data([0, 43, 255])
 		let url = try request.url(for: URL(string: "https://tracker.invalid/announce?passkey=a%2Bb")!)
 		let query = URLComponents(url: url, resolvingAgainstBaseURL: false)!.percentEncodedQuery!
 		#expect(query.contains("passkey=a%2Bb") && query.contains("info_hash=%00%01"))
 		#expect(query.contains("trackerid=%00%2B%FF") && query.contains("event=started") && query.contains("compact=1"))
-		for value in ["http://127.0.0.1/admin", "https://t.invalid/?info_hash=x", "https://t.invalid/?event=stopped", "https://t.invalid/?%74rackerid=x"] {
+		#expect(query.contains("downloaded=17") && query.contains("corrupt=5") && query.contains("redundant=9"))
+		for value in ["http://127.0.0.1/admin", "https://t.invalid/?info_hash=x", "https://t.invalid/?event=stopped", "https://t.invalid/?%74rackerid=x", "https://t.invalid/?corrupt=1", "https://t.invalid/?redundant=1"] {
 			#expect(throws: HTTPServiceError.self) { try trackerRequest().url(for: URL(string: value)!) }
 		}
 		for (host, local, loopback) in [

@@ -52,6 +52,8 @@ public struct TCPTransferSnapshot: Sendable {
 	public let peers: [TCPPeerSnapshot]
 	public let downloaded: Int64
 	public let uploaded: Int64
+	public let corruptBytes: Int64
+	public let redundantBytes: Int64
 	public let corruptPieces: Int
 	public let writingBlocks: Int
 	public let lastPeerError: String?
@@ -130,6 +132,9 @@ public actor TCPTransfer {
 	var downloaded: Int64
 	var uploaded: Int64
 	var corruptPieces = 0
+	var corruptBytes: Int64
+	var redundantBytes: Int64
+	var activePayloadBytes: [Int: Int64] = [:]
 	var lastPeerError: String?
 	var storageError: String?
 	var stopping = false
@@ -165,7 +170,7 @@ public actor TCPTransfer {
 		}
 		picker = PiecePicker(layout: storage.layout, wanted: wanted, completed: initial.verifiedPieces, lengths: storage.merkleIndex.pieces.mapValues(\.length))
 		hashReady = hashes
-		downloaded = initial.downloaded; uploaded = initial.uploaded; lastChoke = clock.now()
+		downloaded = initial.downloaded; uploaded = initial.uploaded; corruptBytes = initial.corruptBytes; redundantBytes = initial.redundantBytes; lastChoke = clock.now()
 	}
 	public static func open(metadata: TorrentMetadata, storage: TorrentStorage, configuration: TCPTransferConfiguration = .init(),
 		peerID: Data? = nil, budget: TCPPeerBudget? = nil, resources: TransferResources = .shared, clock: any TransportClock = ContinuousTransportClock(), webSeedClient: WebSeedClient? = nil) async throws -> TCPTransfer {
@@ -260,7 +265,7 @@ public actor TCPTransfer {
 			pieceStates: (0..<storage.layout.pieceCount).map { picker.completed.contains($0) ? 1 : picker.active[$0] != nil ? 2 : peers.isEmpty ? 0 : picker.availability[$0] > 0 ? 3 : 4 },
 			peers: peers.map { id, peer in TCPPeerSnapshot(id: id, endpoint: peer.session.stream.remoteEndpoint, client: peer.extensions.client, remoteInterested: peer.remoteInterested, peerID: peer.peerID, remoteChoking: peer.remoteChoking, choking: peer.choking,
 				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded, v2: peer.features.v2, fast: peer.features.fast, encryption: peer.encryption, transport: peer.session.stream.kind) },
-			downloaded: downloaded, uploaded: uploaded, corruptPieces: corruptPieces, writingBlocks: picker.active.values.reduce(0) { $0 + $1.writing.count }, lastPeerError: lastPeerError, storageError: storageError, stopped: stopped)
+			downloaded: downloaded, uploaded: uploaded, corruptBytes: corruptBytes, redundantBytes: redundantBytes, corruptPieces: corruptPieces, writingBlocks: picker.active.values.reduce(0) { $0 + $1.writing.count }, lastPeerError: lastPeerError, storageError: storageError, stopped: stopped)
 	}
 	public func setLimits(download: Int, upload: Int) async throws {
 		guard !stopping, (0...Int(Int32.max)).contains(download), (0...Int(Int32.max)).contains(upload) else { throw PeerFailure.invalid("rate limits or closed transfer") }
@@ -285,11 +290,12 @@ public actor TCPTransfer {
 		for task in running { await task.value }; for task in uploads { await task.value }
 		await webTask?.value; webTask = nil
 		if let ticker { await ticker.value }; ticker = nil
-		try await storage.checkpoint(downloaded: downloaded, uploaded: uploaded); stopped = true
+		for bytes in activePayloadBytes.values { recordUnusablePayload(bytes) }; activePayloadBytes.removeAll()
+		try await storage.checkpoint(downloaded: downloaded, uploaded: uploaded, corruptBytes: corruptBytes, redundantBytes: redundantBytes); stopped = true
 	}
 	func ended(_ id: UUID, error: Error?) async {
 		guard let peer = peers.removeValue(forKey: id) else { return }
-		peer.session.close(); picker.remove(id)
+		peer.session.close(); picker.remove(id); discardUnretainedPayload()
 		for request in peer.hashRequests.keys where hashOwners[request] == id { hashOwners[request] = nil }
 		let jobs = uploadJobs.values.filter { $0.0 == id }.map(\.1)
 		for task in jobs { task.cancel() }; for task in jobs { await task.value }

@@ -96,11 +96,14 @@ extension TCPTransfer {
 			}
 			downloaded = min(Int64.max - Int64(bytes.count), downloaded) + Int64(bytes.count)
 			peer.downloaded += Int64(bytes.count)
-			try await downloadRate.consume(bytes.count); try Task.checkCancellation()
-			try await disk.acquire()
-			do { try Task.checkCancellation(); try await receiveBlock(id, block: block, bytes: bytes) }
-			catch { await disk.release(); throw error }
-			await disk.release(); fillAll()
+			var delivered = false
+			do {
+				try await downloadRate.consume(bytes.count); try Task.checkCancellation()
+				try await disk.acquire()
+				do { try Task.checkCancellation(); delivered = true; try await receiveBlock(id, block: block, bytes: bytes) }
+				catch { await disk.release(); throw error }
+				await disk.release(); fillAll()
+			} catch { if !delivered { recordUnusablePayload(Int64(bytes.count)) }; throw error }
 		}
 	}
 	func validate(_ block: PeerBlock) throws {
@@ -111,22 +114,26 @@ extension TCPTransfer {
 		if peer.recent.count >= 256, let oldest = peer.recent.min(by: { $0.value < $1.value }) { peer.recent[oldest.key] = nil }
 		peer.recent[block] = clock.now() + configuration.requestTimeout * 2
 	}
-	func receiveBlock(_ id: UUID, block: PeerBlock, bytes: Data) async throws {
-		guard !stopping, peers[id]?.closing == false || webSeeds.contains(where: { $0.id == id && !$0.banned }) else { throw PeerFailure.closed }
+	func receiveBlock(_ id: UUID, block: PeerBlock, bytes: Data, payloadBytes: Int64? = nil) async throws {
+		let payload = payloadBytes ?? Int64(bytes.count)
+		guard !stopping, peers[id]?.closing == false || webSeeds.contains(where: { $0.id == id && !$0.banned }) else { recordUnusablePayload(payload); throw PeerFailure.closed }
 		var cursor = 0
 		for segment in try picker.layout.segments(piece: block.piece, offset: block.offset, count: block.length) {
-			if segment.padding, bytes[cursor..<(cursor + segment.count)].contains(where: { $0 != 0 }) { throw PeerFailure.corruptPiece(block.piece) }; cursor += segment.count
+			if segment.padding, bytes[cursor..<(cursor + segment.count)].contains(where: { $0 != 0 }) { recordUnusablePayload(payload, corrupt: true); throw PeerFailure.corruptPiece(block.piece) }; cursor += segment.count
 		}
-		guard let cancellations = picker.begin(id, block: block) else { return }
+		guard let cancellations = picker.begin(id, block: block) else { recordUnusablePayload(payload); return }
+		activePayloadBytes[block.piece, default: 0] += payload
 		for other in cancellations {
 			if let peer = peers[other] { peer.pending.remove(block); remember(peer, block: block); try? send(other, .cancel(block)) }
 		}
 		do { try await storage.write(piece: block.piece, offset: block.offset, data: bytes) }
-		catch { picker.abortedWrite(block); diskFailed(error); throw error }
+		catch { picker.abortedWrite(block); discardUnretainedPayload(); diskFailed(error); throw error }
 		guard picker.written(block) else { return }
 		let valid: Bool
 		do { valid = try await storage.verify(piece: block.piece) } catch { _ = picker.verified(block.piece, valid: false); diskFailed(error); throw error }
 		let contributors = picker.verified(block.piece, valid: valid)
+		let received = activePayloadBytes.removeValue(forKey: block.piece) ?? 0
+		if !valid { recordUnusablePayload(received, corrupt: true) }
 		if valid {
 			for contributor in contributors { peers[contributor]?.score += try picker.layout.length(of: block.piece) / max(1, contributors.count) }
 			for (peerID, peer) in peers where peer.peerID != nil && !peer.closing { do { try send(peerID, .have(block.piece)) } catch { drop(peerID, error: error) } }
@@ -138,6 +145,13 @@ extension TCPTransfer {
 				drop(contributor, error: PeerFailure.corruptPiece(block.piece))
 			}
 		}
+	}
+	func recordUnusablePayload(_ bytes: Int64, corrupt: Bool = false) {
+		let count = min(max(0, bytes), max(0, downloaded - corruptBytes - redundantBytes))
+		if corrupt { corruptBytes += count } else { redundantBytes += count }
+	}
+	func discardUnretainedPayload() {
+		for piece in activePayloadBytes.keys where picker.active[piece] == nil { recordUnusablePayload(activePayloadBytes.removeValue(forKey: piece) ?? 0) }
 	}
 	func fill(_ id: UUID) {
 		guard !stopping, storageError == nil, let peer = peers[id], peer.peerID != nil, !peer.closing else { return }

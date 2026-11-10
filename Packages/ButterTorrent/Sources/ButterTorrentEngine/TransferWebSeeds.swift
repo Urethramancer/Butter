@@ -57,21 +57,24 @@ extension TCPTransfer {
 				if !seed.registered { picker.update(seed.id, bits: try PieceBitfield(count: picker.layout.pieceCount, pieces: picker.wanted)); seed.registered = true }
 				guard let block = picker.allocate(seed.id, limit: 1, now: clock.now(), eligible: hashReady).first else { continue }
 				seed.active = true
+				let initialBytes = seed.downloaded
+				var delivered = false
 				do {
 					let bytes = try await fetchWebBlock(seed, block: block, client: client, admission: admission)
 					try Task.checkCancellation()
 					try await disk.acquire()
-					do { try Task.checkCancellation(); try await receiveBlock(seed.id, block: block, bytes: bytes) }
+					do { try Task.checkCancellation(); delivered = true; try await receiveBlock(seed.id, block: block, bytes: bytes, payloadBytes: seed.downloaded - initialBytes) }
 					catch { await disk.release(); throw error }
 					await disk.release(); seed.active = false
 					if !seed.banned { seed.message = "" }; fillAll(); return 0
 				} catch {
+					if !delivered { recordUnusablePayload(seed.downloaded - initialBytes) }
 					seed.active = false; picker.rejected(seed.id, block: block)
-					if Task.isCancelled || error is CancellationError { picker.remove(seed.id); seed.registered = false; return nil }
+					if Task.isCancelled || error is CancellationError { picker.remove(seed.id); discardUnretainedPayload(); seed.registered = false; return nil }
 					seed.message = error.localizedDescription
 					if case PeerFailure.corruptPiece = error { await banWebSeed(seed) }
 					else { let status = await client.status(for: seed.url); seed.retryAt = max(clock.now() + 1, status.retryAt) }
-					picker.remove(seed.id); seed.registered = false; fillAll()
+					picker.remove(seed.id); discardUnretainedPayload(); seed.registered = false; fillAll()
 				}
 			} catch { seed.message = error.localizedDescription; seed.retryAt = clock.now() + 30 }
 		}
@@ -109,7 +112,7 @@ extension TCPTransfer {
 	}
 	func banWebSeed(_ seed: TransferWebSeed) async {
 		seed.banned = true; seed.registered = false
-		picker.remove(seed.id); try? await webClient?.reportCorruption(from: seed.url)
+		picker.remove(seed.id); discardUnretainedPayload(); try? await webClient?.reportCorruption(from: seed.url)
 		seed.message = HTTPServiceError.banned.localizedDescription
 	}
 }

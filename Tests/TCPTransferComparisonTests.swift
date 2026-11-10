@@ -17,7 +17,12 @@ extension UTPTransport {
 		}.joined(separator: "\n")
 	}
 }
-struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let seeding: Bool; let downloaded: Int64; let uploaded: Int64; let rc4: Int; let negotiated: Int; let utp: Int; let tcp: Int; let dhtPeers: Int; let pexPeers: Int; let dhtAnnounces: Int; let readyPeers: Int }
+struct ReferenceStatus: Decodable {
+	let port: UInt16
+	let complete: Bool, seeding: Bool
+	let downloaded: Int64, uploaded: Int64, failedBytes: Int64, redundantBytes: Int64
+	let rc4: Int, negotiated: Int, utp: Int, tcp: Int, dhtPeers: Int, pexPeers: Int, dhtAnnounces: Int, readyPeers: Int
+}
 
 @main struct TCPTransferComparisonTests {
 	static func main() async {

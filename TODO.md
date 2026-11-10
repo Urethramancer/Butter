@@ -5,8 +5,8 @@
   Complete magnet-import commands and native local-discovery/mapping settings
   (enabled LSD and mapping currently reject explicitly in the adapter).
   Coordinate local-discovery and mapping lifecycles in that session.
-  Complete tracker accounting for corrupt/redundant bytes and hybrid dual-identity
-  announces; current session announces use its selected wire identity.
+  Complete hybrid dual-identity tracker announces; current session announces use
+  its selected wire identity.
   Keep snapshots and unrelated commands responsive during long filesystem operations.
   Verify interruption and disk-failure recovery during repository publication/discard.
   Resolve inherited PCP-before-NAT-PMP behaviour from the pinned reference;

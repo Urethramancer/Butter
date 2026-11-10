@@ -119,9 +119,12 @@ import ButterTorrentMetadata
 			#expect(try await storage.verify(piece: 0) == false)
 			try await storage.shutdown()
 			let directory = try StorageDirectory(state)
-			var checkpoint = try PropertyListDecoder().decode(StorageCheckpoint.self, from: directory.read("checkpoint.plist", maximum: 16_777_216))
-			checkpoint.version = 99; try directory.atomic(checkpoint.encoded(), path: "checkpoint.plist")
-			await #expect(throws: StorageFailure.self) { try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state) }
+			let checkpoint = try PropertyListDecoder().decode(StorageCheckpoint.self, from: directory.read("checkpoint.plist", maximum: 16_777_216))
+			for (version, corrupt, redundant): (Int, Int64, Int64) in [(99, 0, 0), (1, -1, 0), (1, 0, -1), (1, 1, 1), (1, .max, .max)] {
+				var invalid = checkpoint; invalid.version = version; invalid.corruptBytes = corrupt; invalid.redundantBytes = redundant
+				try directory.atomic(invalid.encoded(), path: "checkpoint.plist")
+				await #expect(throws: StorageFailure.self) { try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state) }
+			}
 		}
 	}
 }
