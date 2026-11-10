@@ -28,20 +28,29 @@ public struct PendingMagnetState: Sendable {
 	fileprivate let lease: StorageLease
 }
 
+public enum RepositoryEvent: Sendable, Equatable {
+	case stagingDurable, checkpointDirectoryDurable, torrentDurable, locatorDurable
+}
+
 /// TransferRepository retains standard torrent files beside isolated native checkpoints.
 public actor TransferRepository {
 	private struct Record: Codable { let version: Int; let directory: String }
+	private struct StagingRecord: Codable { let version: Int; let directory: String; let identity: FileStamp? }
 	private struct MagnetRecord: Codable { let version: Int; let uri: String; let destination: String }
 	private static let magnetRecordLimit = 2 * 1024 * 1024
 	private let root: URL
+	private let event: @Sendable (RepositoryEvent) -> Void
 	private let worker = StorageWorker()
-	public init(root: URL) { self.root = root }
+	public init(root: URL, event: @escaping @Sendable (RepositoryEvent) -> Void = { _ in }) {
+		self.root = root; self.event = event
+	}
 	/// Publishes a creator's completed bytes under the repository's publication lease.
 	public static func publishCreatedTorrent(_ data: Data, id: String, root: URL) throws {
 		try validateID(id)
 		let directory = try StorageDirectory(root), lease = try StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
 		guard data.count <= 33_554_432 else { throw StorageFailure.limit("torrent bytes") }
 		guard try directory.inspect(magnetRecord(id)) == nil else { throw StorageFailure.collision("retained pending magnet") }
+		guard try directory.inspect(stagingPath(id)) == nil else { throw StorageFailure.recoveryRequired("finish the interrupted transfer publication") }
 		guard try directory.inspect(id + ".torrent") == nil else { throw StorageFailure.collision("torrent output") }
 		try directory.atomic(data, path: id + ".torrent", exclusive: true)
 	}
@@ -115,7 +124,7 @@ public actor TransferRepository {
 		}
 	}
 	public func prepare(id: String, restore: Bool, pending: PendingMagnetState? = nil) async throws -> PreparedTransferState {
-		try Self.validateID(id); let root = root
+		try Self.validateID(id); let root = root, event = event
 		return try await worker.run(bulk: true) { _ in
 			let directory = try StorageDirectory(root)
 			let reservation = RepositoryReservation(try StorageLease(directory: directory, path: ".native.lock"))
@@ -123,17 +132,24 @@ public actor TransferRepository {
 			else if try directory.inspect(Self.magnetRecord(id)) != nil, try Self.record(id, in: directory) == nil {
 				throw StorageFailure.collision("retained pending magnet")
 			}
-			if let record = try Self.record(id, in: directory) {
+			let published = try Self.record(id, in: directory)
+			try Self.recoverStaging(id, published: published, in: directory)
+			if let record = published {
 				guard restore else { throw StorageFailure.collision("retained native state; restore or forget it first") }
 				let child = try directory.child(record.directory)
 				return PreparedTransferState(directory: child.url, id: id, name: record.directory, created: false, reservation: reservation, anchor: child, parentIdentity: try directory.identity())
 			}
-			let name = ".native-" + UUID().uuidString, child = try directory.child(name, create: true)
+			let name = ".native-" + UUID().uuidString
+			try Self.write(StagingRecord(version: 1, directory: name, identity: nil), to: Self.stagingPath(id), in: directory)
+			event(.stagingDurable)
+			let child = try directory.child(name, create: true)
+			try Self.write(StagingRecord(version: 1, directory: name, identity: child.identity()), to: Self.stagingPath(id), in: directory)
+			event(.checkpointDirectoryDurable)
 			return PreparedTransferState(directory: child.url, id: id, name: name, created: true, reservation: reservation, anchor: child, parentIdentity: try directory.identity())
 		}
 	}
 	public func publish(id: String, metadata: TorrentMetadata, state: PreparedTransferState) async throws {
-		try Self.validateID(id); let root = root
+		try Self.validateID(id); let root = root, event = event
 		try await worker.run(bulk: true) { _ in
 			let directory = try StorageDirectory(root, create: false)
 			guard try state.parentIdentity.sameFile(directory.identity()) else { throw StorageFailure.recoveryRequired("session repository was replaced") }
@@ -148,8 +164,11 @@ public actor TransferRepository {
 				guard previous.originalInfo == metadata.originalInfo else { throw StorageFailure.collision("stored torrent identity") }
 			}
 			try directory.atomic(metadata.document.original, path: path, exclusive: existing == nil)
-			let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
-			try directory.atomic(encoder.encode(Record(version: 1, directory: state.name)), path: id + ".native.plist")
+			event(.torrentDurable)
+			let record = Record(version: 1, directory: state.name)
+			try Self.write(record, to: id + ".native.plist", in: directory)
+			event(.locatorDurable)
+			try Self.recoverStaging(id, published: record, in: directory)
 		}
 	}
 	public func abandon(_ state: PreparedTransferState) async throws {
@@ -164,6 +183,7 @@ public actor TransferRepository {
 			if try Self.record(state.id, in: directory)?.directory == state.name { return }
 			guard try directory.child(state.name).identity().sameFile(state.anchor.identity()) else { throw StorageFailure.recoveryRequired("prepared state directory was replaced") }
 			try Self.discardChild(state.name, in: directory)
+			try Self.recoverStaging(state.id, published: nil, in: directory)
 		}
 	}
 	/// Discards only recognised native state and the standard torrent; legacy resume files remain intact.
@@ -175,7 +195,9 @@ public actor TransferRepository {
 			if let pending { try Self.validate(pending, id: id, in: directory) }
 			let pendingLock = try pending?.lease ?? (directory.inspect(Self.magnetLock(id)) == nil ? nil : StorageLease(directory: directory, path: Self.magnetLock(id)))
 			defer { withExtendedLifetime(pendingLock) {} }
-			if let record = try Self.record(id, in: directory) {
+			let published = try Self.record(id, in: directory)
+			try Self.recoverStaging(id, published: published, in: directory)
+			if let record = published {
 				do { try Self.discardChild(record.directory, in: directory) }
 				catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { } // An interrupted discard may have removed the directory.
 			}
@@ -187,6 +209,29 @@ public actor TransferRepository {
 	}
 	private static func magnetRecord(_ id: String) -> String { id + ".native-magnet.plist" }
 	private static func magnetLock(_ id: String) -> String { id + ".native-magnet.lock" }
+	private static func stagingPath(_ id: String) -> String { id + ".native-stage.plist" }
+	private static func write<T: Encodable>(_ record: T, to path: String, in directory: StorageDirectory) throws {
+		let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
+		try directory.atomic(encoder.encode(record), path: path)
+	}
+	private static func recoverStaging(_ id: String, published: Record?, in directory: StorageDirectory) throws {
+		let path = stagingPath(id)
+		guard let stamp = try directory.inspect(path) else { return }
+		let stage = try PropertyListDecoder().decode(StagingRecord.self, from: directory.read(path, maximum: 4096))
+		guard stage.version == 1, validCheckpointName(stage.directory), published == nil || published?.directory == stage.directory else {
+			throw StorageFailure.invalid("native publication journal")
+		}
+		if published == nil, let child = try checkpointDirectory(stage.directory, in: directory) {
+			if let expected = stage.identity {
+				guard try expected.sameFile(child.identity()) else { throw StorageFailure.recoveryRequired("staged checkpoint directory was replaced") }
+				try discardChild(stage.directory, in: directory, child: child)
+			} else {
+				guard try child.names().isEmpty else { throw StorageFailure.recoveryRequired("unrecorded checkpoint directory is not empty") }
+				try directory.removeChild(stage.directory, expected: child)
+			}
+		}
+		try directory.remove(path, expected: stamp)
+	}
 	private static func validate(_ state: PendingMagnetState, id: String, in directory: StorageDirectory) throws {
 		guard state.id == id, try state.parentIdentity.sameFile(directory.identity()),
 			let lock = try directory.inspect(magnetLock(id)), state.lockIdentity.sameFile(lock) else { throw StorageFailure.recoveryRequired("pending magnet repository was replaced") }
@@ -217,11 +262,18 @@ public actor TransferRepository {
 		let name = id + ".native.plist"
 		guard try directory.inspect(name) != nil else { return nil }
 		let record = try PropertyListDecoder().decode(Record.self, from: directory.read(name, maximum: 4096))
-		guard record.version == 1, record.directory.hasPrefix(".native-"), UUID(uuidString: String(record.directory.dropFirst(8))) != nil else { throw StorageFailure.invalid("native state record") }
+		guard record.version == 1, validCheckpointName(record.directory) else { throw StorageFailure.invalid("native state record") }
 		return record
 	}
-	private static func discardChild(_ name: String, in directory: StorageDirectory) throws {
-		let child = try directory.child(name), lease = try StorageLease(directory: child); defer { lease.release() }
+	private static func validCheckpointName(_ name: String) -> Bool {
+		name.hasPrefix(".native-") && UUID(uuidString: String(name.dropFirst(8))) != nil
+	}
+	private static func checkpointDirectory(_ name: String, in directory: StorageDirectory) throws -> StorageDirectory? {
+		do { return try directory.child(name) }
+		catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
+	}
+	private static func discardChild(_ name: String, in directory: StorageDirectory, child: StorageDirectory? = nil) throws {
+		let child = try child ?? directory.child(name), lease = try StorageLease(directory: child); defer { lease.release() }
 		let names = try child.names()
 		guard !names.contains("operation.plist") else { throw StorageFailure.recoveryRequired("recover the filesystem journal before forgetting state") }
 		let allowed: Set<String> = ["metadata.torrent", "checkpoint.plist", "hashes.plist", "storage.lock", "unwanted"]

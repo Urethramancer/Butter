@@ -1130,3 +1130,10 @@ authenticated piece layers. Durable hash updates wake overlapping requests
 without holding the transfer command gate while they wait. Removal, shutdown
 and caller cancellation settle waiting requests. Unresolved magnets still return
 the reference engine's metadata-resolving error.
+
+Repository publication records a staged checkpoint directory before opening
+storage. A retry can retire that directory by its recorded identity until the
+locator commits, then restore the published checkpoint. The standard torrent
+remains readable across the handoff. Killed-child fixtures cover four durable
+publication boundaries, and the disposable volume verifies failed publication
+under ENOSPC followed by a successful retry.
