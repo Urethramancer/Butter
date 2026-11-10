@@ -32,8 +32,9 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 	static func run() async throws {
 		let root = URL(fileURLWithPath: CommandLine.arguments[1]), binary = URL(fileURLWithPath: CommandLine.arguments[2])
 		var cases = 0
-		for multi in [false, true] { for size in [16384, 65536] { for nativeSeed in [false, true] { for selective in (multi ? [false, true] : [false]) {
-			let label = "\(multi ? "multi" : "single")-\(size)-\(nativeSeed ? "up" : "down")-\(selective ? "selective" : "all")"
+		for multi in [false, true] { for size in [16384, 65536] { for nativeSeed in [false, true] { for selective in (multi ? [false, true] : [false]) { for fragmented in (size == 65536 && !selective ? [false, true] : [false]) {
+			let host = fragmented && !multi ? "::1" : "127.0.0.1"
+			let label = "\(multi ? "multi" : "single")-\(size)-\(nativeSeed ? "up" : "down")-\(selective ? "selective" : "all")\(fragmented ? (host == "::1" ? "-fragmented-ipv6" : "-fragmented-ipv4") : "")"
 			let work = root.appendingPathComponent(label)
 			try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
 			let metadataURL = root.appendingPathComponent("\(multi ? "multi" : "single")-\(size).torrent"), metadata = try TorrentMetadata(contentsOf: metadataURL)
@@ -45,10 +46,12 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 				for piece in 0..<storage.layout.pieceCount { let valid = try await storage.verify(piece: piece); try require(valid, "Native source did not verify") }
 			}
 			let engine = try await TCPTransfer.open(metadata: metadata, storage: storage)
-			let listener = try await TCPListener.listen(address: IPAddress("127.0.0.1"))
+			let listener = try await TCPListener.listen(address: IPAddress(host))
+			var relay: TCPFragmentingRelay?
+			if nativeSeed && fragmented { relay = try await TCPFragmentingRelay.open(host: host, target: NetworkEndpoint(host, port: listener.port)) }
 			let record = work.appendingPathComponent("status.json"), jobURL = work.appendingPathComponent("job.json")
 			var job: [String: Any] = ["torrent": metadataURL.path, "destination": nativeSeed ? work.appendingPathComponent("reference-download").path : root.appendingPathComponent("reference-seed").path,
-				"listen": "127.0.0.1:0", "status": record.path, "remoteHost": "127.0.0.1", "remotePort": nativeSeed ? Int(listener.port) : 0]
+				"listen": host == "::1" ? "[::1]:0" : "127.0.0.1:0", "status": record.path, "remoteHost": host, "remotePort": nativeSeed ? Int(relay?.port ?? listener.port) : 0]
 			if nativeSeed && selective { job["selected"] = selected }
 			try JSONSerialization.data(withJSONObject: job).write(to: jobURL)
 			let process = Process(); process.executableURL = binary; process.arguments = ["--run", jobURL.path]
@@ -59,7 +62,8 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 				if !nativeSeed {
 					try await wait { let s = try status(record, process: process); return s?.seeding == true && s!.port > 0 }
 					let s = try status(record, process: process)!
-					_ = try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: s.port))
+					if fragmented { relay = try await TCPFragmentingRelay.open(host: host, target: NetworkEndpoint(host, port: s.port)) }
+					_ = try await engine.connect(to: NetworkEndpoint(host, port: relay?.port ?? s.port))
 				}
 				if let accept { _ = try await accept.value }
 				try await wait {
@@ -69,7 +73,7 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 				}
 				let swift = await engine.snapshot(), reference = try status(record, process: process)!
 				try require(nativeSeed ? swift.uploaded > 0 && reference.downloaded > 0 : swift.downloaded > 0 && reference.uploaded > 0, "No cross-engine payload traffic was recorded")
-				try await engine.shutdown(); try await listener.shutdown(); try await stop(process); try await storage.shutdown()
+				try await engine.shutdown(); try await listener.shutdown(); await relay?.close(); try await stop(process); try await storage.shutdown()
 				let output = nativeSeed ? work.appendingPathComponent("reference-download") : destination
 				for file in metadata.inspection.files where !file.pad && (!selective || file.path.hasSuffix("a.bin")) {
 					let expected = try Data(contentsOf: root.appendingPathComponent("reference-seed").appendingPathComponent(file.path))
@@ -78,10 +82,10 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 				if selective, !nativeSeed { try require(!FileManager.default.fileExists(atPath: output.appendingPathComponent("Bundle/nested/b.bin").path), "Skipped file was materialised") }
 				cases += 1; print("PASS: \(label), verified bytes after both shutdown barriers")
 			} catch {
-				accept?.cancel(); try? await engine.shutdown(); try? await listener.shutdown(); try? await storage.shutdown()
+				accept?.cancel(); try? await engine.shutdown(); try? await listener.shutdown(); await relay?.close(); try? await storage.shutdown()
 				if process.isRunning { process.terminate(); try? await stop(process); if process.isRunning { kill(process.processIdentifier, SIGKILL) } }; throw error
 			}
-		} } } }
+		} } } } }
 		print("PASS: \(cases) independent libtorrent-to-Swift and Swift-to-libtorrent TCP fixtures")
 	}
 }

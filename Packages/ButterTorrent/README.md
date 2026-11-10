@@ -37,6 +37,8 @@ Scripts/verify.sh creation
 Scripts/verify.sh http
 Scripts/verify.sh network
 Scripts/verify.sh native-storage
+Scripts/verify.sh peer
+Scripts/verify.sh peer-reference
 ```
 
 The first command works without libtorrent installed. The second uses the parent
@@ -134,3 +136,35 @@ and a disposable-image harness: 18 journalled child-process interruptions, four
 atomic-checkpoint interruptions, actual ENOSPC and a read-only remount. Trash tests
 use disposable directories and verify every receipt; system Trash destination
 selection and Finder integration remain application-integration checks.
+
+`ButterTorrentEngine` supplies `TCPTransfer`, a headless v1 plaintext transfer
+actor using the metadata, networking and storage libraries. Hosts own listening
+ports and attach accepted `TCPStream`s; outgoing connections can share the same
+peer budget. No discovery, trackers or production adapter starts implicitly.
+Stop the transfer before invoking storage selection or filesystem operations.
+Shutdown drains peer and upload work and checkpoints counters; the caller owns
+the final storage/port shutdown. Failed checkpoint publication permits a retry.
+
+The wire codec bounds framing and rejects invalid ranges, unsolicited blocks and
+unnegotiated messages. Peers manage choke/interest state, bitfields, HAVE messages,
+request pipelines, expiry and disconnect recovery. The picker uses rarest-first
+selection, at most eight active pieces and bounded duplicate requests in endgame.
+Completion cancels duplicate requests and announces only hash-verified pieces.
+Corruption discards the piece and closes contributing peers. Recent reply credits
+are consumed once, and cancellation releases reserved/writing blocks.
+
+Default limits are fifty peers (maximum two hundred), eight pipelined requests
+(maximum thirty-two), four upload slots, sixty-four upload jobs and four disk
+permits. A peer queues at most 128 messages/512 KiB. The upload cache retains at
+most eight immutable pieces/32 MiB, with four bounded loads; each piece is at most
+16 MiB. Payload rate limits use an injectable monotonic clock and a one-second
+token burst. Incomplete handshakes expire after ten seconds; idle peers and
+repeated request timeouts close. Extension negotiation, magnets, v2, encryption
+and µTP belong to subsequent phases. Production transfers remain on libtorrent.
+
+`peer` runs eighteen protocol, selection, loopback and cancellation cases.
+`peer-reference` runs sixteen cases with independently libtorrent-generated v1
+metadata: single/multifile layouts, 16/64 KiB pieces, both transfer directions,
+selective boundaries and fragmented IPv4/IPv6 relays. Every output byte is checked
+after both shutdown/flush barriers. The reference explicitly disables encryption
+and µTP for this TCP gate. No public peer or discovery service is contacted.

@@ -11,6 +11,14 @@ func eventually(_ operation: @escaping @Sendable () async throws -> Bool) async 
 	throw PeerFailure.invalid("test deadline")
 }
 
+func engineDeadline<T: Sendable>(_ operation: @escaping @Sendable () async throws -> T) async throws -> T {
+	try await withThrowingTaskGroup(of: T.self) { group in
+		group.addTask(operation: operation)
+		group.addTask { try await Task.sleep(for: .seconds(6)); throw PeerFailure.invalid("test deadline") }
+		defer { group.cancelAll() }; return try await group.next()!
+	}
+}
+
 final class TransferFixture {
 	let root: URL
 	let metadata: TorrentMetadata

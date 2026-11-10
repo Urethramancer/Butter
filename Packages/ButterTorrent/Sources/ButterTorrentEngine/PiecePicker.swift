@@ -89,6 +89,11 @@ struct PiecePicker {
 		let ready = item.received.count == blocks(block.piece).count && item.writing.isEmpty
 		if ready { item.verifying = true }; active[block.piece] = item; return ready
 	}
+	mutating func abortedWrite(_ block: PeerBlock) {
+		guard var item = active[block.piece] else { return }
+		item.writing.remove(block.offset); item.owners[block.offset] = nil
+		if availability[block.piece] == 0 && item.writing.isEmpty { active[block.piece] = nil } else { active[block.piece] = item }
+	}
 	mutating func verified(_ piece: Int, valid: Bool) -> Set<UUID> {
 		let contributors = active.removeValue(forKey: piece)?.contributors ?? []
 		if valid { completed.insert(piece) }; return contributors

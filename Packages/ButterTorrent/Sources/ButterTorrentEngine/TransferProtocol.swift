@@ -39,8 +39,9 @@ extension TCPTransfer {
 			if let token = peer.uploads.removeValue(forKey: block) { uploadJobs[token]?.1.cancel(); peer.session.cancel(token) }
 		case .piece(let piece, let offset, let bytes):
 			let block = PeerBlock(piece: piece, offset: offset, length: bytes.count); try validate(block)
-			guard peer.pending.contains(block) || peer.recent[block].map({ $0 >= now }) == true else { throw PeerFailure.invalid("unsolicited piece block") }
-			peer.pending.remove(block); remember(peer, block: block)
+			if peer.pending.remove(block) == nil {
+				guard let deadline = peer.recent.removeValue(forKey: block), deadline >= now else { throw PeerFailure.invalid("unsolicited piece block") }
+			}
 			downloaded = min(Int64.max - Int64(bytes.count), downloaded) + Int64(bytes.count)
 			peer.downloaded += Int64(bytes.count)
 			try await downloadRate.consume(bytes.count); try Task.checkCancellation()
@@ -69,10 +70,10 @@ extension TCPTransfer {
 			if let peer = peers[other] { peer.pending.remove(block); remember(peer, block: block); try? send(other, .cancel(block)) }
 		}
 		do { try await storage.write(piece: block.piece, offset: block.offset, data: bytes) }
-		catch { diskFailed(error); throw error }
+		catch { picker.abortedWrite(block); diskFailed(error); throw error }
 		guard picker.written(block) else { return }
 		let valid: Bool
-		do { valid = try await storage.verify(piece: block.piece) } catch { diskFailed(error); throw error }
+		do { valid = try await storage.verify(piece: block.piece) } catch { _ = picker.verified(block.piece, valid: false); diskFailed(error); throw error }
 		let contributors = picker.verified(block.piece, valid: valid)
 		if valid {
 			for contributor in contributors { peers[contributor]?.score += try picker.layout.length(of: block.piece) / max(1, contributors.count) }

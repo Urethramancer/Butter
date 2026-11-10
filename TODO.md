@@ -1,11 +1,13 @@
 # Remaining audit and acceptance checks
 
 ## Swift torrent engine replacement
-- Phase 7: v1 TCP downloads and seeding, both libtorrent interoperability directions.
-- Phase 8: metadata exchange, PEX, v2/hybrid transfers and private discovery enforcement.
+- Phase 8: extension negotiation (including inherited Fast extensions), metadata
+  exchange, PEX, DHT, v2/hybrid transfers and private discovery enforcement.
 - Phase 9: negotiated peer encryption and plaintext fallback interoperability.
 - Phase 10: µTP with deterministic network-failure fixtures and TCP-disabled transfers.
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
+  Quiesce peer I/O before storage mutations and coordinate aggregate disk/cache
+  admission across simultaneous transfers.
   Resolve inherited PCP-before-NAT-PMP behaviour from the pinned reference;
   the Swift mapping clients currently implement UPnP and NAT-PMP.
 - Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 mode=${1:-all}
 case "$mode" in
 	network) shift; exec Scripts/test-http.sh "$@" ;;
-	client|engine|contract|metadata|metadata-reference|creation|http|native-storage|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
+	client|engine|contract|metadata|metadata-reference|creation|http|native-storage|peer|peer-reference|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
 	version) exec sh Tests/git-version.sh ;;
 	final)
 		sh Tests/git-version.sh
@@ -13,6 +13,7 @@ case "$mode" in
 		Scripts/test-native-storage.sh
 		Scripts/test-metadata-reference.sh
 		Scripts/test-creation.sh
+		Scripts/test-peer-reference.sh
 		Scripts/test-contract.sh
 		Scripts/verify.sh coverage "${2:-final}"
 		Scripts/test-build.sh
@@ -20,7 +21,7 @@ case "$mode" in
 		;;
 	all)
 		sh Tests/git-version.sh
-		for suite in client storage disk engine metadata native-storage metadata-reference creation contract interruption lifecycle interface ui build; do "Scripts/test-$suite.sh"; done
+		for suite in client storage disk engine metadata native-storage metadata-reference creation peer-reference contract interruption lifecycle interface ui build; do "Scripts/test-$suite.sh"; done
 		Scripts/verify.sh sanitizers all
 		;;
 	coverage|sanitizers)
@@ -98,5 +99,5 @@ PROFILES
 		fi
 		exit "$status"
 		;;
-	*) echo 'Usage: Scripts/verify.sh [final [label]|all|client|storage|native-storage|disk|interruption|engine|contract|metadata|metadata-reference|creation|http|network|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
+	*) echo 'Usage: Scripts/verify.sh [final [label]|all|client|storage|native-storage|disk|interruption|engine|contract|metadata|metadata-reference|creation|http|network|peer|peer-reference|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
 esac

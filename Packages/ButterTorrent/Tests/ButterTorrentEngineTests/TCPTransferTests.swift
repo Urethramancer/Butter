@@ -1,9 +1,55 @@
 import Foundation
 import Testing
 import ButterTorrentNetworking
+@testable import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 @Suite struct TCPTransferTests {
+	@Test func failedShutdownPreservesCheckpointAndCanBeRetried() async throws {
+		try await transferFixture { fixture in
+			let engine = try await fixture.transfer("download")
+			let checkpoint = fixture.root.appendingPathComponent("download-state/checkpoint.plist"), backup = fixture.root.appendingPathComponent("checkpoint-backup")
+			let bytes = try Data(contentsOf: checkpoint)
+			try FileManager.default.moveItem(at: checkpoint, to: backup)
+			try FileManager.default.createDirectory(at: checkpoint, withIntermediateDirectories: false)
+			await #expect(throws: (any Error).self) { try await engine.shutdown() }
+			#expect(await engine.snapshot().stopped == false)
+			#expect(try Data(contentsOf: backup) == bytes)
+			try FileManager.default.removeItem(at: checkpoint); try FileManager.default.moveItem(at: backup, to: checkpoint)
+			try await withThrowingTaskGroup(of: Void.self) { group in
+				for _ in 0..<4 { group.addTask { try await engine.shutdown() } }; try await group.waitForAll()
+			}
+			#expect(await engine.snapshot().stopped)
+		}
+	}
+	@Test func repeatedUnsolicitedDuplicateIsClosed() async throws {
+		try await transferFixture { fixture in
+			var configuration = TCPTransferConfiguration(); configuration.pipeline = 1
+			let engine = try await fixture.transfer("download", configuration: configuration), peer = try await fixture.scripted(engine)
+			try await peer.seed(pieceCount: 3); let first = try await peer.requests(1)[0]
+			try await peer.reply(first, bytes: fixture.bytes); try await peer.reply(first, bytes: fixture.bytes)
+			try await eventually { await engine.snapshot().peers.isEmpty }
+			#expect(await engine.snapshot().downloaded == Int64(first.length))
+		}
+	}
+	@Test func cancelledQueuedDiskWriteDoesNotLeaveAnUnrequestableBlock() async throws {
+		try await transferFixture { fixture in
+			let engine = try await fixture.transfer("download"), peer = try await fixture.scripted(engine)
+			try await peer.seed(pieceCount: 3); let requests = try await peer.requests(6)
+			let worker = await fixture.stores[0].worker, entered = AsyncStream<Void>.makeStream(), release = DispatchSemaphore(value: 0)
+			let blocker = Task { try await worker.run { _ in entered.continuation.yield(()); _ = release.wait(timeout: .now() + 3) } }
+			defer { release.signal() }
+			try await engineDeadline { for await _ in entered.stream { return }; throw PeerFailure.closed }
+			try await peer.reply(requests[0], bytes: fixture.bytes)
+			try await eventually { await engine.snapshot().writingBlocks == 1 }
+			let id = await engine.snapshot().peers[0].id
+			await engine.drop(id, error: PeerFailure.invalid("fixture disconnect")); release.signal(); try await blocker.value
+			try await eventually { await engine.snapshot().peers.isEmpty }
+			#expect(await engine.snapshot().writingBlocks == 0)
+			let seed = try await fixture.transfer("seed", seed: true); try await fixture.join(engine, seed)
+			try await eventually { await engine.snapshot().complete }
+		}
+	}
 	@Test func realBidirectionalTransferAndSelectiveBoundaryStorage() async throws {
 		try await transferFixture { fixture in
 			let seed = try await fixture.transfer("seed", seed: true), full = try await fixture.transfer("full")

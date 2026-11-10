@@ -35,6 +35,7 @@ public struct TCPTransferSnapshot: Sendable {
 	public let downloaded: Int64
 	public let uploaded: Int64
 	public let corruptPieces: Int
+	public let writingBlocks: Int
 	public let lastPeerError: String?
 	public let storageError: String?
 	public let stopped: Bool
@@ -90,7 +91,7 @@ public actor TCPTransfer {
 	var stopping = false
 	var stopped = false
 	var ticker: Task<Void, Never>?
-	var shutdownTask: Task<Void, Error>?
+	var shutdownTask: (UUID, Task<Void, Error>)?
 	var lastChoke: TimeInterval
 	var rotation = 0
 	private init(metadata: TorrentMetadata, storage: TorrentStorage, initial: StorageSnapshot, configuration: TCPTransferConfiguration,
@@ -155,7 +156,7 @@ public actor TCPTransfer {
 		TCPTransferSnapshot(complete: picker.complete, verifiedPieces: picker.completed, wantedPieces: picker.wanted,
 			peers: peers.map { id, peer in TCPPeerSnapshot(id: id, peerID: peer.peerID, remoteChoking: peer.remoteChoking, choking: peer.choking,
 				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded) },
-			downloaded: downloaded, uploaded: uploaded, corruptPieces: corruptPieces, lastPeerError: lastPeerError, storageError: storageError, stopped: stopped)
+			downloaded: downloaded, uploaded: uploaded, corruptPieces: corruptPieces, writingBlocks: picker.active.values.reduce(0) { $0 + $1.writing.count }, lastPeerError: lastPeerError, storageError: storageError, stopped: stopped)
 	}
 	public func setLimits(download: Int, upload: Int) async throws {
 		guard !stopping, (0...Int(Int32.max)).contains(download), (0...Int(Int32.max)).contains(upload) else { throw PeerFailure.invalid("rate limits or closed transfer") }
@@ -164,9 +165,9 @@ public actor TCPTransfer {
 	}
 	public func shutdown() async throws {
 		if stopped { return }
-		let task: Task<Void, Error>
-		if let current = shutdownTask { task = current } else { task = Task { try await self.finishShutdown() }; shutdownTask = task }
-		do { try await task.value } catch { shutdownTask = nil; throw error }
+		let entry: (UUID, Task<Void, Error>)
+		if let current = shutdownTask { entry = current } else { entry = (UUID(), Task { try await self.finishShutdown() }); shutdownTask = entry }
+		do { try await entry.1.value } catch { if shutdownTask?.0 == entry.0 { shutdownTask = nil }; throw error }
 	}
 	private func finishShutdown() async throws {
 		stopping = true; ticker?.cancel()
