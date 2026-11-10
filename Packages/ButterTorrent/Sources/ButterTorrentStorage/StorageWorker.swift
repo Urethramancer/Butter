@@ -4,9 +4,9 @@ import Darwin
 final class StorageLease: @unchecked Sendable {
 	private let lock = NSLock()
 	private var descriptor: Int32?
-	init(directory: StorageDirectory) throws {
-		let fd = try directory.openFile("storage.lock", write: true)
-		guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { close(fd); throw StorageFailure.shared("checkpoint directory") }
+	init(directory: StorageDirectory, path: String = "storage.lock") throws {
+		let fd = try directory.openFile(path, write: true)
+		guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { close(fd); throw StorageFailure.shared(path == "storage.lock" ? "checkpoint directory" : "native session repository") }
 		descriptor = fd
 	}
 	func release() { lock.withLock { if let descriptor { close(descriptor); self.descriptor = nil } } }

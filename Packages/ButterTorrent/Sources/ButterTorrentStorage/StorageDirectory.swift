@@ -26,6 +26,7 @@ struct FileStamp: Codable, Equatable, Sendable {
 final class StorageDirectory: @unchecked Sendable {
 	let url: URL
 	let fd: Int32
+	private init(url: URL, descriptor: Int32) { self.url = url; fd = descriptor }
 	init(_ url: URL, create: Bool = true) throws {
 		guard url.isFileURL, url.path.hasPrefix("/") else { throw StorageFailure.invalid("absolute storage root") }
 		// The user chooses the root; aliases above it (e.g. /var) may resolve once.
@@ -35,6 +36,36 @@ final class StorageDirectory: @unchecked Sendable {
 		guard fd >= 0 else { throw diskError("Cannot open storage root") }
 	}
 	deinit { close(fd) }
+	func child(_ name: String, create: Bool = false) throws -> StorageDirectory {
+		guard try StorageLayout.components(name).count == 1 else { throw StorageFailure.invalid("state directory name") }
+		if create {
+			guard mkdirat(fd, name, 0o700) == 0 else { throw diskError("Cannot create state directory") }; try sync(fd)
+		}
+		let descriptor = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+		guard descriptor >= 0 else { throw diskError("Cannot open state directory") }
+		return StorageDirectory(url: url.appendingPathComponent(name), descriptor: descriptor)
+	}
+	func names() throws -> [String] {
+		let descriptor = openat(fd, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+		guard descriptor >= 0 else { throw diskError("Cannot enumerate state directory") }
+		guard let directory = fdopendir(descriptor) else { close(descriptor); throw diskError("Cannot enumerate state directory") }
+		defer { closedir(directory) }
+		var names: [String] = []; errno = 0
+		while let entry = readdir(directory) {
+			let name = withUnsafePointer(to: entry.pointee.d_name) { pointer in
+				pointer.withMemoryRebound(to: CChar.self, capacity: Int(MAXNAMLEN) + 1) { String(cString: $0) }
+			}
+			if name != "." && name != ".." { names.append(name) }
+			guard names.count <= 50_016 else { throw StorageFailure.limit("state directory entries") }; errno = 0
+		}
+		guard errno == 0 else { throw diskError("Cannot enumerate state directory") }; return names
+	}
+	func removeChild(_ name: String, expected: StorageDirectory) throws {
+		var value = stat()
+		guard fstatat(fd, name, &value, AT_SYMLINK_NOFOLLOW) == 0 else { throw diskError("Cannot inspect state directory") }
+		guard try FileStamp(value).sameFile(expected.identity()), value.st_mode & S_IFMT == S_IFDIR else { throw StorageFailure.recoveryRequired("state directory identity changed") }
+		guard unlinkat(fd, name, AT_REMOVEDIR) == 0 else { throw diskError("Cannot remove state directory") }; try sync(fd)
+	}
 	func identity() throws -> FileStamp {
 		var value = stat()
 		guard fstat(fd, &value) == 0 else { throw diskError("Cannot inspect storage root") }

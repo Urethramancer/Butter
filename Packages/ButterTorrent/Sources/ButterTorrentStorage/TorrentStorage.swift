@@ -12,11 +12,12 @@ public actor TorrentStorage {
 	public nonisolated let merkleIndex: MerkleIndex
 	private init(state: StorageState, worker: StorageWorker) { self.state = state; self.worker = worker; layout = state.layout; infoHashes = state.metadata.hashes; merkleIndex = state.merkle.index }
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
-		coordinator: StorageCoordinator = .shared, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TorrentStorage {
+		coordinator: StorageCoordinator = .shared, preparedState: PreparedTransferState? = nil, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TorrentStorage {
+		guard preparedState == nil || preparedState?.directory == stateDirectory else { throw StorageFailure.invalid("prepared checkpoint directory") }
 		let worker = StorageWorker()
 		let state = try await worker.run { cancellation in
 			let layout = try StorageLayout(metadata: metadata)
-			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, event: event, check: cancellation.check)
+			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, anchoredState: preparedState?.anchor, event: event, check: cancellation.check)
 			try cancellation.check(); return state
 		}
 		return TorrentStorage(state: state, worker: worker)
@@ -65,10 +66,10 @@ final class StorageState: @unchecked Sendable {
 	let lease: StorageLease
 	var closed = false
 	var hasJournal = false
-	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
+	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, anchoredState: StorageDirectory? = nil, event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
 		self.metadata = metadata; self.layout = layout; self.coordinator = coordinator; self.event = event
 		merkle = try MerkleCatalog(metadata: metadata)
-		state = try StorageDirectory(stateDirectory)
+		state = try anchoredState ?? StorageDirectory(stateDirectory)
 		lease = try StorageLease(directory: state)
 		do {
 			let identity = Data(SHA256.hash(data: metadata.originalInfo))
