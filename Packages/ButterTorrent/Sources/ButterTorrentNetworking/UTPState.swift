@@ -106,6 +106,7 @@ struct UTPState: Sendable {
 		if let fin = remoteFin, utpBefore(fin, incoming.sequence) { return }
 		if incoming.type == .fin {
 			guard remoteFin == nil || remoteFin == incoming.sequence else { throw NetworkFailure.invalid("µTP conflicting FIN") }
+			guard !reordered.keys.contains(where: { utpBefore(incoming.sequence, $0) }) else { throw NetworkFailure.invalid("µTP data after FIN") }
 			remoteFin = incoming.sequence
 		}
 		reordered[incoming.sequence] = incoming

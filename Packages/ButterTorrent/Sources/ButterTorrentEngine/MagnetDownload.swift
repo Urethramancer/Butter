@@ -17,6 +17,7 @@ public actor MagnetDownload {
 	private let registry: TorrentIdentityRegistry
 	private let exchange: MetadataExchange
 	private let configuration: TCPTransferConfiguration
+	private let utp: UTPTransport?
 	private var current: (UUID, Task<MagnetResolution, Error>)?
 	private var result: MagnetResolution?
 	private var closed = false
@@ -24,9 +25,9 @@ public actor MagnetDownload {
 	private var stopTask: (UUID, Task<Void, Error>)?
 	public private(set) var connectionFailures: [NetworkEndpoint: String] = [:]
 	public init(magnet: Magnet, destination: URL, stateDirectory: URL, registry: TorrentIdentityRegistry,
-		id: UUID = UUID(), exchange: MetadataExchange? = nil, configuration: TCPTransferConfiguration = .init()) {
+		id: UUID = UUID(), exchange: MetadataExchange? = nil, configuration: TCPTransferConfiguration = .init(), utp: UTPTransport? = nil) {
 		self.magnet = magnet; self.destination = destination; self.stateDirectory = stateDirectory; self.registry = registry; self.id = id
-		self.configuration = configuration; self.exchange = exchange ?? MetadataExchange(encryption: configuration.encryption)
+		self.configuration = configuration; self.utp = utp; self.exchange = exchange ?? MetadataExchange(encryption: configuration.encryption, utp: utp)
 	}
 	public var discoveryAllowed: Bool { if case .ready(let metadata, _, _) = result { return !metadata.inspection.private && !closed }; return false }
 	public func resolve(peers: [NetworkEndpoint]) async throws -> MagnetResolution {
@@ -51,7 +52,7 @@ public actor MagnetDownload {
 			let transfer = try await TCPTransfer.open(metadata: metadata, storage: disk, configuration: configuration); engine = transfer
 			for endpoint in peers.prefix(8) where !metadata.inspection.private {
 				try Task.checkCancellation()
-				do { _ = try await transfer.connect(to: endpoint) } catch {
+				do { _ = try await transfer.connect(to: endpoint, utp: utp) } catch {
 					if Task.isCancelled { throw CancellationError() }
 					connectionFailures[endpoint] = String(describing: error)
 				}

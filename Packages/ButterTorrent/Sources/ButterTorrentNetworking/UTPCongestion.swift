@@ -29,6 +29,7 @@ struct UTPCongestion: Sendable {
 		samples.append(UInt32(min(Int64(UInt32.max), measured))); if samples.count > 3 { samples.removeFirst() }
 		let queue = Double(samples.min() ?? 0), factor = max(-1, min(1, (100_000 - queue) / 100_000))
 		window = max(130, min(262_144, window + 1180 * factor * Double(bytes) / max(1180, window)))
+		packetSize = min(1180, max(130, Int(window / 2)))
 	}
 	mutating func lost(now: TimeInterval, timedOut: Bool) {
 		if now - lastLoss >= max(0.1, rtt ?? 0.1) { window = max(130, window / 2); lastLoss = now }

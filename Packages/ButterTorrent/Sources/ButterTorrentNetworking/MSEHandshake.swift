@@ -16,7 +16,7 @@ public struct PeerEncryptionConfiguration: Sendable {
 }
 
 struct MSEHandshake: Sendable {
-	let stream: TCPStream
+	let stream: any PeerByteStream
 	let clock: any TransportClock
 	let deadline: TimeInterval
 	let configuration: PeerEncryptionConfiguration

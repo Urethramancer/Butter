@@ -2,21 +2,25 @@ import Foundation
 
 /// PeerStream applies negotiated MSE beneath peer framing, with one reader and one writer.
 public final class PeerStream: @unchecked Sendable {
-	public let raw: TCPStream
+	public let raw: any PeerByteStream
 	public let mode: PeerEncryptionMode
 	private let sendCipher: MSECipher?
 	private let receiveCipher: MSECipher?
 	private let lock = NSLock()
 	private var prefix: Data
 	private var reading = false, writing = false
-	init(raw: TCPStream, mode: PeerEncryptionMode = .plaintext, prefix: Data = Data(), send: MSECipher? = nil, receive: MSECipher? = nil) {
+	init(raw: any PeerByteStream, mode: PeerEncryptionMode = .plaintext, prefix: Data = Data(), send: MSECipher? = nil, receive: MSECipher? = nil) {
 		self.raw = raw; self.mode = mode; self.prefix = prefix; sendCipher = send; receiveCipher = receive
 	}
 	public static func connect(to endpoint: NetworkEndpoint, hash: Data, configuration: PeerEncryptionConfiguration = .init(), timeout: TimeInterval = 10,
-		clock: any TransportClock = ContinuousTransportClock(), budget: TCPPeerBudget? = nil) async throws -> PeerStream {
+		clock: any TransportClock = ContinuousTransportClock(), budget: TCPPeerBudget? = nil, utp: UTPTransport? = nil) async throws -> PeerStream {
 		guard timeout.isFinite, (0.1...120).contains(timeout), hash.count == 20 else { throw NetworkFailure.invalid("peer connection configuration") }
 		let deadline = clock.now() + timeout
-		let raw = try await TCPStream.connect(to: endpoint, timeout: timeout, clock: clock, budget: budget)
+		let open: @Sendable (TimeInterval) async throws -> any PeerByteStream = { remaining in
+			if let utp { return try await utp.connect(to: endpoint, timeout: remaining, budget: budget) }
+			return try await TCPStream.connect(to: endpoint, timeout: remaining, clock: clock, budget: budget)
+		}
+		let raw = try await open(timeout)
 		if configuration.outgoing == .disabled { return PeerStream(raw: raw) }
 		do {
 			let remaining = deadline - clock.now(); guard remaining > 0 else { throw NetworkFailure.timedOut }
@@ -24,15 +28,15 @@ public final class PeerStream: @unchecked Sendable {
 			var handshake = MSEHandshake(stream: raw, clock: clock, deadline: negotiationDeadline, configuration: configuration)
 			return try await handshake.initiate(hash: hash)
 		} catch {
-			raw.close(); try Task.checkCancellation()
+			try? await raw.shutdown(); try Task.checkCancellation()
 			guard configuration.outgoing == .enabled, clock.now() < deadline,
 				error as? NetworkFailure != .limit("MSE arithmetic workers") else { throw error }
 			// One fresh connection may fall back; required encryption never downgrades.
-			let fallback = try await TCPStream.connect(to: endpoint, timeout: deadline - clock.now(), clock: clock, budget: budget)
+			let fallback = try await open(deadline - clock.now())
 			return PeerStream(raw: fallback)
 		}
 	}
-	public static func accept(_ raw: TCPStream, hashes: [Data], configuration: PeerEncryptionConfiguration = .init(), timeout: TimeInterval = 10,
+	public static func accept(_ raw: any PeerByteStream, hashes: [Data], configuration: PeerEncryptionConfiguration = .init(), timeout: TimeInterval = 10,
 		clock: any TransportClock = ContinuousTransportClock()) async throws -> PeerStream {
 		guard timeout.isFinite, (0.1...120).contains(timeout) else { raw.close(); throw NetworkFailure.invalid("peer handshake timeout") }
 		do { var handshake = MSEHandshake(stream: raw, clock: clock, deadline: clock.now() + timeout, configuration: configuration); return try await handshake.accept(hashes: hashes) }

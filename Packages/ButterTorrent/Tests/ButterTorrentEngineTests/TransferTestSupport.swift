@@ -87,7 +87,7 @@ func transferFixture(_ body: (TransferFixture) async throws -> Void) async throw
 }
 
 final class WirePeer {
-	let stream: TCPStream
+	let stream: any PeerByteStream
 	private let channel: PeerStream?
 	var decoder = PeerWireDecoder()
 	init(stream: TCPStream) { self.stream = stream; channel = nil }

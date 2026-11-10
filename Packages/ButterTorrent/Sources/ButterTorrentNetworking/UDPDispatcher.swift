@@ -21,6 +21,9 @@ public actor UDPDispatcher {
 	private var pump: Task<Void, Never>?
 	private var closed = false
 	private var dropped: UInt64 = 0
+	private var utpOwner: UUID?
+	func claimUTP(_ owner: UUID) throws { guard !closed else { throw NetworkFailure.closed }; guard utpOwner == nil else { throw NetworkFailure.busy }; utpOwner = owner }
+	func releaseUTP(_ owner: UUID) { if utpOwner == owner { utpOwner = nil } }
 	public var pendingCount: Int { pending.count }
 	public var droppedPackets: UInt64 { dropped }
 	public init(transport: any DatagramTransport, clock: any TransportClock = ContinuousTransportClock()) {
@@ -52,7 +55,7 @@ public actor UDPDispatcher {
 	public func subscribe(_ channel: UDPChannel) throws -> AsyncStream<NetworkDatagram> {
 		guard !closed else { throw NetworkFailure.closed }
 		guard subscribers.count < 16 else { throw NetworkFailure.limit("UDP subscribers") }
-		let id = UUID(), pair = AsyncStream<NetworkDatagram>.makeStream(bufferingPolicy: .bufferingNewest(32))
+		let id = UUID(), pair = AsyncStream<NetworkDatagram>.makeStream(bufferingPolicy: .bufferingNewest(channel == .utp ? 256 : 32))
 		pair.continuation.onTermination = { [weak self] _ in Task { await self?.unsubscribe(id) } }
 		subscribers[id] = (channel, pair.continuation); start(); return pair.stream
 	}
@@ -78,7 +81,7 @@ public actor UDPDispatcher {
 			if let waiter = pending[Key(peer: packet.source, reply: reply)] { waiter.resolve(.success(packet)); return }
 		}
 		if let root, let id = root["t"]?.bytes, !id.isEmpty, id.count <= 8, ["q", "r", "e"].contains(root["y"]?.text ?? "") { publish(packet, to: .dht) }
-		else if data.count >= 20, data[0] & 15 == 1, data[0] >> 4 <= 4 { publish(packet, to: .utp) }
+		else if (20...4096).contains(data.count), data[0] & 15 == 1, data[0] >> 4 <= 4 { publish(packet, to: .utp) }
 		else if data.starts(with: Data("BT-SEARCH ".utf8)) { publish(packet, to: .localDiscovery) }
 		else if data.starts(with: Data("HTTP/1.1 ".utf8)) || data.starts(with: Data("NOTIFY ".utf8)) { publish(packet, to: .ssdp) }
 		else if data.count >= 8 && data[0] == 0 && data[1] >= 128 { publish(packet, to: .natPMP) }

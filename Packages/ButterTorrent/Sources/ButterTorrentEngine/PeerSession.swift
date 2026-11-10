@@ -4,14 +4,14 @@ import ButterTorrentNetworking
 // One reader and one writer own the TCP stream; the controller owns protocol state.
 final class PeerSession: @unchecked Sendable {
 	struct Outbound: Sendable { let bytes: Data; let payload: Int; let token: UUID?; let block: PeerBlock? }
-	let stream: TCPStream
+	let stream: any PeerByteStream
 	private let transport: PeerStream?
 	private let lock = NSLock()
 	private let outgoing = AsyncStream<Outbound>.makeStream(bufferingPolicy: .bufferingOldest(128))
 	private var queuedBytes = 0
 	private var closed = false
 	private var tokens: Set<UUID> = []
-	init(stream: TCPStream, transport: PeerStream? = nil) { self.stream = stream; self.transport = transport }
+	init(stream: any PeerByteStream, transport: PeerStream? = nil) { self.stream = stream; self.transport = transport }
 	func handshake(_ hello: PeerHandshake) throws { try enqueue(Outbound(bytes: hello.encoded, payload: 0, token: nil, block: nil)) }
 	func register(_ token: UUID) { _ = lock.withLock { tokens.insert(token) } }
 	func send(_ message: PeerMessage, token: UUID? = nil, block: PeerBlock? = nil) throws {

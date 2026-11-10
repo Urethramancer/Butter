@@ -91,6 +91,9 @@ int main(int argc, char** argv) { @autoreleasepool { try {
 	settings.set_str(lt::settings_pack::listen_interfaces, [job[@"listen"] UTF8String]);
 	for (auto setting : {lt::settings_pack::enable_dht, lt::settings_pack::enable_lsd, lt::settings_pack::enable_upnp, lt::settings_pack::enable_natpmp, lt::settings_pack::enable_incoming_utp, lt::settings_pack::enable_outgoing_utp}) settings.set_bool(setting, false);
 	settings.set_bool(lt::settings_pack::enable_incoming_tcp, true); settings.set_bool(lt::settings_pack::enable_outgoing_tcp, true);
+	bool utp = [job[@"transport"] isEqualToString:@"utp"];
+	settings.set_bool(lt::settings_pack::enable_incoming_tcp, !utp); settings.set_bool(lt::settings_pack::enable_outgoing_tcp, !utp);
+	settings.set_bool(lt::settings_pack::enable_incoming_utp, utp); settings.set_bool(lt::settings_pack::enable_outgoing_utp, utp);
 	settings.set_bool(lt::settings_pack::allow_multiple_connections_per_ip, true);
 	settings.set_bool(lt::settings_pack::close_redundant_connections, false);
 	NSString* encryption = job[@"encryption"] ?: @"disabled";
@@ -115,9 +118,9 @@ int main(int argc, char** argv) { @autoreleasepool { try {
 		if (!connected && [job[@"remotePort"] intValue] && status.state != lt::torrent_status::checking_files && status.state != lt::torrent_status::checking_resume_data) {
 			handle.connect_peer({lt::make_address([job[@"remoteHost"] UTF8String]), static_cast<unsigned short>([job[@"remotePort"] intValue])}); connected = true;
 		}
-		int rc4 = 0, negotiated = 0; std::vector<lt::peer_info> peers; handle.get_peer_info(peers);
-		for (auto const& peer : peers) { if (peer.flags & lt::peer_info::rc4_encrypted) ++rc4; if (peer.flags & lt::peer_info::plaintext_encrypted) ++negotiated; }
-		publish(@{@"port":@(session.listen_port()), @"complete":@(status.has_metadata && status.is_finished), @"seeding":@(status.is_seeding), @"rc4":@(rc4), @"negotiated":@(negotiated),
+		int rc4 = 0, negotiated = 0, utpPeers = 0, tcpPeers = 0; std::vector<lt::peer_info> peers; handle.get_peer_info(peers);
+		for (auto const& peer : peers) { if (peer.flags & lt::peer_info::rc4_encrypted) ++rc4; if (peer.flags & lt::peer_info::plaintext_encrypted) ++negotiated; if (peer.flags & lt::peer_info::utp_socket) ++utpPeers; else ++tcpPeers; }
+		publish(@{@"port":@(session.listen_port()), @"complete":@(status.has_metadata && status.is_finished), @"seeding":@(status.is_seeding), @"rc4":@(rc4), @"negotiated":@(negotiated), @"utp":@(utpPeers), @"tcp":@(tcpPeers),
 			@"downloaded":@(status.total_payload_download), @"uploaded":@(status.total_payload_upload), @"done":@(status.total_wanted_done), @"wanted":@(status.total_wanted)}, job[@"status"]);
 		std::this_thread::sleep_for(std::chrono::milliseconds(20));
 	}

@@ -3,6 +3,27 @@ import Testing
 @testable import ButterTorrentNetworking
 
 @Suite struct UTPStateTests {
+	@Test func selectiveACKTriggersFastRetransmissionAndFINWaitsForMissingData() throws {
+		var sender = UTPState(outgoing: true, id: 7, sequence: 1, now: 0)
+		let syn = sender.initial(window: 262144, now: 0)
+		var receiver = UTPState(outgoing: false, id: 7, sequence: 30, syn: syn, now: 0)
+		try sender.receive(receiver.initial(window: 262144, now: 0), capacity: 262144, now: 0.01)
+		sender.congestion.window = 5900; var offset = 0
+		let data = sender.send(Data(repeating: 7, count: 5900), offset: &offset, window: 262144, now: 0.02)
+		for packet in data.dropFirst() { try receiver.receive(packet, capacity: 262144, now: 0.03) }
+		let replies = try receiver.poll(window: 262144, pendingWrite: false, now: 0.04)
+		for reply in replies { try sender.receive(reply, capacity: 262144, now: 0.05) }
+		let beforeLoss = sender.congestion.window
+		let retries = try sender.poll(window: 262144, pendingWrite: false, now: 0.06)
+		#expect(retries.count == 1 && retries[0].sequence == data[0].sequence && retries[0].payload == data[0].payload)
+		#expect(sender.congestion.window == beforeLoss / 2 && sender.retransmissions == 1)
+		var earlyFIN = UTPState(outgoing: false, id: 7, sequence: 40, syn: syn, now: 0)
+		try earlyFIN.receive(UTPPacket(type: .fin, connection: 8, sequence: 3, acknowledgement: 39), capacity: 1000, now: 0.1)
+		#expect(!earlyFIN.eof && earlyFIN.received == 1)
+		try earlyFIN.receive(UTPPacket(type: .data, connection: 8, sequence: 2, acknowledgement: 39, payload: Data([1, 2])), capacity: 1000, now: 0.2)
+		#expect(earlyFIN.received == 3 && earlyFIN.ready == Data([1, 2]) && !earlyFIN.eof)
+		earlyFIN.ready.removeAll(); #expect(earlyFIN.eof)
+	}
 	@Test func headerVectorAndExtensionBounds() throws {
 		let bytes = Data([0x21, 0, 0x12, 0x34, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0x10, 0, 0xff, 0xff, 0, 0])
 		let packet = try UTPPacket(bytes)
