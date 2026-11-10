@@ -692,7 +692,7 @@ This is an independent Swift implementation. No throughput, CPU, peak-memory,
 public-network or UI acceptance is claimed. Consolidated measurements and
 dependency removal remain phase 12.
 
-## Session integration foundations (phase 11, in progress)
+## Session integration foundations (phase 11)
 
 `TransferResources` now shares disk admission and immutable upload-cache capacity
 across native transfers. Defaults admit eight disk operations and bound cached
@@ -1170,3 +1170,13 @@ availability. It releases them after an authenticated v2 proof or full file
 layer reconstruction. Six legacy wire comparisons pass against libtorrent,
 including BEP 9 sparse metadata and exact reconstructed layers at 16 KiB and
 64 KiB piece lengths.
+
+### Phase 11 acceptance
+
+The consolidated reference run passed 456 transfers and both DHT protocol
+comparisons. The app contract additionally ran two rate-limited payload transfers
+at once through each adapter, checked that both made progress before completion,
+and compared exact files after shutdown. Debug engine tests, focused Release and
+Thread Sanitizer checks, and the native disk and process-interruption suite passed.
+The app continues to use libtorrent at this boundary. Phase 12 covers production
+cut-over, dependency-free builds, native UI acceptance and resource measurements.

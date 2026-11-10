@@ -1,13 +1,11 @@
 # Remaining audit and acceptance checks
 
 ## Swift torrent engine replacement
-- Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
-  Run the consolidated reference matrix before tagging.
 - Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
   Measure web-seed request overhead; current bounded downloads request 16 KiB
   blocks and open a connection for each HTTP request, without range coalescing.
-  Preserve `v0.3.0`; commit, create an annotated minor tag and push after phase 11,
-  then do the same for phase 12. Details and gates are in
+  Preserve `v0.3.0`; commit, create an annotated minor tag and push after phase 12.
+  Details and gates are in
   [the migration record](docs/swift-engine.md).
 
 ## Filesystem integration
