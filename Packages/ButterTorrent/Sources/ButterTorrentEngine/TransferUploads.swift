@@ -3,7 +3,9 @@ import Foundation
 extension TCPTransfer {
 	func requestUpload(_ id: UUID, block: PeerBlock) throws {
 		guard let peer = peers[id] else { return }
-		if peer.features.v2, let actual = storage.merkleIndex.pieces[block.piece]?.length, block.offset + block.length > actual { throw PeerFailure.invalid("v2 request crosses a file boundary") }
+		// Hybrid peers may retain v1 block lengths after upgrading the handshake to v2.
+		// The validated hybrid layout fills the remainder of each file's last piece with zero padding.
+		if peer.features.v2, metadata.hashes.v1 == nil, let actual = storage.merkleIndex.pieces[block.piece]?.length, block.offset + block.length > actual { throw PeerFailure.invalid("v2 request crosses a file boundary") }
 		if (peer.choking && !peer.allowedIncoming.contains(block.piece)) || !picker.completed.contains(block.piece) {
 			if peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }; return
 		}

@@ -32,20 +32,23 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 	static func run() async throws {
 		let root = URL(fileURLWithPath: CommandLine.arguments[1]), binary = URL(fileURLWithPath: CommandLine.arguments[2])
 		var cases = 0
-		for multi in [false, true] { for size in [16384, 65536] { for nativeSeed in [false, true] { for selective in (multi ? [false, true] : [false]) { for fragmented in (size == 65536 && !selective ? [false, true] : [false]) {
+		for version in [1, 2, 3] { for multi in [false, true] { for size in [16384, 65536] { for nativeSeed in [false, true] { for selective in (multi ? [false, true] : [false]) { for fragmented in (size == 65536 && !selective ? [false, true] : [false]) {
 			let host = fragmented && !multi ? "::1" : "127.0.0.1"
-			let label = "\(multi ? "multi" : "single")-\(size)-\(nativeSeed ? "up" : "down")-\(selective ? "selective" : "all")\(fragmented ? (host == "::1" ? "-fragmented-ipv6" : "-fragmented-ipv4") : "")"
+			let suffix = version == 1 ? "" : version == 2 ? "-v2" : "-hybrid"
+			let label = "\(multi ? "multi" : "single")-\(size)\(suffix)-\(nativeSeed ? "up" : "down")-\(selective ? "selective" : "all")\(fragmented ? (host == "::1" ? "-fragmented-ipv6" : "-fragmented-ipv4") : "")"
+			if let filter = ProcessInfo.processInfo.environment["BUTTER_REFERENCE_FILTER"], !label.contains(filter) { continue }
 			let work = root.appendingPathComponent(label)
 			try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
-			let metadataURL = root.appendingPathComponent("\(multi ? "multi" : "single")-\(size).torrent"), metadata = try TorrentMetadata(contentsOf: metadataURL)
+			let metadataURL = root.appendingPathComponent("\(multi ? "multi" : "single")-\(size)\(suffix).torrent"), metadata = try TorrentMetadata(contentsOf: metadataURL)
 			let selected = metadata.inspection.files.map { !$0.pad && (!selective || $0.path.hasSuffix("a.bin")) }
 			let destination = work.appendingPathComponent("swift-data"), state = work.appendingPathComponent("swift-state")
-			let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state, selected: nativeSeed ? nil : selected)
+			let transferMetadata = nativeSeed || version == 1 ? metadata : try TorrentMetadata(infoBytes: metadata.originalInfo, expected: metadata.hashes)
+			let storage = try await TorrentStorage.open(metadata: transferMetadata, destination: destination, stateDirectory: state, selected: nativeSeed ? nil : selected)
 			if nativeSeed {
 				try await storage.importFiles(from: root.appendingPathComponent("reference-seed"))
 				for piece in 0..<storage.layout.pieceCount { let valid = try await storage.verify(piece: piece); try require(valid, "Native source did not verify") }
 			}
-			let engine = try await TCPTransfer.open(metadata: metadata, storage: storage)
+			let engine = try await TCPTransfer.open(metadata: transferMetadata, storage: storage)
 			let listener = try await TCPListener.listen(address: IPAddress(host))
 			var relay: TCPFragmentingRelay?
 			if nativeSeed && fragmented { relay = try await TCPFragmentingRelay.open(host: host, target: NetworkEndpoint(host, port: listener.port)) }
@@ -53,6 +56,7 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 			var job: [String: Any] = ["torrent": metadataURL.path, "destination": nativeSeed ? work.appendingPathComponent("reference-download").path : root.appendingPathComponent("reference-seed").path,
 				"listen": host == "::1" ? "[::1]:0" : "127.0.0.1:0", "status": record.path, "remoteHost": host, "remotePort": nativeSeed ? Int(relay?.port ?? listener.port) : 0]
 			if nativeSeed && selective { job["selected"] = selected }
+			if nativeSeed && version > 1 && !multi { job["magnet"] = Magnet(hashes: metadata.hashes).uri }
 			try JSONSerialization.data(withJSONObject: job).write(to: jobURL)
 			let process = Process(); process.executableURL = binary; process.arguments = ["--run", jobURL.path]
 			var accept: Task<UUID, Error>?
@@ -62,6 +66,10 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 				if !nativeSeed {
 					try await wait { let s = try status(record, process: process); return s?.seeding == true && s!.port > 0 }
 					let s = try status(record, process: process)!
+					if version > 1 && !multi {
+						let fetched = try await MetadataExchange().fetch(Magnet(hashes: metadata.hashes), peers: [NetworkEndpoint(host, port: s.port)], timeout: 10)
+						try require(fetched.originalInfo == metadata.originalInfo && fetched.pieceLayers.isEmpty, "Reference metadata exchange changed info bytes")
+					}
 					if fragmented { relay = try await TCPFragmentingRelay.open(host: host, target: NetworkEndpoint(host, port: s.port)) }
 					_ = try await engine.connect(to: NetworkEndpoint(host, port: relay?.port ?? s.port))
 				}
@@ -82,10 +90,16 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 				if selective, !nativeSeed { try require(!FileManager.default.fileExists(atPath: output.appendingPathComponent("Bundle/nested/b.bin").path), "Skipped file was materialised") }
 				cases += 1; print("PASS: \(label), verified bytes after both shutdown barriers")
 			} catch {
+				let snapshot = await engine.snapshot()
+				let detail = "FAIL: \(label): \(error); native peer=\(snapshot.lastPeerError ?? "none") disk=\(snapshot.storageError ?? "none") up=\(snapshot.uploaded) down=\(snapshot.downloaded) peers=\(snapshot.peers.count)\n"
+				try? FileHandle.standardError.write(contentsOf: Data(detail.utf8))
+				if let data = try? Data(contentsOf: record) { try? FileHandle.standardError.write(contentsOf: data) }
 				accept?.cancel(); try? await engine.shutdown(); try? await listener.shutdown(); await relay?.close(); try? await storage.shutdown()
 				if process.isRunning { process.terminate(); try? await stop(process); if process.isRunning { kill(process.processIdentifier, SIGKILL) } }; throw error
 			}
-		} } } } }
+		} } } } } }
 		print("PASS: \(cases) independent libtorrent-to-Swift and Swift-to-libtorrent TCP fixtures")
+		let filter = ProcessInfo.processInfo.environment["BUTTER_REFERENCE_FILTER"]
+		if filter == nil || filter == "DHT" { try await runDHTComparisons(root: root, binary: binary) }
 	}
 }
