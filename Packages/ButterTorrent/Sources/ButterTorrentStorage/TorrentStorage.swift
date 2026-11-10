@@ -236,11 +236,17 @@ final class StorageState: @unchecked Sendable {
 		} catch { record.set(piece, false); throw error }
 	}
 	private func checkedPiece(_ piece: Int, range: Range<Int>? = nil, check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
+		let expected = merkle.expected(piece)
+		if merkle.index.enabled && expected == nil { throw StorageFailure.missingHashes }
+		let before = try stamps()
+		let result = try digestPiece(piece, range: range, check: check)
+		guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
+		return (result.legacyValid && result.root == expected, result.bytes)
+	}
+	func digestPiece(_ piece: Int, range: Range<Int>? = nil, check: () throws -> Void) throws -> (legacyValid: Bool, root: Data?, bytes: Data) {
 		let length = try layout.length(of: piece)
 		let hashes = metadata.document.root["info"]?["pieces"]?.bytes
 		let mapping = merkle.index.pieces[piece]
-		if merkle.index.enabled && merkle.expected(piece) == nil { throw StorageFailure.missingHashes }
-		let before = try stamps()
 		var hash = Insecure.SHA1(), offset = 0, result = Data(), leaves: [Data] = []
 		while offset < length {
 			try check(); let count = min(65536, length - offset)
@@ -258,12 +264,12 @@ final class StorageState: @unchecked Sendable {
 			}
 			offset += count
 		}
-		guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
-		var valid = hashes.map { Data(hash.finalize()) == $0.subdata(in: (piece * 20)..<(piece * 20 + 20)) } ?? true
+		let valid = hashes.map { Data(hash.finalize()) == $0.subdata(in: (piece * 20)..<(piece * 20 + 20)) } ?? true
+		var root: Data?
 		if let mapping, let file = merkle.index.files[mapping.root] {
 			leaves += Array(repeating: Data(repeating: 0, count: 32), count: (1 << file.base) - leaves.count)
-			valid = try valid && MerkleMath.root(leaves) == merkle.expected(piece)
+			root = try MerkleMath.root(leaves)
 		}
-		return (valid, result)
+		return (valid, root, result)
 	}
 }

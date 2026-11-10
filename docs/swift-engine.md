@@ -1157,3 +1157,10 @@ source address. UPnP accepts only the selected gateway and uses a per-client
 ownership description to recover an add whose reply was lost. The loopback
 gateway and Thread Sanitizer tests cover the session lifecycle. Physical router
 verification remains in TODO.md.
+
+Storage can check a hybrid candidate against SHA-1 and reconstruct the complete
+v2 layer from one file. It authenticates the layer against the original v2 file
+root before persisting it or marking pieces verified. Storage tests cover a
+corrupt piece, conflicting but individually authenticated v1 data, and verified
+progress and layer export after restart. Peer scheduling for this path remains
+in TODO.md.

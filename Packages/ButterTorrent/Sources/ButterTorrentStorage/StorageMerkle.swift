@@ -8,6 +8,11 @@ private struct HashCheckpoint: Codable {
 	let records: [Data: MerkleTreeRecord]
 }
 
+public enum HybridLayerVerification: Sendable, Equatable {
+	case incomplete(legacyPieces: Set<Int>)
+	case verified(Set<Int>)
+}
+
 extension TorrentStorage {
 	public func availableHashes() async throws -> Set<Int> {
 		try await worker.run { [state] _ in
@@ -18,12 +23,22 @@ extension TorrentStorage {
 		try await worker.run { [state] cancellation in
 			try state.ready(); try cancellation.check()
 			var candidate = state.merkle; try candidate.install(request, hashes: hashes)
-			let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
-			let bytes = try encoder.encode(HashCheckpoint(identity: state.record.metadataHash, records: candidate.records))
-			guard bytes.count <= 100_663_296 else { throw StorageFailure.limit("hash checkpoint") }
-			try state.state.atomic(bytes, path: "hashes.plist"); state.merkle = candidate
-			state.event(.pieceLayersChanged)
+			try state.persistHashes(candidate)
 		}
+	}
+	/// Checks a fully received hybrid piece against v1 without recording verified progress.
+	public func verifyLegacyCandidate(piece: Int) async throws -> Bool {
+		try await worker.run { [state] cancellation in
+			try state.ready(); _ = try state.hybridFile(containing: piece)
+			let stamps = try state.stamps()
+			let valid = try state.digestPiece(piece, check: cancellation.check).legacyValid
+			guard try state.stamps() == stamps else { throw StorageFailure.invalid("payload changed during verification") }
+			return valid
+		}
+	}
+	/// Reconstructs one full v2 file layer from v1-verified bytes and publishes progress only after both checks.
+	public func reconstructHybridLayer(containing piece: Int) async throws -> HybridLayerVerification {
+		try await worker.run(bulk: true) { [state] cancellation in try state.reconstructHybridLayer(containing: piece, check: cancellation.check) }
 	}
 	public func hashResponse(_ request: MerkleHashRequest) async throws -> Data? {
 		try await worker.run { [state] cancellation in try state.hashResponse(request, check: cancellation.check) }
@@ -37,6 +52,44 @@ extension TorrentStorage {
 }
 
 extension StorageState {
+	func persistHashes(_ candidate: MerkleCatalog) throws {
+		let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
+		let bytes = try encoder.encode(HashCheckpoint(identity: record.metadataHash, records: candidate.records))
+		guard bytes.count <= 100_663_296 else { throw StorageFailure.limit("hash checkpoint") }
+		try state.atomic(bytes, path: "hashes.plist"); merkle = candidate
+		event(.pieceLayersChanged)
+	}
+	func hybridFile(containing piece: Int) throws -> (file: MerkleIndex.File, start: Int) {
+		guard metadata.hashes.v1 != nil, let mapping = merkle.index.pieces[piece], let file = merkle.index.files[mapping.root] else {
+			throw StorageFailure.invalid("hybrid piece required")
+		}
+		return (file, piece - mapping.local)
+	}
+	func reconstructHybridLayer(containing piece: Int, check: () throws -> Void) throws -> HybridLayerVerification {
+		try ready(); try invalidateChangedFiles()
+		let (file, start) = try hybridFile(containing: piece)
+		let before = try stamps()
+		var layer = Data(capacity: file.pieces * 32), legacyPieces: Set<Int> = []
+		for index in start..<(start + file.pieces) {
+			try check()
+			do {
+				let digest = try digestPiece(index, check: check)
+				if digest.legacyValid, let root = digest.root { layer.append(root); legacyPieces.insert(index) }
+			} catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { }
+			catch StorageFailure.invalid("short payload read") { }
+		}
+		guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
+		guard legacyPieces.count == file.pieces else { return .incomplete(legacyPieces: legacyPieces) }
+		var candidate = merkle
+		try candidate.installLayer(layer, root: file.root)
+		try check(); try persistHashes(candidate)
+		let newlyVerified = legacyPieces.filter { !record.contains($0) }
+		for index in legacyPieces { record.set(index, true) }
+		do { try save() }
+		catch { for index in newlyVerified { record.set(index, false) }; throw error }
+		return .verified(Set(legacyPieces.filter(record.contains)))
+	}
+
 	func restoreHashes() throws {
 		guard try state.inspect("hashes.plist") != nil else { return }
 		let cache = try PropertyListDecoder().decode(HashCheckpoint.self, from: state.read("hashes.plist", maximum: 100_663_296))

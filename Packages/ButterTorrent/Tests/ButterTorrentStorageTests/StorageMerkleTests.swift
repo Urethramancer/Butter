@@ -4,6 +4,51 @@ import ButterTorrentMetadata
 @testable import ButterTorrentStorage
 
 @Suite struct StorageMerkleTests {
+	@Test func legacyCandidatesNeedTheV2RootBeforePublishingProgress() async throws {
+		try await storageFixture { root in
+			let source = root.appendingPathComponent("payload"), bytes = Data((0..<115027).map { UInt8($0 % 251) })
+			try bytes.write(to: source)
+			let original = try TorrentMetadata(TorrentCreator.create(source: source, trackers: [], isPrivate: false, pieceLength: 32768))
+			let sparse = try TorrentMetadata(infoBytes: original.originalInfo, expected: original.hashes)
+			let destination = root.appendingPathComponent("download"), state = root.appendingPathComponent("state")
+			let download = try await TorrentStorage.open(metadata: sparse, destination: destination, stateDirectory: state)
+			try await download.importFiles(from: root)
+			try await download.write(piece: 0, offset: 0, data: Data([255]))
+			#expect(try await !download.verifyLegacyCandidate(piece: 0))
+			#expect(try await download.verifyLegacyCandidate(piece: 1))
+			#expect(try await download.reconstructHybridLayer(containing: 0) == .incomplete(legacyPieces: [1, 2, 3]))
+			#expect(try await download.snapshot().verifiedPieces.isEmpty)
+			await #expect(throws: StorageFailure.invalid("piece has not been verified")) { try await download.readVerifiedPiece(1) }
+			try await download.write(piece: 0, offset: 0, data: bytes.prefix(1))
+			#expect(try await download.reconstructHybridLayer(containing: 0) == .verified([0, 1, 2, 3]))
+			try await download.shutdown()
+			let restored = try await TorrentStorage.open(metadata: sparse, destination: destination, stateDirectory: state)
+			#expect(try await restored.snapshot().verifiedPieces == [0, 1, 2, 3])
+			#expect(try TorrentMetadata(await restored.exportMetadata()).pieceLayers == original.pieceLayers)
+			try await restored.shutdown()
+		}
+	}
+
+	@Test func validLegacyBytesWithAConflictingV2RootPublishNothing() async throws {
+		try await storageFixture { root in
+			let source = root.appendingPathComponent("payload"), bytes = Data(repeating: 19, count: 90000)
+			try bytes.write(to: source)
+			let original = try TorrentMetadata(TorrentCreator.create(source: source, trackers: [], isPrivate: false, pieceLength: 32768))
+			var info = original.document.root["info"]!.dictionary!, v1 = try #require(info[Data("pieces".utf8)]?.bytes)
+			var altered = bytes; altered[0] = 42
+			v1.replaceSubrange(0..<20, with: TorrentHasher.hash(altered.prefix(32768)).sha1)
+			info[Data("pieces".utf8)] = .bytes(v1)
+			let conflicting = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
+			try altered.write(to: source)
+			let storage = try await TorrentStorage.open(metadata: conflicting, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"))
+			try await storage.importFiles(from: root)
+			#expect(try await storage.verifyLegacyCandidate(piece: 0))
+			await #expect(throws: MetadataError.invalid("piece layer root")) { try await storage.reconstructHybridLayer(containing: 0) }
+			#expect(try await storage.snapshot().verifiedPieces.isEmpty)
+			#expect(try await storage.availableHashes().isEmpty)
+			try await storage.shutdown()
+		}
+	}
 	@Test func hybridAndV2VerificationAndAuthenticatedMagnetRestart() async throws {
 		try await storageFixture { root in
 			let (hybrid, _) = try storageMetadata(root)

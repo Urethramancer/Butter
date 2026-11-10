@@ -22,6 +22,10 @@ public struct MerkleCatalog: Sendable {
 		guard var tree = trees[request.root] else { throw MetadataError.invalid("unknown hash root") }
 		try tree.install(request, hashes: hashes); trees[request.root] = tree
 	}
+	public mutating func installLayer(_ layer: Data, root: Data) throws {
+		guard let file = index.files[root] else { throw MetadataError.invalid("unknown hash root") }
+		trees[root] = try AuthenticatedMerkleTree(file: file, layer: layer)
+	}
 	public func response(_ request: MerkleHashRequest) throws -> Data? { try trees[request.root]?.response(request) }
 	public func hash(root: Data, layer: Int, index: Int) -> Data? { trees[root]?.hash(layer: layer, index: index) }
 	public func completeLayers() throws -> [Data: Data] {

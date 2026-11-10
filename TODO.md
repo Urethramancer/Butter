@@ -2,9 +2,8 @@
 
 ## Swift torrent engine replacement
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
-  Hybrid magnets with only legacy v1 providers need reconstruction of missing v2 piece layers from
-  SHA-1-verified file data; the current harness requires a v2 hash provider or
-  complete `.torrent` piece layers.
+  Connect hybrid layer reconstruction to the legacy peer picker and prove
+  sparse magnet downloads against the reference engine.
 - Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
   Measure web-seed request overhead; current bounded downloads request 16 KiB
   blocks and open a connection for each HTTP request, without range coalescing.
