@@ -10,6 +10,19 @@ private func discoveryMetadata(isPrivate: Bool) throws -> TorrentMetadata {
 }
 
 @Suite struct DiscoveryTests {
+	@Test func concurrentSSDPTicksSendOneSearch() async throws {
+		let packets = try InjectedDatagrams(), dispatcher = UDPDispatcher(transport: packets)
+		let discovery = UPnPDiscovery(dispatcher: dispatcher)
+		let sent = try await withThrowingTaskGroup(of: Bool.self) { group in
+			for _ in 0..<8 { group.addTask { try await discovery.searchIfDue() } }
+			var sent = 0
+			for try await result in group where result { sent += 1 }
+			return sent
+		}
+		#expect(sent == 1)
+		#expect(await packets.sentCount == 1)
+		try await discovery.shutdown(); try await dispatcher.shutdown()
+	}
 	@Test func privateTorrentsNeverAdvertiseOrProduceDiscoveredPeers() async throws {
 		let packets = try InjectedDatagrams(), dispatcher = UDPDispatcher(transport: packets), clock = TestClock()
 		let discovery = try LocalDiscovery(dispatcher: dispatcher, peerPort: 6881, cookie: "own", clock: clock)

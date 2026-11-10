@@ -36,11 +36,13 @@ public actor UPnPDiscovery {
 	@discardableResult public func searchIfDue() async throws -> Bool {
 		guard !closed else { throw NetworkFailure.closed }
 		guard clock.now() >= next else { return false }
+		// Reserve before subscribing: actor reentrancy must not admit another tick.
+		next = clock.now() + 60
 		if pump == nil {
 			let incoming = try await dispatcher.subscribe(.ssdp)
 			pump = Task { [weak self] in for await packet in incoming { await self?.receive(packet) } }
 		}
-		next = clock.now() + 60
+		guard !closed else { pump?.cancel(); pump = nil; throw NetworkFailure.closed }
 		let target = try NetworkEndpoint(dispatcher.localEndpoint.address.isIPv6 ? "ff02::c" : "239.255.255.250", port: 1900)
 		let bytes = Data("M-SEARCH * HTTP/1.1\r\nHOST: \(target)\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\nST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n".utf8)
 		try await dispatcher.send(bytes, to: target)

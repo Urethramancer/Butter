@@ -287,14 +287,16 @@ The pinned reference also attempts PCP before NAT-PMP; matching that inherited
 behaviour remains recorded for complete-engine integration.
 
 `Scripts/verify.sh network` (also available as `http`) runs the headless networking
-harness. Debug and Release package suites cover 45 networking and 20 metadata/
+harness. Debug and Release package suites cover 46 networking and 20 metadata/
 creation tests. Real loopback fixtures cover both IP families, HTTP/TLS rejection,
 UDP trackers, HTTP-to-UDP failover with started/completed/stopped events on the
 owned port, and UPnP SOAP. Injected packets/clocks cover loss, retries, connection
 expiry, source filtering, discovery restrictions, router errors and reboot/lease
 recovery. Framing tests cover malformed and compressed responses. Concurrency
 cases run five independent times without retries, including cancellation, shared
-peer limits, concurrent shutdown, partial-bind rollback and immediate port reuse.
+peer limits, concurrent shutdown, partial-bind rollback, immediate port reuse and
+simultaneous SSDP ticks. Discovery reserves its throttle before subscription
+suspends; concurrent initial LSD registrations reject as busy.
 
 Production transfers remain on libtorrent. No LAN multicast, real router,
 successful public-CA HTTPS, UI or throughput/CPU/memory acceptance pass is claimed.

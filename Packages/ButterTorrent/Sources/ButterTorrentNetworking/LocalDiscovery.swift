@@ -21,6 +21,7 @@ public actor LocalDiscovery {
 	private var next: TimeInterval = 0
 	private var pump: Task<Void, Never>?
 	private var closed = false
+	private var updating = false
 	public init(dispatcher: UDPDispatcher, peerPort: UInt16, cookie: String = UUID().uuidString,
 		clock: any HTTPServiceClock = MonotonicHTTPClock(), ownsTransport: Bool = false) throws {
 		guard peerPort > 0, !cookie.isEmpty, cookie.utf8.count <= 64, cookie.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || $0 == 45 }) else { throw NetworkFailure.invalid("local discovery configuration") }
@@ -37,6 +38,8 @@ public actor LocalDiscovery {
 	}
 	public func setTorrents(_ metadata: [TorrentMetadata]) async throws {
 		guard !closed else { throw NetworkFailure.closed }
+		guard !updating else { throw NetworkFailure.busy }
+		updating = true; defer { updating = false }
 		var allowed: Set<Data> = []
 		for torrent in metadata where !torrent.inspection.private {
 			if let v1 = torrent.hashes.v1 { allowed.insert(v1) }
@@ -48,6 +51,7 @@ public actor LocalDiscovery {
 			let incoming = try await dispatcher.subscribe(.localDiscovery)
 			pump = Task { [weak self] in for await packet in incoming { await self?.receive(packet) } }
 		}
+		guard !closed else { pump?.cancel(); pump = nil; throw NetworkFailure.closed }
 	}
 	@discardableResult public func announceIfDue() async throws -> Bool {
 		guard !closed else { throw NetworkFailure.closed }
