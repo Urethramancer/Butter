@@ -15,7 +15,7 @@ public struct PeerEncryptionConfiguration: Sendable {
 	public static let disabled = Self(incoming: .disabled, outgoing: .disabled)
 }
 
-struct MSEHandshake {
+struct MSEHandshake: Sendable {
 	let stream: TCPStream
 	let clock: any TransportClock
 	let deadline: TimeInterval
@@ -24,6 +24,7 @@ struct MSEHandshake {
 	// Tests can force all four padding fields to their maximum without changing production entropy.
 	var paddingLength: Int?
 	var fragmentBytes: Int?
+	var workers: MSEWorkers = .shared
 	func write(_ data: Data) async throws {
 		let size = fragmentBytes ?? data.count
 		for start in stride(from: 0, to: data.count, by: size) { try await stream.write(data.subdata(in: start..<min(start + size, data.count)), timeout: remaining()) }
@@ -59,9 +60,9 @@ struct MSEHandshake {
 		try await calculate { try pair.shared(remote) }
 	}
 	func calculate<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
-		let timeout = try remaining(), clock = clock
+		let timeout = try remaining(), clock = clock, workers = workers
 		return try await withThrowingTaskGroup(of: T.self) { group in
-			group.addTask { try await MSEWorkers.shared.run(body) }
+			group.addTask { try await workers.run(body) }
 			group.addTask { try await clock.sleep(for: timeout); throw NetworkFailure.timedOut }
 			defer { group.cancelAll() }; return try await group.next()!
 		}

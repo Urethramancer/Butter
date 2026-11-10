@@ -19,7 +19,8 @@ public final class PeerStream: @unchecked Sendable {
 		let raw = try await TCPStream.connect(to: endpoint, timeout: timeout, clock: clock, budget: budget)
 		if configuration.outgoing == .disabled { return PeerStream(raw: raw) }
 		do {
-			let negotiationDeadline = configuration.outgoing == .enabled ? clock.now() + max(0.05, (deadline - clock.now()) / 2) : deadline
+			let remaining = deadline - clock.now(); guard remaining > 0 else { throw NetworkFailure.timedOut }
+			let negotiationDeadline = configuration.outgoing == .enabled ? clock.now() + remaining / 2 : deadline
 			var handshake = MSEHandshake(stream: raw, clock: clock, deadline: negotiationDeadline, configuration: configuration)
 			return try await handshake.initiate(hash: hash)
 		} catch {
@@ -27,7 +28,7 @@ public final class PeerStream: @unchecked Sendable {
 			guard configuration.outgoing == .enabled, clock.now() < deadline,
 				error as? NetworkFailure != .limit("MSE arithmetic workers") else { throw error }
 			// One fresh connection may fall back; required encryption never downgrades.
-			let fallback = try await TCPStream.connect(to: endpoint, timeout: max(0.1, deadline - clock.now()), clock: clock, budget: budget)
+			let fallback = try await TCPStream.connect(to: endpoint, timeout: deadline - clock.now(), clock: clock, budget: budget)
 			return PeerStream(raw: fallback)
 		}
 	}

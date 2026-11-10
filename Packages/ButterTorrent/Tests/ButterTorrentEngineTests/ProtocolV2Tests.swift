@@ -71,7 +71,7 @@ final class V2Fixture {
 		let fixture = try V2Fixture(version: version)
 		do {
 			let seed = try await fixture.engine("seed", seed: true), (endpoint, serving) = try await fixture.provider(seed, count: 2)
-			let exchange = MetadataExchange(), magnet = Magnet(hashes: fixture.metadata.hashes)
+			let exchange = MetadataExchange(encryption: .disabled), magnet = Magnet(hashes: fixture.metadata.hashes)
 			let received = try await exchange.fetch(magnet, peers: [endpoint], timeout: 5)
 			#expect(received.originalInfo == fixture.metadata.originalInfo && received.pieceLayers.isEmpty)
 			let down = try await fixture.engine("download", seed: false, sparse: true)

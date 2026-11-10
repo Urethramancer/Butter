@@ -8,8 +8,8 @@ import ButterTorrentNetworking
 	@Test func waitingMagnetSurvivesTheFirstOwnersStorageFailure() async throws {
 		let fixture = try V2Fixture(version: 3), registry = TorrentIdentityRegistry()
 		let blocked = fixture.root.appendingPathComponent("blocked-state"); try Data("keep".utf8).write(to: blocked)
-		let first = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("first"), stateDirectory: blocked, registry: registry)
-		let second = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("second"), stateDirectory: fixture.root.appendingPathComponent("second-state"), registry: registry)
+		let first = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("first"), stateDirectory: blocked, registry: registry, configuration: plainTransferConfiguration())
+		let second = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("second"), stateDirectory: fixture.root.appendingPathComponent("second-state"), registry: registry, configuration: plainTransferConfiguration())
 		do {
 			_ = try await registry.claim(fixture.metadata, owner: first.id)
 			let seed = try await fixture.engine("seed", seed: true), (endpoint, serving) = try await fixture.provider(seed, count: 3)
@@ -44,8 +44,8 @@ import ButterTorrentNetworking
 	@Test func verifiedArrivalResolvesDuplicates() async throws {
 		let fixture = try V2Fixture(version: 3)
 		let registry = TorrentIdentityRegistry()
-		let first = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("first"), stateDirectory: fixture.root.appendingPathComponent("first-state"), registry: registry)
-		let second = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("second"), stateDirectory: fixture.root.appendingPathComponent("second-state"), registry: registry)
+		let first = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("first"), stateDirectory: fixture.root.appendingPathComponent("first-state"), registry: registry, configuration: plainTransferConfiguration())
+		let second = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("second"), stateDirectory: fixture.root.appendingPathComponent("second-state"), registry: registry, configuration: plainTransferConfiguration())
 		do {
 			#expect(await !first.discoveryAllowed)
 			let seed = try await fixture.engine("seed", seed: true)
@@ -78,7 +78,7 @@ import ButterTorrentNetworking
 		let fixture = try V2Fixture(version: 2)
 		let listener = try await TCPListener.listen(address: IPAddress("127.0.0.1"))
 		let registry = TorrentIdentityRegistry()
-		let download = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("download"), stateDirectory: fixture.root.appendingPathComponent("state"), registry: registry)
+		let download = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("download"), stateDirectory: fixture.root.appendingPathComponent("state"), registry: registry, configuration: plainTransferConfiguration())
 		do {
 			let work = Task { try await download.resolve(peers: [NetworkEndpoint("127.0.0.1", port: listener.port)]) }
 			let stream = try await listener.accept(timeout: 3)

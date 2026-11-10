@@ -93,6 +93,7 @@ actor MSEWorkers {
 	static let shared = MSEWorkers()
 	private var active = 0
 	private var waiters: [(UUID, CheckedContinuation<Void, Error>)] = []
+	var waitingCount: Int { waiters.count }
 	private func acquire() async throws {
 		try Task.checkCancellation()
 		if active < 4 { active += 1; return }

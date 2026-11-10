@@ -63,9 +63,12 @@ final class TransferFixture {
 		do { _ = try await download.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port)); _ = try await incoming.value }
 		catch { incoming.cancel(); _ = try? await incoming.value; throw error }
 	}
-	func scripted(_ engine: TCPTransfer, identity: UInt8 = 42, hash: Data? = nil, reserved: Data = Data(repeating: 0, count: 8)) async throws -> WirePeer {
+	func scripted(_ engine: TCPTransfer, identity: UInt8 = 42, hash: Data? = nil, reserved: Data = Data(repeating: 0, count: 8), encryption: PeerEncryptionConfiguration? = nil) async throws -> WirePeer {
 		let listener = try await listen(), connecting = Task { try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port)) }
-		let stream = try await listener.accept(timeout: 3), peer = WirePeer(stream: stream)
+		let stream = try await listener.accept(timeout: 3)
+		let peer: WirePeer
+		if let encryption { peer = WirePeer(channel: try await PeerStream.accept(stream, hashes: [hash ?? metadata.hashes.v1!], configuration: encryption)) }
+		else { peer = WirePeer(stream: stream) }
 		_ = try await connecting.value
 		try await peer.hello(hash: hash ?? metadata.hashes.v1!, identity: identity, reserved: reserved)
 		return peer
@@ -85,25 +88,29 @@ func transferFixture(_ body: (TransferFixture) async throws -> Void) async throw
 
 final class WirePeer {
 	let stream: TCPStream
+	private let channel: PeerStream?
 	var decoder = PeerWireDecoder()
-	init(stream: TCPStream) { self.stream = stream }
+	init(stream: TCPStream) { self.stream = stream; channel = nil }
+	init(channel: PeerStream) { self.channel = channel; stream = channel.raw }
+	private func write(_ data: Data) async throws { if let channel { try await channel.write(data) } else { try await stream.write(data) } }
+	private func read() async throws -> Data { if let channel { return try await channel.read(timeout: 3) }; return try await stream.read(timeout: 3) }
 	func hello(hash: Data, identity: UInt8, fragmented: Bool = true, reserved: Data = Data(repeating: 0, count: 8), v2: Bool = false) async throws {
 		let hello = try PeerHandshake(infoHash: hash, peerID: Data(repeating: identity, count: 20), reserved: reserved)
-		if fragmented { for byte in hello.encoded { try await stream.write(Data([byte])) } } else { try await stream.write(hello.encoded) }
+		if fragmented { for byte in hello.encoded { try await write(Data([byte])) } } else { try await write(hello.encoded) }
 		while true {
 			if let remote = try decoder.handshake() {
 				var features = PeerFeatures(); features.fast = remote.reserved[7] & reserved[7] & 4 != 0; features.extended = remote.reserved[5] & reserved[5] & 16 != 0; features.v2 = v2
 				decoder.negotiate(features); return
 			}
-			let bytes = try await stream.read(timeout: 3)
+			let bytes = try await read()
 			guard !bytes.isEmpty else { throw PeerFailure.closed }; try decoder.feed(bytes)
 		}
 	}
-	func send(_ message: PeerMessage) async throws { try await stream.write(message.encoded()) }
+	func send(_ message: PeerMessage) async throws { try await write(message.encoded()) }
 	func next() async throws -> PeerMessage {
 		while true {
 			if let message = try decoder.next() { return message }
-			let bytes = try await stream.read(timeout: 3)
+			let bytes = try await read()
 			guard !bytes.isEmpty else { throw PeerFailure.closed }; try decoder.feed(bytes)
 		}
 	}

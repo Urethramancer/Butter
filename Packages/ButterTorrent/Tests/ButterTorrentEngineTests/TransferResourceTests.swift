@@ -39,14 +39,15 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 }
 
 @Suite struct TransferResourceTests {
-	@Test func cancellingPayloadAlreadyWaitingForRateLimitUnblocksControlReplies() async throws {
+	@Test(arguments: [false, true]) func cancellingPayloadAlreadyWaitingForRateLimitUnblocksControlReplies(_ encrypted: Bool) async throws {
 		try await transferFixture { fixture in
 			let clock = EngineClock(); var config = plainTransferConfiguration(); config.uploadLimit = 1024
+			if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
 			let seed = try await fixture.transfer("seed", seed: true, configuration: config, clock: clock)
 			_ = try await clock.nextSleep() // Drain the ticker's initial wait before observing the writer.
 			let ticker = await seed.ticker; ticker?.cancel(); await ticker?.value
 			var flags = Data(repeating: 0, count: 8); flags[7] = 4
-			let peer = try await fixture.scripted(seed, reserved: flags)
+			let peer = try await fixture.scripted(seed, reserved: flags, encryption: encrypted ? config.encryption : nil)
 			try await peer.send(.haveNone); try await peer.send(.interested)
 			let block = PeerBlock(piece: 0, offset: 0, length: 16384)
 			try await peer.send(.request(block))
