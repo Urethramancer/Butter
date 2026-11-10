@@ -39,6 +39,29 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 }
 
 @Suite struct TransferResourceTests {
+	@Test func cacheCapacityWaitsAreCancellableAndOwnerCloseDoesNotCancelAnotherLoad() async throws {
+		try await transferFixture { fixture in
+			_ = try await fixture.transfer("seed", seed: true)
+			let gate = TransferPermits(1); try await gate.acquire()
+			let pool = SharedPieceCache(limit: 40_000) { storage, index in
+				try await gate.acquire()
+				do { let bytes = try await storage.readVerifiedPiece(index); await gate.release(); return bytes }
+				catch { await gate.release(); throw error }
+			}
+			let first = PieceCacheOwner(), second = PieceCacheOwner(), storage = fixture.stores[0]
+			let reading = Task { try await pool.piece(0, storage: storage, owner: first) }
+			try await eventually { await pool.usage.1 == 32768 }
+			let cancelled = Task { try await pool.piece(1, storage: storage, owner: second) }
+			try await eventually { await pool.waitingCount == 1 }; cancelled.cancel()
+			await #expect(throws: CancellationError.self) { try await cancelled.value }
+			let closing = Task { try await pool.piece(1, storage: storage, owner: second) }
+			try await eventually { await pool.waitingCount == 1 }; await pool.close(second)
+			await #expect(throws: PeerFailure.self) { try await closing.value }
+			await gate.release(); #expect(try await reading.value == fixture.bytes.prefix(32768))
+			await pool.close(first)
+			let (cached, loading) = await pool.usage; #expect(cached == 0 && loading == 0)
+		}
+	}
 	@Test func diskScopesShareAdmissionAndClosingOnePreservesOtherTransfers() async throws {
 		let resources = try TransferResources(maximumDiskOperations: 1)
 		let first = TransferDiskScope(resources: resources), second = TransferDiskScope(resources: resources)
