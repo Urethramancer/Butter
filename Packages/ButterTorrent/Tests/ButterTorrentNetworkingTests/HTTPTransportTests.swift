@@ -43,7 +43,7 @@ import Testing
 		catch { #expect(error is CancellationError) }
 		let start = ProcessInfo.processInfo.systemUptime
 		do { _ = try await transport.get(HTTPRequest(url: server.url, timeout: 0.2)); Issue.record("Deadline was ignored") }
-		catch { #expect((error as? URLError)?.code == .timedOut) }
+		catch { #expect(error as? NetworkFailure == .timedOut) }
 		#expect(ProcessInfo.processInfo.systemUptime - start < 5)
 		await server.stop()
 	}

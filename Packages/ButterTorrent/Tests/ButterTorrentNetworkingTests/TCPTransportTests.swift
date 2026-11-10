@@ -7,21 +7,27 @@ import Testing
 		#expect(try IPAddress("::ffff:127.0.0.1") == IPAddress("127.0.0.1"))
 		#expect(try IPAddress("::1").isLoopback)
 		#expect(try IPAddress("100.64.0.1").isLocal)
+		#expect(try IPAddress("64:ff9b::7f00:1").isLoopback)
+		#expect(try IPAddress("fec0::1").isLocal)
 		let addresses = try await SystemAddressResolver().resolve(host: "localhost", port: 1234, timeout: 3)
 		#expect(!addresses.isEmpty && addresses.allSatisfy { $0.port == 1234 && $0.address.isLoopback })
+		#expect(try NetworkEnvironment.interfaces(includeLoopback: true).contains { $0.address.isLoopback })
+		#expect(try NetworkEnvironment.sourceAddress(for: NetworkEndpoint("127.0.0.1", port: 9)).isLoopback)
 		for text in ["", "localhost", "127.0.0.256", "::1%0"] { #expect(throws: NetworkFailure.self) { try IPAddress(text) } }
 	}
 	@Test func ipv4AndIPv6RoundTripAndCancellation() async throws {
 		for address in ["127.0.0.1", "::1"] {
+			let clock = ManualTransportClock()
 			let ip = try IPAddress(address), listener = try await TCPListener.listen(address: IPAddress(address), maximumPeers: 1)
-			let client = try await TCPStream.connect(to: NetworkEndpoint(address: ip, port: listener.port))
+			let client = try await TCPStream.connect(to: NetworkEndpoint(address: ip, port: listener.port), clock: clock)
 			let server = try await listener.accept(timeout: 3)
 			try await client.write(Data("fragment".utf8))
 			#expect(try await server.read(maximumBytes: 3) == Data("fra".utf8))
 			#expect(try await server.read() == Data("gment".utf8))
 			try await server.write(Data([0, 255]))
 			#expect(try await client.read() == Data([0, 255]))
-			let blocked = Task { try await client.read() }; blocked.cancel()
+			let blocked = Task { try await client.read(timeout: 7) }
+			try await clock.waitForSleep(7); blocked.cancel()
 			do { _ = try await blocked.value; Issue.record("Cancelled read succeeded") } catch { #expect(error is CancellationError) }
 			#expect(client.isClosed)
 			server.close(); try await listener.shutdown()

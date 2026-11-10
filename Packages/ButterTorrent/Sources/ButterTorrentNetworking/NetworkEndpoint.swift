@@ -55,12 +55,18 @@ public struct IPAddress: Hashable, Sendable, CustomStringConvertible {
 		let host = String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
 		return scope == 0 ? host : "\(host)%\(scope)"
 	}
-	public var isLoopback: Bool { isIPv6 ? bytes.prefix(15).allSatisfy({ $0 == 0 }) && bytes[15] == 1 : bytes[0] == 127 }
+	private var translatedIPv4: IPAddress? {
+		guard isIPv6 else { return nil }
+		let nat64: [UInt8] = [0, 100, 255, 155, 0, 0, 0, 0, 0, 0, 0, 0]
+		guard bytes.prefix(12).allSatisfy({ $0 == 0 }) || bytes.prefix(12).elementsEqual(nat64) else { return nil }
+		return try? IPAddress(bytes: bytes.subdata(in: 12..<16))
+	}
+	public var isLoopback: Bool { isIPv6 ? translatedIPv4?.isLoopback == true || (bytes.prefix(15).allSatisfy({ $0 == 0 }) && bytes[15] == 1) : bytes[0] == 127 }
 	public var isUnspecified: Bool { bytes.allSatisfy { $0 == 0 } }
 	public var isMulticast: Bool { isIPv6 ? bytes[0] == 255 : bytes[0] & 0xf0 == 0xe0 }
 	public var isLocal: Bool {
 		if isLoopback || isUnspecified || isMulticast { return true }
-		if isIPv6 { return bytes[0] & 0xfe == 0xfc || (bytes[0] == 0xfe && bytes[1] & 0xc0 == 0x80) }
+		if isIPv6 { return translatedIPv4?.isLocal == true || bytes[0] & 0xfe == 0xfc || (bytes[0] == 0xfe && bytes[1] & 0x80 != 0) }
 		return bytes[0] == 0 || bytes[0] == 10 || bytes[0] >= 240 || (bytes[0] == 169 && bytes[1] == 254)
 			|| (bytes[0] == 172 && (16...31).contains(bytes[1])) || (bytes[0] == 192 && bytes[1] == 168)
 			|| (bytes[0] == 100 && (64...127).contains(bytes[1]))

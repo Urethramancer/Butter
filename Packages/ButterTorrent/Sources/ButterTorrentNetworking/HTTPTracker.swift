@@ -30,9 +30,7 @@ public struct TrackerRequest: Sendable {
 	}
 	public func url(for tracker: URL) throws -> URL {
 		try HTTPURL.validate(tracker, tracker: true)
-		guard infoHash.count == 20, peerID.count == 20, port > 0, counters.uploaded >= 0,
-			counters.downloaded >= 0, counters.left >= 0, (0...200).contains(wantedPeers),
-			(trackerID?.count ?? 0) <= 1024 else { throw HTTPServiceError.invalid("announce fields") }
+		try validateFields()
 		var fields = [
 			("info_hash", HTTPURL.encode(infoHash)), ("peer_id", HTTPURL.encode(peerID)), ("port", String(port)),
 			("uploaded", String(counters.uploaded)), ("downloaded", String(counters.downloaded)),
@@ -41,6 +39,11 @@ public struct TrackerRequest: Sendable {
 		if let event { fields.append(("event", event.rawValue)) }
 		if let trackerID { fields.append(("trackerid", HTTPURL.encode(trackerID))) }
 		return try HTTPURL.query(tracker, fields: fields, reserved: ["info_hash", "peer_id", "port", "uploaded", "downloaded", "left", "compact", "numwant", "event", "trackerid", "ip", "ipv4", "ipv6", "key", "supportcrypto", "no_peer_id"])
+	}
+	func validateFields() throws {
+		guard infoHash.count == 20, peerID.count == 20, port > 0, counters.uploaded >= 0,
+			counters.downloaded >= 0, counters.left >= 0, (0...200).contains(wantedPeers),
+			(trackerID?.count ?? 0) <= 1024 else { throw HTTPServiceError.invalid("announce fields") }
 	}
 }
 
@@ -143,7 +146,7 @@ public protocol TrackerAnnouncing: Sendable {
 /// HTTPTrackerClient implements bounded HTTP/HTTPS announces independently of the engine.
 public struct HTTPTrackerClient: TrackerAnnouncing {
 	private let transport: any HTTPTransport
-	public init(transport: any HTTPTransport = FoundationHTTPTransport()) { self.transport = transport }
+	public init(transport: any HTTPTransport = NetworkHTTPTransport()) { self.transport = transport }
 	public func announce(to tracker: URL, request: TrackerRequest) async throws -> TrackerResponse {
 		try Task.checkCancellation()
 		let response = try await transport.get(HTTPRequest(url: request.url(for: tracker), trackerAnnounce: true))

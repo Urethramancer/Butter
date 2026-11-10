@@ -20,7 +20,7 @@ public actor WebSeedClient {
 	private let wallTime: @Sendable () -> Date
 	private var active = 0
 	private var states: [URL: State] = [:]
-	public init(transport: any HTTPTransport = FoundationHTTPTransport(), clock: any HTTPServiceClock = MonotonicHTTPClock(), maximumBytes: Int = 1_048_576, wallTime: @escaping @Sendable () -> Date = { Date() }) {
+	public init(transport: any HTTPTransport = NetworkHTTPTransport(), clock: any HTTPServiceClock = MonotonicHTTPClock(), maximumBytes: Int = 1_048_576, wallTime: @escaping @Sendable () -> Date = { Date() }) {
 		self.transport = transport; self.clock = clock; self.maximumBytes = max(1, min(maximumBytes, 16_777_216))
 		self.wallTime = wallTime
 	}

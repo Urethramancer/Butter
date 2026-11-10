@@ -24,6 +24,7 @@ public final class TCPStream: @unchecked Sendable {
 			switch state {
 			case .ready: self.lock.withLock { self.ready = true }; self.opened.resolve(.success(()))
 			case .failed(let error): self.close(error)
+			case .waiting(let error): self.close(error)
 			case .cancelled: self.close()
 			default: break
 			}
@@ -31,6 +32,7 @@ public final class TCPStream: @unchecked Sendable {
 	}
 	public static func connect(to endpoint: NetworkEndpoint, tlsServerName: String? = nil, timeout: TimeInterval = 10,
 		clock: any TransportClock = ContinuousTransportClock(), budget: TCPPeerBudget? = nil) async throws -> TCPStream {
+		try Task.checkCancellation()
 		guard endpoint.port > 0, !endpoint.address.isUnspecified, !endpoint.address.isMulticast else { throw NetworkFailure.invalid("TCP destination") }
 		let tls: NWProtocolTLS.Options?
 		if let name = tlsServerName {
@@ -59,6 +61,7 @@ public final class TCPStream: @unchecked Sendable {
 		catch { close(error); throw error }
 	}
 	public func read(maximumBytes: Int = 65_536, timeout: TimeInterval = 30) async throws -> Data {
+		try Task.checkCancellation()
 		guard (1...1_048_576).contains(maximumBytes) else { throw NetworkFailure.invalid("TCP read size") }
 		let id = UUID(), waiter = NetworkWaiter<Data>()
 		let ended = try lock.withLock {
@@ -81,6 +84,7 @@ public final class TCPStream: @unchecked Sendable {
 		catch { close(error); throw error }
 	}
 	public func write(_ data: Data, timeout: TimeInterval = 30) async throws {
+		try Task.checkCancellation()
 		guard !data.isEmpty, data.count <= 1_048_576 else { throw NetworkFailure.invalid("TCP write size") }
 		let id = UUID(), waiter = NetworkWaiter<Void>()
 		try lock.withLock {

@@ -33,7 +33,10 @@ public actor TrackerAnnouncer {
 	public init(tiers: [[URL]], request: TrackerRequest, client: any TrackerAnnouncing = HTTPTrackerClient(),
 		clock: any HTTPServiceClock = MonotonicHTTPClock(), order: @Sendable ([URL]) -> [URL] = { $0.shuffled() }) throws {
 		guard tiers.count <= 32, tiers.reduce(0, { $0 + $1.count }) <= 128 else { throw HTTPServiceError.limit("tracker count") }
-		for url in tiers.flatMap({ $0 }) { _ = try request.url(for: url) }
+		for url in tiers.flatMap({ $0 }) {
+			if url.scheme?.lowercased() == "udp" { _ = try UDPTrackerClient.destination(url); try request.validateFields() }
+			else { _ = try request.url(for: url) }
+		}
 		self.tiers = tiers.filter { !$0.isEmpty }.map(order)
 		self.request = request; self.client = client; self.clock = clock
 	}

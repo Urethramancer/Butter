@@ -40,7 +40,7 @@ import Testing
 			_ = try await FoundationHTTPTransport().get(HTTPRequest(url: url, timeout: 3))
 			Issue.record("Untrusted HTTPS certificate was accepted")
 		} catch {
-			#expect([.serverCertificateUntrusted, .serverCertificateHasBadDate, .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid].contains((error as? URLError)?.code))
+			if case .tls = error as? NWError { } else { Issue.record("Expected a TLS trust failure, received \(error)") }
 		}
 		await server.stop()
 	}

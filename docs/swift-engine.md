@@ -237,13 +237,71 @@ range validation, retry hints, bans and the integrated metadata-to-HTTP scenario
 Concurrency-sensitive cases additionally run five times without retries. Release
 package tests/builds are the build gate; no app/UI change requires native UI tests.
 
-The library currently checks literal local addresses and loopback announce paths.
+At the phase 4 boundary, the library checked literal local addresses and loopback announce paths.
 DNS-result policy and connection pinning (including DNS rebinding) belong to the
 shared networking foundation in phase 5, and remain a production-enablement gate.
 The TLS fixture proves untrusted certificates are rejected; no successful
-public-CA HTTPS interoperability or network hardware pass is claimed.
+public-CA HTTPS interoperability or network hardware pass is claimed. Phase 5
+below supersedes the Foundation transport and closes the DNS-pinning gate.
 
 Protocol references: [BEP 3](https://www.bittorrent.org/beps/bep_0003.html),
 [BEP 12](https://www.bittorrent.org/beps/bep_0012.html),
 [BEP 17](https://www.bittorrent.org/beps/bep_0017.html) and
 [BEP 19](https://www.bittorrent.org/beps/bep_0019.html).
+
+## Shared networking foundations (phase 5)
+
+Completed and tagged `v0.8.0`.
+
+`ListeningPort` owns TCP and both UDP families on one port. Partial binding rolls
+back, incoming/outgoing TCP share a hard peer budget, and shutdown closes opening
+and established peers and waits for listener/socket release. Streams bound reads
+and writes, prohibit overlapping same-direction I/O and settle cancellation,
+deadline and callbacks once. Numeric endpoints preserve IPv6 scopes. Interface
+and gateway discovery use system APIs without sending probes. DNS has four
+bounded system workers per resolver and sixteen answers; cancellation releases
+the caller but retains the worker slot until libc returns.
+
+The user explicitly chose Network for HTTP/TLS instead of the planned Foundation
+transport with a local CONNECT relay. `NetworkHTTPTransport` resolves once per
+hop, validates every answer and connects to numeric endpoints. TLS retains the
+original hostname and system certificate validation. Mixed public/local answers,
+public-to-local redirects and unsafe resolved loopback tracker paths fail before
+connection. HTTP/1 framing handles fragmented headers, informational responses,
+fixed/chunked/EOF bodies and bounded gzip/deflate via Apple's system zlib. The old
+`FoundationHTTPTransport` name remains an alias. No bundled dependency was added.
+
+The UDP dispatcher bounds transactions and subscribers, checks source endpoints
+and transaction identifiers, and routes DHT/µTP packets for their later protocol
+phases. UDP trackers implement BEP 15/41, connection expiry and retransmission;
+the combined client uses existing HTTP tier/event management. BEP 14 discovery
+uses explicit multicast interfaces, public-metadata registration, cookies and
+rate limits. Private or unknown metadata does not authorise advertisements.
+
+NAT-PMP and UPnP clients provide external-address queries, mapping, renewal,
+reboot detection and removal. SSDP description URLs must match the responding
+numeric address. XML bounds reject entity declarations and external resolution;
+control URLs retain the gateway origin. UPnP checks ownership before replacing,
+renewing or deleting mappings. Callers drive periodic operations explicitly.
+The pinned reference also attempts PCP before NAT-PMP; matching that inherited
+behaviour remains recorded for complete-engine integration.
+
+`Scripts/verify.sh network` (also available as `http`) runs the headless networking
+harness. Debug and Release package suites cover 45 networking and 20 metadata/
+creation tests. Real loopback fixtures cover both IP families, HTTP/TLS rejection,
+UDP trackers, HTTP-to-UDP failover with started/completed/stopped events on the
+owned port, and UPnP SOAP. Injected packets/clocks cover loss, retries, connection
+expiry, source filtering, discovery restrictions, router errors and reboot/lease
+recovery. Framing tests cover malformed and compressed responses. Concurrency
+cases run five independent times without retries, including cancellation, shared
+peer limits, concurrent shutdown, partial-bind rollback and immediate port reuse.
+
+Production transfers remain on libtorrent. No LAN multicast, real router,
+successful public-CA HTTPS, UI or throughput/CPU/memory acceptance pass is claimed.
+Storage, transfer protocols and final engine integration remain phases 6–12.
+
+Protocol references: [BEP 15](https://www.bittorrent.org/beps/bep_0015.html),
+[BEP 41](https://www.bittorrent.org/beps/bep_0041.html),
+[BEP 14](https://www.bittorrent.org/beps/bep_0014.html),
+[RFC 6886](https://www.rfc-editor.org/rfc/rfc6886) and
+[UPnP WANIPConnection v2](https://upnp.org/specs/gw/UPnP-gw-WANIPConnection-v2-Service.pdf).

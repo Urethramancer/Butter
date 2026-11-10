@@ -35,6 +35,7 @@ swift test --package-path Packages/ButterTorrent --scratch-path .build/ButterTor
 Scripts/verify.sh metadata-reference
 Scripts/verify.sh creation
 Scripts/verify.sh http
+Scripts/verify.sh network
 ```
 
 The first command works without libtorrent installed. The second uses the parent
@@ -48,18 +49,41 @@ existing Xcode project and shell-based test builds aligned without introducing
 binary artefacts. Consumers of the standalone package can import the
 `ButterTorrentMetadata` product normally.
 
-`ButterTorrentNetworking` adds HTTP/HTTPS trackers and BEP 17/19 web seeds using
-Foundation. These services are connected to the package's headless integration
-tests; production transfers still use libtorrent. `http` runs the focused service
+`ButterTorrentNetworking` provides TCP streams/listeners, shared IPv4/IPv6 UDP,
+HTTP/HTTPS and UDP trackers, BEP 17/19 web seeds, local discovery and UPnP/NAT-PMP.
+These services are connected to the package's headless integration tests;
+production transfers still use libtorrent. `http` and `network` run the networking
 tests; the ordinary package test command includes both libraries.
 
 The HTTP transport bounds concurrent requests, redirects, response headers and
 decoded body bytes; defaults are eight requests, five redirects, 32 KiB response
 headers and 1 MiB bodies. Requests have a 30-second overall and ten-second idle
-deadline. TLS uses platform certificate validation. Cookies, credential storage,+caching, URL credentials and HTTPS downgrade redirects are disabled. Initial and
-redirect URLs are validated, including loopback announce paths and redirects from
-public names to literal local addresses. DNS-based address policy/pinning remains
-part of the shared networking foundation and must pass before production use.
+deadline. With the approved phase 5 design change, Network handles HTTP/TLS through
+numeric endpoints; Foundation retains URL and XML parsing. Each hop resolves once,
+validates all answers and connects to those addresses. TLS verifies the original
+hostname using platform trust. Mixed public/local answers, public-to-local
+redirects, unsafe loopback tracker paths, URL credentials and HTTPS downgrades are
+rejected. HTTP/1 framing handles fragmented, chunked and close-delimited responses;
+system zlib bounds gzip/deflate decoding. No cookies, credential store or cache is
+used. `FoundationHTTPTransport` remains a compatibility alias for
+`NetworkHTTPTransport`.
+
+`ListeningPort` owns TCP and IPv4/IPv6 UDP on one port, rolls back partial binds
+and releases the port on shutdown. Incoming and outgoing TCP peers share a hard
+budget; streams permit one read and one write, each bounded to 1 MiB. DNS allows
+four outstanding system jobs per resolver and sixteen answers; cancelled libc
+lookups retain their worker slot until they finish. UDP queues, subscriptions
+and transactions are bounded. The dispatcher matches replies by source and
+transaction and routes DHT/µTP packets to future protocol implementations.
+
+UDP trackers implement BEP 15/41, connection expiry and exponential retries.
+`TrackerClient` connects HTTP/UDP tiers to the same lifecycle manager. Local
+discovery advertises only explicitly registered public metadata, with cookies,
+rate limits and IPv4/IPv6 multicast interfaces. UPnP discovery validates the
+description origin against the responding address; bounded XML rejects entities.
+Mapping clients support lease renewal, reboot detection and removal. UPnP checks
+existing mappings before changing or deleting them. Callers drive discovery,
+announce and renewal ticks and explicitly shut down owned transports.
 
 Tracker services encode binary identifiers without text conversion, parse compact
 IPv4/IPv6 and dictionary peers, retain tracker IDs, honour intervals, shuffle and

@@ -20,6 +20,43 @@ final class TestClock: HTTPServiceClock, @unchecked Sendable {
 	func advance(_ amount: TimeInterval) { lock.withLock { value += amount } }
 }
 
+final class ManualTransportClock: TransportClock, @unchecked Sendable {
+	let sleeps = AsyncStream<(UUID, TimeInterval)>.makeStream()
+	private let lock = NSLock()
+	private var time: TimeInterval = 100
+	private var pending: [UUID: (TimeInterval, CheckedContinuation<Void, Error>)] = [:]
+	func now() -> TimeInterval { lock.withLock { time } }
+	func sleep(for seconds: TimeInterval) async throws {
+		let id = UUID()
+		try await withTaskCancellationHandler {
+			try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+				lock.withLock {
+					if Task.isCancelled { continuation.resume(throwing: CancellationError()) }
+					else { pending[id] = (time + seconds, continuation); _ = sleeps.continuation.yield((id, seconds)) }
+				}
+			}
+		} onCancel: {
+			let continuation = self.lock.withLock { self.pending.removeValue(forKey: id)?.1 }
+			continuation?.resume(throwing: CancellationError())
+		}
+	}
+	func advance(_ seconds: TimeInterval) {
+		let ready = lock.withLock {
+			time += seconds
+			let ready = pending.filter { $0.value.0 <= time }
+			for id in ready.keys { pending[id] = nil }
+			return ready.values.map(\.1)
+		}
+		for continuation in ready { continuation.resume() }
+	}
+	func waitForSleep(_ seconds: TimeInterval) async throws {
+		try await deadline {
+			for await (id, value) in self.sleeps.stream { if value == seconds && self.lock.withLock({ self.pending[id] != nil }) { return } }
+			throw NetworkFailure.invalid("clock signal ended")
+		}
+	}
+}
+
 actor ScriptedHTTP: HTTPTransport {
 	var requests: [HTTPRequest] = []
 	var responses: [Result<HTTPResponse, HTTPServiceError>]
@@ -75,6 +112,8 @@ final class HTTPFixture: @unchecked Sendable {
 	struct Input: Sendable {
 		let target: String
 		let headers: [String: String]
+		let method: String
+		let body: Data
 	}
 	struct Reply: Sendable {
 		var status = 200
@@ -85,22 +124,23 @@ final class HTTPFixture: @unchecked Sendable {
 	}
 	private let queue = DispatchQueue(label: "Butter.HTTPFixture")
 	private let listener: NWListener
+	private let host: String
 	private let handler: @Sendable (Input) -> Reply
 	private var connections: [UUID: NWConnection] = [:]
 	private var ready: CheckedContinuation<URL, Error>?
 	private var stopped = false
-	private init(tls: NWProtocolTLS.Options?, handler: @escaping @Sendable (Input) -> Reply) throws {
+	private init(host: String, tls: NWProtocolTLS.Options?, handler: @escaping @Sendable (Input) -> Reply) throws {
 		let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
-		parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+		parameters.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(host), port: .any)
 		listener = try NWListener(using: parameters)
-		self.handler = handler
+		self.host = host; self.handler = handler
 	}
-	static func start(tls: NWProtocolTLS.Options? = nil, handler: @escaping @Sendable (Input) -> Reply) async throws -> HTTPFixture {
-		let server = try HTTPFixture(tls: tls, handler: handler)
+	static func start(host: String = "127.0.0.1", tls: NWProtocolTLS.Options? = nil, handler: @escaping @Sendable (Input) -> Reply) async throws -> HTTPFixture {
+		let server = try HTTPFixture(host: host, tls: tls, handler: handler)
 		_ = try await server.start()
 		return server
 	}
-	var url: URL { URL(string: "http://127.0.0.1:\(listener.port!.rawValue)")! }
+	var url: URL { URL(string: "http://\(host.contains(":") ? "[\(host)]" : host):\(listener.port!.rawValue)")! }
 	private func start() async throws -> URL {
 		try await withCheckedThrowingContinuation { continuation in
 			queue.async { [self] in
@@ -145,8 +185,9 @@ final class HTTPFixture: @unchecked Sendable {
 		connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] data, _, complete, error in
 			guard let self else { connection.cancel(); return }
 			let bytes = input + (data ?? Data())
-			guard bytes.count <= 16_384 else { connection.cancel(); return }
-			if let text = String(data: bytes, encoding: .utf8), text.contains("\r\n\r\n") {
+			guard bytes.count <= 81_920 else { connection.cancel(); return }
+			if let boundary = bytes.range(of: Data("\r\n\r\n".utf8)), boundary.upperBound <= 16_384,
+				let text = String(data: bytes.prefix(boundary.lowerBound), encoding: .utf8) {
 				let lines = text.components(separatedBy: "\r\n")
 				let target = lines[0].split(separator: " ").dropFirst().first.map(String.init) ?? ""
 				var headers: [String: String] = [:]
@@ -154,7 +195,10 @@ final class HTTPFixture: @unchecked Sendable {
 					let pair = line.split(separator: ":", maxSplits: 1)
 					if pair.count == 2 { headers[pair[0].lowercased()] = pair[1].trimmingCharacters(in: .whitespaces) }
 				}
-				self.send(self.handler(Input(target: target, headers: headers)), on: connection)
+				let length = Int(headers["content-length"] ?? "0") ?? -1
+				guard (0...65_536).contains(length) else { connection.cancel(); return }
+				guard bytes.count >= boundary.upperBound + length else { self.receive(connection, input: bytes); return }
+				self.send(self.handler(Input(target: target, headers: headers, method: String(lines[0].prefix { $0 != " " }), body: bytes.subdata(in: boundary.upperBound..<(boundary.upperBound + length)))), on: connection)
 			} else if !complete && error == nil { self.receive(connection, input: bytes) }
 			else { connection.cancel() }
 		}

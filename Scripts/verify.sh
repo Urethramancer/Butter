@@ -4,6 +4,7 @@ set -eu
 cd "$(dirname "$0")/.."
 mode=${1:-all}
 case "$mode" in
+	network) shift; exec Scripts/test-http.sh "$@" ;;
 	client|engine|contract|metadata|metadata-reference|creation|http|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
 	version) exec sh Tests/git-version.sh ;;
 	final)
@@ -96,5 +97,5 @@ PROFILES
 		fi
 		exit "$status"
 		;;
-	*) echo 'Usage: Scripts/verify.sh [final [label]|all|client|storage|disk|interruption|engine|contract|metadata|metadata-reference|creation|http|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
+	*) echo 'Usage: Scripts/verify.sh [final [label]|all|client|storage|disk|interruption|engine|contract|metadata|metadata-reference|creation|http|network|lifecycle|interface|ui|build|version|coverage [label]|sanitizers [label]]' >&2; exit 2 ;;
 esac

@@ -76,6 +76,8 @@ and hybrid torrent creation; libtorrent continues to handle transfers. Run
 failure/recovery and reference transfers of the generated metadata.
 `Scripts/verify.sh http` checks the contained Swift tracker and web-seed services
 with local HTTP/TLS fixtures; these services remain outside the production engine.
+`Scripts/verify.sh network` runs the networking harness, including shared TCP/UDP
+port ownership, pinned HTTP DNS, UDP trackers, discovery and router-mapping fixtures.
 
 ```sh
 Scripts/verify.sh final audit

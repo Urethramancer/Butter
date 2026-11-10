@@ -18,18 +18,19 @@ public final class TCPListener: @unchecked Sendable {
 	private var accepting: (UUID, NetworkWaiter<TCPStream>)?
 	public var port: UInt16 { listener.port?.rawValue ?? 0 }
 	public var peerCount: Int { lock.withLock { peers.count + openingPeers.count } }
-	private init(port: UInt16, address: IPAddress?, maximumPeers: Int, clock: any TransportClock, budget: TCPPeerBudget?) throws {
+	private init(port: UInt16, address: IPAddress?, maximumPeers: Int, clock: any TransportClock, budget: TCPPeerBudget?, loopbackOnly: Bool) throws {
 		guard (1...10_000).contains(maximumPeers) else { throw NetworkFailure.invalid("peer limit") }
 		let parameters = NWParameters.tcp
 		parameters.allowLocalEndpointReuse = false
+		if loopbackOnly { parameters.requiredInterfaceType = .loopback }
 		if let address { parameters.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(address.description), port: NWEndpoint.Port(rawValue: port)!) }
 		listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
 		self.maximumPeers = maximumPeers; self.clock = clock
 		self.budget = budget ?? TCPPeerBudget(limit: maximumPeers)
 	}
 	public static func listen(port: UInt16 = 0, address: IPAddress? = nil, maximumPeers: Int = 200,
-		clock: any TransportClock = ContinuousTransportClock(), budget: TCPPeerBudget? = nil) async throws -> TCPListener {
-		let owner = try TCPListener(port: port, address: address, maximumPeers: maximumPeers, clock: clock, budget: budget)
+		clock: any TransportClock = ContinuousTransportClock(), budget: TCPPeerBudget? = nil, loopbackOnly: Bool = false) async throws -> TCPListener {
+		let owner = try TCPListener(port: port, address: address, maximumPeers: maximumPeers, clock: clock, budget: budget, loopbackOnly: loopbackOnly)
 		owner.listener.stateUpdateHandler = { [weak owner] state in
 			guard let owner else { return }
 			switch state {
@@ -46,6 +47,7 @@ public final class TCPListener: @unchecked Sendable {
 		return owner
 	}
 	public func accept(timeout: TimeInterval = 30) async throws -> TCPStream {
+		try Task.checkCancellation()
 		let id = UUID(), waiter = NetworkWaiter<TCPStream>()
 		if let stream = try lock.withLock({ () -> TCPStream? in
 			guard !stopped else { throw NetworkFailure.closed }
