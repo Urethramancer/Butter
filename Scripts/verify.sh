@@ -3,6 +3,9 @@
 set -eu
 cd "$(dirname "$0")/.."
 mode=${1:-all}
+if [ "${BUTTER_TEST_LOG_ACTIVE:-0}" != 1 ]; then
+	exec sh Scripts/test-log.sh "$mode" sh Scripts/verify.sh "$@"
+fi
 case "$mode" in
 	network) shift; exec Scripts/test-http.sh "$@" ;;
 	client|engine|contract|metadata|metadata-reference|creation|http|native-storage|peer|peer-reference|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;

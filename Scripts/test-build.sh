@@ -23,4 +23,5 @@ xcodebuild -project Butter.xcodeproj -scheme Butter -configuration Debug \
 if /usr/bin/grep -E '^SwiftCompile |^CompileC ' "$out/repeat.log"; then
 	echo 'Unexpected compilation during unchanged repeat build' >&2; exit 1
 fi
+rm "$out/Debug.log" "$out/Release.log" "$out/repeat.log"
 printf 'PASS: unsigned Debug/Release builds, static dependencies, bundled licences and unchanged repeat build\n'

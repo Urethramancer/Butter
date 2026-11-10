@@ -109,6 +109,12 @@ client case. Engine cases are `engine-validation`, `concurrent-exports`,
 cases are `store-regressions` and `lifecycle-integration`. UI accepts Xcode's
 `-only-testing:` arguments. Unknown case names fail.
 
+Verification output is captured under `.build/test-logs` and printed when the
+command finishes. Passing logs are deleted automatically; failures and interrupted
+runs retain their logs and print the path. Coverage reports and diagnostic
+artifacts remain available. For direct commands, use
+`sh Scripts/test-log.sh label command [arguments...]` for the same behaviour.
+
 Coverage uses Apple LLVM and instruments first-party Swift and Objective-C++
 code in separate products. Native XCUITests launch the real Debug application
 with disposable storage; system registration, notifications, discovery, router
