@@ -65,5 +65,8 @@ import ButterTorrentNetworking
 		let decoded = try PeerExchange(encoded)
 		#expect(decoded.added.map(\.endpoint) == [v4, v6] && decoded.dropped == [v6])
 		#expect(throws: (any Error).self) { try PeerExchange(extensionDictionary(["added": .bytes(Data(repeating: 1, count: 6)), "added.f": .bytes(Data())]).encoded()) }
+		var bounded = ExtensionHandshake()
+		for index in 1...64 { try bounded.apply(extensionDictionary(["m": extensionDictionary(["extension_\(index)": .integer(Int64(index))])]).encoded()) }
+		#expect(throws: (any Error).self) { try bounded.apply(extensionDictionary(["m": extensionDictionary(["overflow": .integer(65)])]).encoded()) }
 	}
 }

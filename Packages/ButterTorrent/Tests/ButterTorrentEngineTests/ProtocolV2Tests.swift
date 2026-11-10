@@ -43,6 +43,30 @@ final class V2Fixture {
 }
 
 @Suite struct ProtocolV2Tests {
+	@Test func poisonedHashProofClosesPeerAndGoodProviderRecovers() async throws {
+		let fixture = try V2Fixture(version: 2)
+		do {
+			let down = try await fixture.engine("download", seed: false, sparse: true), (endpoint, accepting) = try await fixture.provider(down)
+			let wire = WirePeer(stream: try await TCPStream.connect(to: endpoint))
+			try await wire.hello(hash: Data(fixture.metadata.hashes.v2!.prefix(20)), identity: 77, v2: true); try await accepting.value
+			let catalog = try MerkleCatalog(metadata: fixture.metadata)
+			let count = (catalog.index.pieces.keys.max() ?? -1) + 1
+			try await wire.send(.bitfield(PieceBitfield(count: count, pieces: Set(0..<count)).bytes))
+			var poisoned = false
+			while !poisoned {
+				if case .hashRequest(let request) = try await wire.next() {
+					var response = try #require(try catalog.response(request)); response[0] ^= 1
+					try await wire.send(.hashes(request, response)); poisoned = true
+				}
+			}
+			try await eventually { await down.snapshot().peers.isEmpty }
+			#expect(await down.snapshot().storageError == nil)
+			#expect(await down.snapshot().verifiedPieces.isEmpty)
+			let seed = try await fixture.engine("seed", seed: true), (good, serving) = try await fixture.provider(seed)
+			_ = try await down.connect(to: good); try await serving.value
+			try await eventually { await down.snapshot().complete }
+		} catch { await fixture.close(); throw error }; await fixture.close()
+	}
 	@Test(arguments: [1, 2, 3]) func metadataAndSparseHashTransfers(_ version: Int) async throws {
 		let fixture = try V2Fixture(version: version)
 		do {

@@ -8,6 +8,26 @@ func dhtMetadata(_ isPrivate: Bool = false) throws -> TorrentMetadata {
 }
 
 @Suite struct DHTTests {
+	@Test func externalAddressVotesRequireIndependentNetworksAndDeadlinesDrain() async throws {
+		let socket = try DatagramSocket(bind: NetworkEndpoint("0.0.0.0", port: 0)), udp = UDPDispatcher(transport: socket)
+		let node = try DHTNode(dispatcher: udp, bootstrap: []), initial = await node.nodeID
+		let claimed = try DHTWire.compact(NetworkEndpoint("8.8.8.8", port: 6881))
+		for index in 1...3 { await node.observe(claimed, source: try NetworkEndpoint("198.51.100.\(index)", port: 6881)) }
+		#expect(await node.nodeID == initial)
+		await node.observe(claimed, source: try NetworkEndpoint("198.51.101.1", port: 6881))
+		await node.observe(claimed, source: try NetworkEndpoint("198.51.102.1", port: 6881))
+		#expect(await node.nodeID != initial)
+		#expect(DHTIdentity.valid(await node.nodeID, address: try IPAddress("8.8.8.8")))
+		await node.shutdown(); try await udp.shutdown()
+		let transport = try InjectedDatagrams(), clock = ManualTransportClock(), timedUDP = UDPDispatcher(transport: transport, clock: clock)
+		let timedNode = try DHTNode(dispatcher: timedUDP, bootstrap: [NetworkEndpoint("127.0.0.1", port: 54321)], clock: clock), metadata = try dhtMetadata()
+		try await timedNode.setTorrents([metadata])
+		let work = Task { try await timedNode.getPeers(for: metadata) }
+		try await clock.waitForSleep(3); clock.advance(3)
+		do { _ = try await work.value; Issue.record("DHT deadline was ignored") } catch { #expect(error as? NetworkFailure == .timedOut) }
+		#expect(await timedUDP.pendingCount == 0)
+		await timedNode.shutdown(); try await timedUDP.shutdown()
+	}
 	@Test func secureIdentityVectorsTokensAndRoutingBounds() throws {
 		for (address, random, prefix) in [("124.31.75.21", 1, [0x5f, 0xbf, 0xbf]), ("21.75.31.124", 86, [0x5a, 0x3c, 0xe9]), ("65.23.51.170", 22, [0xa5, 0xd4, 0x32]), ("84.124.73.14", 65, [0x1b, 3, 0x21]), ("43.213.53.83", 90, [0xe5, 0x6f, 0x6c])] {
 			let ip = try IPAddress(address); var entropy = Data(repeating: 0, count: 20); entropy[19] = UInt8(random)
@@ -77,8 +97,14 @@ func dhtMetadata(_ isPrivate: Bool = false) throws -> TorrentMetadata {
 		let sent = try await transport.nextSent(), request = try DHTWire.decode(sent.0)
 		let response = try DHTWire.encode(["t": request["t"]!, "y": .bytes(Data("r".utf8)), "r": DHTWire.dictionary(["id": .bytes(Data(repeating: 9, count: 20)), "values": .list([.bytes(DHTWire.compact(attacker))])])])
 		await transport.inject(response, source: attacker)
-		let legitimate = try DHTWire.encode(["t": request["t"]!, "y": .bytes(Data("r".utf8)), "r": DHTWire.dictionary(["id": .bytes(Data(repeating: 8, count: 20))])])
+		let referral = Data(repeating: 10, count: 20) + DHTWire.compact(attacker)
+		let legitimate = try DHTWire.encode(["t": request["t"]!, "y": .bytes(Data("r".utf8)), "r": DHTWire.dictionary(["id": .bytes(Data(repeating: 8, count: 20)), "nodes": .bytes(referral)])])
 		await transport.inject(legitimate, source: peer)
+		let challenge = try await transport.nextSent()
+		#expect(challenge.1 == attacker)
+		#expect(await node.contactCount == 1)
+		let rejected = try DHTWire.encode(["t": try DHTWire.decode(challenge.0)["t"]!, "y": .bytes(Data("e".utf8)), "e": .list([.integer(203), .bytes(Data("Rejected".utf8))])])
+		await transport.inject(rejected, source: attacker)
 		#expect(try await lookup.value.isEmpty)
 		#expect(await node.contactCount == 1)
 		await node.shutdown(); try await udp.shutdown()

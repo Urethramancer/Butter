@@ -18,6 +18,7 @@ struct ExtensionHandshake {
 				guard let name = String(data: name, encoding: .utf8), name.utf8.count <= 64, let id = value.integer, (0...255).contains(id) else { throw PeerFailure.invalid("extension ID") }
 				ids[name] = id == 0 ? nil : Int(id)
 			}
+			guard ids.count <= 64 else { throw PeerFailure.limit("accumulated extension map") }
 			guard Set(ids.values).count == ids.count else { throw PeerFailure.invalid("duplicate extension IDs") }
 		}
 		if let size = root["metadata_size"] {

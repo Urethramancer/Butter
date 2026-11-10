@@ -77,7 +77,7 @@ extension TCPTransfer {
 		do {
 			let bytes = try await storage.hashResponse(request); try Task.checkCancellation()
 			if !peer.closing { try send(id, bytes.map { .hashes(request, $0) } ?? .hashReject(request)) }
-		} catch { await disk.release(); throw error }
+		} catch { await disk.release(); if !(error is MetadataError) { diskFailed(error) }; throw error }
 		await disk.release()
 	}
 	func receiveHashes(_ id: UUID, request: MerkleHashRequest, bytes: Data) async throws {

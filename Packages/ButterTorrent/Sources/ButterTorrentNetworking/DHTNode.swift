@@ -34,7 +34,7 @@ public actor DHTNode {
 		self.dispatcher = dispatcher; self.bootstrap = bootstrap; self.resolver = resolver; self.clock = clock
 		let local = dispatcher.localEndpoint.address
 		table = DHTRoutingTable(id: try DHTIdentity.make(address: externalAddress ?? (local.isUnspecified ? nil : local)))
-		fixedAddress = externalAddress != nil || !local.isUnspecified
+		fixedAddress = externalAddress != nil || local.isLoopback || !local.isLocal
 	}
 	public func setTorrents(_ metadata: [TorrentMetadata]) async throws {
 		guard !closed else { throw NetworkFailure.closed }; guard !updating else { throw NetworkFailure.busy }
@@ -144,7 +144,8 @@ public actor DHTNode {
 			}
 			for (contact, result) in replies {
 				do {
-					let response = try result.get(); successful += 1
+					let response = try result.get()
+					let referrals = try DHTWire.contacts(response, source: contact.endpoint)
 					if let values = response["values"] {
 						guard let list = values.list, list.count <= 50 else { throw NetworkFailure.limit("DHT peer list") }
 						for value in list {
@@ -154,10 +155,11 @@ public actor DHTNode {
 						}
 					}
 					if let token = response["token"]?.bytes, !token.isEmpty, token.count <= 64, let id = response["id"]?.bytes { responders.append((DHTContact(id: id, endpoint: contact.endpoint), token)) }
-					for referral in try DHTWire.contacts(response, source: contact.endpoint) where referral.endpoint.address.isIPv6 == family && !visited.contains(referral.endpoint) && !candidates.contains(where: { $0.endpoint == referral.endpoint }) {
+					for referral in referrals where referral.endpoint.address.isIPv6 == family && !visited.contains(referral.endpoint) && !candidates.contains(where: { $0.endpoint == referral.endpoint }) {
 						if candidates.count < 64 { candidates.append(referral) }
 					}
-				} catch { failure = error }
+					successful += 1
+				} catch { failure = error; lastFailure = String(describing: error) }
 			}
 			candidates.sort { DHTRoutingTable.nearer($0.id, $1.id, to: hash) }
 		}

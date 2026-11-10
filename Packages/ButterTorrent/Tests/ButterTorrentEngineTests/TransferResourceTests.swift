@@ -39,6 +39,38 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 }
 
 @Suite struct TransferResourceTests {
+	@Test func cancellingPayloadAlreadyWaitingForRateLimitUnblocksControlReplies() async throws {
+		try await transferFixture { fixture in
+			let clock = EngineClock(); var config = TCPTransferConfiguration(); config.uploadLimit = 1024
+			let seed = try await fixture.transfer("seed", seed: true, configuration: config, clock: clock)
+			_ = try await clock.nextSleep() // Drain the ticker's initial wait before observing the writer.
+			let ticker = await seed.ticker; ticker?.cancel(); await ticker?.value
+			var flags = Data(repeating: 0, count: 8); flags[7] = 4
+			let peer = try await fixture.scripted(seed, reserved: flags)
+			try await peer.send(.haveNone); try await peer.send(.interested)
+			let block = PeerBlock(piece: 0, offset: 0, length: 16384)
+			try await peer.send(.request(block))
+			// Socket operations also install deadlines on this clock; only the writer uses a one-second wait.
+			var wait: TimeInterval = 0
+			repeat { wait = try await clock.nextSleep() } while wait != 1
+			try await peer.send(.cancel(block))
+			try await eventually { await seed.pendingUploadsForTesting() == 0 }
+			clock.advance(1)
+			var rejects = 0
+			while rejects == 0 {
+				let message = try await peer.next()
+				if case .reject(let rejected) = message { #expect(rejected == block); rejects += 1 }
+				if case .piece = message { Issue.record("Cancelled rate-limited payload reached the wire") }
+			}
+			try await peer.send(.request(PeerBlock(piece: 0, offset: 0, length: 1)))
+			while true {
+				let message = try await peer.next()
+				if case .reject = message { rejects += 1 }
+				if case .piece(_, _, let bytes) = message { #expect(bytes == fixture.bytes.prefix(1)); break }
+			}
+			#expect(rejects == 1)
+		}
+	}
 	@Test func rateBucketHasBoundedBurstAndCancellableWaits() async throws {
 		let clock = EngineClock(), limiter = TransferRateLimiter(rate: 100, clock: clock)
 		let consuming = Task { try await limiter.consume(150) }
@@ -87,4 +119,8 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 			try await eventually { await engine.snapshot().peers.isEmpty }
 		}
 	}
+}
+
+extension TCPTransfer {
+	func pendingUploadsForTesting() -> Int { peers.values.reduce(0) { $0 + $1.uploads.count } }
 }
