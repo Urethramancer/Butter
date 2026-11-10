@@ -27,6 +27,9 @@ public struct TCPTransferConfiguration: Sendable {
 }
 public struct TCPPeerSnapshot: Sendable {
 	public let id: UUID
+	public let endpoint: NetworkEndpoint?
+	public let client: String
+	public let remoteInterested: Bool
 	public let peerID: Data?
 	public let remoteChoking: Bool
 	public let choking: Bool
@@ -42,6 +45,7 @@ public struct TCPTransferSnapshot: Sendable {
 	public let complete: Bool
 	public let verifiedPieces: Set<Int>
 	public let wantedPieces: Set<Int>
+	public let pieceStates: [Int]
 	public let peers: [TCPPeerSnapshot]
 	public let downloaded: Int64
 	public let uploaded: Int64
@@ -201,7 +205,8 @@ public actor TCPTransfer {
 	}
 	public func snapshot() -> TCPTransferSnapshot {
 		TCPTransferSnapshot(complete: picker.complete, verifiedPieces: picker.completed, wantedPieces: picker.wanted,
-			peers: peers.map { id, peer in TCPPeerSnapshot(id: id, peerID: peer.peerID, remoteChoking: peer.remoteChoking, choking: peer.choking,
+			pieceStates: (0..<storage.layout.pieceCount).map { picker.completed.contains($0) ? 1 : picker.active[$0] != nil ? 2 : peers.isEmpty ? 0 : picker.availability[$0] > 0 ? 3 : 4 },
+			peers: peers.map { id, peer in TCPPeerSnapshot(id: id, endpoint: peer.session.stream.remoteEndpoint, client: peer.extensions.client, remoteInterested: peer.remoteInterested, peerID: peer.peerID, remoteChoking: peer.remoteChoking, choking: peer.choking,
 				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded, v2: peer.features.v2, fast: peer.features.fast, encryption: peer.encryption, transport: peer.session.stream.kind) },
 			downloaded: downloaded, uploaded: uploaded, corruptPieces: corruptPieces, writingBlocks: picker.active.values.reduce(0) { $0 + $1.writing.count }, lastPeerError: lastPeerError, storageError: storageError, stopped: stopped)
 	}

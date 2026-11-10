@@ -36,9 +36,9 @@ public actor ManagedTransfer {
 	}
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
 		configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared,
-		budget: TCPPeerBudget? = nil, clock: any TransportClock = ContinuousTransportClock()) async throws -> ManagedTransfer {
+		budget: TCPPeerBudget? = nil, preparedState: PreparedTransferState? = nil, clock: any TransportClock = ContinuousTransportClock()) async throws -> ManagedTransfer {
 		try configuration.validate()
-		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory, selected: selected)
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory, selected: selected, preparedState: preparedState)
 		return ManagedTransfer(metadata: metadata, storage: storage, configuration: configuration, resources: resources, budget: budget, clock: clock)
 	}
 	public func start() async throws {
@@ -64,7 +64,13 @@ public actor ManagedTransfer {
 	}
 	public func snapshot() async throws -> ManagedTransferSnapshot {
 		try await serial {
-			let disk = try await self.storage.snapshot(), wire = await self.transfer?.snapshot()
+			// Sample the picker before disk stamps so newly verified pieces cannot look
+			// like invalidation. External file changes must retire the old advertisements.
+			var wire = await self.transfer?.snapshot(), disk = try await self.storage.snapshot()
+			if let previous = wire, !self.pauseFailed, !previous.verifiedPieces.isSubset(of: disk.verifiedPieces) {
+				try await self.quiesce(); try await self.resume()
+				wire = await self.transfer?.snapshot(); disk = try await self.storage.snapshot()
+			}
 			return ManagedTransferSnapshot(storage: disk, transfer: wire, running: self.transfer != nil && !self.pauseFailed)
 		}
 	}
@@ -85,17 +91,23 @@ public actor ManagedTransfer {
 				do { _ = try await storage.verify(piece: piece) }
 				catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { }
 				catch StorageFailure.invalid("short payload read") { }
+				catch StorageFailure.missingHashes { }
 			}
 		}
 	}
 	public func exportMetadata() async throws -> Data {
 		try await serial {
 			// Exporting does not mutate payload or picker state and need not disconnect peers.
-			if let transfer = self.transfer {
-				let counters = await transfer.snapshot()
-				try await self.storage.checkpoint(downloaded: counters.downloaded, uploaded: counters.uploaded)
-			}
+			try await self.checkpoint()
 			return try await self.storage.exportMetadata()
+		}
+	}
+	public func save() async throws { try await serial { try await self.checkpoint() } }
+	private func checkpoint() async throws {
+		if let transfer {
+			let counters = await transfer.snapshot(); try await storage.checkpoint(downloaded: counters.downloaded, uploaded: counters.uploaded)
+		} else {
+			let counters = try await storage.snapshot(); try await storage.checkpoint(downloaded: counters.downloaded, uploaded: counters.uploaded)
 		}
 	}
 	public func close() async throws {

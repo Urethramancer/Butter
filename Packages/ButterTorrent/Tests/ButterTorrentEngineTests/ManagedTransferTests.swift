@@ -6,6 +6,15 @@ import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 @Suite struct ManagedTransferTests {
+	@Test func changedFilesRetireVerifiedAdvertisementsBeforeResuming() async throws {
+		try await withManagedSeed { fixture, seed, _ in
+			try await seed.start(); #expect(try await seed.snapshot().transfer?.complete == true)
+			try Data(repeating: 255, count: fixture.lengths[0]).write(to: fixture.root.appendingPathComponent("source/bundle/a"))
+			let snapshot = try await seed.snapshot()
+			#expect(snapshot.running && snapshot.transfer?.complete == false)
+			#expect(!snapshot.storage.verifiedPieces.contains(0) && snapshot.transfer?.pieceStates[0] == 0)
+		}
+	}
 	@Test func pauseCancelsAnUnansweredOutgoingNegotiation() async throws {
 		var config = plainTransferConfiguration(); config.encryption.outgoing = .required
 		try await withManagedSeed(configuration: config) { fixture, seed, _ in

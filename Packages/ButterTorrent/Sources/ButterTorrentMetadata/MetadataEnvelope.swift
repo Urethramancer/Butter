@@ -1,6 +1,19 @@
 import Foundation
 
 extension TorrentMetadata {
+	/// Replaces tracker fields while retaining the exact original info dictionary.
+	public func withTrackerTiers(_ tiers: [[String]]) throws -> Data {
+		guard tiers.count <= 32, tiers.reduce(0, { $0 + $1.count }) <= 128,
+			tiers.flatMap({ $0 }).allSatisfy({ !$0.isEmpty && !$0.utf8.contains(0) && $0.utf8.count <= 8192 }) else { throw MetadataError.invalid("tracker tiers") }
+		var fields = document.root.dictionary!
+		fields.removeValue(forKey: Data("announce".utf8)); fields.removeValue(forKey: Data("announce-list".utf8))
+		let tiers = tiers.filter { !$0.isEmpty }
+		if let first = tiers.first?.first {
+			fields[Data("announce".utf8)] = .bytes(Data(first.utf8))
+			fields[Data("announce-list".utf8)] = .list(tiers.map { .list($0.map { .bytes(Data($0.utf8)) }) })
+		}
+		return try Self.envelope(info: originalInfo, fields: fields)
+	}
 	/// Validates every supplied magnet identity before exposing received metadata.
 	public init(infoBytes: Data, expected: InfoHashes, trackers: [String] = []) throws {
 		guard trackers.count <= 128 else { throw MetadataError.limit("tracker hints") }

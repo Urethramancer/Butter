@@ -62,22 +62,23 @@ final class EngineClient: EngineOperations, @unchecked Sendable {
 }
 
 // Serialise bounded metadata reads/hashing away from the app's main actor.
-private actor MetadataInspectionWorker {
+actor MetadataInspectionWorker {
 	func inspect(_ url: URL) throws -> Data {
 		try Task.checkCancellation()
 		return try JSONEncoder().encode(TorrentMetadata(contentsOf: url).inspection)
 	}
 }
 
-private final class TorrentCreationWorker: @unchecked Sendable {
+final class TorrentCreationWorker: @unchecked Sendable {
 	private let storage: URL
+	private let publish: (@Sendable (Data, String) throws -> Void)?
 	private let queue = DispatchQueue(label: "net.grimdork.Butter.creation", qos: .utility)
 	private let lock = NSLock()
 	private var active: UUID?
 	private var cancelled = false
 	private var fraction = 0.0
 	private var waiters: [CheckedContinuation<Void, Never>] = []
-	init(storage: URL) { self.storage = storage }
+	init(storage: URL, publish: (@Sendable (Data, String) throws -> Void)? = nil) { self.storage = storage; self.publish = publish }
 	var progress: Double { lock.withLock { fraction } }
 	func cancel() { lock.withLock { if active != nil { cancelled = true } } }
 	private func cancel(_ id: UUID) { lock.withLock { if active == id { cancelled = true } } }
@@ -123,9 +124,12 @@ private final class TorrentCreationWorker: @unchecked Sendable {
 						// Cancellation and publication have one ordering point. A committed file is success.
 						try lock.withLock {
 							guard active == token && !cancelled else { throw CancellationError() }
-							try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
-							guard !FileManager.default.fileExists(atPath: output.path) else { throw MetadataError.invalid("torrent output already exists") }
-							try bytes.write(to: output, options: .atomic)
+							if let publish { try publish(bytes, id) }
+							else {
+								try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
+								guard !FileManager.default.fileExists(atPath: output.path) else { throw MetadataError.invalid("torrent output already exists") }
+								try bytes.write(to: output, options: .atomic)
+							}
 							fraction = 1
 						}
 						return response

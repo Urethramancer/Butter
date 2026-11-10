@@ -5,6 +5,7 @@ import ButterTorrentNetworking
 func extensionDictionary(_ fields: [String: BencodeValue]) -> BencodeValue { .dictionary(Dictionary(uniqueKeysWithValues: fields.map { (Data($0.key.utf8), $0.value) })) }
 
 struct ExtensionHandshake {
+	var client = ""
 	var ids: [String: Int] = [:]
 	var metadataSize: Int?
 	var port: UInt16?
@@ -12,6 +13,7 @@ struct ExtensionHandshake {
 	mutating func apply(_ bytes: Data) throws {
 		let root = try BencodeDocument(bytes, limits: .init(bytes: 32_768, depth: 12, values: 1024)).root
 		guard root.dictionary != nil else { throw PeerFailure.invalid("extension handshake") }
+		if let name = root["v"]?.text { client = String(name.prefix(256)) }
 		if let map = root["m"] {
 			guard let fields = map.dictionary, fields.count <= 64 else { throw PeerFailure.limit("extension map") }
 			for (name, value) in fields {

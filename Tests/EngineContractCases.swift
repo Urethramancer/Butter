@@ -1,6 +1,6 @@
 import Foundation
 
-// Shared app-facing assertions. A future Swift adapter supplies the same factory.
+// Shared app-facing assertions for the reference, production and native Swift adapters.
 enum EngineContractCases {
 	struct Failure: Error, CustomStringConvertible { let description: String }
 	static func require(_ value: Bool, _ message: String) throws {
@@ -16,6 +16,14 @@ enum EngineContractCases {
 		do { _ = try await engine.perform(command, payload) }
 		catch { return }
 		throw Failure(description: "Accepted invalid \(command) payload")
+	}
+	static func wait(_ engine: any EngineOperations, until predicate: (EngineSnapshot) -> Bool) async throws -> EngineSnapshot {
+		let deadline = ProcessInfo.processInfo.systemUptime + 6
+		while ProcessInfo.processInfo.systemUptime < deadline {
+			let snapshot = try await engine.snapshot(); if predicate(snapshot) { return snapshot }
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		throw Failure(description: "Engine contract deadline")
 	}
 	static func run(makeEngine: (URL) -> any EngineOperations) async throws {
 		let fm = FileManager.default
@@ -45,7 +53,7 @@ enum EngineContractCases {
 			try await reject(engine, "add", ["id": id, "source": torrent, "destination": seed.path])
 		}
 		try await reject(engine, "add", ["id": "bad", "source": torrent, "destination": "relative"])
-		let added = try object(await engine.perform("add", ["id": "fixture", "source": torrent, "destination": seed.path]))
+		let added = try object(await engine.perform("add", ["id": "fixture", "source": torrent, "destination": seed.path, "tracker": "", "selected": []]))
 		try require(added["duplicate"] as? Bool == false && added["hashes"] as? [String] == preview.hashes, "Import changed identity")
 		try await reject(engine, "add", ["id": "fixture", "source": torrent, "destination": seed.path])
 		let duplicate = try object(await engine.perform("add", ["id": "other", "source": torrent, "destination": seed.path]))
@@ -67,6 +75,17 @@ enum EngineContractCases {
 		try exported.write(to: exportedURL)
 		let exportedPreview = try JSONDecoder().decode(MetadataPreview.self, from: await engine.perform("inspect", ["source": exportedURL.path]))
 		try require(exportedPreview.hashes == preview.hashes, "Export changed info identity")
+		try await reject(engine, "rename", ["id": "fixture", "changes": [["index": 0, "path": "first.bin"], ["index": 0, "path": "second.bin"]]])
+		let renamed = "nested/renamed.bin", moved = root.appendingPathComponent("moved")
+		_ = try await engine.perform("rename", ["id": "fixture", "changes": [["index": 0, "path": renamed]]])
+		_ = try await wait(engine) { $0.transfers.first?.files.first?.path == renamed && $0.transfers.first?.state != "Renaming" }
+		_ = try await engine.perform("move", ["id": "fixture", "destination": moved.path])
+		var observedMove = false
+		_ = try await wait(engine) { snapshot in
+			observedMove = observedMove || snapshot.events.contains { $0.kind == "moved" && $0.id == "fixture" }
+			guard let transfer = snapshot.transfers.first else { return false }
+			return observedMove && URL(fileURLWithPath: transfer.path).resolvingSymlinksInPath() == moved.resolvingSymlinksInPath()
+		}
 		_ = try await engine.perform("shutdown")
 		_ = try await engine.perform("remove", ["id": "fixture", "retainState": true])
 		try require(fm.fileExists(atPath: storage.appendingPathComponent("fixture.torrent").path), "Removal lost retained state")
@@ -74,9 +93,11 @@ enum EngineContractCases {
 		_ = try await restored.perform("add", ["id": "fixture", "source": torrent, "destination": seed.path, "restore": true])
 		let recovery = try await restored.snapshot()
 		try require(recovery.transfers.count == 1 && recovery.transfers[0].hashes == preview.hashes, "Restore lost identity")
+		try require(recovery.transfers[0].files[0].path == renamed, "Restore lost renamed paths")
+		try require(URL(fileURLWithPath: recovery.transfers[0].path).resolvingSymlinksInPath() == moved.resolvingSymlinksInPath(), "Restore lost moved destination")
 		_ = try await restored.perform("shutdown")
 		_ = try await restored.perform("remove", ["id": "fixture"])
-		let retainedBytes = try Data(contentsOf: source)
+		let retainedBytes = try Data(contentsOf: moved.appendingPathComponent(renamed))
 		try require(retainedBytes == bytes, "Ordinary removal changed source bytes")
 		try require(!fm.fileExists(atPath: storage.appendingPathComponent("fixture.torrent").path), "Removal retained obsolete engine metadata")
 		try await reject(restored, "run", ["id": "fixture", "running": true])

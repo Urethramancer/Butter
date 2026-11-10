@@ -31,7 +31,8 @@ private final class ReferenceEngineClient: EngineOperations, @unchecked Sendable
 		do {
 			try await EngineContractCases.run { ReferenceEngineClient(storage: $0) }
 			try await EngineContractCases.run { EngineClient(storage: $0) }
-			print("PASS: shared command, snapshot, error and persistence contract against reference and Swift utility adapter")
+			try await EngineContractCases.run { SwiftEngineClient(storage: $0) }
+			print("PASS: shared command, snapshot, error and persistence contract against reference, production utility adapter and native Swift session adapter")
 		} catch {
 			fputs("FAIL: \(error)\n", stderr)
 			exit(1)
