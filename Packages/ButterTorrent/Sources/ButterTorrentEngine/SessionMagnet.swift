@@ -8,6 +8,7 @@ public struct SessionMagnetSnapshot: Sendable {
 	public let destination: URL
 	public let running: Bool
 	public let error: String
+	public let trackers: [SessionTrackerSnapshot]
 }
 
 // Session-owned catalogue record. Its resolver carries the cancellable network work.
@@ -20,13 +21,19 @@ final class SessionPendingMagnet {
 	var downloadLimit: Int, uploadLimit: Int
 	var revision = UUID()
 	var resolver: SessionMagnetResolver?
-	var verified: (TorrentMetadata, NetworkEndpoint)?
+	var tracker: SessionTracker?
+	var trackerMessages: [URL: String] = [:]
+	var trackerFailure = ""
+	var verified: (TorrentMetadata, NetworkEndpoint?)?
 	var promotion: Task<Void, Never>?
 	init(id: String, magnet: Magnet, destination: URL, configuration: TCPTransferConfiguration) {
 		self.id = id; self.magnet = magnet; self.destination = destination
 		downloadLimit = configuration.downloadLimit; uploadLimit = configuration.uploadLimit
 	}
-	var snapshot: SessionMagnetSnapshot { SessionMagnetSnapshot(id: id, magnet: magnet, destination: destination, running: running, error: error) }
+	func snapshot(messages: [URL: String], fallback: String) -> SessionMagnetSnapshot {
+		let trackers = magnet.trackers.map { url in SessionTrackerSnapshot(url: url, message: URL(string: url).flatMap { messages[$0] } ?? fallback) }
+		return SessionMagnetSnapshot(id: id, magnet: magnet, destination: destination, running: running, error: error, trackers: trackers)
+	}
 }
 
 actor SessionMagnetResolver {
@@ -43,11 +50,12 @@ actor SessionMagnetResolver {
 	private let configuration: TCPTransferConfiguration
 	private let clock: any TransportClock
 	private let transport: @Sendable (NetworkEndpoint) async throws -> UTPTransport?
-	private let verified: @Sendable (TorrentMetadata, NetworkEndpoint) async -> Void
+	private let verified: @Sendable (TorrentMetadata, NetworkEndpoint?) async -> Void
 	private var queue: PeerCandidateQueue<Candidate>?
+	private var incoming: [UUID: (PeerStream, Task<Void, Never>)] = [:]
 	private var closed = false
 	init(magnet: Magnet, budget: TCPPeerBudget, permits: TransferPermits, configuration: TCPTransferConfiguration, clock: any TransportClock,
-		transport: @escaping @Sendable (NetworkEndpoint) async throws -> UTPTransport?, verified: @escaping @Sendable (TorrentMetadata, NetworkEndpoint) async -> Void) {
+		transport: @escaping @Sendable (NetworkEndpoint) async throws -> UTPTransport?, verified: @escaping @Sendable (TorrentMetadata, NetworkEndpoint?) async -> Void) {
 		self.magnet = magnet; self.budget = budget; self.permits = permits; self.configuration = configuration; self.clock = clock
 		self.transport = transport; self.verified = verified
 	}
@@ -66,15 +74,51 @@ actor SessionMagnetResolver {
 			let exchange = MetadataExchange(clock: clock, budget: budget, encryption: configuration.encryption, utp: utp)
 			let metadata = try await exchange.fetch(magnet, peers: [candidate.endpoint], timeout: 30)
 			try Task.checkCancellation()
-			if !closed {
-				closed = true; await queue?.halt()
-				// The callback schedules publication and returns; it never waits on this queue.
-				await verified(metadata, candidate.endpoint)
-			}
+			await finish(metadata, endpoint: candidate.endpoint)
 		} catch { }
 		await permits.release()
 	}
-	func stop() async { closed = true; await queue?.stop(); queue = nil }
+	func attach(_ stream: PeerStream, hello: PeerHandshake, peerID: Data) throws {
+		try Task.checkCancellation()
+		guard !closed, incoming.count < 2, let endpoint = stream.raw.remoteEndpoint,
+			configuration.addressFilter.allows(endpoint.address) else { throw PeerFailure.limit("incoming metadata peers") }
+		let id = UUID()
+		let task = Task { [weak self] in
+			guard let self else { stream.close(); return }
+			await self.receive(stream, hello: hello, peerID: peerID, endpoint: endpoint, id: id)
+		}
+		incoming[id] = (stream, task)
+	}
+
+	private func receive(_ stream: PeerStream, hello: PeerHandshake, peerID: Data, endpoint: NetworkEndpoint, id: UUID) async {
+		defer { incoming[id] = nil }
+		do { try await permits.acquire() }
+		catch { try? await stream.raw.shutdown(); return }
+		do {
+			try Task.checkCancellation()
+			let (metadata, port) = try await MetadataExchange.receive(magnet, from: stream, hello: hello, peerID: peerID, clock: clock)
+			try? await stream.raw.shutdown()
+			try Task.checkCancellation()
+			await finish(metadata, endpoint: port.map { NetworkEndpoint(address: endpoint.address, port: $0) })
+		} catch { try? await stream.raw.shutdown() }
+		await permits.release()
+	}
+
+	private func finish(_ metadata: TorrentMetadata, endpoint: NetworkEndpoint?) async {
+		guard !closed else { return }
+		closed = true
+		await queue?.halt()
+		// Publication runs separately and drains every competing connection.
+		await verified(metadata, endpoint)
+	}
+
+	func stop() async {
+		closed = true
+		let jobs = Array(incoming.values)
+		for (stream, task) in jobs { task.cancel(); stream.close() }
+		await queue?.stop(); queue = nil
+		for (_, task) in jobs { await task.value }
+	}
 	static func endpoint(_ text: String) -> NetworkEndpoint? {
 		guard let colon = text.lastIndex(of: ":"), let port = UInt16(text[text.index(after: colon)...]), port > 0 else { return nil }
 		var host = text[..<colon]

@@ -6,6 +6,72 @@ import ButterTorrentMetadata
 
 // Each case owns several sessions; keep independent fixtures within the process-wide disk budget.
 extension NativeSessionTests { @Suite struct SessionTrackerTests {
+	@Test(arguments: [1, 2, 3], [false, true]) func trackerOnlyMagnetsAnnounceUnknownSizeThenTransfer(_ version: Int, _ udp: Bool) async throws {
+		let fixture = try TrackerSessionFixture(version: version, isPrivate: false), tracker = RecordingTracker()
+		let udpTracker = udp ? LocalUDPTracker(socket: try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0))) : nil
+		let session = TorrentSession(storage: fixture.source.root.appendingPathComponent("magnet-library"), configuration: plainTransferConfiguration(), loopbackOnly: true, httpTracker: tracker)
+		await udpTracker?.start()
+		do {
+			let seed = try await fixture.seed(), seedPort = try await seed.snapshot().network.port
+			await tracker.setPeer(try TrackerPeer(address: "127.0.0.1", port: seedPort))
+			await udpTracker?.setPeer(try NetworkEndpoint("127.0.0.1", port: seedPort))
+			let url = udpTracker.map { "udp://127.0.0.1:\($0.socket.localEndpoint.port)/announce" } ?? "http://tracker.test/announce"
+			let magnet = Magnet(hashes: fixture.metadata.hashes, trackers: [url]), destination = fixture.source.root.appendingPathComponent("magnet-data")
+			_ = try await session.add(id: "magnet", magnet: magnet, destination: destination)
+			try await session.run(id: "magnet", running: true)
+			try await eventually { try await session.snapshot().transfers.first?.state.transfer?.complete == true }
+			let snapshot = try await session.snapshot(), port = snapshot.network.port
+			#expect(port > 0 && !snapshot.network.discovery.enabled && snapshot.magnets.isEmpty)
+			#expect(snapshot.transfers[0].metadata.originalInfo == fixture.metadata.originalInfo)
+			if let udpTracker { try await eventually { await udpTracker.requests.contains { $0.event == 1 } } }
+			else { try await eventually { await tracker.requests.contains { $0.1.event == .completed } } }
+			try await session.close()
+			let hashes = [fixture.metadata.hashes.v1, fixture.metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }
+			if let udpTracker {
+				let requests = await udpTracker.requests
+				#expect(await udpTracker.failure == nil)
+				for hash in hashes {
+					let identity = requests.filter { $0.infoHash == hash }
+					#expect(identity.map(\.event) == [2, 3, 2, 1, 3])
+					#expect(identity.prefix(2).allSatisfy { $0.left == 16_384 && $0.downloaded == 0 })
+				}
+				#expect(requests.allSatisfy { $0.port == port && $0.source.port == port && $0.peerID == session.peerID })
+			} else {
+				let requests = await tracker.requests.map(\.1)
+				for hash in hashes {
+					let identity = requests.filter { $0.infoHash == hash }
+					#expect(identity.map(\.event) == [.started, .stopped, .started, .completed, .stopped])
+					#expect(identity.prefix(2).allSatisfy { $0.counters.left == 16_384 && $0.counters.downloaded == 0 })
+				}
+				#expect(requests.allSatisfy { $0.port == port && $0.peerID == session.peerID })
+			}
+			for file in fixture.metadata.inspection.files where !file.pad {
+				#expect(try Data(contentsOf: destination.appendingPathComponent(file.path)) == Data(contentsOf: fixture.source.root.appendingPathComponent("source/" + file.path)))
+			}
+		} catch { try? await session.close(); await fixture.close(); await udpTracker?.close(); throw error }
+		await fixture.close(); await udpTracker?.close()
+	}
+
+	@Test func verifiedPrivateMagnetOnlyConnectsToTheNewTrackerResponse() async throws {
+		let fixture = try V2Fixture(version: 3, isPrivate: true), tracker = RecordingTracker()
+		let session = TorrentSession(storage: fixture.root.appendingPathComponent("library"), configuration: plainTransferConfiguration(), loopbackOnly: true, httpTracker: tracker)
+		do {
+			let (metadataPeer, sendingMetadata) = try await metadataProvider(fixture, behaviour: .good), listener = fixture.listeners.last!
+			let seed = try await fixture.engine("seed", seed: true), (payloadPeer, serving) = try await fixture.provider(seed)
+			await tracker.setMetadataPeer(try TrackerPeer(address: metadataPeer.address.description, port: metadataPeer.port))
+			await tracker.setPeer(try TrackerPeer(address: payloadPeer.address.description, port: payloadPeer.port))
+			let magnet = Magnet(hashes: fixture.metadata.hashes, trackers: ["http://tracker.test/announce"])
+			_ = try await session.add(id: "private", magnet: magnet, destination: fixture.root.appendingPathComponent("download")); try await session.run(id: "private", running: true)
+			try await sendingMetadata.value; try await serving.value
+			try await eventually { try await session.snapshot().transfers.first?.state.transfer?.complete == true }
+			let state = try await session.snapshot()
+			#expect(state.transfers[0].metadata.inspection.private)
+			#expect(state.transfers[0].state.transfer?.peers.allSatisfy { $0.endpoint == payloadPeer } == true)
+			await #expect(throws: NetworkFailure.timedOut) { try await listener.accept(timeout: 0.1) }
+			try await session.close()
+		} catch { try? await session.close(); await fixture.close(); throw error }
+		await fixture.close()
+	}
 	@Test(arguments: [1, 2, 3], [false, true]) func trackersAnnounceEveryMetadataIdentityAndMergeTheirPeers(_ version: Int, _ udp: Bool) async throws {
 		try await trackerIdentityFixture(version: version, udp: udp, isPrivate: true, rejectV2: false)
 	}
@@ -212,14 +278,17 @@ private actor BlockingSessionTracker: TrackerAnnouncing {
 private actor RecordingTracker: TrackerAnnouncing {
 	var requests: [(URL, TrackerRequest)] = []
 	var peer: TrackerPeer?
+	var metadataPeer: TrackerPeer?
 	var rejectedHash: Data?
 	func setPeer(_ peer: TrackerPeer) { self.peer = peer }
+	func setMetadataPeer(_ peer: TrackerPeer) { metadataPeer = peer }
 	func reject(_ hash: Data?) { rejectedHash = hash }
 	func announce(to url: URL, request: TrackerRequest) throws -> TrackerResponse {
 		requests.append((url, request))
 		if request.infoHash == rejectedHash { throw HTTPServiceError.trackerFailure("fixture rejected identifier") }
 		if url.host == "broken.test" { throw HTTPServiceError.trackerFailure("fixture failure") }
-		let peers = peer.map { [BencodeValue.dictionary([Data("ip".utf8): .bytes(Data($0.address.utf8)), Data("port".utf8): .integer(Int64($0.port))])] } ?? []
+		let selected = request.counters.left == 16_384 ? metadataPeer ?? peer : peer
+		let peers = selected.map { [BencodeValue.dictionary([Data("ip".utf8): .bytes(Data($0.address.utf8)), Data("port".utf8): .integer(Int64($0.port))])] } ?? []
 		return try TrackerResponse(BencodeValue.dictionary([Data("interval".utf8): .integer(30), Data("peers".utf8): .list(peers)]).encoded())
 	}
 }

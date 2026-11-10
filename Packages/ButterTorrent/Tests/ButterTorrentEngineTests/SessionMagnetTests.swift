@@ -6,6 +6,33 @@ import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 extension NativeSessionTests { @Suite struct SessionMagnetTests {
+	@Test(arguments: [false, true]) func incomingPeerProvidesMetadataWithoutDiscovery(_ utp: Bool) async throws {
+		let fixture = try V2Fixture(version: 3)
+		let seed = TorrentSession(storage: fixture.root.appendingPathComponent("seed-library"), configuration: plainTransferConfiguration(), loopbackOnly: true)
+		let down = TorrentSession(storage: fixture.root.appendingPathComponent("down-library"), configuration: plainTransferConfiguration(), loopbackOnly: true)
+		do {
+			var settings = SessionPeerSettings()
+			settings.tcp = !utp; settings.utp = utp; settings.pex = false
+			_ = try await seed.configurePeers(settings)
+			let port = try await down.configurePeers(settings)
+			let source = fixture.root.appendingPathComponent("source.torrent")
+			try fixture.metadata.document.original.write(to: source)
+			_ = try await seed.add(id: "seed", source: source, destination: fixture.root.appendingPathComponent("source"))
+			try await seed.run(id: "seed", running: true)
+			_ = try await down.add(id: "magnet", magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("download"))
+			try await down.run(id: "magnet", running: true)
+			_ = try await seed.connect(id: "seed", to: NetworkEndpoint("127.0.0.1", port: port))
+			try await eventually { try await down.snapshot().transfers.first?.state.transfer?.complete == true }
+			let snapshot = try await down.snapshot()
+			#expect(snapshot.magnets.isEmpty && snapshot.transfers[0].metadata.originalInfo == fixture.metadata.originalInfo)
+			try await down.close(); try await seed.close()
+			for file in fixture.metadata.inspection.files where !file.pad {
+				#expect(try Data(contentsOf: fixture.root.appendingPathComponent("download/" + file.path)) == Data(contentsOf: fixture.root.appendingPathComponent("source/" + file.path)))
+			}
+		} catch { try? await down.close(); try? await seed.close(); await fixture.close(); throw error }
+		await fixture.close()
+	}
+
 	@Test(arguments: [1, 2, 3], [false, true]) func trackerlessMagnetResolvesAndTransfersUsingOnlyDHT(_ version: Int, _ utp: Bool) async throws {
 		let fixture = try V2Fixture(version: version), host = version == 2 ? "::1" : "127.0.0.1"
 		let seed = TorrentSession(storage: fixture.root.appendingPathComponent("seed-library"), configuration: plainTransferConfiguration(), loopbackOnly: true)

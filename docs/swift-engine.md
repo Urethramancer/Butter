@@ -1102,3 +1102,19 @@ using DHT alone in both directions and verify exact flushed payloads. The harnes
 now contains 440 transfers plus two DHT protocol comparisons. Package tests and
 focused Release/Thread Sanitizer checks pass. Tracker-only pending discovery,
 incoming metadata, unresolved persistence and waiting exports remain in TODO.md.
+
+### Pending tracker announces and incoming metadata
+
+Running magnet rows announce to HTTP and UDP trackers using their known wire
+identities, the session's bound port and the reference engine's placeholder
+remaining byte count. Metadata promotion drains pending announces and sends a
+fresh started event for the verified transfer. Private payload connections use
+the verified tracker response. Incoming TCP and µTP peers can also supply BEP 9
+metadata without tracker or DHT discovery. The verified public transfer can
+reconnect to the listening port advertised by the peer.
+
+The focused magnet and tracker suites pass, including both incoming transports
+and six native tracker-only cases. Sixteen new libtorrent tracker-only magnet
+comparisons cover both directions over TCP and µTP, HTTP and UDP trackers, and
+hybrid identity registration. The reference matrix now contains 456 transfers
+and two DHT protocol comparisons.

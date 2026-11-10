@@ -2,8 +2,7 @@
 
 ## Swift torrent engine replacement
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
-  Complete pending magnet tracker announcements, incoming metadata exchange,
-  durable unresolved hints and exports waiting on metadata.
+  Complete durable unresolved hints and exports waiting on metadata.
   Complete native router-mapping settings (currently rejected by the adapter).
   Coordinate mapping lifecycles in that session.
   Verify interruption and disk-failure recovery during repository publication/discard.
@@ -11,8 +10,7 @@
   the Swift mapping clients currently implement UPnP and NAT-PMP.
   Hybrid magnets with only legacy v1 providers need reconstruction of missing v2 piece layers from
   SHA-1-verified file data; the current harness requires a v2 hash provider or
-  complete `.torrent` piece layers. Connect tracker-derived private peers only
-  after metadata arrival; untrusted magnet hints are not reconnected.
+  complete `.torrent` piece layers.
 - Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
   Measure web-seed request overhead; current bounded downloads request 16 KiB
   blocks and open a connection for each HTTP request, without range coalescing.

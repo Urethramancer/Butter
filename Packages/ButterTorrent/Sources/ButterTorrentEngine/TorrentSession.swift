@@ -264,7 +264,9 @@ public actor TorrentSession {
 				try self.validateTracker(tracker, hashes: pending.magnet.hashes)
 				if !pending.magnet.trackers.contains(tracker) {
 					guard pending.magnet.trackers.count < 128 else { throw MetadataError.limit("tracker hints") }
+					if let service = pending.tracker, let url = URL(string: tracker) { try await service.append(url) }
 					pending.magnet.trackers.append(tracker)
+					if let resolver = pending.resolver, pending.tracker == nil { await self.startMagnetTracker(pending, resolver: resolver) }
 				}
 				return
 			}
@@ -356,7 +358,13 @@ public actor TorrentSession {
 		let wire = await self.network?.snapshot()
 		let status = SessionNetworkSnapshot(port: wire?.port ?? 0, udp: wire?.udp ?? false, error: wire?.error.isEmpty == false ? wire!.error : self.networkError,
 			pendingHandshakes: wire?.pendingHandshakes ?? 0, peers: self.budget.count, discovery: wire?.discovery ?? .disabled, localDiscovery: wire?.localDiscovery ?? false)
-		let ready = Set(snapshots.map(\.id)), magnets = pendingMagnets.filter { !ready.contains($0.id) }.map(\.snapshot)
+		let ready = Set(snapshots.map(\.id))
+		var magnets: [SessionMagnetSnapshot] = []
+		for pending in pendingMagnets where !ready.contains(pending.id) {
+			let messages = await pending.tracker?.messages() ?? pending.trackerMessages
+			let fallback = await pending.tracker?.failure() ?? pending.trackerFailure
+			magnets.append(pending.snapshot(messages: messages, fallback: fallback))
+		}
 		let result = TorrentSessionSnapshot(transfers: snapshots, magnets: magnets, events: self.events, network: status); self.events.removeAll(); return result
 	}
 	@discardableResult public func configurePeers(_ settings: SessionPeerSettings) async throws -> UInt16 {
@@ -441,8 +449,14 @@ public actor TorrentSession {
 	}
 	private func updateRouting() async throws {
 		guard let network else { return }
-		let targets = entries.filter { $0.running && !$0.closed && $0.error.isEmpty }.map {
-			SessionPeerTarget(id: $0.id, hashes: [$0.metadata.hashes.v1, $0.metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap({ $0 }), owner: $0.owner)
+		var targets = entries.filter { $0.running && !$0.closed && $0.error.isEmpty }.map {
+			SessionPeerTarget(id: $0.id, hashes: Self.wireHashes($0.metadata.hashes), owner: .transfer($0.owner))
+		}
+		if !networkChanging {
+			for pending in pendingMagnets {
+				guard pending.running, pending.error.isEmpty, pending.verified == nil, let resolver = pending.resolver else { continue }
+				targets.append(SessionPeerTarget(id: pending.id, hashes: Self.wireHashes(pending.magnet.hashes), owner: .magnet(resolver, peerID: peerID)))
+			}
 		}
 		do {
 			try await network.setTargets(targets)
@@ -473,7 +487,18 @@ public actor TorrentSession {
 		}
 		pending.resolver = resolver
 		if refresh { try await refreshRouting() }
+		await startMagnetTracker(pending, resolver: resolver)
 		await resolver.enqueue(pending.magnet.peers.compactMap(SessionMagnetResolver.endpoint))
+	}
+
+	private func startMagnetTracker(_ pending: SessionPendingMagnet, resolver: SessionMagnetResolver) async {
+		guard pending.running, pending.verified == nil, pending.tracker == nil, !pending.magnet.trackers.isEmpty else { return }
+		do {
+			let endpoint = try await trackerEndpoint()
+			guard pending.verified == nil else { return }
+			let service = try SessionTracker(magnet: pending.magnet, resolver: resolver, peerID: peerID, port: endpoint.port, preferV2: configuration.preferV2, client: endpoint.client, clock: clock)
+			pending.tracker = service; pending.trackerMessages = [:]; pending.trackerFailure = ""; await service.start()
+		} catch { pending.trackerFailure = error.localizedDescription }
 	}
 
 	private func restartMagnets() async throws {
@@ -484,12 +509,15 @@ public actor TorrentSession {
 
 	private func stopMagnet(_ pending: SessionPendingMagnet, cancelPromotion: Bool = true) async {
 		let resolver = pending.resolver; pending.resolver = nil
+		let tracker = pending.tracker; pending.tracker = nil
 		let task = cancelPromotion ? pending.promotion : nil
 		if cancelPromotion { pending.revision = UUID(); pending.promotion = nil; task?.cancel() }
-		await resolver?.stop(); await task?.value
+		await tracker?.halt(); await resolver?.stop()
+		if let tracker { await tracker.stop(); pending.trackerMessages = await tracker.messages(); pending.trackerFailure = await tracker.failure() }
+		await task?.value
 	}
 
-	private func receivedMetadata(_ id: String, revision: UUID, metadata: TorrentMetadata, endpoint: NetworkEndpoint) {
+	private func receivedMetadata(_ id: String, revision: UUID, metadata: TorrentMetadata, endpoint: NetworkEndpoint?) {
 		guard !closed, !networkChanging, let pending = pending(id), pending.revision == revision, pending.running, pending.verified == nil else { return }
 		pending.verified = (metadata, endpoint); schedulePromotion(pending)
 	}
@@ -536,7 +564,7 @@ public actor TorrentSession {
 				try await self.refreshRouting()
 				if existing == nil, entry.running {
 					await self.startTracker(entry)
-					if !entry.metadata.inspection.private { _ = try? await self.connect(id: entry.id, to: verified.1) }
+					if !entry.metadata.inspection.private, let endpoint = verified.1 { _ = try? await self.connect(id: entry.id, to: endpoint) }
 				}
 			}
 		} catch {
@@ -619,13 +647,18 @@ public actor TorrentSession {
 		}
 	}
 	private func startTracker(_ entry: SessionEntry) async {
-		do {
-			try await trackerSetup.acquire(); await startTrackerState(entry); await trackerSetup.release()
-		} catch { entry.trackerFailure = error.localizedDescription }
-	}
-	private func startTrackerState(_ entry: SessionEntry) async {
 		guard entry.tracker == nil, entry.running, !entry.closed, !entry.metadata.trackerTiers.isEmpty else { return }
 		do {
+			let endpoint = try await trackerEndpoint(), initial = try await entry.owner.snapshot(), id = entry.id
+			let service = try SessionTracker(metadata: entry.metadata, owner: entry.owner, peerID: peerID, port: endpoint.port, preferV2: configuration.preferV2,
+				initial: initial, baseline: entry.trackerBaseline, client: endpoint.client, clock: clock) { [weak self] peer in _ = try? await self?.connect(id: id, to: NetworkEndpoint(peer.address, port: peer.port)) }
+			entry.tracker = service; entry.trackerFailure = ""; entry.trackerMessages = [:]; await service.start()
+		} catch { entry.trackerFailure = error.localizedDescription }
+	}
+	private func trackerEndpoint() async throws -> (client: TrackerClient, port: UInt16) {
+		try await trackerSetup.acquire()
+		do {
+			try Task.checkCancellation()
 			if network == nil && peerSettings == nil {
 				let settings = currentPeerSettings
 				network = try await SessionPeerNetwork.open(settings: settings, budget: budget, encryption: configuration.encryption,
@@ -641,11 +674,9 @@ public actor TorrentSession {
 			}
 			guard let network else { throw NetworkFailure.closed }
 			if trackerClient == nil { trackerClient = try await network.trackers(http: httpTracker) }
-			let initial = try await entry.owner.snapshot(), port = await network.snapshot().port, id = entry.id
-			let service = try SessionTracker(metadata: entry.metadata, owner: entry.owner, peerID: peerID, port: port, preferV2: configuration.preferV2,
-				initial: initial, baseline: entry.trackerBaseline, client: trackerClient!, clock: clock) { [weak self] peer in _ = try? await self?.connect(id: id, to: NetworkEndpoint(peer.address, port: peer.port)) }
-			entry.tracker = service; entry.trackerFailure = ""; entry.trackerMessages = [:]; await service.start()
-		} catch { entry.trackerFailure = error.localizedDescription }
+			let result = (trackerClient!, await network.snapshot().port)
+			await trackerSetup.release(); return result
+		} catch { await trackerSetup.release(); throw error }
 	}
 	private func entry(_ id: String) throws -> SessionEntry {
 		if let entry = entries.first(where: { $0.id == id }) { return entry }
@@ -664,6 +695,9 @@ public actor TorrentSession {
 	}
 	private func emit(_ event: SessionEvent) { if events.count >= 1024 { events.removeFirst() }; events.append(event) }
 	private static func overlaps(_ a: InfoHashes, _ b: InfoHashes) -> Bool { (a.v1 != nil && a.v1 == b.v1) || (a.v2 != nil && a.v2 == b.v2) }
+	private static func wireHashes(_ hashes: InfoHashes) -> [Data] {
+		[hashes.v1, hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }
+	}
 	private static func matches(_ expected: InfoHashes, _ actual: InfoHashes) -> Bool { (expected.v1 == nil || expected.v1 == actual.v1) && (expected.v2 == nil || expected.v2 == actual.v2) }
 	private func serial<T: Sendable>(id: String? = nil, publishing: Bool = false, _ body: () async throws -> T) async throws -> T {
 		let token = try await commands.acquire(id); var ownsPublication = false

@@ -7,13 +7,14 @@ import ButterTorrentEngine
 extension TCPTransferComparisonTests {
 	static func runTrackerComparisons(root: URL, binary: URL) async throws {
 		var cases = 0
-		for udp in [false, true] { for legacy in [false, true] { for utp in [false, true] { for nativeSeed in [false, true] {
-			let label = "tracker-hybrid-\(legacy ? "v1-only" : "both")-\(udp ? "udp" : "http")-\(utp ? "utp" : "tcp")-\(nativeSeed ? "up" : "down")"
+		for udp in [false, true] { for legacy in [false, true] { for utp in [false, true] { for nativeSeed in [false, true] { for magnetDownload in [false, true] {
+			let label = "tracker-hybrid-\(legacy ? "v1-only" : "both")-\(udp ? "udp" : "http")-\(utp ? "utp" : "tcp")-\(nativeSeed ? "up" : "down")\(magnetDownload ? "-magnet" : "")"
 			if let filter = ProcessInfo.processInfo.environment["BUTTER_TRACKER_FILTER"], !label.contains(filter) { continue }
 			let work = root.appendingPathComponent(label); try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
 			let original = try TorrentMetadata(contentsOf: root.appendingPathComponent("single-16384-hybrid.torrent"))
 			var fields = original.document.root.dictionary!, info = original.document.root["info"]!.dictionary!
-			info[Data("private".utf8)] = .integer(1); fields[Data("info".utf8)] = .dictionary(info)
+			if !magnetDownload { info[Data("private".utf8)] = .integer(1) }
+			fields[Data("info".utf8)] = .dictionary(info)
 			let metadata = try TorrentMetadata(BencodeValue.dictionary(fields).encoded())
 			let hashes = [metadata.hashes.v1!, Data(metadata.hashes.v2!.prefix(20))], rejected = legacy ? hashes[1] : nil
 			let tracker = try await ComparisonTracker.open(udp: udp, hashes: hashes, rejected: rejected)
@@ -25,8 +26,10 @@ extension TCPTransferComparisonTests {
 			do {
 				var settings = SessionPeerSettings(); settings.tcp = !utp; settings.utp = utp; settings.pex = false; settings.allowSameIP = true
 				let nativePort = try await session.configurePeers(settings)
-				let job: [String: Any] = ["torrent": source.path, "destination": nativeSeed ? work.appendingPathComponent("reference-download").path : root.appendingPathComponent("reference-seed").path,
+				let magnet = Magnet(hashes: metadata.hashes, trackers: [tracker.url.absoluteString])
+				var job: [String: Any] = ["torrent": source.path, "destination": nativeSeed ? work.appendingPathComponent("reference-download").path : root.appendingPathComponent("reference-seed").path,
 					"listen": "127.0.0.1:0", "status": record.path, "remotePort": 0, "transport": utp ? "utp" : "tcp", "encryption": "disabled", "pex": false]
+				if magnetDownload && nativeSeed { job["magnet"] = magnet.uri }
 				try JSONSerialization.data(withJSONObject: job).write(to: jobURL)
 				let accepted = hashes.filter { $0 != rejected }
 				if !nativeSeed {
@@ -34,25 +37,35 @@ extension TCPTransferComparisonTests {
 					try await wait { guard let state = try status(record, process: process) else { return false }; return state.seeding && tracker.state.hasSeeds(hashes: accepted, port: state.port) }
 				}
 				let destination = nativeSeed ? root.appendingPathComponent("reference-seed") : work.appendingPathComponent("native-download")
-				_ = try await session.add(id: "transfer", source: source, destination: destination); try await session.run(id: "transfer", running: true)
+				if magnetDownload && !nativeSeed {
+					_ = try await session.add(id: "transfer", magnet: magnet, destination: destination)
+				} else {
+					_ = try await session.add(id: "transfer", source: source, destination: destination)
+				}
+				try await session.run(id: "transfer", running: true)
 				if nativeSeed {
 					try await wait { tracker.state.hasSeeds(hashes: accepted, port: nativePort) }
 					try process.run()
 				}
 				let expected = metadata.inspection.files.filter { !$0.pad }.reduce(Int64(0)) { $0 + $1.size }
 				try await wait {
-					guard let reference = try status(record, process: process), let wire = try await session.snapshot().transfers[0].state.transfer else { return false }
+					guard let reference = try status(record, process: process), let wire = try await session.snapshot().transfers.first?.state.transfer else { return false }
 					return nativeSeed ? reference.complete && reference.downloaded == expected && wire.uploaded == expected : wire.complete && wire.downloaded - wire.corruptBytes - wire.redundantBytes == expected && reference.uploaded == expected
 				}
 				try await session.shutdown(); try await session.close(); try await stop(process)
 				let calls = tracker.state.announces(peerID: session.peerID)
 				guard Set(calls.map(\.hash)) == Set(hashes), calls.allSatisfy({ $0.port == nativePort }), tracker.state.failure == nil else { throw PeerFailure.invalid("tracker wire identity, ownership or fixture failure: \(tracker.state.failure ?? "")") }
 				for hash in hashes {
-					let events = calls.filter { $0.hash == hash }.map(\.event)
+					let identityCalls = calls.filter { $0.hash == hash }
+					let events = identityCalls.map(\.event)
 					if hash == rejected {
 						guard !events.isEmpty, events.allSatisfy({ $0 == .started }) else { throw PeerFailure.invalid("rejected tracker identity acquired a lifecycle") }
 					} else {
-						let expectedEvents: [TrackerEvent?] = nativeSeed ? [.started, .stopped] : [.started, .completed, .stopped]
+						var expectedEvents: [TrackerEvent?] = nativeSeed ? [.started, .stopped] : [.started, .completed, .stopped]
+						if magnetDownload && !nativeSeed {
+							expectedEvents.insert(contentsOf: [.started, .stopped], at: 0)
+							guard identityCalls.prefix(2).allSatisfy({ $0.left == 16_384 }) else { throw PeerFailure.invalid("pending tracker left differs") }
+						}
 						guard events == expectedEvents else { throw PeerFailure.invalid("tracker lifecycle differs: \(events)") }
 					}
 				}
@@ -68,7 +81,7 @@ extension TCPTransferComparisonTests {
 				if process.isRunning { process.terminate(); try? await stop(process); if process.isRunning { kill(process.processIdentifier, SIGKILL) } }
 				await tracker.close(); throw error
 			}
-		} } } }
+		} } } } }
 		if cases == 0 { throw PeerFailure.invalid("no tracker comparison matched") }
 		print("PASS: \(cases) independent hybrid tracker comparisons in both directions")
 	}

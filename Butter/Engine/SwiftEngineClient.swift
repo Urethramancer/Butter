@@ -158,7 +158,7 @@ actor NativeSnapshotMapper {
 			rows.append(TransferSnapshot(id: row.id, name: row.magnet.name.isEmpty ? row.magnet.hashes.hex[0] : row.magnet.name, path: row.destination.path,
 				state: row.running ? "Resolving metadata" : "Paused", error: row.error, metadata: false, private: false, complete: false,
 				progress: 0, wanted: 0, done: 0, total: 0, down: 0, up: 0, downloaded: 0, uploaded: 0, demand: false,
-				hashes: row.magnet.hashes.hex, pieces: [], files: [], trackers: row.magnet.trackers.map { TrackerSnapshot(url: $0, message: "") }, peers: []))
+				hashes: row.magnet.hashes.hex, pieces: [], files: [], trackers: row.trackers.map { TrackerSnapshot(url: $0.url, message: $0.message) }, peers: []))
 		}
 		transfers = nextTransfers; peers = nextPeers
 		return EngineSnapshot(transfers: rows, events: snapshot.events.map { EngineEvent(kind: $0.kind, id: $0.id, path: $0.path, existingID: $0.existingID) }, port: Int(snapshot.network.port), udp: snapshot.network.udp,

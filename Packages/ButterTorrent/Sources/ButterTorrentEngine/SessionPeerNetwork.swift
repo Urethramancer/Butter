@@ -29,9 +29,21 @@ public struct SessionNetworkSnapshot: Sendable {
 }
 
 struct SessionPeerTarget: Sendable {
+	enum Owner: Sendable {
+		case transfer(ManagedTransfer)
+		case magnet(SessionMagnetResolver, peerID: Data)
+
+		func matches(_ other: Self) -> Bool {
+			switch (self, other) {
+			case (.transfer(let a), .transfer(let b)): a === b
+			case (.magnet(let a, let first), .magnet(let b, let second)): a === b && first == second
+			default: false
+			}
+		}
+	}
 	let id: String
 	let hashes: [Data]
-	let owner: ManagedTransfer
+	let owner: Owner
 }
 
 // Listeners and routing jobs share the same hard budget as outgoing transfers.
@@ -127,7 +139,7 @@ actor SessionPeerNetwork {
 				guard next[hash] == nil || next[hash]?.id == target.id else { throw PeerFailure.invalid("ambiguous routed swarm") }; next[hash] = target
 			}
 		}
-		if next.count == routes.count, next.allSatisfy({ hash, target in routes[hash]?.id == target.id && routes[hash]?.owner === target.owner }) { return }
+		if next.count == routes.count, next.allSatisfy({ hash, target in routes[hash]?.id == target.id && routes[hash]?.owner.matches(target.owner) == true }) { return }
 		let catalog = next.isEmpty ? nil : try PeerSwarmCatalog(hashes: Array(next.keys))
 		updating = true; revision = UUID()
 		await drainOpening()
@@ -153,7 +165,11 @@ actor SessionPeerNetwork {
 			var decoder = PeerWireDecoder(); try decoder.feed(bytes)
 			guard let hello = try decoder.handshake(), !closed, !updating, revision == self.revision, let target = routes[hello.infoHash] else { throw PeerFailure.invalid("unregistered incoming swarm") }
 			if let negotiated = channel.negotiatedInfoHash { guard routes[negotiated]?.id == target.id else { throw PeerFailure.invalid("MSE and peer swarm differ") } }
-			try Task.checkCancellation(); _ = try await target.owner.attach(channel)
+			try Task.checkCancellation()
+			switch target.owner {
+			case .transfer(let owner): _ = try await owner.attach(channel)
+			case .magnet(let resolver, let peerID): try await resolver.attach(channel, hello: hello, peerID: peerID)
+			}
 		} catch { try? await raw.shutdown() }
 	}
 	func transport(for endpoint: NetworkEndpoint) throws -> UTPTransport {
