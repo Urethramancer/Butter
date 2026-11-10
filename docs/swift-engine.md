@@ -200,3 +200,50 @@ unchanged repeat-build checks are required before tagging the phase.
 
 Creation emits both identities; transfer traffic still belongs to libtorrent.
 Throughput/CPU/memory comparisons and full UI acceptance remain later gates.
+
+## Contained HTTP services (phase 4)
+
+Completed and tagged `v0.7.0`.
+
+The package's `ButterTorrentNetworking` product provides a bounded Foundation
+HTTP transport, HTTP/HTTPS trackers, tier/lifecycle management and BEP 17/19 web
+seeds. The app and its transfer backend are unchanged. The package integration
+harness creates native metadata, announces to a local tracker, downloads through
+both web-seed protocols (including redirects, Unicode paths and padding), verifies
+every piece against its v1 hashes and only then announces completed/stopped.
+
+Transport limits apply while receiving data, including chunked responses. TLS
+certificate validation stays with Foundation. Redirects have a fixed count, reject
+non-HTTP schemes, embedded credentials and HTTPS downgrades, strip authentication,
+and retain range headers. Request counts, headers, timeouts and decoded response
+bodies are bounded. Cancellation cancels the underlying URLSession and settles
+the continuation once. Reserved announce query fields cannot be supplied by a
+tracker URL; unrelated passkeys retain their original escaping.
+
+Tracker responses support compact IPv4/IPv6 and dictionary peers, failure/warning
+messages, interval/minimum interval, tracker IDs and counts. Tiers shuffle once,
+promote a successful member and fail over in order. Announce lifecycle includes
+initially complete seeds, completed events after verification, and stopped events
+for all contacted trackers. Busy commands reject explicitly. Cancellation does
+not trigger failure backoff. Web-seed errors use bounded retry delays and 503
+retry hints; corrupt sources are banned and pending responses discarded. Clock
+and transport injection make state/failure cases deterministic without sleeping.
+
+`Scripts/verify.sh http` runs twenty focused service tests. Ordinary package tests
+run forty tests across both products. Tests cover real loopback HTTP and untrusted
+TLS, malformed/oversized responses, redirect loops and unsafe schemes, deadline
+and in-flight cancellation, peer formats, lifecycle, tier promotion/failure,
+range validation, retry hints, bans and the integrated metadata-to-HTTP scenario.
+Concurrency-sensitive cases additionally run five times without retries. Release
+package tests/builds are the build gate; no app/UI change requires native UI tests.
+
+The library currently checks literal local addresses and loopback announce paths.
+DNS-result policy and connection pinning (including DNS rebinding) belong to the
+shared networking foundation in phase 5, and remain a production-enablement gate.
+The TLS fixture proves untrusted certificates are rejected; no successful
+public-CA HTTPS interoperability or network hardware pass is claimed.
+
+Protocol references: [BEP 3](https://www.bittorrent.org/beps/bep_0003.html),
+[BEP 12](https://www.bittorrent.org/beps/bep_0012.html),
+[BEP 17](https://www.bittorrent.org/beps/bep_0017.html) and
+[BEP 19](https://www.bittorrent.org/beps/bep_0019.html).

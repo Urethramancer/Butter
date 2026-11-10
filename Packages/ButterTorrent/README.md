@@ -34,6 +34,7 @@ worker, atomic publication, explicit cancellation and shutdown settlement.
 swift test --package-path Packages/ButterTorrent --scratch-path .build/ButterTorrent
 Scripts/verify.sh metadata-reference
 Scripts/verify.sh creation
+Scripts/verify.sh http
 ```
 
 The first command works without libtorrent installed. The second uses the parent
@@ -46,3 +47,40 @@ and headless executables, using the same files that SwiftPM tests. This keeps th
 existing Xcode project and shell-based test builds aligned without introducing
 binary artefacts. Consumers of the standalone package can import the
 `ButterTorrentMetadata` product normally.
+
+`ButterTorrentNetworking` adds HTTP/HTTPS trackers and BEP 17/19 web seeds using
+Foundation. These services are connected to the package's headless integration
+tests; production transfers still use libtorrent. `http` runs the focused service
+tests; the ordinary package test command includes both libraries.
+
+The HTTP transport bounds concurrent requests, redirects, response headers and
+decoded body bytes; defaults are eight requests, five redirects, 32 KiB response
+headers and 1 MiB bodies. Requests have a 30-second overall and ten-second idle
+deadline. TLS uses platform certificate validation. Cookies, credential storage,+caching, URL credentials and HTTPS downgrade redirects are disabled. Initial and
+redirect URLs are validated, including loopback announce paths and redirects from
+public names to literal local addresses. DNS-based address policy/pinning remains
+part of the shared networking foundation and must pass before production use.
+
+Tracker services encode binary identifiers without text conversion, parse compact
+IPv4/IPv6 and dictionary peers, retain tracker IDs, honour intervals, shuffle and
+promote tier members, and send started/completed/stopped events. The caller ticks
+an injectable monotonic clock. Failure delays double from 30 seconds to a maximum
+of 30 minutes; cancellation does not count as tracker failure. A torrent that
+starts complete does not send a completed event. A session admits one command at
+a time and stops every tracker it successfully contacted.
+
+Web seeds admit three simultaneous requests and 128 distinct sources per client.
+BEP 19 checks byte ranges, response lengths and Content-Range; whole-file HTTP 200
+is accepted only for a complete requested file. Paths use separately escaped
+original metadata components. BEP 17 supports whole pieces and contiguous ranges.
+503 retry hints use the BEP 17 response body or Retry-After seconds/HTTP dates.
+Retries are bounded and use an injectable clock. The caller verifies piece hashes
+and reports corruption to ban a seed, including its in-flight responses; fetched
+bytes are never automatically treated as verified. Padding and file-to-piece
+mapping remain storage/engine responsibilities.
+
+Tests use temporary loopback HTTP/TLS listeners and injected failures. On macOS
+15+, the negative TLS test uses `/usr/bin/openssl` to generate a disposable identity
+imported only into memory; no keychain or trust settings change. No public service
+or third-party dependency installation is needed. Package Release tests verify
+the same harness; the native UI suite is reserved for later integration.

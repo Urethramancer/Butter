@@ -74,6 +74,8 @@ and hybrid torrent creation; libtorrent continues to handle transfers. Run
 `Scripts/verify.sh metadata-reference` for optional libtorrent comparisons.
 `Scripts/verify.sh creation` verifies native creation, cancellation, publication
 failure/recovery and reference transfers of the generated metadata.
+`Scripts/verify.sh http` checks the contained Swift tracker and web-seed services
+with local HTTP/TLS fixtures; these services remain outside the production engine.
 
 ```sh
 Scripts/verify.sh final audit

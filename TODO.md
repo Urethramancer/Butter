@@ -1,8 +1,9 @@
 # Remaining audit and acceptance checks
 
 ## Swift torrent engine replacement
-- Phase 4: HTTP trackers and BEP 17/19 web seeds with local service fixtures.
 - Phase 5: shared TCP/UDP transport, UDP trackers, discovery and router mapping.
+  Connect DNS-resolved address policies/pinning to HTTP services before enabling
+  them in production, including DNS rebinding and public-to-local redirects.
 - Phase 6: safe storage, selective layout, verification, checkpoints and interruption recovery.
 - Phase 7: v1 TCP downloads and seeding, both libtorrent interoperability directions.
 - Phase 8: metadata exchange, PEX, v2/hybrid transfers and private discovery enforcement.
