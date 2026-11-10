@@ -5,10 +5,14 @@ public actor NetworkHTTPTransport: HTTPTransport {
 	private let maximumRequests: Int
 	private let resolver: any AddressResolving
 	private let clock: any TransportClock
+	private var addressFilter: PeerAddressFilter
 	private var active = 0
-	public init(maximumRequests: Int = 8, resolver: any AddressResolving = SystemAddressResolver(), clock: any TransportClock = ContinuousTransportClock()) {
+	public init(maximumRequests: Int = 8, resolver: any AddressResolving = SystemAddressResolver(), clock: any TransportClock = ContinuousTransportClock(), addressFilter: PeerAddressFilter = .init()) {
 		self.maximumRequests = max(1, min(maximumRequests, 64)); self.resolver = resolver; self.clock = clock
+		self.addressFilter = addressFilter
 	}
+	/// Changes filtering for subsequent pinned connection attempts; owners drain active requests first.
+	public func setAddressFilter(_ filter: PeerAddressFilter) { addressFilter = filter }
 	public func get(_ request: HTTPRequest) async throws -> HTTPResponse {
 		guard request.body.isEmpty else { throw HTTPServiceError.invalid("GET body") }
 		return try await execute(request, method: "GET")
@@ -36,7 +40,9 @@ public actor NetworkHTTPTransport: HTTPTransport {
 			let answers = try await resolver.resolve(host: host, port: port, timeout: remaining(deadline))
 			let local = try HTTPAddressPolicy.validate(answers, port: port, url: url, tracker: request.trackerAnnounce, originLocal: originLocal)
 			if originLocal == nil { originLocal = local }
-			let response = try await exchange(url: url, answers: answers, headers: headers, request: request, method: method, deadline: deadline)
+			let permitted = answers.filter { addressFilter.allows($0.address) }
+			guard !permitted.isEmpty else { throw HTTPServiceError.invalid("blocked HTTP endpoint") }
+			let response = try await exchange(url: url, answers: permitted, headers: headers, request: request, method: method, deadline: deadline)
 			guard [301, 302, 303, 307, 308].contains(response.status) else { return response }
 			guard hop < request.maximumRedirects else { throw HTTPServiceError.limit("redirect count") }
 			guard method == "GET", let location = response.headers["location"], let next = URL(string: location, relativeTo: url)?.absoluteURL else { throw HTTPServiceError.invalid("HTTP redirect") }

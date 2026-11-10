@@ -3,6 +3,22 @@ import Testing
 @testable import ButterTorrentNetworking
 
 @Suite struct HTTPTransportTests {
+	@Test func addressFiltersApplyBeforeDirectAndRedirectedConnections() async throws {
+		let hits = HTTPHitCounter()
+		let target = try await HTTPFixture.start(host: "::1") { _ in hits.add(); return .init(body: Data([42])) }
+		let origin = try await HTTPFixture.start { _ in .init(status: 302, headers: ["Location": target.url.absoluteString]) }
+		do {
+			let address = try IPAddress("::1"), filter = try PeerAddressFilter(ranges: [PeerAddressRange(first: address, last: address)])
+			let transport = NetworkHTTPTransport(addressFilter: filter)
+			for url in [target.url, origin.url] {
+				await #expect(throws: HTTPServiceError.invalid("blocked HTTP endpoint")) { try await transport.get(HTTPRequest(url: url)) }
+			}
+			#expect(hits.value == 0)
+			await transport.setAddressFilter(.init())
+			#expect(try await transport.get(HTTPRequest(url: origin.url)).body == Data([42]))
+			#expect(hits.value == 1)
+		} catch { await origin.stop(); await target.stop(); throw error }; await origin.stop(); await target.stop()
+	}
 	@Test func localRedirectAndChunkedResponse() async throws {
 		let server = try await HTTPFixture.start { input in
 			if input.target == "/redirect" { return .init(status: 302, headers: ["Location": "/body"]) }
@@ -62,4 +78,11 @@ import Testing
 		} catch { task.cancel(); await server.stop(); signal.continuation.finish(); throw error }
 		await server.stop(); signal.continuation.finish()
 	}
+}
+
+private final class HTTPHitCounter: @unchecked Sendable {
+	private let lock = NSLock()
+	private var count = 0
+	func add() { lock.withLock { count += 1 } }
+	var value: Int { lock.withLock { count } }
 }
