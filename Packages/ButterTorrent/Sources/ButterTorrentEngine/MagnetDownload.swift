@@ -54,6 +54,7 @@ public actor MagnetDownload {
 				}
 			}
 			try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }
+			try await registry.confirm(id)
 			let ready = MagnetResolution.ready(metadata, transfer, disk); result = ready; return ready
 		} catch {
 			let cleanup = Task { if let engine { try? await engine.shutdown() }; if let storage { try? await storage.shutdown() } }

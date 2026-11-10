@@ -5,6 +5,42 @@ import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
 @Suite struct MagnetLifecycleTests {
+	@Test func waitingMagnetSurvivesTheFirstOwnersStorageFailure() async throws {
+		let fixture = try V2Fixture(version: 3), registry = TorrentIdentityRegistry()
+		let blocked = fixture.root.appendingPathComponent("blocked-state"); try Data("keep".utf8).write(to: blocked)
+		let first = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("first"), stateDirectory: blocked, registry: registry)
+		let second = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("second"), stateDirectory: fixture.root.appendingPathComponent("second-state"), registry: registry)
+		do {
+			_ = try await registry.claim(fixture.metadata, owner: first.id)
+			let seed = try await fixture.engine("seed", seed: true), (endpoint, serving) = try await fixture.provider(seed, count: 3)
+			let waiting = Task { try await second.resolve(peers: [endpoint]) }
+			try await eventually { await registry.waiters.count == 1 }
+			do { _ = try await first.resolve(peers: [endpoint]); Issue.record("Invalid storage root was accepted") } catch {}
+			guard case .ready(_, let engine, _) = try await waiting.value else { throw PeerFailure.invalid("failed owner was returned as a duplicate") }
+			try await serving.value; try await eventually { await engine.snapshot().complete }
+			#expect(await registry.owner(of: fixture.metadata.hashes) == second.id)
+			#expect(try Data(contentsOf: blocked) == Data("keep".utf8))
+			try await first.shutdown(); try await second.shutdown()
+		} catch { try? await first.shutdown(); try? await second.shutdown(); await fixture.close(); throw error }; await fixture.close()
+	}
+	@Test func failedOwnerReleasesReservationAndCancelledWaiterDoesNotTakeOwnership() async throws {
+		let fixture = try V2Fixture(version: 3), registry = TorrentIdentityRegistry(), first = UUID(), second = UUID(), third = UUID()
+		do {
+			#expect(try await registry.claim(fixture.metadata, owner: first) == first)
+			#expect(await registry.owner(of: fixture.metadata.hashes) == nil)
+			let cancelled = Task { [metadata = fixture.metadata] in try await registry.claim(metadata, owner: third) }
+			try await eventually { await registry.waiters.count == 1 }; cancelled.cancel()
+			await #expect(throws: CancellationError.self) { try await cancelled.value }
+			let waiting = Task { [metadata = fixture.metadata] in try await registry.claim(metadata, owner: second) }
+			try await eventually { await registry.waiters.count == 1 }
+			await registry.release(first)
+			#expect(try await waiting.value == second)
+			try await registry.confirm(second)
+			#expect(await registry.owner(of: fixture.metadata.hashes) == second)
+			#expect(try await registry.claim(fixture.metadata, owner: first) == second)
+			await registry.release(second)
+		} catch { await fixture.close(); throw error }; await fixture.close()
+	}
 	@Test func verifiedArrivalResolvesDuplicates() async throws {
 		let fixture = try V2Fixture(version: 3)
 		let registry = TorrentIdentityRegistry()
