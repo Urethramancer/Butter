@@ -83,10 +83,12 @@ and file operations, including killed child processes and real disk failures on 
 disposable image. Production storage remains on libtorrent.
 `Scripts/verify.sh peer` exercises the headless v1/v2/hybrid TCP engine, magnet
 metadata, authenticated hash exchange, Fast extensions and private PEX policy.
-`peer-reference` checks 48 transfers against the optional pinned libtorrent build,
-including selective files, magnets and fragmented IPv4/IPv6 streams, plus DHT
-announce/lookup interoperability in both directions. These transfers remain
-outside the production backend.
+It also checks negotiated peer encryption, plaintext fallback and encrypted
+cancellation. `peer-reference` checks 156 transfers against the optional pinned
+libtorrent build, including required/preferred RC4, negotiated plaintext, fallback,
+selective files, magnets and fragmented IPv4/IPv6 streams, plus DHT announce/lookup
+interoperability in both directions. These transfers remain outside the production
+backend.
 
 ```sh
 Scripts/verify.sh final audit

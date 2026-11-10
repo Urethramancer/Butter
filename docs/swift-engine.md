@@ -528,3 +528,82 @@ Protocol references: [BEP 5](https://www.bittorrent.org/beps/bep_0005.html),
 [BEP 32](https://www.bittorrent.org/beps/bep_0032.html),
 [BEP 42](https://www.bittorrent.org/beps/bep_0042.html) and
 [BEP 52](https://www.bittorrent.org/beps/bep_0052.html).
+
+## Peer encryption compatibility (phase 9)
+
+Completed and tagged `v0.12.0`.
+
+`PeerStream` negotiates MSE beneath existing peer framing for incoming/outgoing
+TCP transfers and magnet metadata. The engine still has one reader and one writer
+per connection; cipher updates occur inside those owners, and failed writes close
+the connection. Cancelled queued uploads do not consume stream-cipher bytes.
+Shutdown cancels and drains outgoing negotiations, accepted peer sessions and arithmetic work before
+checkpointing. Peer snapshots distinguish raw plaintext, negotiated plaintext and
+RC4 payloads. Magnet resolution carries its configured encryption policy into
+both metadata exchange and the resulting transfer.
+
+The implementation uses the protocol's specific 768-bit modulus with 24 fixed
+32-bit limbs and a 160-bit ephemeral secret from `SecRandomCopyBytes`. Montgomery
+arithmetic is confined to this group, and rejects remote public values outside
+`[2, p-2]`. Exponentiation performs both candidate multiplications for each secret
+bit; this is a compatibility implementation, without a constant-time assurance.
+Four global workers and 64 cancellable queued jobs bound arithmetic admission.
+Handshake deadlines include queueing and computation, and expired/cancelled jobs
+are drained before releasing their worker slots.
+
+SHA-1 derivation uses CryptoKit; RC4 uses Apple's public CommonCrypto API and
+discards the initial 1,024 bytes in each direction. No third-party cryptographic
+library is introduced. Synchronisation scans and all four padding fields have
+512-byte bounds. Initial application data is bounded to the protocol's 65,535
+bytes, decrypted independently of the selected payload mode and retained for
+normal framing. Candidates for either verified hybrid wire identity can select
+the swarm. Unsupported methods, multiple selected methods, bad verification
+constants, unknown swarms, oversized padding and truncated streams fail closed.
+
+Defaults match the pinned reference: incoming/outgoing encryption enabled, both
+payload methods allowed, and plaintext preferred when both are offered. Enabled
+outgoing policy first attempts MSE, reserving half the remaining connection budget
+for negotiation and allowing one fresh plaintext connection after failure.
+Required policy never falls back, and cancellation or worker-admission exhaustion
+does not downgrade. Incoming disabled policy rejects MSE; incoming required policy
+rejects an ordinary plaintext handshake. Required negotiation may select a
+plaintext payload when permitted; requiring RC4 also requires `.levels = .rc4`.
+MSE provides legacy protocol obfuscation, not authenticated modern encryption.
+
+The Debug/Release package suites cover 128 tests. Forty-seven engine, MSE,
+arithmetic-worker and DHT cases run five independent times without retries.
+Thread Sanitizer covers those paths in an isolated build. Fixed DH and RC4 vectors
+were cross-checked with Go's standard library; only vector data is embedded, with
+no Go runtime or build dependency. Fixtures check degenerate public values,
+fragmented maximum-padding handshakes, initial payloads, both negotiated methods,
+illegal selections, exact malformed-message errors, queue exhaustion, queued
+deadlines, cancellation and shutdown. An encrypted Fast fixture cancels a payload
+already waiting for rate tokens, observes exactly one rejection and then reads a
+second successful response to prove cipher alignment is preserved.
+
+The expanded reference harness passes 156 independent transfers: 48 ordinary
+plaintext, 48 required RC4, 48 negotiated plaintext, six preferred-RC4 and six
+plaintext-fallback cases. Both initiator directions and all v1/v2/hybrid identities
+are represented. Public metadata exchange, sparse hash exchange, private/public
+layouts, selective files and 16/64 KiB pieces remain covered. IPv4/IPv6 relays split
+the first 2,048 encrypted-handshake bytes into individual writes, followed by
+fragmented payloads. Assertions inspect both engines' negotiated modes as well as
+payload counters and bytes after their shutdown barriers. Reference fixtures keep
+completed connections open for those mode assertions. Both DHT interoperability
+directions also still pass. A final 30-case subset rechecks all policies after the
+deadline/admission changes.
+
+Sanitizer instrumentation exposed fixture timing assumptions: three-second fake
+peer deadlines were too short for concurrently instrumented arithmetic, and
+legacy fixed-connection fixtures could consume their accept allowance on an MSE
+fallback. Fake peers now allow ten seconds and require the exact invalid-protocol
+error; legacy plaintext fixtures choose plaintext explicitly. Separate required
+encryption and fallback fixtures retain coverage of the new paths.
+
+Wire behaviour is checked against the pinned reference's
+[peer handshake implementation](https://github.com/arvidn/libtorrent/blob/6da363d2994f17c0b3c0450d124cf73a31a73847/src/bt_peer_connection.cpp)
+and [key exchange implementation](https://github.com/arvidn/libtorrent/blob/6da363d2994f17c0b3c0450d124cf73a31a73847/src/pe_crypto.cpp).
+The fixed-width arithmetic and framing are native Swift implementations; the
+reference remains optional comparison tooling. Production transfers still use
+libtorrent. µTP, application integration and consolidated performance/dependency
+acceptance remain phases 10–12. No UI or throughput/CPU/memory comparison is claimed.
