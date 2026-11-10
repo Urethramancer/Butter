@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ButterTorrentMetadata
 import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
@@ -34,6 +35,38 @@ private final class IdentityListener: Sendable {
 }
 
 @Suite struct IdentityFallbackTests {
+	@Test(arguments: [false, true], [false, true]) func hybridMagnetFetchesFromALegacyOnlyProvider(_ utp: Bool, _ encrypted: Bool) async throws {
+		let fixture = try V2Fixture(version: 3), listener = try await IdentityListener(utp: utp)
+		let policy: PeerEncryptionConfiguration = encrypted ? .init(incoming: .required, outgoing: .required, levels: .rc4) : .disabled
+		let magnet = Magnet(hashes: fixture.metadata.hashes, trackers: ["https://tracker.example/announce"], webSeeds: ["https://seed.example/payload/"])
+		var fetching: Task<TorrentMetadata, Error>?
+		do {
+			let seed = try await fixture.engine("seed", seed: true, preferV2: false, encryption: policy)
+			let task = Task { try await MetadataExchange(encryption: policy, utp: listener.outgoing).fetch(magnet, peers: [listener.endpoint], timeout: 15) }; fetching = task
+			try await rejectPreferred(listener, hashes: magnet.hashes, policy: policy)
+			let accepted = try await listener.accept(timeout: 15)
+			if encrypted { _ = try await seed.attach(PeerStream.accept(accepted, hashes: [magnet.hashes.v1!], configuration: policy)) }
+			else { _ = try await seed.attach(accepted) }
+			let metadata = try await task.value
+			#expect(metadata.originalInfo == fixture.metadata.originalInfo && metadata.hashes == magnet.hashes)
+			#expect(metadata.trackerTiers == [magnet.trackers] && metadata.webSeeds == magnet.webSeeds)
+			#expect(metadata.pieceLayers.isEmpty)
+		} catch { fetching?.cancel(); await fixture.close(); await listener.close(); _ = try? await fetching?.value; throw error }
+		await fixture.close(); await listener.close()
+	}
+	@Test func wrongMetadataHandshakeDoesNotTriggerAnIdentityRetry() async throws {
+		let fixture = try V2Fixture(version: 3), listener = try await IdentityListener(utp: false)
+		let magnet = Magnet(hashes: fixture.metadata.hashes)
+		let task = Task { try await MetadataExchange(encryption: .disabled).fetch(magnet, peers: [listener.endpoint], timeout: 5) }
+		do {
+			let raw = try await listener.accept(); defer { raw.close() }
+			var reserved = Data(repeating: 0, count: 8); reserved[5] = 16
+			try await raw.write(PeerHandshake(infoHash: Data(repeating: 99, count: 20), peerID: Data(repeating: 77, count: 20), reserved: reserved).encoded)
+			await #expect(throws: PeerFailure.invalid("metadata handshake identity/capability")) { try await task.value }
+			await #expect(throws: NetworkFailure.timedOut) { try await listener.accept(timeout: 0.1) }
+		} catch { task.cancel(); await fixture.close(); await listener.close(); _ = try? await task.value; throw error }
+		await fixture.close(); await listener.close()
+	}
 	@Test(arguments: [false, true], [false, true]) func legacyOnlyHybridPeer(_ utp: Bool, _ encrypted: Bool) async throws {
 		let fixture = try V2Fixture(version: 3), listener = try await IdentityListener(utp: utp)
 		let policy: PeerEncryptionConfiguration = encrypted ? .init(incoming: .required, outgoing: .required, levels: .rc4) : .disabled
@@ -42,21 +75,7 @@ private final class IdentityListener: Sendable {
 			let seed = try await fixture.engine("seed", seed: true, preferV2: false, encryption: policy)
 			let down = try await fixture.engine("download", seed: false, encryption: policy)
 			let task = Task { try await down.connect(to: listener.endpoint, utp: listener.outgoing) }; opening = task
-			let rejected = try await listener.accept()
-			if encrypted {
-				await #expect(throws: (any Error).self) {
-					try await PeerStream.accept(rejected, hashes: [fixture.metadata.hashes.v1!], configuration: policy)
-				}
-			} else {
-				var decoder = PeerWireDecoder()
-				while true {
-					try decoder.feed(await rejected.read(timeout: 3))
-					if let hello = try decoder.handshake() {
-						#expect(hello.infoHash == Data(fixture.metadata.hashes.v2!.prefix(20))); break
-					}
-				}
-				rejected.close()
-			}
+			try await rejectPreferred(listener, hashes: fixture.metadata.hashes, policy: policy)
 			let accepted = try await listener.accept()
 			if encrypted { _ = try await seed.attach(PeerStream.accept(accepted, hashes: [fixture.metadata.hashes.v1!], configuration: policy)) }
 			else { _ = try await seed.attach(accepted) }
@@ -106,5 +125,18 @@ private final class IdentityListener: Sendable {
 			await #expect(throws: NetworkFailure.timedOut) { try await listener.accept(timeout: 0.1) }
 		} catch { opening?.cancel(); await fixture.close(); await listener.close(); throw error }
 		await fixture.close(); await listener.close()
+	}
+	private func rejectPreferred(_ listener: IdentityListener, hashes: InfoHashes, policy: PeerEncryptionConfiguration) async throws {
+		let rejected = try await listener.accept(); defer { rejected.close() }
+		if policy.incoming == .required {
+			await #expect(throws: (any Error).self) { try await PeerStream.accept(rejected, hashes: [hashes.v1!], configuration: policy) }
+		} else {
+			var decoder = PeerWireDecoder()
+			while true {
+				let bytes = try await rejected.read(timeout: 3)
+				guard !bytes.isEmpty else { throw NetworkFailure.closed }; try decoder.feed(bytes)
+				if let hello = try decoder.handshake() { #expect(hello.infoHash == Data(hashes.v2!.prefix(20))); return }
+			}
+		}
 	}
 }

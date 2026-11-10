@@ -1063,3 +1063,19 @@ target under Thread Sanitizer, the shared app contract and 36 independent
 libtorrent session transfers pass. No production transfer backend is changed.
 The disposable-volume recovery harness also passes its journal/checkpoint child
 interruptions, real ENOSPC and read-only remount cases with the new scheduler.
+
+### Hybrid magnet metadata on a legacy wire
+
+Metadata exchange now tries the v1 identity once when the preferred v2 opening
+closes or times out before its handshake, within the same request deadline and
+encryption policy. Wrong identities and failures after the handshake do not
+trigger another opening. Both full hashes still authenticate the received
+`info` bytes. The resulting envelope retains tracker and web-seed hints from
+the magnet without changing its identity.
+
+Four native TCP/µTP cases cover plaintext and required RC4, with a separate
+wrong-identity case. Two public libtorrent fixtures supply metadata over the
+v1 wire and then transfer exact multi-file payloads. The four original private
+hybrid transfer cases remain. The reference harness now contains 428 transfers
+plus two DHT protocol comparisons. Sparse v2 layer reconstruction from legacy
+payloads remains in TODO.md.

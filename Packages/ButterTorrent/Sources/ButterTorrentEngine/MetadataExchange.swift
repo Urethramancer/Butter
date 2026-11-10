@@ -33,35 +33,53 @@ public actor MetadataExchange {
 		}
 	}
 	private static func fetchPeer(_ magnet: Magnet, endpoint: NetworkEndpoint, deadline: TimeInterval, clock: any TransportClock, budget: TCPPeerBudget, encryption: PeerEncryptionConfiguration, utp: UTPTransport?) async throws -> TorrentMetadata {
-		func remaining() throws -> TimeInterval { let seconds = deadline - clock.now(); guard seconds > 0 else { throw NetworkFailure.timedOut }; return min(10, seconds) }
-		var reserved = Data(repeating: 0, count: 8); reserved[5] = 16
-		let wireHash = magnet.hashes.v2.map { Data($0.prefix(20)) } ?? magnet.hashes.v1!
-		let stream = try await PeerStream.connect(to: endpoint, hash: wireHash, configuration: encryption, timeout: remaining(), clock: clock, budget: budget, utp: utp)
+		let v2 = magnet.hashes.v2.map { Data($0.prefix(20)) }, primary = v2 ?? magnet.hashes.v1!
+		let peerID = Data("-BTMETA-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
+		func open(_ hash: Data) async throws -> (PeerStream, PeerWireDecoder) {
+			try await openPeer(endpoint: endpoint, hash: hash, peerID: peerID, v2: hash == v2, deadline: deadline, clock: clock, budget: budget, encryption: encryption, utp: utp)
+		}
+		let connection: (PeerStream, PeerWireDecoder)
+		do { connection = try await open(primary) }
+		catch {
+			guard let v1 = magnet.hashes.v1, v1 != primary, !Task.isCancelled,
+				clock.now() < deadline, PeerStream.allowsIdentityRetry(after: error) else { throw error }
+			connection = try await open(v1)
+		}
+		let (stream, decoder) = connection
 		defer { stream.close() }
-		let hello = try PeerHandshake(infoHash: wireHash, peerID: Data("-BTMETA-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) }), reserved: reserved)
 		do {
-			let metadata = try await receiveInfo(magnet, stream: stream, hello: hello, deadline: deadline, clock: clock)
+			let metadata = try await receiveInfo(magnet, stream: stream, ready: decoder, deadline: deadline, clock: clock)
 			if let datagramStream = stream.raw as? UTPStream, deadline > clock.now() { try? await datagramStream.finish(timeout: min(2, deadline - clock.now())) }
 			try? await stream.raw.shutdown(); return metadata
 		} catch { try? await stream.raw.shutdown(); throw error }
 	}
-	private static func receiveInfo(_ magnet: Magnet, stream: PeerStream, hello: PeerHandshake, deadline: TimeInterval, clock: any TransportClock) async throws -> TorrentMetadata {
+	private static func openPeer(endpoint: NetworkEndpoint, hash: Data, peerID: Data, v2: Bool, deadline: TimeInterval, clock: any TransportClock, budget: TCPPeerBudget,
+		encryption: PeerEncryptionConfiguration, utp: UTPTransport?) async throws -> (PeerStream, PeerWireDecoder) {
 		func remaining() throws -> TimeInterval { let seconds = deadline - clock.now(); guard seconds > 0 else { throw NetworkFailure.timedOut }; return min(10, seconds) }
-		let wireHash = hello.infoHash
-		try await stream.write(hello.encoded, timeout: remaining())
-		var decoder = PeerWireDecoder(), handshaken = false, extensions = ExtensionHandshake(), size: Int?, chunks: [Int: Data] = [:], pending: Set<Int> = [], requested = 0
+		var reserved = Data(repeating: 0, count: 8); reserved[5] = 16
+		let hello = try PeerHandshake(infoHash: hash, peerID: peerID, reserved: reserved)
+		let stream = try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption, timeout: remaining(), clock: clock, budget: budget, utp: utp)
+		do {
+			try await stream.write(hello.encoded, timeout: remaining())
+			var decoder = PeerWireDecoder()
+			while true {
+				let bytes = try await stream.read(timeout: remaining())
+				guard !bytes.isEmpty else { throw NetworkFailure.closed }; try decoder.feed(bytes)
+				guard let remote = try decoder.handshake() else { continue }
+				guard remote.infoHash == hash, remote.reserved[5] & 16 != 0 else { throw PeerFailure.invalid("metadata handshake identity/capability") }
+				var features = PeerFeatures(); features.extended = true; features.v2 = v2; decoder.negotiate(features)
+				return (stream, decoder)
+			}
+		} catch { try? await stream.raw.shutdown(); throw error }
+	}
+	private static func receiveInfo(_ magnet: Magnet, stream: PeerStream, ready: PeerWireDecoder, deadline: TimeInterval, clock: any TransportClock) async throws -> TorrentMetadata {
+		func remaining() throws -> TimeInterval { let seconds = deadline - clock.now(); guard seconds > 0 else { throw NetworkFailure.timedOut }; return min(10, seconds) }
+		var decoder = ready, extensions = ExtensionHandshake(), size: Int?, chunks: [Int: Data] = [:], pending: Set<Int> = [], requested = 0
+		let handshake = extensionDictionary(["m": extensionDictionary(["ut_metadata": .integer(1)]), "v": .bytes(Data("Butter metadata".utf8)), "reqq": .integer(1)])
+		try await stream.write(PeerMessage.extended(0, handshake.encoded()).encoded(), timeout: remaining())
 		var messages = 0
 		while true {
 			try Task.checkCancellation(); _ = try remaining()
-			let bytes = try await stream.read(timeout: remaining())
-			guard !bytes.isEmpty else { throw PeerFailure.invalid("metadata peer disconnected") }; try decoder.feed(bytes)
-			if !handshaken {
-				guard let remote = try decoder.handshake() else { continue }
-				guard remote.infoHash == wireHash, remote.reserved[5] & 16 != 0 else { throw PeerFailure.invalid("metadata handshake identity/capability") }
-				var features = PeerFeatures(); features.extended = true; features.v2 = magnet.hashes.v2.map { Data($0.prefix(20)) } == wireHash; decoder.negotiate(features)
-				let handshake = extensionDictionary(["m": extensionDictionary(["ut_metadata": .integer(1)]), "v": .bytes(Data("Butter metadata".utf8)), "reqq": .integer(1)])
-				try await stream.write(PeerMessage.extended(0, handshake.encoded()).encoded(), timeout: remaining()); handshaken = true
-			}
 			while let message = try decoder.next() {
 				messages += 1; guard messages <= 16_384 else { throw PeerFailure.limit("metadata peer messages") }
 				switch message {
@@ -97,10 +115,12 @@ public actor MetadataExchange {
 					}
 					if chunks.count == total {
 						var info = Data(); for piece in 0..<total { info.append(chunks[piece]!) }
-						return try TorrentMetadata(infoBytes: info, expected: magnet.hashes, trackers: magnet.trackers)
+						return try TorrentMetadata(infoBytes: info, expected: magnet.hashes, trackers: magnet.trackers, webSeeds: magnet.webSeeds)
 					}
 				}
 			}
+			let bytes = try await stream.read(timeout: remaining())
+			guard !bytes.isEmpty else { throw PeerFailure.invalid("metadata peer disconnected") }; try decoder.feed(bytes)
 		}
 	}
 }

@@ -15,8 +15,9 @@ extension TorrentMetadata {
 		return try Self.envelope(info: originalInfo, fields: fields)
 	}
 	/// Validates every supplied magnet identity before exposing received metadata.
-	public init(infoBytes: Data, expected: InfoHashes, trackers: [String] = []) throws {
+	public init(infoBytes: Data, expected: InfoHashes, trackers: [String] = [], webSeeds: [String] = []) throws {
 		guard trackers.count <= 128 else { throw MetadataError.limit("tracker hints") }
+		guard webSeeds.count <= 128 else { throw MetadataError.limit("web seed hints") }
 		let hashes = TorrentHasher.hash(infoBytes)
 		guard expected.v1 == nil || expected.v1 == hashes.sha1, expected.v2 == nil || expected.v2 == hashes.sha256 else { throw MetadataError.invalid("received metadata identity") }
 		var fields: [Data: BencodeValue] = [:]
@@ -24,6 +25,7 @@ extension TorrentMetadata {
 			fields[Data("announce".utf8)] = .bytes(Data(first.utf8))
 			fields[Data("announce-list".utf8)] = .list(trackers.map { .list([.bytes(Data($0.utf8))]) })
 		}
+		if !webSeeds.isEmpty { fields[Data("url-list".utf8)] = .list(webSeeds.map { .bytes(Data($0.utf8)) }) }
 		try self.init(Self.envelope(info: infoBytes, fields: fields))
 		guard expected.v1 == nil || self.hashes.v1 == expected.v1, expected.v2 == nil || self.hashes.v2 == expected.v2 else { throw MetadataError.invalid("magnet hash kind") }
 	}

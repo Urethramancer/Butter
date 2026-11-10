@@ -11,6 +11,7 @@ actor TCPFragmentingRelay {
 	private let handshakeBytes: Int
 	private let legacyHash: Data?, rejectHash: Data?
 	private(set) var rejectedIdentity = false
+	private(set) var failure = ""
 	private init(listener: TCPListener, handshakeBytes: Int, legacyHash: Data?, rejectHash: Data?) {
 		self.listener = listener; port = listener.port; self.handshakeBytes = handshakeBytes; self.legacyHash = legacyHash; self.rejectHash = rejectHash
 	}
@@ -18,19 +19,24 @@ actor TCPFragmentingRelay {
 		let listener = try await TCPListener.listen(address: IPAddress(host)), relay = TCPFragmentingRelay(listener: listener, handshakeBytes: handshakeBytes, legacyHash: legacyHash, rejectHash: rejectHash)
 		await relay.start(target: target); return relay
 	}
-	private func start(target: NetworkEndpoint) { task = Task { try await self.run(target: target) } }
+	private func start(target: NetworkEndpoint) {
+		task = Task {
+			do { try await self.run(target: target) }
+			catch { failure = String(describing: error); throw error }
+		}
+	}
 	private func run(target: NetworkEndpoint) async throws {
 		if let rejectHash {
-			let rejected = try await listener.accept(timeout: 10); streams.append(rejected)
+			let rejected = try await listener.accept(timeout: 10); streams.append(rejected); defer { rejected.close() }
 			let hello = try await Self.readHello(rejected)
 			guard Data(hello[28..<48]) == rejectHash else { throw NetworkFailure.invalid("unexpected first hybrid wire identity") }
-			rejectedIdentity = true; rejected.close()
+			rejectedIdentity = true
 		}
 		let incoming = try await listener.accept(timeout: 10)
-		guard !closed else { incoming.close(); return }; streams.append(incoming)
+		guard !closed else { incoming.close(); return }; streams.append(incoming); defer { incoming.close() }
 		let outgoing = try await TCPStream.connect(to: target)
 		guard !closed else { outgoing.close(); return }; streams.append(outgoing)
-		defer { incoming.close(); outgoing.close() }
+		defer { outgoing.close() }
 		let handshakeBytes = handshakeBytes, legacyHash = legacyHash
 		try await withThrowingTaskGroup(of: Void.self) { group in
 			group.addTask { try await Self.pipe(incoming, to: outgoing, handshakeBytes: handshakeBytes, legacyHash: legacyHash) }
