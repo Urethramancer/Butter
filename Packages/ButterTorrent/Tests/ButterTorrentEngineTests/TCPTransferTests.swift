@@ -5,6 +5,30 @@ import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
 @Suite struct TCPTransferTests {
+	@Test(.serialized, arguments: [false, true], [false, true]) func duplicateDirectionsChooseTheSamePeerIDRuleInEitherHandshakeOrder(_ incomingFirst: Bool, _ localIDIsGreater: Bool) async throws {
+		try await transferFixture { fixture in
+			let engine = try await fixture.transfer("download", peerID: Data(repeating: localIDIsGreater ? 200 : 1, count: 20)), remoteID = Data(repeating: 77, count: 20)
+			func open(_ outgoing: Bool) async throws -> (UUID, WirePeer) {
+				let listener = try await fixture.listen(), endpoint = try NetworkEndpoint("127.0.0.1", port: listener.port)
+				if outgoing {
+					let connecting = Task { try await engine.connect(to: endpoint) }
+					let raw = try await listener.accept(timeout: 3); return try await (connecting.value, WirePeer(stream: raw))
+				}
+				let raw = try await TCPStream.connect(to: endpoint), accepted = try await listener.accept(timeout: 3)
+				return (try await engine.attach(accepted), WirePeer(stream: raw))
+			}
+			let firstOutgoing = !incomingFirst, first = try await open(firstOutgoing)
+			let firstID = first.0
+			try await first.1.hello(hash: fixture.metadata.hashes.v1!, identity: 77)
+			try await eventually { await engine.snapshot().peers.contains { $0.id == firstID && $0.peerID == remoteID } }
+			let second = try await open(!firstOutgoing)
+			// Rejected incoming attempts can close before returning their hello.
+			_ = try? await second.1.hello(hash: fixture.metadata.hashes.v1!, identity: 77)
+			let retained = firstOutgoing == localIDIsGreater ? first.0 : second.0
+			try await eventually { let peers = await engine.snapshot().peers; return peers.count == 1 && peers[0].id == retained && peers[0].peerID == remoteID }
+			first.1.stream.close(); second.1.stream.close()
+		}
+	}
 	@Test func failedShutdownPreservesCheckpointAndCanBeRetried() async throws {
 		try await transferFixture { fixture in
 			let engine = try await fixture.transfer("download")

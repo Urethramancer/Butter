@@ -10,6 +10,7 @@ final class UTPReadEnd: @unchecked Sendable {
 /// UTPStream carries an ordered stream through its shared UDP owner.
 public final class UTPStream: PeerByteStream, @unchecked Sendable {
 	public let remoteEndpoint: NetworkEndpoint?
+	public let localEndpoint: NetworkEndpoint
 	public let kind = PeerTransportKind.utp
 	let id: UUID
 	private let owner: UTPTransport
@@ -17,7 +18,7 @@ public final class UTPStream: PeerByteStream, @unchecked Sendable {
 	private let end: UTPReadEnd
 	private let lock = NSLock()
 	private var closed = false, reading = false, writing = false, readEOF = false
-	init(owner: UTPTransport, id: UUID, endpoint: NetworkEndpoint, leases: [TCPPeerLease], end: UTPReadEnd) { self.owner = owner; self.id = id; remoteEndpoint = endpoint; self.leases = leases; self.end = end }
+	init(owner: UTPTransport, id: UUID, endpoint: NetworkEndpoint, leases: [TCPPeerLease], end: UTPReadEnd) { self.owner = owner; self.id = id; remoteEndpoint = endpoint; localEndpoint = owner.localEndpoint; self.leases = leases; self.end = end }
 	public var isClosed: Bool { lock.withLock { closed } }
 	public func read(maximumBytes: Int = 65_536, timeout: TimeInterval = 30) async throws -> Data {
 		try Task.checkCancellation()

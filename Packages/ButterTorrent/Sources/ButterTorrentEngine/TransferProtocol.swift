@@ -7,8 +7,13 @@ extension TCPTransfer {
 	func handshaken(_ id: UUID, handshake: PeerHandshake) throws -> PeerFeatures {
 		let v2 = metadata.hashes.v2.map { Data($0.prefix(20)) }
 		guard !stopping, let peer = peers[id], !peer.closing, handshake.infoHash == metadata.hashes.v1 || handshake.infoHash == v2,
-			handshake.peerID != hello.peerID, !bannedIDs.contains(handshake.peerID),
-			!peers.contains(where: { $0.key != id && $0.value.peerID == handshake.peerID && !$0.value.closing }) else { throw PeerFailure.invalid("handshake identity or duplicate peer") }
+			handshake.peerID != hello.peerID, !bannedIDs.contains(handshake.peerID) else { throw PeerFailure.invalid("handshake identity or duplicate peer") }
+		// Follow libtorrent's direction rule: the greater peer ID initiates.
+		// Both clients must choose the same connection during simultaneous open.
+		for (otherID, other) in peers where otherID != id && other.peerID == handshake.peerID && !other.closing {
+			guard peer.outgoing == handshake.peerID.lexicographicallyPrecedes(hello.peerID) else { throw PeerFailure.invalid("duplicate peer") }
+			drop(otherID, error: PeerFailure.invalid("duplicate peer"))
+		}
 		peer.peerID = handshake.peerID
 		peer.features.fast = hello.reserved[7] & handshake.reserved[7] & 4 != 0
 		peer.features.extended = hello.reserved[5] & handshake.reserved[5] & 16 != 0
