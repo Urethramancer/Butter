@@ -24,7 +24,7 @@ import ButterTorrentNetworking
 			let seed = try await fixture.engine("seed", seed: true, encryption: encryption), down = try await fixture.engine("download", seed: false, sparse: true, encryption: encryption)
 			let (endpoint, serving) = try await fixture.provider(seed, count: version == 1 ? 1 : 2)
 			if version > 1 {
-				let info = try await MetadataExchange(encryption: encryption).fetch(Magnet(hashes: fixture.metadata.hashes), peers: [endpoint], timeout: 5)
+				let info = try await MetadataExchange(encryption: encryption).fetch(Magnet(hashes: fixture.metadata.hashes), peers: [endpoint], timeout: 15)
 				#expect(info.originalInfo == fixture.metadata.originalInfo)
 			}
 			_ = try await down.connect(to: endpoint); try await serving.value

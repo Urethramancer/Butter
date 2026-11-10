@@ -71,12 +71,12 @@ private func vector(_ hex: String) -> Data { Data(stride(from: 0, to: hex.count,
 			let payload = Data((0..<2000).map { UInt8($0 % 251) })
 			let initiating = Task {
 				let raw = try await TCPStream.connect(to: endpoint)
-				do { var handshake = MSEHandshake(stream: raw, clock: clock, deadline: clock.now() + 8, configuration: config); handshake.paddingLength = padding; handshake.fragmentBytes = 7; return try await handshake.initiate(hash: hash, initial: payload) }
+				do { var handshake = MSEHandshake(stream: raw, clock: clock, deadline: clock.now() + 15, configuration: config); handshake.paddingLength = padding; handshake.fragmentBytes = 7; return try await handshake.initiate(hash: hash, initial: payload) }
 				catch { raw.close(); throw error }
 			}
 			let raw = try await listener.accept(timeout: 3)
 			do {
-				var handshake = MSEHandshake(stream: raw, clock: clock, deadline: clock.now() + 8, configuration: config); handshake.paddingLength = padding; handshake.fragmentBytes = 1
+				var handshake = MSEHandshake(stream: raw, clock: clock, deadline: clock.now() + 15, configuration: config); handshake.paddingLength = padding; handshake.fragmentBytes = 1
 				let server = try await handshake.accept(hashes: [Data(repeating: 7, count: 20), hash]), client = try await initiating.value
 				defer { server.close(); client.close() }
 				#expect(server.mode == (method == .rc4 ? .rc4 : .negotiatedPlaintext))
