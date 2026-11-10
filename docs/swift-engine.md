@@ -726,3 +726,43 @@ independent fail-fast runs. Twenty-four representative reference transfers pass
 in both directions across TCP and TCP-disabled µTP, plaintext, required RC4 and
 negotiated plaintext, including fragmented/impaired IPv6 paths. This is focused
 regression evidence, not the complete phase 11 acceptance suite.
+
+### Native command adapter
+
+`SwiftEngineClient` now translates the existing `EngineOperations` boundary into
+typed `TorrentSession` operations. The shared headless contract runs against
+libtorrent, the production utility adapter and this native adapter. It covers
+import defaults, validation, duplicate IDs and identities, selection, magnet
+generation, exports, rename, move events, retained-state restore and ordinary
+removal. The native adapter is compiled when the package module is available;
+the application still constructs its existing libtorrent client.
+
+Native imports reserve repository publication before opening isolated checkpoint
+directories, recheck available bytes and publish only after storage opens.
+Prepared checkpoints retain their directory descriptor. Publication and cleanup
+check directory identities and use nonblocking filesystem leases; a second
+session cannot discard a live checkpoint. Unknown files, substituted directories
+and pending payload journals are retained for review. Legacy resume files are
+not imported or deleted. Native creation shares the publication lease and uses
+exclusive publication for a new torrent file. Caller cancellation drains cleanup;
+cleanup failures are reported, and a visible published checkpoint is retained
+even if publication's final directory flush failed.
+
+Session snapshots map verified file/piece progress, selections, paths, counters,
+peer endpoints/client names, transport flags and demand into the existing app
+models. Rates use bounded counter deltas. External file invalidation retires the
+old peer controller before reopening from verified storage, preventing stale
+completion advertisements. Sparse v2/hybrid imports can save checkpoints before
+piece layers arrive; exports reject incomplete layers, then succeed after hash
+exchange. Restarts retain downloaded counters and authenticated hashes. Tracker
+edits retain exact info bytes and persist without changing the torrent identity.
+
+Verification passes 165 package tests in Debug and Release, 22 focused ownership
+and session tests under Thread Sanitizer and five independent fail-fast runs,
+the expanded three-backend contract, and the existing creation checks including
+eight independent libtorrent transfers. Passing test logs now delete automatically;
+failed and interrupted runs retain diagnostics. These are incremental phase 11
+checks. Settings, blocklist and magnet-import commands, accepted-peer routing,
+network-service orchestration, responsive long-running operations and repository
+interruption/disk-failure acceptance remain in TODO.md. No phase 11 tag, UI
+acceptance, production cut-over or performance claim is made.
