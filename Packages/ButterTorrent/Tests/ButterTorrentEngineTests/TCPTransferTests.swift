@@ -5,6 +5,28 @@ import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
 @Suite struct TCPTransferTests {
+	@Test func disconnectingPeersDrainsRequestsAndUnfinishedConnectionsWithoutStoppingStorage() async throws {
+		try await transferFixture { fixture in
+			var configuration = plainTransferConfiguration(); configuration.encryption.outgoing = .required
+			let engine = try await fixture.transfer("download", configuration: configuration), listener = try await fixture.listen()
+			let remote = try await TCPStream.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port))
+			_ = try await engine.attach(listener.accept(timeout: 3)); let old = WirePeer(stream: remote)
+			try await old.hello(hash: fixture.metadata.hashes.v1!, identity: 11)
+			try await old.seed(pieceCount: 3); _ = try await old.requests(6)
+			let unanswered = try await fixture.listen()
+			let connecting = Task { try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: unanswered.port)) }
+			let pending = try await unanswered.accept(timeout: 3); defer { pending.close(); old.stream.close(); connecting.cancel() }
+			await engine.disconnectPeers()
+			await #expect(throws: (any Error).self) { try await connecting.value }
+			#expect(await engine.snapshot().peers.isEmpty)
+			#expect(await engine.snapshot().stopped == false)
+			let replacement = try await fixture.scripted(engine, identity: 12, encryption: .init(incoming: .required))
+			try await replacement.seed(pieceCount: 3)
+			for block in try await replacement.requests(6) { try await replacement.reply(block, bytes: fixture.bytes) }
+			try await eventually { await engine.snapshot().complete }
+			replacement.stream.close()
+		}
+	}
 	@Test(.serialized, arguments: [false, true], [false, true]) func duplicateDirectionsChooseTheSamePeerIDRuleInEitherHandshakeOrder(_ incomingFirst: Bool, _ localIDIsGreater: Bool) async throws {
 		try await transferFixture { fixture in
 			let engine = try await fixture.transfer("download", peerID: Data(repeating: localIDIsGreater ? 200 : 1, count: 20)), remoteID = Data(repeating: 77, count: 20)

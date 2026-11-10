@@ -7,7 +7,6 @@
   Coordinate local-discovery and mapping lifecycles in that session.
   Complete tracker accounting for corrupt/redundant bytes and hybrid dual-identity
   announces; current session announces use its selected wire identity.
-  Drain existing private peers when tracker failover changes the supplying tracker.
   Keep snapshots and unrelated commands responsive during long filesystem operations.
   Verify interruption and disk-failure recovery during repository publication/discard.
   Resolve the intermittent closed stream in the controlled crossed-µTP/MSE fixture

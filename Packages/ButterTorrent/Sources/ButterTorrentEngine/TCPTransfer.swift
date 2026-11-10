@@ -123,6 +123,8 @@ public actor TCPTransfer {
 	var peers: [UUID: TransferPeer] = [:]
 	var openings: [UUID: Task<PeerStream, Error>] = [:]
 	var openingEndpoints: [UUID: NetworkEndpoint] = [:]
+	private var disconnectingPeers = false
+	private var peerRevision = UUID()
 	var uploadJobs: [UUID: (UUID, Task<Void, Never>)] = [:]
 	var bannedIDs: Set<Data> = []
 	var downloaded: Int64
@@ -197,6 +199,7 @@ public actor TCPTransfer {
 	}
 	@discardableResult func attach(_ stream: any PeerByteStream, outgoing: Bool, transport: PeerStream? = nil) throws -> UUID {
 		do { try Task.checkCancellation() } catch { stream.close(); throw error }
+		guard !disconnectingPeers else { stream.close(); throw PeerFailure.closed }
 		// libtorrent resolves crossed endpoint connections before reading peer IDs:
 		// the lower listening port initiates. µTP preserves both listening ports.
 		if !outgoing, let stream = stream as? UTPStream, let remote = stream.remoteEndpoint,
@@ -225,21 +228,32 @@ public actor TCPTransfer {
 	}
 	@discardableResult public func connect(to endpoint: NetworkEndpoint, utp: UTPTransport? = nil) async throws -> UUID {
 		try Task.checkCancellation()
+		guard !disconnectingPeers else { throw PeerFailure.closed }
 		guard configuration.addressFilter.allows(endpoint.address) else { throw PeerFailure.invalid("blocked peer") }
 		if let existing = peers.first(where: { !$0.value.closing && $0.value.peerID != nil && $0.value.session.stream.remoteEndpoint == endpoint }) { return existing.key }
 		guard !stopping, storageError == nil, peers.count + openings.count < configuration.maximumPeers else { throw PeerFailure.limit("active and connecting peers") }
-		let id = UUID(), budget = budget, clock = clock, hash = hello.infoHash, encryption = configuration.encryption
+		let id = UUID(), revision = peerRevision, budget = budget, clock = clock, hash = hello.infoHash, encryption = configuration.encryption
 		let task = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption, clock: clock, budget: budget, utp: utp) }; openings[id] = task; openingEndpoints[id] = endpoint
 		defer { openings[id] = nil; openingEndpoints[id] = nil }
 		do { return try await withTaskCancellationHandler {
 			let stream = try await task.value
 			do {
 				try Task.checkCancellation()
+				guard revision == peerRevision, !disconnectingPeers else { throw PeerFailure.closed }
 				if let existing = peers.first(where: { !$0.value.closing && $0.value.session.stream.remoteEndpoint == endpoint }) { stream.close(); return existing.key }
 				return try attach(stream.raw, outgoing: true, transport: stream)
 			} catch { stream.close(); throw error }
 		} onCancel: { task.cancel() } }
 		catch { if !stopping, !Task.isCancelled { lastPeerError = "\(endpoint): \(error.localizedDescription)" }; throw error }
+	}
+	func disconnectPeers() async {
+		disconnectingPeers = true; peerRevision = UUID()
+		let connecting = Array(openings.values), running = peers.values.compactMap(\.task)
+		for task in connecting { task.cancel() }
+		for peer in peers.values { peer.closing = true; peer.session.close(); peer.task?.cancel() }
+		for task in connecting { if let stream = try? await task.value { stream.close() } }
+		for task in running { await task.value }
+		disconnectingPeers = false
 	}
 	public func snapshot() -> TCPTransferSnapshot {
 		TCPTransferSnapshot(webSeeds: webSeeds.map { $0.snapshot }, complete: picker.complete, verifiedPieces: picker.completed, wantedPieces: picker.wanted,

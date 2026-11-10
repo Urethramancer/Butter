@@ -3,6 +3,20 @@ import Testing
 @testable import ButterTorrentEngine
 
 @Suite struct PeerCandidateQueueTests {
+	@Test func resettingDrainsOldConnectorsAndDiscardsPendingContacts() async throws {
+		let recorder = CandidateRecorder(blocked: true), queue = PeerCandidateQueue<Int> { await recorder.connect($0) }
+		await queue.enqueue(Array(0..<100))
+		try await eventually { await recorder.active == 2 }
+		await withTaskGroup(of: Void.self) { group in
+			for _ in 0..<3 { group.addTask { await queue.reset() } }
+		}
+		#expect(await recorder.active == 0); #expect(await recorder.cancelled == 2)
+		await queue.enqueue([4000])
+		try await eventually { await recorder.calls.count == 3 }
+		#expect(await recorder.calls.last == 4000)
+		await queue.stop()
+		#expect(await recorder.cancelled == 3)
+	}
 	@Test func excessCandidatesStayBoundedAndPendingDuplicatesAreCoalesced() async throws {
 		let recorder = CandidateRecorder(), queue = PeerCandidateQueue<Int> { await recorder.connect($0) }
 		await queue.enqueue(Array(0..<3000) + Array(0..<3000))

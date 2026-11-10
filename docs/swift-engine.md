@@ -926,7 +926,13 @@ stage diagnostics and the remaining investigation are recorded in TODO.md rather
 than treating repetition as a fix. Failed logs remain available; successful logs
 are removed automatically.
 
-Magnet imports, local discovery, mapping, tracker failover/accounting and the
+Magnet imports, local discovery, mapping, tracker accounting and the
 remaining phase 11 acceptance work stay in TODO.md. Production still uses
 libtorrent. The user's latest release instruction authorises committing, tagging
 and pushing each of phases 11 and 12 once its complete gate passes.
+
+Private tracker integration now drains old peers and pending connections before
+contacting a replacement, and keeps its successful tracker until failure across
+tier boundaries. The failover audit records wire, cancellation, Debug, Release and
+Thread Sanitizer verification. Remaining tracker work concerns corrupt/redundant
+payload accounting and hybrid dual-identity announces.

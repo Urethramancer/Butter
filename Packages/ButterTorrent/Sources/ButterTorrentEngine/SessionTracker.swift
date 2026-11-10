@@ -25,12 +25,14 @@ actor SessionTracker {
 	private var lastFailure = ""
 	init(metadata: TorrentMetadata, owner: ManagedTransfer, peerID: Data, port: UInt16, preferV2: Bool, initial: ManagedTransferSnapshot,
 		baseline: TrackerCounters, client: any TrackerAnnouncing, clock: any TransportClock, peer: @escaping @Sendable (TrackerPeer) async -> Void) throws {
-		self.owner = owner; self.clock = clock; candidates = PeerCandidateQueue(connect: peer)
+		self.owner = owner; self.clock = clock
+		let candidates = PeerCandidateQueue(connect: peer); self.candidates = candidates
 		self.baseline = baseline; counters = Self.counters(initial, metadata: metadata, baseline: baseline); self.initial = counters
 		let hash = preferV2 ? metadata.hashes.v2.map { Data($0.prefix(20)) } ?? metadata.hashes.v1! : metadata.hashes.v1 ?? Data(metadata.hashes.v2!.prefix(20))
 		announcer = try TrackerAnnouncer(tiers: metadata.trackerTiers.map { tier in
 			try tier.map { guard let url = URL(string: $0) else { throw HTTPServiceError.invalid("tracker URL") }; return url }
-		}, request: TrackerRequest(infoHash: hash, peerID: peerID, port: port, counters: counters), client: client, clock: clock)
+		}, request: TrackerRequest(infoHash: hash, peerID: peerID, port: port, counters: counters), client: client, clock: clock,
+			privateTorrent: metadata.inspection.private, beforeSwitch: { _ in await candidates.reset(); try await owner.disconnectPeers() })
 	}
 	func start() {
 		guard loop == nil, !stopped else { return }; let clock = clock

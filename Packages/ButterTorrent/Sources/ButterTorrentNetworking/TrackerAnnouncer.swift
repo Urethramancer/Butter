@@ -31,14 +31,19 @@ public actor TrackerAnnouncer {
 	private var initialLeft: Int64 = 0
 	private var completionPending = false
 	private var completionSent = false
+	private let privateTorrent: Bool
+	private let beforeSwitch: @Sendable (URL) async throws -> Void
+	private var activeTracker: URL?
 	public init(tiers: [[URL]], request: TrackerRequest, client: any TrackerAnnouncing = HTTPTrackerClient(),
-		clock: any HTTPServiceClock = MonotonicHTTPClock(), order: @Sendable ([URL]) -> [URL] = { $0.shuffled() }) throws {
+		clock: any HTTPServiceClock = MonotonicHTTPClock(), order: @Sendable ([URL]) -> [URL] = { $0.shuffled() },
+		privateTorrent: Bool = false, beforeSwitch: @escaping @Sendable (URL) async throws -> Void = { _ in }) throws {
 		guard tiers.count <= 32, tiers.reduce(0, { $0 + $1.count }) <= 128 else { throw HTTPServiceError.limit("tracker count") }
 		for url in tiers.flatMap({ $0 }) {
 			try Self.validate(tracker: url, request: request)
 		}
 		self.tiers = tiers.filter { !$0.isEmpty }.map(order)
 		self.request = request; self.client = client; self.clock = clock
+		self.privateTorrent = privateTorrent; self.beforeSwitch = beforeSwitch
 	}
 	public var status: Status { Status(phase: phase, nextAnnounce: next, consecutiveFailures: failures, lastError: lastError) }
 	public var messages: [URL: String] { endpointMessages }
@@ -58,6 +63,7 @@ public actor TrackerAnnouncer {
 		guard phase == .idle || phase == .stopped else { throw HTTPServiceError.invalid("tracker lifecycle is already started") }
 		phase = .running; initialLeft = counters.left; completionPending = false; completionSent = false
 		contacted.removeAll(); trackerIDs.removeAll(); failures = 0
+		activeTracker = nil
 		return try await announce(counters)
 	}
 	public func announceIfDue(_ counters: TrackerCounters) async throws -> TrackerResponse? {
@@ -99,33 +105,37 @@ public actor TrackerAnnouncer {
 	private func announce(_ counters: TrackerCounters) async throws -> TrackerResponse {
 		busy = true; defer { busy = false }
 		var failure: Error = HTTPServiceError.invalid("no HTTP trackers")
-		for tier in tiers.indices {
-			for url in tiers[tier] {
-				do {
+		let ordered = tiers.flatMap { $0 }
+		let urls: [URL]
+		if privateTorrent, let activeTracker { urls = [activeTracker] + ordered.filter { $0 != activeTracker } }
+		else { urls = ordered }
+		for url in urls {
+			do {
+				try Task.checkCancellation()
+				if privateTorrent, let activeTracker, activeTracker != url { try await beforeSwitch(url); try Task.checkCancellation() }
+				var message = request; message.counters = counters; message.trackerID = trackerIDs[url]
+				message.event = contacted.contains(url) ? (completionPending ? .completed : nil) : .started
+				var response = try await client.announce(to: url, request: message)
+				try Task.checkCancellation()
+				contacted.insert(url)
+				if let id = response.trackerID { trackerIDs[url] = id }
+				if completionPending && message.event == .started {
+					message.event = .completed; message.trackerID = trackerIDs[url]
+					response = try await client.announce(to: url, request: message)
 					try Task.checkCancellation()
-					var message = request; message.counters = counters; message.trackerID = trackerIDs[url]
-					message.event = contacted.contains(url) ? (completionPending ? .completed : nil) : .started
-					var response = try await client.announce(to: url, request: message)
-					try Task.checkCancellation()
-					contacted.insert(url)
 					if let id = response.trackerID { trackerIDs[url] = id }
-					if completionPending && message.event == .started {
-						message.event = .completed; message.trackerID = trackerIDs[url]
-						response = try await client.announce(to: url, request: message)
-						try Task.checkCancellation()
-						if let id = response.trackerID { trackerIDs[url] = id }
-					}
-					if completionPending { completionPending = false; completionSent = true }
-					tiers[tier].removeAll { $0 == url }; tiers[tier].insert(url, at: 0)
-					failures = 0; lastError = nil
-					endpointMessages[url] = response.warning
-					next = clock.now() + max(30, response.interval, response.minimumInterval)
-					return response
-				} catch {
-					if isCancellation(error) { throw CancellationError() }
-					failure = error
-					endpointMessages[url] = error.localizedDescription
 				}
+				if completionPending { completionPending = false; completionSent = true }
+				if let tier = tiers.firstIndex(where: { $0.contains(url) }) { tiers[tier].removeAll { $0 == url }; tiers[tier].insert(url, at: 0) }
+				activeTracker = url
+				failures = 0; lastError = nil
+				endpointMessages[url] = response.warning
+				next = clock.now() + max(30, response.interval, response.minimumInterval)
+				return response
+			} catch {
+				if isCancellation(error) { throw CancellationError() }
+				failure = error
+				endpointMessages[url] = error.localizedDescription
 			}
 		}
 		failures = min(failures + 1, 31); lastError = failure.localizedDescription

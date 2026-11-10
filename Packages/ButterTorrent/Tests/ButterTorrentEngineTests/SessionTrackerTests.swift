@@ -6,6 +6,27 @@ import ButterTorrentMetadata
 
 // Each case owns several sessions; keep independent fixtures within the process-wide disk budget.
 extension NativeSessionTests { @Suite struct SessionTrackerTests {
+	@Test func privateFailoverDrainsOldPeersBeforeContactingTheReplacement() async throws {
+		let fixture = try TrackerSessionFixture(), clock = EngineClock()
+		do {
+			let old = try await fixture.seed(empty: true), seed = try await fixture.seed()
+			let oldPort = try await old.snapshot().network.port, newPort = try await seed.snapshot().network.port
+			let tracker = SwitchingSessionTracker(old: try TrackerPeer(address: "127.0.0.1", port: oldPort), new: try TrackerPeer(address: "127.0.0.1", port: newPort))
+			let down = try await fixture.download(tiers: [["http://old.test/announce"], ["http://new.test/announce"]], tracker: tracker, clock: clock)
+			await tracker.checkBeforeReplacement { try await down.snapshot().transfers[0].state.transfer?.peers.isEmpty == true }
+			try await down.run(id: "transfer", running: true)
+			try await eventually { try await down.snapshot().transfers[0].state.transfer?.peers.contains { $0.endpoint?.port == oldPort && $0.peerID != nil } == true }
+			await tracker.failPrimary(true); clock.advance(31)
+			try await eventually { try await down.snapshot().transfers[0].state.transfer?.complete == true }
+			#expect(await tracker.oldPeersWereDrained)
+			let peers = try await down.snapshot().transfers[0].state.transfer?.peers ?? []
+			#expect(!peers.isEmpty && peers.allSatisfy { $0.endpoint?.port == newPort })
+			await tracker.failPrimary(false)
+			let previous = await tracker.hosts.count; clock.advance(31)
+			try await eventually { await tracker.hosts.count > previous }
+			#expect(await tracker.hosts.filter { $0 == "old.test" }.count == 2)
+		} catch { await fixture.close(); throw error }; await fixture.close()
+	}
 	@Test(arguments: [true, false]) func settingsRestartTrackersAfterPeerAdmissionReopens(_ rebind: Bool) async throws {
 		let fixture = try TrackerSessionFixture(), tracker = RecordingTracker(), clock = EngineClock()
 		do {
@@ -147,6 +168,26 @@ private actor RecordingTracker: TrackerAnnouncing {
 	}
 }
 
+private actor SwitchingSessionTracker: TrackerAnnouncing {
+	let old: TrackerPeer
+	let new: TrackerPeer
+	var hosts: [String] = []
+	var oldPeersWereDrained = false
+	private var failing = false
+	private var check: (@Sendable () async throws -> Bool)?
+	init(old: TrackerPeer, new: TrackerPeer) { self.old = old; self.new = new }
+	func failPrimary(_ failure: Bool) { failing = failure }
+	func checkBeforeReplacement(_ check: @escaping @Sendable () async throws -> Bool) { self.check = check }
+	func announce(to url: URL, request: TrackerRequest) async throws -> TrackerResponse {
+		let host = url.host!; hosts.append(host)
+		if host == "old.test", failing { throw HTTPServiceError.status(503) }
+		if host == "new.test", !oldPeersWereDrained { oldPeersWereDrained = try await check?() == true }
+		let peer = host == "old.test" ? old : new
+		let entry = BencodeValue.dictionary([Data("ip".utf8): .bytes(Data(peer.address.utf8)), Data("port".utf8): .integer(Int64(peer.port))])
+		return try TrackerResponse(BencodeValue.dictionary([Data("interval".utf8): .integer(30), Data("peers".utf8): .list([entry])]).encoded())
+	}
+}
+
 private final class TrackerSessionFixture {
 	let source: TransferFixture
 	let metadata: TorrentMetadata
@@ -156,12 +197,12 @@ private final class TrackerSessionFixture {
 		var info = source.metadata.document.root["info"]!.dictionary!; info[Data("private".utf8)] = .integer(1)
 		metadata = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
 	}
-	func seed() async throws -> TorrentSession {
-		let session = TorrentSession(storage: source.root.appendingPathComponent("seed-library"), configuration: plainTransferConfiguration(), loopbackOnly: true); sessions.append(session)
+	func seed(empty: Bool = false) async throws -> TorrentSession {
+		let session = TorrentSession(storage: source.root.appendingPathComponent(empty ? "empty-seed-library" : "seed-library"), configuration: plainTransferConfiguration(), loopbackOnly: true); sessions.append(session)
 		var settings = SessionPeerSettings(); settings.utp = false
 		_ = try await session.configurePeers(settings)
 		let input = source.root.appendingPathComponent("seed.torrent"); try metadata.document.original.write(to: input)
-		_ = try await session.add(id: "transfer", source: input, destination: source.root.appendingPathComponent("source")); try await session.run(id: "transfer", running: true); return session
+		_ = try await session.add(id: "transfer", source: input, destination: source.root.appendingPathComponent(empty ? "empty-seed" : "source"), selected: empty ? metadata.inspection.files.map { _ in false } : nil); try await session.run(id: "transfer", running: true); return session
 	}
 	func download(tiers: [[String]], tracker: any TrackerAnnouncing, clock: any TransportClock, selected: [Bool]? = nil, restore: Bool = false) async throws -> TorrentSession {
 		let session = TorrentSession(storage: source.root.appendingPathComponent("down-library"), configuration: plainTransferConfiguration(), loopbackOnly: true, clock: clock, httpTracker: tracker); sessions.append(session)

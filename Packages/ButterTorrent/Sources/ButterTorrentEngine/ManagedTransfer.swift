@@ -60,6 +60,7 @@ public actor ManagedTransfer {
 		}
 	}
 	public func pause() async throws { try await serial { try await self.quiesce() } }
+	func disconnectPeers() async throws { try await serial { await self.transfer?.disconnectPeers() } }
 	public func setLimits(download: Int, upload: Int) async throws {
 		try await serial {
 			var candidate = self.configuration; candidate.downloadLimit = download; candidate.uploadLimit = upload; try candidate.validate()

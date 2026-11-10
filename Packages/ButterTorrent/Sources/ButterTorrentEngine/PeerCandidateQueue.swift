@@ -7,9 +7,10 @@ actor PeerCandidateQueue<Item: Hashable & Sendable> {
 	private var queued: Set<Item> = []
 	private var worker: Task<Void, Never>?
 	private var closed = false
+	private var resetting: Task<Void, Never>?
 	init(connect: @escaping @Sendable (Item) async -> Void) { self.connect = connect }
 	func enqueue(_ items: [Item]) {
-		guard !closed else { return }
+		guard !closed, resetting == nil else { return }
 		for item in items.shuffled() where !queued.contains(item) {
 			if pending.count >= 2000 { queued.remove(pending.removeFirst()) }; pending.append(item); queued.insert(item)
 		}
@@ -17,8 +18,16 @@ actor PeerCandidateQueue<Item: Hashable & Sendable> {
 	}
 	func halt() { closed = true; worker?.cancel() }
 	func stop() async { halt(); await worker?.value; worker = nil; pending.removeAll(); queued.removeAll() }
+	func reset() async {
+		if let resetting { await resetting.value; return }
+		guard !closed else { return }
+		worker?.cancel(); pending.removeAll(); queued.removeAll()
+		let previous = worker, operation = Task { await previous?.value; self.resetFinished() }
+		resetting = operation; await operation.value
+	}
+	private func resetFinished() { worker = nil; resetting = nil }
 	private func start() {
-		guard worker == nil, !closed, !pending.isEmpty else { return }
+		guard worker == nil, !closed, resetting == nil, !pending.isEmpty else { return }
 		worker = Task { [weak self] in await self?.run() }
 	}
 	private func next() -> Item? {

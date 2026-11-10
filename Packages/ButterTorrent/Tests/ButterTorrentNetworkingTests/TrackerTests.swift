@@ -78,6 +78,26 @@ actor ScriptedTracker: TrackerAnnouncing {
 }
 
 @Suite struct TrackerLifecycleTests {
+	@Test(arguments: [false, true]) func privateFailoverKeepsItsTrackerUntilFailure(_ isPrivate: Bool) async throws {
+		let a = URL(string: "https://a.invalid/announce")!, b = URL(string: "https://b.invalid/announce")!
+		let client = ScriptedTracker(), clock = TestClock(), switched = TrackerSwitchRecorder()
+		let session = try TrackerAnnouncer(tiers: [[a], [b]], request: trackerRequest(), client: client, clock: clock,
+			privateTorrent: isPrivate, beforeSwitch: { await switched.record($0) })
+		try await session.start(TrackerCounters(left: 3))
+		await client.fail(["a.invalid"]); clock.advance(90)
+		_ = try await session.announceIfDue(TrackerCounters(left: 3))
+		#expect(await client.calls.map(\.url) == [a, a, b])
+		#expect(await switched.urls == (isPrivate ? [b] : []))
+		await client.fail([]); clock.advance(90)
+		_ = try await session.announceIfDue(TrackerCounters(left: 3))
+		#expect(await client.calls.last?.url == (isPrivate ? b : a))
+		await client.fail(["b.invalid"]); clock.advance(90)
+		_ = try await session.announceIfDue(TrackerCounters(left: 3))
+		#expect(await client.calls.last?.url == a)
+		#expect(await switched.urls == (isPrivate ? [b, a] : []))
+		await client.fail([])
+		try await session.stop(TrackerCounters(left: 3))
+	}
 	@Test func appendingATrackerRecoversAnActiveFailedLifecycle() async throws {
 		let a = URL(string: "https://a.invalid/announce")!, b = URL(string: "https://b.invalid/announce")!
 		let client = ScriptedTracker(), clock = TestClock()
@@ -145,4 +165,9 @@ actor ScriptedTracker: TrackerAnnouncing {
 		await http.release(HTTPResponse(status: 200, body: try trackerBody()))
 		#expect(try await retry.value?.interval == 60)
 	}
+}
+
+private actor TrackerSwitchRecorder {
+	var urls: [URL] = []
+	func record(_ url: URL) { urls.append(url) }
 }
