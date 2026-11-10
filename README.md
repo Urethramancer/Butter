@@ -90,10 +90,11 @@ metadata, authenticated hash exchange, Fast extensions and private PEX policy.
 It also checks negotiated peer encryption, plaintext fallback and encrypted
 cancellation. Native µTP shares the peer framing and encryption paths, with bounded
 streams and deterministic loss, delay, duplication, reordering and shutdown checks.
-`peer-reference` checks 312 transfers against the optional pinned
+`peer-reference` checks 348 transfers against the optional pinned
 libtorrent build, including required/preferred RC4, negotiated plaintext, fallback,
 selective files, magnets, fragmented TCP streams and impaired IPv4/IPv6 µTP with TCP
-disabled, plus DHT announce/lookup
+disabled. This includes 36 session-owned TCP/µTP cases covering both directions,
+three encryption modes and v1/v2/hybrid metadata. It also checks DHT announce/lookup
 interoperability in both directions. These transfers remain outside the production
 backend.
 

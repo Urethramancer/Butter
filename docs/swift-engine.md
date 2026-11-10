@@ -762,7 +762,50 @@ and session tests under Thread Sanitizer and five independent fail-fast runs,
 the expanded three-backend contract, and the existing creation checks including
 eight independent libtorrent transfers. Passing test logs now delete automatically;
 failed and interrupted runs retain diagnostics. These are incremental phase 11
-checks. Settings, blocklist and magnet-import commands, accepted-peer routing,
-network-service orchestration, responsive long-running operations and repository
+checks. Subsequent settings, blocklist, peer routing and tracker work is recorded
+below. Magnet-import commands, remaining network-service orchestration,
+responsive long-running operations and repository
 interruption/disk-failure acceptance remain in TODO.md. No phase 11 tag, UI
 acceptance, production cut-over or performance claim is made.
+
+### Shared peer ownership and tracker lifecycles
+
+The native session now owns a dual-stack listening port and shared UDP dispatcher,
+routes TCP and µTP connections to running swarms, and selects encrypted swarms
+through an indexed MSE catalogue. Incoming negotiation, unidentified connections,
+same-address admission and total peers have explicit bounds. Settings and
+blocklists drain affected peers before rebuilding controllers; unchanged fixed-port
+settings preserve pending handshakes. The adapter rejects enabled DHT, LSD and
+mapping until their session integration is complete.
+
+Automatic port allocation checks both TCP and UDP ownership. A TCP ephemeral port
+can already be occupied by an unrelated UDP socket. Only this automatic-port
+collision selects another candidate, with eight attempts and one overall deadline;
+explicit port conflicts still fail. A deterministic occupied-UDP fixture verifies
+that the abandoned TCP listener is released.
+
+Each running torrent now owns a tracker lifecycle using the session peer ID and
+listening port. HTTP/HTTPS clients and UDP trackers share tier failover, backoff,
+started/completed/stopped events and per-URL messages. Replies feed a bounded peer
+queue with two concurrent connection attempts. Private torrents accept peers from
+their verified metadata's trackers. Appending a tracker preserves info bytes and
+the existing announce lifecycle. Pause, settings changes, removal and shutdown
+cancel and drain active announces and peer connection attempts. Final announces
+share four slots and a three-second deadline including admission.
+
+Tracker `left` counts all unverified pieces, including unselected files; completing
+a selection does not announce a complete torrent. Persistent totals survive
+restart, while announce counters subtract the session import baseline. Counter
+accounting for corrupt/redundant bytes and hybrid dual-identity announces remain
+unfinished. Web seeds, discovery and router mapping still need session wiring.
+
+Session interoperability adds 36 independent libtorrent transfers: TCP/µTP,
+disabled/required RC4/negotiated plaintext, v1/v2/hybrid metadata and both
+directions. The complete reference harness now contains 348 peer cases plus two
+DHT comparisons; `BUTTER_REFERENCE_FILTER=session` selects the new session cases.
+
+Verification passes 182 package tests in Debug and Release, 33 focused session,
+peer-admission and tracker tests under Thread Sanitizer and five independent
+fail-fast runs, the three-backend app contract and all 36 session/libtorrent
+comparisons. These checks do not complete phase 11; no new tag or production
+backend switch is made.
