@@ -14,6 +14,12 @@ extension TCPTransfer {
 			guard peer.outgoing == handshake.peerID.lexicographicallyPrecedes(hello.peerID) else { throw PeerFailure.invalid("duplicate peer") }
 			drop(otherID, error: PeerFailure.invalid("duplicate peer"))
 		}
+		// Simultaneous TCP opens have different source ports. Read their identities
+		// before applying the per-address limit so both ends can retain one direction.
+		if !configuration.allowSameIP, let address = peer.session.stream.remoteEndpoint?.address,
+			peers.contains(where: { $0.key != id && !$0.value.closing && $0.value.peerID != nil && $0.value.session.stream.remoteEndpoint?.address == address }) {
+			throw PeerFailure.limit("connections from the same IP")
+		}
 		peer.peerID = handshake.peerID
 		peer.features.fast = hello.reserved[7] & handshake.reserved[7] & 4 != 0
 		peer.features.extended = hello.reserved[5] & handshake.reserved[5] & 16 != 0

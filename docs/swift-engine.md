@@ -1003,3 +1003,13 @@ An injected pending lookup verifies that private metadata prevents a second send
 drains the dispatcher and denies later lookups even if the unknown registration
 is retained. The optional headless libtorrent DHT comparisons use this API too.
 Session pending rows and metadata publication remain separate integration work.
+
+The session-discovery deadline exposed a crossed TCP admission race under the
+single-address policy. Incoming sockets can arrive before both outgoing hellos;
+rejecting the outgoing sockets at that point can close both directions. The
+per-address check now runs after handshake identity and duplicate-direction
+selection. Distinct peers at the same address are still rejected and the shared
+connection budget bounds unidentified sockets. A deterministic reproduction fails
+with the old check and transfers successfully with the new one. The full package
+suite, focused Release/Thread Sanitizer cases and five fail-fast engine suite
+repetitions pass after the fix; no automatic test retry is used.

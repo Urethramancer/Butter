@@ -15,8 +15,6 @@
   SHA-1-verified file data; the current harness requires a v2 hash provider or
   complete `.torrent` piece layers. Connect tracker-derived private peers only
   after metadata arrival; untrusted magnet hints are not reconnected.
-  Resolve the observed session DHT deadline before consolidating the phase 11
-  acceptance run; failure logs are retained.
 - Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
   Measure web-seed request overhead; current bounded downloads request 16 KiB
   blocks and open a connection for each HTTP request, without range coalescing.

@@ -5,6 +5,31 @@ import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
 @Suite struct TCPTransferTests {
+	@Test func crossedTCPConnectionsSurviveTheSingleAddressPolicy() async throws {
+		try await transferFixture { fixture in
+			var configuration = plainTransferConfiguration(); configuration.allowSameIP = false
+			let seed = try await fixture.transfer("seed", seed: true, configuration: configuration)
+			let down = try await fixture.transfer("download", configuration: configuration)
+			let left = try await fixture.listen(), right = try await fixture.listen()
+			let downChannel = try await PeerStream.connect(to: NetworkEndpoint("127.0.0.1", port: left.port), hash: fixture.metadata.hashes.v1!, configuration: .disabled)
+			let seedChannel = try await PeerStream.connect(to: NetworkEndpoint("127.0.0.1", port: right.port), hash: fixture.metadata.hashes.v1!, configuration: .disabled)
+			// Both incoming sockets exist before either outgoing wire hello is sent.
+			_ = try await seed.attach(left.accept(timeout: 3)); _ = try await down.attach(right.accept(timeout: 3))
+			_ = try await down.attach(downChannel.raw, outgoing: true, transport: downChannel)
+			_ = try await seed.attach(seedChannel.raw, outgoing: true, transport: seedChannel)
+			try await eventually {
+				let a = await seed.snapshot(), b = await down.snapshot()
+				return b.complete && a.peers.count == 1 && b.peers.count == 1 && a.peers[0].peerID != nil && b.peers[0].peerID != nil
+			}
+			let thirdListener = try await fixture.listen()
+			let connecting = Task { try await down.connect(to: NetworkEndpoint("127.0.0.1", port: thirdListener.port)) }
+			let third = try await thirdListener.accept(timeout: 3); defer { third.close() }
+			_ = try await connecting.value
+			try await third.write(PeerHandshake(infoHash: fixture.metadata.hashes.v1!, peerID: Data(repeating: 77, count: 20)).encoded)
+			try await eventually { await down.snapshot().peers.count == 1 }
+			#expect(await down.snapshot().lastPeerError?.contains("connections from the same IP") == true)
+		}
+	}
 	@Test func disconnectingPeersDrainsRequestsAndUnfinishedConnectionsWithoutStoppingStorage() async throws {
 		try await transferFixture { fixture in
 			var configuration = plainTransferConfiguration(); configuration.encryption.outgoing = .required

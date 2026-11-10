@@ -219,8 +219,6 @@ public actor TCPTransfer {
 		}
 		if let address = stream.remoteEndpoint?.address, !configuration.addressFilter.allows(address) { stream.close(); throw PeerFailure.invalid("blocked peer") }
 		guard !stopping, storageError == nil, peers.count < configuration.maximumPeers else { stream.close(); throw PeerFailure.limit("active peers") }
-		if !configuration.allowSameIP, let address = stream.remoteEndpoint?.address,
-			peers.values.contains(where: { !$0.closing && $0.session.stream.remoteEndpoint?.address == address }) { stream.close(); throw PeerFailure.limit("connections from the same IP") }
 		let id = UUID(), session = PeerSession(stream: stream, transport: transport), peer = TransferPeer(session: session, now: clock.now())
 		peers[id] = peer
 		peer.outgoing = outgoing
