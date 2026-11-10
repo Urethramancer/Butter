@@ -25,6 +25,14 @@ public actor TransferRepository {
 	private let root: URL
 	private let worker = StorageWorker()
 	public init(root: URL) { self.root = root }
+	/// Publishes a creator's completed bytes under the repository's publication lease.
+	public static func publishCreatedTorrent(_ data: Data, id: String, root: URL) throws {
+		try validateID(id)
+		let directory = try StorageDirectory(root), lease = try StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
+		guard data.count <= 33_554_432 else { throw StorageFailure.limit("torrent bytes") }
+		guard try directory.inspect(id + ".torrent") == nil else { throw StorageFailure.collision("torrent output") }
+		try directory.atomic(data, path: id + ".torrent", exclusive: true)
+	}
 	public static func validateID(_ id: String) throws {
 		guard (1...128).contains(id.utf8.count), id.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 95 }) else { throw StorageFailure.invalid("transfer identifier") }
 	}
@@ -61,11 +69,12 @@ public actor TransferRepository {
 			guard try directory.child(state.name).identity().sameFile(state.anchor.identity()) else { throw StorageFailure.recoveryRequired("prepared state directory was replaced") }
 			if let previous = try Self.record(id, in: directory), previous.directory != state.name { throw StorageFailure.collision("published transfer state") }
 			let path = id + ".torrent"
-			if try directory.inspect(path) != nil {
+			let existing = try directory.inspect(path)
+			if existing != nil {
 				let previous = try TorrentMetadata(directory.read(path, maximum: 33_554_432))
 				guard previous.originalInfo == metadata.originalInfo else { throw StorageFailure.collision("stored torrent identity") }
 			}
-			try directory.atomic(metadata.document.original, path: path)
+			try directory.atomic(metadata.document.original, path: path, exclusive: existing == nil)
 			let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
 			try directory.atomic(encoder.encode(Record(version: 1, directory: state.name)), path: id + ".native.plist")
 		}

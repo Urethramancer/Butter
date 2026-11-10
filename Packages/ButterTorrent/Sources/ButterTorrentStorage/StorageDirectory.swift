@@ -131,7 +131,7 @@ final class StorageDirectory: @unchecked Sendable {
 		}
 	}
 	func sync(_ file: Int32) throws { guard fsync(file) == 0 else { throw diskError("Cannot flush file") } }
-	func atomic(_ data: Data, path: String) throws {
+	func atomic(_ data: Data, path: String, exclusive: Bool = false) throws {
 		try parent(path, create: true) { directory, name in
 			let temporary = ".atomic-" + UUID().uuidString
 			let file = openat(directory, temporary, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
@@ -139,7 +139,8 @@ final class StorageDirectory: @unchecked Sendable {
 			defer { close(file); unlinkat(directory, temporary, 0) }
 			try Self.write(data, to: file, offset: 0, check: {})
 			try sync(file)
-			guard renameat(directory, temporary, directory, name) == 0 else { throw diskError("Cannot publish atomic state") }
+			let result = exclusive ? renameatx_np(directory, temporary, directory, name, UInt32(RENAME_EXCL)) : renameat(directory, temporary, directory, name)
+			guard result == 0 else { throw diskError("Cannot publish atomic state") }
 			try sync(directory)
 		}
 	}

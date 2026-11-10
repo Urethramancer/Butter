@@ -4,6 +4,17 @@ import ButterTorrentMetadata
 @testable import ButterTorrentStorage
 
 @Suite struct TransferRepositoryTests {
+	@Test func creationSharesThePublicationLeaseAndNeverReplacesExistingMetadata() async throws {
+		try await storageFixture { root in
+			let (metadata, _) = try storageMetadata(root), library = root.appendingPathComponent("library")
+			let repository = TransferRepository(root: library), prepared = try await repository.prepare(id: "transfer", restore: false)
+			#expect(throws: StorageFailure.self) { try TransferRepository.publishCreatedTorrent(metadata.document.original, id: "transfer", root: library) }
+			try await repository.abandon(prepared)
+			try TransferRepository.publishCreatedTorrent(metadata.document.original, id: "transfer", root: library)
+			#expect(throws: StorageFailure.self) { try TransferRepository.publishCreatedTorrent(Data([1]), id: "transfer", root: library) }
+			#expect(try Data(contentsOf: library.appendingPathComponent("transfer.torrent")) == metadata.document.original)
+		}
+	}
 	@Test func preparationReservesPublicationAcrossRepositoryOwners() async throws {
 		try await storageFixture { root in
 			let first = TransferRepository(root: root), second = TransferRepository(root: root)
