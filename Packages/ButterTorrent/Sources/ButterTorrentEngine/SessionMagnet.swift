@@ -1,6 +1,7 @@
 import Foundation
 import ButterTorrentMetadata
 import ButterTorrentNetworking
+import ButterTorrentStorage
 
 public struct SessionMagnetSnapshot: Sendable {
 	public let id: String
@@ -14,6 +15,7 @@ public struct SessionMagnetSnapshot: Sendable {
 // Session-owned catalogue record. Its resolver carries the cancellable network work.
 final class SessionPendingMagnet {
 	let id: String
+	let state: PendingMagnetState
 	var magnet: Magnet
 	var destination: URL
 	var running = false
@@ -26,8 +28,8 @@ final class SessionPendingMagnet {
 	var trackerFailure = ""
 	var verified: (TorrentMetadata, NetworkEndpoint?)?
 	var promotion: Task<Void, Never>?
-	init(id: String, magnet: Magnet, destination: URL, configuration: TCPTransferConfiguration) {
-		self.id = id; self.magnet = magnet; self.destination = destination
+	init(id: String, state: PendingMagnetState, configuration: TCPTransferConfiguration) {
+		self.id = id; self.state = state; magnet = state.magnet; destination = state.destination
 		downloadLimit = configuration.downloadLimit; uploadLimit = configuration.uploadLimit
 	}
 	func snapshot(messages: [URL: String], fallback: String) -> SessionMagnetSnapshot {

@@ -2,7 +2,7 @@
 
 ## Swift torrent engine replacement
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
-  Complete durable unresolved hints and exports waiting on metadata.
+  Complete exports waiting on authenticated piece layers.
   Complete native router-mapping settings (currently rejected by the adapter).
   Coordinate mapping lifecycles in that session.
   Verify interruption and disk-failure recovery during repository publication/discard.

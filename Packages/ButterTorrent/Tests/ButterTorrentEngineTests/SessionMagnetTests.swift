@@ -6,6 +6,40 @@ import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 extension NativeSessionTests { @Suite struct SessionMagnetTests {
+	@Test func pendingHintsAndDestinationSurviveCloseAndRequireExclusiveRestore() async throws {
+		let fixture = try V2Fixture(version: 3), library = fixture.root.appendingPathComponent("library")
+		let first = TorrentSession(storage: library), restored = TorrentSession(storage: library)
+		let original = fixture.root.appendingPathComponent("original"), moved = fixture.root.appendingPathComponent("moved")
+		let initialTracker = "https://tracker.example/announce", appendedTracker = "udp://other.example:6969/announce"
+		let magnet = Magnet(hashes: fixture.metadata.hashes, name: "Pending + test", webSeeds: ["https://seed.example/file"], peers: ["[::1]:6881"])
+		do {
+			_ = try await first.add(id: "pending", magnet: magnet, destination: original, tracker: initialTracker)
+			try await first.appendTracker(id: "pending", tracker: appendedTracker)
+			try await first.changeStorage(id: "pending", change: .move(moved))
+			await #expect(throws: StorageFailure.shared("native session repository")) { try await restored.forget(id: "pending") }
+			await #expect(throws: StorageFailure.shared("native session repository")) {
+				try await restored.add(id: "pending", magnet: magnet, destination: original, restore: true)
+			}
+			try await first.close()
+			let different = Magnet(hashes: try InfoHashes(v1: Data(repeating: 9, count: 20)))
+			await #expect(throws: MetadataError.invalid("retained magnet identity")) {
+				try await restored.add(id: "pending", magnet: different, destination: original, restore: true)
+			}
+			_ = try await restored.add(id: "pending", magnet: magnet, destination: original, restore: true)
+			let row = try #require(try await restored.snapshot().magnets.first)
+			var expected = magnet; expected.trackers = [initialTracker, appendedTracker]
+			#expect(row.magnet == expected && row.destination.path == moved.path && !row.running)
+			#expect(!FileManager.default.fileExists(atPath: moved.path))
+			let legacy = library.appendingPathComponent("pending.resume")
+			try Data([42]).write(to: legacy)
+			_ = try await restored.remove(id: "pending")
+			#expect(try Data(contentsOf: legacy) == Data([42]))
+			_ = try await restored.add(id: "pending", magnet: different, destination: original)
+			try await restored.close()
+		} catch { try? await first.close(); try? await restored.close(); await fixture.close(); throw error }
+		await fixture.close()
+	}
+
 	@Test(arguments: [false, true]) func incomingPeerProvidesMetadataWithoutDiscovery(_ utp: Bool) async throws {
 		let fixture = try V2Fixture(version: 3)
 		let seed = TorrentSession(storage: fixture.root.appendingPathComponent("seed-library"), configuration: plainTransferConfiguration(), loopbackOnly: true)

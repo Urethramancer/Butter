@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import ButterTorrentMetadata
 import ButterTorrentNetworking
 import ButterTorrentStorage
@@ -61,6 +62,7 @@ private final class SessionEntry {
 
 /// TorrentSession owns native imports and serialises app commands without GUI dependencies.
 public actor TorrentSession {
+	private static let log = Logger(subsystem: "ButterTorrent", category: "TorrentSession")
 	private let repository: TransferRepository
 	private let resources: TransferResources
 	private var configuration: TCPTransferConfiguration
@@ -137,10 +139,9 @@ public actor TorrentSession {
 				guard a.v1 == nil || b.v1 == nil || a.v1 == b.v1, a.v2 == nil || b.v2 == nil || a.v2 == b.v2 else { throw MetadataError.invalid("conflicting magnet identity") }
 				return SessionImport(id: existing.id, duplicate: true, hashes: [])
 			}
-			var magnet = magnet
-			if let tracker, !magnet.trackers.contains(tracker) { try self.validateTracker(tracker, hashes: magnet.hashes); magnet.trackers.append(tracker) }
-			guard magnet.trackers.count <= 128, magnet.webSeeds.count <= 128, magnet.peers.count <= 128 else { throw MetadataError.limit("magnet discovery hints") }
-			self.pendingMagnets.append(SessionPendingMagnet(id: id, magnet: magnet, destination: destination, configuration: self.configuration))
+			if let tracker, !magnet.trackers.contains(tracker) { try self.validateTracker(tracker, hashes: magnet.hashes) }
+			let state = try await self.repository.claimMagnet(id: id, magnet: magnet, destination: destination, restore: restore, tracker: tracker)
+			self.pendingMagnets.append(SessionPendingMagnet(id: id, state: state, configuration: self.configuration))
 			return SessionImport(id: id, duplicate: false, hashes: magnet.hashes.hex)
 		}
 	}
@@ -160,8 +161,8 @@ public actor TorrentSession {
 		entries.append(entry); try await refreshRouting()
 		return SessionImport(id: id, duplicate: false, hashes: metadata.hashes.hex)
 	}
-	private func publishMetadata(id: String, metadata: TorrentMetadata, destination: URL, restore: Bool, selected: [Bool]? = nil, configuration: TCPTransferConfiguration) async throws -> SessionEntry {
-		let prepared = try await repository.prepare(id: id, restore: restore)
+	private func publishMetadata(id: String, metadata: TorrentMetadata, destination: URL, restore: Bool, selected: [Bool]? = nil, configuration: TCPTransferConfiguration, pending: PendingMagnetState? = nil) async throws -> SessionEntry {
+		let prepared = try await repository.prepare(id: id, restore: restore, pending: pending)
 		var owner: ManagedTransfer?
 		do {
 			let managed = try await ManagedTransfer.open(metadata: metadata, destination: destination, stateDirectory: prepared.directory,
@@ -237,7 +238,7 @@ public actor TorrentSession {
 	public func changeStorage(id: String, change: TransferStorageChange) async throws {
 		try await serial(id: id) {
 			if let pending = self.pending(id), case .move(let destination) = change {
-				guard destination.isFileURL, destination.path.hasPrefix("/"), !destination.path.utf8.contains(0) else { throw StorageFailure.invalid("absolute destination") }
+				try await self.repository.updateMagnet(pending.state, magnet: pending.magnet, destination: destination)
 				pending.destination = destination; self.emit(SessionEvent(kind: "moved", id: id, path: destination.path)); return
 			}
 			let entry = try self.entry(id)
@@ -263,9 +264,11 @@ public actor TorrentSession {
 				guard pending.verified?.0.inspection.private != true else { throw MetadataError.invalid("private trackers cannot be appended") }
 				try self.validateTracker(tracker, hashes: pending.magnet.hashes)
 				if !pending.magnet.trackers.contains(tracker) {
-					guard pending.magnet.trackers.count < 128 else { throw MetadataError.limit("tracker hints") }
+					guard pending.tracker == nil || pending.magnet.trackers.count < 32 else { throw HTTPServiceError.limit("tracker count") }
+					var updated = pending.magnet; updated.trackers.append(tracker)
+					try await self.repository.updateMagnet(pending.state, magnet: updated, destination: pending.destination)
+					pending.magnet = updated
 					if let service = pending.tracker, let url = URL(string: tracker) { try await service.append(url) }
-					pending.magnet.trackers.append(tracker)
 					if let resolver = pending.resolver, pending.tracker == nil { await self.startMagnetTracker(pending, resolver: resolver) }
 				}
 				return
@@ -305,7 +308,7 @@ public actor TorrentSession {
 			if let pending = self.pending(id) {
 				guard !trash else { throw StorageFailure.invalid("cannot delete files without metadata") }
 				pending.running = false; await self.stopMagnet(pending)
-				if !retainState { try await self.repository.discard(id: id) }
+				if !retainState { try await self.repository.discard(id: id, pending: pending.state) }
 				self.pendingMagnets.removeAll { $0 === pending }; try await self.refreshRouting(); return []
 			}
 			let entry = try self.entry(id)
@@ -437,7 +440,7 @@ public actor TorrentSession {
 					do { try await entry.owner.close(); entry.closed = true; entry.running = false }
 					catch { entry.error = error.localizedDescription; failure = failure ?? error }
 				}
-				if let failure { throw failure }; closed = true
+				if let failure { throw failure }; pendingMagnets.removeAll(); closed = true
 			}
 			await commands.release(token)
 		} catch { await commands.release(token); throw error }
@@ -551,7 +554,7 @@ public actor TorrentSession {
 					var configuration = self.configuration; configuration.downloadLimit = winner.downloadLimit; configuration.uploadLimit = winner.uploadLimit
 					let stored = try await self.repository.retainedMetadata(id: winner.id)
 					guard stored == nil || stored?.originalInfo == metadata.originalInfo else { throw MetadataError.invalid("retained magnet identity") }
-					entry = try await self.publishMetadata(id: winner.id, metadata: metadata, destination: winner.destination, restore: stored != nil, configuration: configuration)
+					entry = try await self.publishMetadata(id: winner.id, metadata: metadata, destination: winner.destination, restore: stored != nil, configuration: configuration, pending: winner.state)
 					self.entries.append(entry)
 					if winner.running, entry.error.isEmpty {
 						do { try await entry.owner.start(); entry.running = true }
@@ -559,6 +562,11 @@ public actor TorrentSession {
 					}
 				}
 				let resolved = Set(aliases.map(\.id))
+				// Published metadata is authoritative even if retirement of a pending record fails.
+				for alias in aliases {
+					do { try await self.repository.retireMagnet(alias.state) }
+					catch { Self.log.error("Could not retire pending magnet state: \(error.localizedDescription)") }
+				}
 				self.pendingMagnets.removeAll { resolved.contains($0.id) }
 				for alias in aliases where alias.id != entry.id { self.emit(SessionEvent(kind: "duplicate", id: alias.id, existingID: entry.id)) }
 				try await self.refreshRouting()

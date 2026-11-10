@@ -1118,3 +1118,9 @@ and six native tracker-only cases. Sixteen new libtorrent tracker-only magnet
 comparisons cover both directions over TCP and µTP, HTTP and UDP trackers, and
 hybrid identity registration. The reference matrix now contains 456 transfers
 and two DHT protocol comparisons.
+
+Unresolved magnets retain a versioned, bounded record with the full magnet URI
+and destination. Restore validates the requested identity and reapplies the
+saved destination and discovery hints. Pending tracker additions and moves are
+written before they take effect in memory. A live row holds an exclusive lease,
+and resolved transfers restore from the published torrent and checkpoint.

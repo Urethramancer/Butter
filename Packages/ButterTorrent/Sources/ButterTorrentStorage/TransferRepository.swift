@@ -19,9 +19,20 @@ public struct PreparedTransferState: Sendable {
 	fileprivate let parentIdentity: FileStamp
 }
 
+public struct PendingMagnetState: Sendable {
+	public let magnet: Magnet
+	public let destination: URL
+	fileprivate let id: String
+	fileprivate let parentIdentity: FileStamp
+	fileprivate let lockIdentity: FileStamp
+	fileprivate let lease: StorageLease
+}
+
 /// TransferRepository retains standard torrent files beside isolated native checkpoints.
 public actor TransferRepository {
 	private struct Record: Codable { let version: Int; let directory: String }
+	private struct MagnetRecord: Codable { let version: Int; let uri: String; let destination: String }
+	private static let magnetRecordLimit = 2 * 1024 * 1024
 	private let root: URL
 	private let worker = StorageWorker()
 	public init(root: URL) { self.root = root }
@@ -30,6 +41,7 @@ public actor TransferRepository {
 		try validateID(id)
 		let directory = try StorageDirectory(root), lease = try StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
 		guard data.count <= 33_554_432 else { throw StorageFailure.limit("torrent bytes") }
+		guard try directory.inspect(magnetRecord(id)) == nil else { throw StorageFailure.collision("retained pending magnet") }
 		guard try directory.inspect(id + ".torrent") == nil else { throw StorageFailure.collision("torrent output") }
 		try directory.atomic(data, path: id + ".torrent", exclusive: true)
 	}
@@ -55,11 +67,62 @@ public actor TransferRepository {
 			return try TorrentMetadata(directory.read(id + ".torrent", maximum: 33_554_432))
 		}
 	}
-	public func prepare(id: String, restore: Bool) async throws -> PreparedTransferState {
+	public func claimMagnet(id: String, magnet: Magnet, destination: URL, restore: Bool, tracker: String?) async throws -> PendingMagnetState {
+		try Self.validateID(id); let root = root
+		return try await worker.run(bulk: true) { _ in
+			let directory = try StorageDirectory(root)
+			let reservation = try StorageLease(directory: directory, path: ".native.lock"); defer { reservation.release() }
+			guard try Self.record(id, in: directory) == nil else { throw StorageFailure.collision("published transfer state") }
+			let path = Self.magnetRecord(id), existing = try directory.inspect(path) != nil
+			guard !existing || restore else { throw StorageFailure.collision("retained native state; restore or forget it first") }
+			if !existing, try directory.inspect(id + ".torrent") != nil { throw StorageFailure.collision("stored torrent identity") }
+			let lock = Self.magnetLock(id), lease = try StorageLease(directory: directory, path: lock)
+			guard let lockIdentity = try directory.inspect(lock) else { throw StorageFailure.recoveryRequired("missing pending magnet lock") }
+			var magnetToSave = magnet, destinationToSave = destination
+			if existing {
+				let record = try PropertyListDecoder().decode(MagnetRecord.self, from: directory.read(path, maximum: Self.magnetRecordLimit))
+				guard record.version == 1 else { throw StorageFailure.invalid("pending magnet record version") }
+				magnetToSave = try Magnet(record.uri)
+				guard magnetToSave.hashes == magnet.hashes else { throw MetadataError.invalid("retained magnet identity") }
+				destinationToSave = URL(fileURLWithPath: try Self.validDestination(record.destination))
+			}
+			let append = tracker.flatMap { magnetToSave.trackers.contains($0) ? nil : $0 }
+			if let append { magnetToSave.trackers.append(append) }
+			if !existing || append != nil {
+				try Self.writeMagnet(magnetToSave, destination: destinationToSave, path: path, in: directory, exclusive: !existing)
+			}
+			try Self.validateHints(magnetToSave)
+			return PendingMagnetState(magnet: magnetToSave, destination: destinationToSave, id: id, parentIdentity: try directory.identity(), lockIdentity: lockIdentity, lease: lease)
+		}
+	}
+	public func updateMagnet(_ state: PendingMagnetState, magnet: Magnet, destination: URL) async throws {
+		let root = root
+		try await worker.run(bulk: true) { _ in
+			let directory = try StorageDirectory(root, create: false)
+			let reservation = try StorageLease(directory: directory, path: ".native.lock"); defer { reservation.release() }
+			try Self.validate(state, id: state.id, in: directory)
+			guard state.magnet.hashes == magnet.hashes, try Self.record(state.id, in: directory) == nil else { throw StorageFailure.invalid("pending magnet identity") }
+			try Self.writeMagnet(magnet, destination: destination, path: Self.magnetRecord(state.id), in: directory)
+		}
+	}
+	public func retireMagnet(_ state: PendingMagnetState) async throws {
+		let root = root
+		try await worker.run(bulk: true) { _ in
+			let directory = try StorageDirectory(root, create: false)
+			let reservation = try StorageLease(directory: directory, path: ".native.lock"); defer { reservation.release() }
+			try Self.validate(state, id: state.id, in: directory)
+			try Self.removeMagnet(state.id, in: directory)
+		}
+	}
+	public func prepare(id: String, restore: Bool, pending: PendingMagnetState? = nil) async throws -> PreparedTransferState {
 		try Self.validateID(id); let root = root
 		return try await worker.run(bulk: true) { _ in
 			let directory = try StorageDirectory(root)
 			let reservation = RepositoryReservation(try StorageLease(directory: directory, path: ".native.lock"))
+			if let pending { try Self.validate(pending, id: id, in: directory) }
+			else if try directory.inspect(Self.magnetRecord(id)) != nil, try Self.record(id, in: directory) == nil {
+				throw StorageFailure.collision("retained pending magnet")
+			}
 			if let record = try Self.record(id, in: directory) {
 				guard restore else { throw StorageFailure.collision("retained native state; restore or forget it first") }
 				let child = try directory.child(record.directory)
@@ -104,11 +167,14 @@ public actor TransferRepository {
 		}
 	}
 	/// Discards only recognised native state and the standard torrent; legacy resume files remain intact.
-	public func discard(id: String) async throws {
+	public func discard(id: String, pending: PendingMagnetState? = nil) async throws {
 		try Self.validateID(id); let root = root
 		try await worker.run(bulk: true) { _ in
 			let directory = try StorageDirectory(root)
 			let lease = try StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
+			if let pending { try Self.validate(pending, id: id, in: directory) }
+			let pendingLock = try pending?.lease ?? (directory.inspect(Self.magnetLock(id)) == nil ? nil : StorageLease(directory: directory, path: Self.magnetLock(id)))
+			defer { withExtendedLifetime(pendingLock) {} }
 			if let record = try Self.record(id, in: directory) {
 				do { try Self.discardChild(record.directory, in: directory) }
 				catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { } // An interrupted discard may have removed the directory.
@@ -116,7 +182,36 @@ public actor TransferRepository {
 			for name in [id + ".native.plist", id + ".torrent"] {
 				if let stamp = try directory.inspect(name) { try directory.remove(name, expected: stamp) }
 			}
+			try Self.removeMagnet(id, in: directory)
 		}
+	}
+	private static func magnetRecord(_ id: String) -> String { id + ".native-magnet.plist" }
+	private static func magnetLock(_ id: String) -> String { id + ".native-magnet.lock" }
+	private static func validate(_ state: PendingMagnetState, id: String, in directory: StorageDirectory) throws {
+		guard state.id == id, try state.parentIdentity.sameFile(directory.identity()),
+			let lock = try directory.inspect(magnetLock(id)), state.lockIdentity.sameFile(lock) else { throw StorageFailure.recoveryRequired("pending magnet repository was replaced") }
+	}
+	private static func removeMagnet(_ id: String, in directory: StorageDirectory) throws {
+		for name in [magnetRecord(id), magnetLock(id)] {
+			if let stamp = try directory.inspect(name) { try directory.remove(name, expected: stamp) }
+		}
+	}
+	private static func validDestination(_ path: String) throws -> String {
+		guard path.hasPrefix("/"), path.utf8.count <= 4096, !path.utf8.contains(0) else { throw StorageFailure.invalid("absolute destination") }
+		return path
+	}
+	private static func writeMagnet(_ magnet: Magnet, destination: URL, path: String, in directory: StorageDirectory, exclusive: Bool = false) throws {
+		guard destination.isFileURL else { throw StorageFailure.invalid("absolute destination") }
+		try validateHints(magnet)
+		let uri = magnet.uri
+		guard try Magnet(uri) == magnet else { throw MetadataError.invalid("invalid pending magnet") }
+		let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
+		let bytes = try encoder.encode(MagnetRecord(version: 1, uri: uri, destination: validDestination(destination.path)))
+		guard bytes.count <= magnetRecordLimit else { throw StorageFailure.limit("pending magnet record") }
+		try directory.atomic(bytes, path: path, exclusive: exclusive)
+	}
+	private static func validateHints(_ magnet: Magnet) throws {
+		guard magnet.trackers.count <= 128, magnet.webSeeds.count <= 128, magnet.peers.count <= 128 else { throw MetadataError.limit("magnet discovery hints") }
 	}
 	private static func record(_ id: String, in directory: StorageDirectory) throws -> Record? {
 		let name = id + ".native.plist"
