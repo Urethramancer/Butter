@@ -89,10 +89,12 @@ struct MSEHandshake: Sendable {
 		let header = try receive.apply(await take(6)), method = try PacketBytes.uint32(header, at: 0), length = Int(try PacketBytes.uint16(header, at: 4))
 		guard (method == 1 || method == 2), method & configuration.levels.rawValue != 0, length <= 512 else { throw NetworkFailure.invalid("MSE selection or padding") }
 		_ = try receive.apply(await take(length))
-		return try finish(method: method, send: send, receive: receive)
+		return try finish(method: method, send: send, receive: receive, hash: hash)
 	}
 	mutating func accept(hashes: [Data]) async throws -> PeerStream {
-		guard (1...2).contains(hashes.count), hashes.allSatisfy({ $0.count == 20 }) else { throw NetworkFailure.invalid("MSE swarm candidates") }
+		try await accept(catalog: PeerSwarmCatalog(hashes: hashes))
+	}
+	mutating func accept(catalog: PeerSwarmCatalog) async throws -> PeerStream {
 		let prefix = try await take(20)
 		if prefix == Data([19]) + Data("BitTorrent protocol".utf8) {
 			guard configuration.incoming != .required else { throw NetworkFailure.invalid("encryption required") }
@@ -106,7 +108,7 @@ struct MSEHandshake: Sendable {
 		try await write(pair.publicKey + padding())
 		try await synchronise(mseHash("req1", secret))
 		let obfuscated = try await take(20), mask = mseHash("req3", secret), requested = Data(zip(obfuscated, mask).map { $0 ^ $1 })
-		guard let hash = hashes.first(where: { mseHash("req2", $0) == requested }) else { throw NetworkFailure.invalid("MSE unknown swarm") }
+		guard let hash = catalog.resolve(requested) else { throw NetworkFailure.invalid("MSE unknown swarm") }
 		let (send, receive) = try ciphers(secret: secret, hash: hash, outgoing: false)
 		let header = try receive.apply(await take(14))
 		guard header.prefix(8).allSatisfy({ $0 == 0 }) else { throw NetworkFailure.invalid("MSE verification constant") }
@@ -116,11 +118,11 @@ struct MSEHandshake: Sendable {
 		let padding = try receive.apply(await take(length + 2)), initialLength = Int(try PacketBytes.uint16(padding, at: length))
 		let initial = try receive.apply(await take(initialLength))
 		try await write(send.apply(control(method, padding: self.padding())))
-		return try finish(method: method, send: send, receive: receive, initial: initial)
+		return try finish(method: method, send: send, receive: receive, hash: hash, initial: initial)
 	}
-	func finish(method: UInt32, send: MSECipher, receive: MSECipher, initial: Data = Data()) throws -> PeerStream {
+	func finish(method: UInt32, send: MSECipher, receive: MSECipher, hash: Data, initial: Data = Data()) throws -> PeerStream {
 		let encrypted = method == 2
 		let tail = encrypted ? try receive.apply(buffer) : buffer
-		return PeerStream(raw: stream, mode: encrypted ? .rc4 : .negotiatedPlaintext, prefix: initial + tail, send: encrypted ? send : nil, receive: encrypted ? receive : nil)
+		return PeerStream(raw: stream, mode: encrypted ? .rc4 : .negotiatedPlaintext, prefix: initial + tail, send: encrypted ? send : nil, receive: encrypted ? receive : nil, negotiatedInfoHash: hash)
 	}
 }

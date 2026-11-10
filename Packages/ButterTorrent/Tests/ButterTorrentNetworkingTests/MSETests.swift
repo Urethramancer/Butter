@@ -79,10 +79,12 @@ private func vector(_ hex: String) -> Data { Data(stride(from: 0, to: hex.count,
 				var handshake = MSEHandshake(stream: raw, clock: clock, deadline: clock.now() + 15, configuration: config); handshake.paddingLength = padding; handshake.fragmentBytes = 1
 				let server = try await handshake.accept(hashes: [Data(repeating: 7, count: 20), hash]), client = try await initiating.value
 				defer { server.close(); client.close() }
+				#expect(server.negotiatedInfoHash == hash && client.negotiatedInfoHash == hash)
 				#expect(server.mode == (method == .rc4 ? .rc4 : .negotiatedPlaintext))
+				#expect(try await server.peek(count: payload.count) == payload)
 				#expect(try await server.read() == payload)
 				try await server.write(payload); #expect(try await client.read() == payload)
-				try await client.write(payload); #expect(try await server.read() == payload)
+				try await client.write(payload); #expect(try await server.peek(count: payload.count) == payload); #expect(try await server.read() == payload)
 			} catch { raw.close(); initiating.cancel(); if let channel = try? await initiating.value { channel.close() }; try? await listener.shutdown(); throw error }
 			try await listener.shutdown()
 		}

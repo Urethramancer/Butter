@@ -4,13 +4,15 @@ import Foundation
 public final class PeerStream: @unchecked Sendable {
 	public let raw: any PeerByteStream
 	public let mode: PeerEncryptionMode
+	public let negotiatedInfoHash: Data?
 	private let sendCipher: MSECipher?
 	private let receiveCipher: MSECipher?
 	private let lock = NSLock()
 	private var prefix: Data
 	private var reading = false, writing = false
-	init(raw: any PeerByteStream, mode: PeerEncryptionMode = .plaintext, prefix: Data = Data(), send: MSECipher? = nil, receive: MSECipher? = nil) {
+	init(raw: any PeerByteStream, mode: PeerEncryptionMode = .plaintext, prefix: Data = Data(), send: MSECipher? = nil, receive: MSECipher? = nil, negotiatedInfoHash: Data? = nil) {
 		self.raw = raw; self.mode = mode; self.prefix = prefix; sendCipher = send; receiveCipher = receive
+		self.negotiatedInfoHash = negotiatedInfoHash
 	}
 	public static func connect(to endpoint: NetworkEndpoint, hash: Data, configuration: PeerEncryptionConfiguration = .init(), timeout: TimeInterval = 10,
 		clock: any TransportClock = ContinuousTransportClock(), budget: TCPPeerBudget? = nil, utp: UTPTransport? = nil) async throws -> PeerStream {
@@ -38,9 +40,32 @@ public final class PeerStream: @unchecked Sendable {
 	}
 	public static func accept(_ raw: any PeerByteStream, hashes: [Data], configuration: PeerEncryptionConfiguration = .init(), timeout: TimeInterval = 10,
 		clock: any TransportClock = ContinuousTransportClock()) async throws -> PeerStream {
-		guard timeout.isFinite, (0.1...120).contains(timeout) else { raw.close(); throw NetworkFailure.invalid("peer handshake timeout") }
-		do { var handshake = MSEHandshake(stream: raw, clock: clock, deadline: clock.now() + timeout, configuration: configuration); return try await handshake.accept(hashes: hashes) }
+		do { return try await accept(raw, catalog: PeerSwarmCatalog(hashes: hashes), configuration: configuration, timeout: timeout, clock: clock) }
 		catch { raw.close(); throw error }
+	}
+	public static func accept(_ raw: any PeerByteStream, catalog: PeerSwarmCatalog, configuration: PeerEncryptionConfiguration = .init(), timeout: TimeInterval = 10,
+		clock: any TransportClock = ContinuousTransportClock()) async throws -> PeerStream {
+		guard timeout.isFinite, (0.1...120).contains(timeout) else { raw.close(); throw NetworkFailure.invalid("peer handshake timeout") }
+		do { var handshake = MSEHandshake(stream: raw, clock: clock, deadline: clock.now() + timeout, configuration: configuration); return try await handshake.accept(catalog: catalog) }
+		catch { raw.close(); throw error }
+	}
+	/// Peeks a bounded decrypted prefix without consuming framing or advancing the cipher twice.
+	public func peek(count: Int, timeout: TimeInterval = 10, clock: any TransportClock = ContinuousTransportClock()) async throws -> Data {
+		try Task.checkCancellation()
+		guard (1...4096).contains(count), timeout.isFinite, (0.001...120).contains(timeout) else { throw NetworkFailure.invalid("peer prefix") }
+		try lock.withLock { guard !reading else { throw NetworkFailure.busy }; reading = true }
+		defer { lock.withLock { reading = false } }
+		let deadline = clock.now() + timeout
+		do {
+			while true {
+				let buffered = lock.withLock { prefix.count }
+				if buffered >= count { return lock.withLock { Data(prefix.prefix(count)) } }
+				let remaining = deadline - clock.now(); guard remaining > 0 else { throw NetworkFailure.timedOut }
+				let bytes = try await raw.read(maximumBytes: count - buffered, timeout: remaining)
+				guard !bytes.isEmpty else { throw NetworkFailure.closed }
+				let clear = try receiveCipher?.apply(bytes) ?? bytes; lock.withLock { prefix.append(clear) }
+			}
+		} catch { close(); throw error }
 	}
 	public func read(maximumBytes: Int = 65_536, timeout: TimeInterval = 30) async throws -> Data {
 		try Task.checkCancellation(); guard (1...1_048_576).contains(maximumBytes) else { throw NetworkFailure.invalid("peer read size") }
