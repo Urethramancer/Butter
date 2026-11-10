@@ -39,6 +39,11 @@ enum EngineContractCases {
 		// Inspection and creation need no listening sockets or public services.
 		let empty = try await engine.snapshot()
 		try require(empty.transfers.isEmpty && empty.port == 0 && !empty.udp, "Session opened sockets before settings")
+		let settings = try object(await engine.perform("settings", ["port": 0, "peers": 4, "torrentPeers": 2, "tcp": true, "utp": true, "dht": false, "lsd": false, "mapping": false, "pex": false]))
+		let bound = try await wait(engine) { $0.port > 0 && $0.udp }
+		try require(settings["port"] as? Int == bound.port && bound.networkError.isEmpty, "Settings lost bound port ownership")
+		try await reject(engine, "blocklist", ["ranges": [["first": "127.0.0.2", "last": "127.0.0.1"]]])
+		_ = try await engine.perform("blocklist", ["ranges": []])
 		for value: Any in [1, NSNull(), [], [:]] {
 			try await reject(engine, "inspect", ["source": value])
 		}

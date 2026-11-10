@@ -5,6 +5,8 @@ import ButterTorrentStorage
 
 public struct TCPTransferConfiguration: Sendable {
 	public var maximumPeers = 50
+	public var allowSameIP = true
+	public var addressFilter = PeerAddressFilter()
 	public var pipeline = 8
 	public var uploadSlots = 4
 	public var requestTimeout: TimeInterval = 30
@@ -20,7 +22,7 @@ public struct TCPTransferConfiguration: Sendable {
 	public var encryption = PeerEncryptionConfiguration()
 	public init() {}
 	func validate() throws {
-		guard (1...200).contains(maximumPeers), (1...32).contains(pipeline), (1...32).contains(uploadSlots),
+		guard (1...1000).contains(maximumPeers), (1...32).contains(pipeline), (1...32).contains(uploadSlots),
 			requestTimeout.isFinite, (0.1...300).contains(requestTimeout), idleTimeout.isFinite, (1...600).contains(idleTimeout),
 			(0...Int(Int32.max)).contains(downloadLimit), (0...Int(Int32.max)).contains(uploadLimit) else { throw PeerFailure.invalid("transfer limits") }
 	}
@@ -176,8 +178,21 @@ public actor TCPTransfer {
 		}
 	}
 	@discardableResult public func attach(_ stream: any PeerByteStream) throws -> UUID { try attach(stream, outgoing: false) }
+	@discardableResult public func attach(_ channel: PeerStream) throws -> UUID {
+		let mode = channel.mode, policy = configuration.encryption
+		let hashes = [metadata.hashes.v1, metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }
+		guard !(policy.incoming == .required && mode == .plaintext), !(policy.incoming == .disabled && mode != .plaintext),
+			mode != .rc4 || policy.levels.rawValue & 2 != 0,
+			mode != .negotiatedPlaintext || policy.levels.rawValue & 1 != 0,
+			channel.negotiatedInfoHash == nil || hashes.contains(channel.negotiatedInfoHash!) else { channel.close(); throw PeerFailure.invalid("routed encryption policy or swarm") }
+		return try attach(channel.raw, outgoing: false, transport: channel)
+	}
 	@discardableResult func attach(_ stream: any PeerByteStream, outgoing: Bool, transport: PeerStream? = nil) throws -> UUID {
+		do { try Task.checkCancellation() } catch { stream.close(); throw error }
+		if let address = stream.remoteEndpoint?.address, !configuration.addressFilter.allows(address) { stream.close(); throw PeerFailure.invalid("blocked peer") }
 		guard !stopping, storageError == nil, peers.count < configuration.maximumPeers else { stream.close(); throw PeerFailure.limit("active peers") }
+		if !configuration.allowSameIP, let address = stream.remoteEndpoint?.address,
+			peers.values.contains(where: { !$0.closing && $0.session.stream.remoteEndpoint?.address == address }) { stream.close(); throw PeerFailure.limit("connections from the same IP") }
 		let id = UUID(), session = PeerSession(stream: stream, transport: transport), peer = TransferPeer(session: session, now: clock.now())
 		peers[id] = peer
 		peer.outgoing = outgoing
@@ -194,6 +209,7 @@ public actor TCPTransfer {
 	}
 	@discardableResult public func connect(to endpoint: NetworkEndpoint, utp: UTPTransport? = nil) async throws -> UUID {
 		try Task.checkCancellation()
+		guard configuration.addressFilter.allows(endpoint.address) else { throw PeerFailure.invalid("blocked peer") }
 		guard !stopping, storageError == nil, peers.count + openings.count < configuration.maximumPeers else { throw PeerFailure.limit("active and connecting peers") }
 		let id = UUID(), budget = budget, clock = clock, hash = hello.infoHash, encryption = configuration.encryption
 		let task = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption, clock: clock, budget: budget, utp: utp) }; openings[id] = task

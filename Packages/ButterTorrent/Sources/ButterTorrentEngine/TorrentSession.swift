@@ -25,6 +25,7 @@ public struct SessionEvent: Sendable {
 public struct TorrentSessionSnapshot: Sendable {
 	public let transfers: [SessionTransferSnapshot]
 	public let events: [SessionEvent]
+	public let network: SessionNetworkSnapshot
 }
 
 private final class SessionEntry {
@@ -35,6 +36,7 @@ private final class SessionEntry {
 	var last: ManagedTransferSnapshot
 	var error = ""
 	var closed = false
+	var running = false
 	var receipts: [URL] = []
 	var downloadLimit: Int
 	var uploadLimit: Int
@@ -48,13 +50,29 @@ private final class SessionEntry {
 public actor TorrentSession {
 	private let repository: TransferRepository
 	private let resources: TransferResources
-	private let configuration: TCPTransferConfiguration
+	private var configuration: TCPTransferConfiguration
 	private let budget: TCPPeerBudget
+	public nonisolated let peerID: Data
+	private let clock: any TransportClock
+	private let loopbackOnly: Bool
+	private var network: SessionPeerNetwork?
+	private var peerSettings: SessionPeerSettings?
+	private var networkError = ""
+	private var networkChanging = false
+	private var closed = false
 	private let commands = TransferPermits(1)
 	private var entries: [SessionEntry] = []
 	private var events: [SessionEvent] = []
-	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200) {
+	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
+		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock()) {
 		repository = TransferRepository(root: storage); self.configuration = configuration; self.resources = resources; budget = TCPPeerBudget(limit: maximumPeers)
+		self.loopbackOnly = loopbackOnly; self.clock = clock
+		peerID = Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
+	}
+	public var currentPeerSettings: SessionPeerSettings {
+		if let peerSettings { return peerSettings }
+		var settings = SessionPeerSettings(); settings.maximumPeers = budget.limit; settings.torrentPeers = configuration.maximumPeers
+		settings.pex = configuration.enablePEX; settings.allowSameIP = configuration.allowSameIP; return settings
 	}
 	public func add(id: String, source: URL, destination: URL, restore: Bool = false, selected: [Bool]? = nil, tracker: String? = nil) async throws -> SessionImport {
 		try TransferRepository.validateID(id)
@@ -74,7 +92,7 @@ public actor TorrentSession {
 			var owner: ManagedTransfer?
 			do {
 				let managed = try await ManagedTransfer.open(metadata: metadata, destination: destination, stateDirectory: prepared.directory,
-					selected: selected, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: prepared); owner = managed
+					selected: selected, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: prepared, peerID: self.peerID, clock: self.clock); owner = managed
 				var snapshot = try await managed.snapshot()
 				if !snapshot.storage.needsRecovery { try await managed.recheck(); snapshot = try await managed.snapshot() }
 				try Task.checkCancellation()
@@ -99,10 +117,15 @@ public actor TorrentSession {
 				let down = downloadLimit ?? entry.downloadLimit, up = uploadLimit ?? entry.uploadLimit
 				try await entry.owner.setLimits(download: down, upload: up); entry.downloadLimit = down; entry.uploadLimit = up
 			}
-			if running && entry.error.isEmpty { try await entry.owner.start() } else { try await entry.owner.pause() }
+			if running && entry.error.isEmpty {
+				try await entry.owner.start(); entry.running = true
+				do { try await self.refreshRouting() } catch { entry.running = false; try? await entry.owner.pause(); throw error }
+			} else { entry.running = false; try await self.refreshRouting(); try await entry.owner.pause() }
 		}
 	}
-	public func pause(id: String) async throws { try await serial { try await self.entry(id).owner.pause() } }
+	public func pause(id: String) async throws {
+		try await serial { let entry = try self.entry(id); entry.running = false; try await self.refreshRouting(); try await entry.owner.pause() }
+	}
 	public func save(id: String) async throws { try await serial { try await self.entry(id).owner.save() } }
 	public func recheck(id: String) async throws {
 		try await serial { let entry = try self.entry(id); try await entry.owner.recheck(); entry.error = "" }
@@ -110,9 +133,10 @@ public actor TorrentSession {
 	public func retry(id: String) async throws {
 		try await serial {
 			let entry = try self.entry(id)
+			entry.running = false; try await self.refreshRouting()
 			if entry.closed {
 				entry.owner = try await ManagedTransfer.open(metadata: entry.metadata, destination: entry.last.storage.destination,
-					stateDirectory: entry.prepared.directory, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: entry.prepared)
+					stateDirectory: entry.prepared.directory, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: entry.prepared, peerID: self.peerID, clock: self.clock)
 				entry.closed = false
 			}
 			try await entry.owner.pause()
@@ -149,12 +173,22 @@ public actor TorrentSession {
 		try await serial { let entry = try self.entry(id); return Magnet(hashes: entry.metadata.hashes, name: entry.metadata.inspection.name, trackers: entry.metadata.trackerTiers.flatMap({ $0 })).uri }
 	}
 	@discardableResult public func connect(id: String, to endpoint: NetworkEndpoint, utp: UTPTransport? = nil) async throws -> UUID {
-		let owner = try entry(id).owner; return try await owner.connect(to: endpoint, utp: utp)
+		guard !closed, !networkChanging else { throw NetworkFailure.busy }
+		guard configuration.addressFilter.allows(endpoint.address) else { throw PeerFailure.invalid("blocked peer") }
+		let owner = try entry(id).owner
+		if let settings = peerSettings {
+			if let utp { guard settings.utp else { throw NetworkFailure.invalid("µTP is disabled") }; return try await owner.connect(to: endpoint, utp: utp) }
+			if settings.tcp { return try await owner.connect(to: endpoint) }
+			guard settings.utp, let network else { throw NetworkFailure.closed }
+			return try await owner.connect(to: endpoint, utp: network.transport(for: endpoint))
+		}
+		return try await owner.connect(to: endpoint, utp: utp)
 	}
 	public func remove(id: String, trash: Bool = false, retainState: Bool = false, trashDirectory: URL? = nil) async throws -> [URL] {
 		try await serial {
 			let entry = try self.entry(id)
 			do {
+				entry.running = false; try await self.refreshRouting()
 				if !entry.closed {
 					try await entry.owner.pause()
 					if trash { entry.receipts = try await entry.owner.trash(directory: trashDirectory) }
@@ -172,6 +206,7 @@ public actor TorrentSession {
 	public func shutdown() async throws {
 		try await serial {
 			var failure: Error?
+			for entry in self.entries { entry.running = false }; try await self.refreshRouting()
 			for entry in self.entries where !entry.closed {
 				do { try await entry.owner.pause() } catch { entry.error = error.localizedDescription; failure = failure ?? error }
 			}
@@ -185,8 +220,88 @@ public actor TorrentSession {
 				if !entry.closed { entry.last = try await entry.owner.snapshot() }
 				snapshots.append(SessionTransferSnapshot(id: entry.id, metadata: entry.metadata, state: entry.last, error: entry.error))
 			}
-			let result = TorrentSessionSnapshot(transfers: snapshots, events: self.events); self.events.removeAll(); return result
+			let wire = await self.network?.snapshot()
+			let status = SessionNetworkSnapshot(port: wire?.port ?? 0, udp: wire?.udp ?? false, error: wire?.error.isEmpty == false ? wire!.error : self.networkError,
+				pendingHandshakes: wire?.pendingHandshakes ?? 0, peers: self.budget.count)
+			let result = TorrentSessionSnapshot(transfers: snapshots, events: self.events, network: status); self.events.removeAll(); return result
 		}
+	}
+	@discardableResult public func configurePeers(_ settings: SessionPeerSettings) async throws -> UInt16 {
+		try settings.validate()
+		return try await serial {
+			if settings.port != 0, settings == self.peerSettings, let network = self.network {
+				let state = await network.snapshot(); if state.port == settings.port && state.error.isEmpty { return state.port }
+			}
+			self.networkChanging = true; defer { self.networkChanging = false }
+			let running = try await self.pauseForSettings()
+			await self.network?.shutdown(); self.network = nil
+			try self.budget.setLimit(settings.maximumPeers)
+			self.configuration.maximumPeers = min(settings.maximumPeers, settings.torrentPeers)
+			self.configuration.enablePEX = settings.pex; self.configuration.allowSameIP = settings.allowSameIP
+			self.peerSettings = settings; self.networkError = ""
+			var bindError: Error?
+			do {
+				self.network = try await SessionPeerNetwork.open(settings: settings, budget: self.budget, encryption: self.configuration.encryption,
+					filter: self.configuration.addressFilter, loopbackOnly: self.loopbackOnly, clock: self.clock)
+			} catch { self.networkError = error.localizedDescription; bindError = error }
+			let port = await self.network?.snapshot().port ?? 0; self.configuration.listenPort = port
+			for entry in self.entries where !entry.closed {
+				try await entry.owner.configurePeers(maximum: self.configuration.maximumPeers, pex: settings.pex, port: port, allowSameIP: settings.allowSameIP, addressFilter: self.configuration.addressFilter)
+			}
+			for entry in running { try await entry.owner.start() }
+			try await self.refreshRouting()
+			if let bindError { throw bindError }; return port
+		}
+	}
+	public func setBlocklist(_ ranges: [PeerAddressRange]) async throws {
+		let filter = try PeerAddressFilter(ranges: ranges)
+		try await serial {
+			self.networkChanging = true; defer { self.networkChanging = false }
+			let running = try await self.pauseForSettings()
+			self.configuration.addressFilter = filter; await self.network?.setFilter(filter)
+			for entry in self.entries where !entry.closed {
+				try await entry.owner.configurePeers(maximum: self.configuration.maximumPeers, pex: self.configuration.enablePEX,
+					port: self.configuration.listenPort, allowSameIP: self.configuration.allowSameIP, addressFilter: filter)
+			}
+			for entry in running { try await entry.owner.start() }; try await self.refreshRouting()
+		}
+	}
+	public func close() async throws {
+		try await commands.acquire()
+		do {
+			if !closed {
+				networkChanging = true; defer { networkChanging = false }
+				await network?.shutdown(); network = nil
+				var failure: Error?
+				for entry in entries where !entry.closed {
+					do { try await entry.owner.close(); entry.closed = true; entry.running = false }
+					catch { entry.error = error.localizedDescription; failure = failure ?? error }
+				}
+				if let failure { throw failure }; closed = true
+			}
+			await commands.release()
+		} catch { await commands.release(); throw error }
+	}
+	private func refreshRouting() async throws {
+		guard let network else { return }
+		let targets = entries.filter { $0.running && !$0.closed && $0.error.isEmpty }.map {
+			SessionPeerTarget(id: $0.id, hashes: [$0.metadata.hashes.v1, $0.metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap({ $0 }), owner: $0.owner)
+		}
+		do { try await network.setTargets(targets) }
+		catch NetworkFailure.closed { let state = await network.snapshot(); networkError = state.error.isEmpty ? NetworkFailure.closed.localizedDescription : state.error }
+	}
+	private func pauseForSettings() async throws -> [SessionEntry] {
+		let running = entries.filter { $0.running && !$0.closed && $0.error.isEmpty }
+		if let network { do { try await network.setTargets([]) } catch NetworkFailure.closed { } }
+		var failure: Error?
+		for entry in entries where !entry.closed {
+			do { try await entry.owner.pause() } catch { entry.error = error.localizedDescription; failure = failure ?? error }
+		}
+		if let failure {
+			for entry in running where entry.error.isEmpty { try? await entry.owner.start() }; try? await refreshRouting()
+			throw failure
+		}
+		return running
 	}
 	private func entry(_ id: String) throws -> SessionEntry {
 		guard let entry = entries.first(where: { $0.id == id }) else { throw StorageFailure.invalid("transfer no longer exists") }; return entry
@@ -200,7 +315,8 @@ public actor TorrentSession {
 	private static func overlaps(_ a: InfoHashes, _ b: InfoHashes) -> Bool { (a.v1 != nil && a.v1 == b.v1) || (a.v2 != nil && a.v2 == b.v2) }
 	private func serial<T: Sendable>(_ body: () async throws -> T) async throws -> T {
 		try await commands.acquire()
-		do { try Task.checkCancellation(); let result = try await body(); await commands.release(); return result }
+		do { try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }; let result = try await body(); await commands.release(); return result }
 		catch { await commands.release(); throw error }
 	}
+	deinit { if let network { Task { await network.shutdown() } } }
 }

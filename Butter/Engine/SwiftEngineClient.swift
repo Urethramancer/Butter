@@ -11,7 +11,8 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 	private let creation: TorrentCreationWorker
 	private let snapshots = NativeSnapshotMapper()
 	init(storage: URL) {
-		session = TorrentSession(storage: storage)
+		var configuration = TCPTransferConfiguration(); configuration.allowSameIP = false
+		session = TorrentSession(storage: storage, configuration: configuration)
 		creation = TorrentCreationWorker(storage: storage) { try TransferRepository.publishCreatedTorrent($0, id: $1, root: storage) }
 	}
 	var creationProgress: Double { creation.progress }
@@ -22,6 +23,20 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 			if command == "create" { return try await creation.create(payload) }
 			if command == "inspect" { return try await metadata.inspect(URL(fileURLWithPath: input.text("source"))) }
 			if command == "shutdown" { await creation.waitForCompletion(); try await session.shutdown(); return Data("{}".utf8) }
+			if command == "settings" {
+				// These services are added to the session separately; never silently enable them.
+				let dht = try input.flag("dht"), lsd = try input.flag("lsd"), mapping = try input.optionalInteger("mapping") ?? 1
+				guard !dht && !lsd && mapping == 0 else { throw NetworkFailure.invalid("discovery or router mapping is unavailable") }
+				let port = try input.integer("port"); guard (0...65535).contains(port) else { throw NetworkFailure.invalid("listening port") }
+				var settings = await session.currentPeerSettings; settings.port = UInt16(port)
+				settings.maximumPeers = min(5000, max(1, try input.optionalInteger("peers") ?? 0))
+				settings.torrentPeers = min(1000, min(settings.maximumPeers, max(1, try input.optionalInteger("torrentPeers") ?? 0)))
+				settings.tcp = try input.optionalInteger("tcp").map { $0 != 0 } ?? settings.tcp
+				settings.utp = try input.flag("utp"); settings.pex = try input.flag("pex")
+				settings.allowSameIP = try input.optionalInteger("allowSameIP").map { $0 != 0 } ?? settings.allowSameIP
+				return try JSONEncoder().encode(["port": await session.configurePeers(settings)])
+			}
+			if command == "blocklist" { try await session.setBlocklist(input.addressRanges()); return Data("{}".utf8) }
 			let id = try input.text("id")
 			switch command {
 			case "add":
@@ -60,6 +75,7 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 		do { return try await snapshots.map(session.snapshot(), progress: creation.progress, now: ProcessInfo.processInfo.systemUptime) }
 		catch { throw NSError(domain: "Butter.Engine", code: 1, userInfo: [NSLocalizedDescriptionKey: error.localizedDescription]) }
 	}
+	deinit { let session = session; Task { try? await session.close() } }
 }
 
 private struct NativeCommandPayload {
@@ -91,6 +107,13 @@ private struct NativeCommandPayload {
 			let row = NativeCommandPayload(fields: row), index = try row.integer("index")
 			guard changes[index] == nil else { throw MetadataError.invalid("duplicate rename index") }; changes[index] = try row.text("path")
 		}; return changes
+	}
+	func addressRanges() throws -> [PeerAddressRange] {
+		guard let list = fields["ranges"] as? [[String: Any]], list.count <= 1_000_000 else { throw MetadataError.invalid("blocklist ranges") }
+		return try list.map { row in
+			let row = NativeCommandPayload(fields: row)
+			return try PeerAddressRange(first: ButterTorrentNetworking.IPAddress(row.text("first")), last: ButterTorrentNetworking.IPAddress(row.text("last")))
+		}
 	}
 }
 
@@ -132,7 +155,7 @@ actor NativeSnapshotMapper {
 				trackers: metadata.trackerTiers.flatMap({ $0 }).map { TrackerSnapshot(url: $0, message: "") }, peers: mappedPeers))
 		}
 		transfers = nextTransfers; peers = nextPeers
-		return EngineSnapshot(transfers: rows, events: snapshot.events.map { EngineEvent(kind: $0.kind, id: $0.id, path: $0.path) }, port: 0, udp: false, networkError: "", creationProgress: progress)
+		return EngineSnapshot(transfers: rows, events: snapshot.events.map { EngineEvent(kind: $0.kind, id: $0.id, path: $0.path) }, port: Int(snapshot.network.port), udp: snapshot.network.udp, networkError: snapshot.network.error, creationProgress: progress)
 	}
 	private func speed(_ sample: Sample, after previous: Sample?) -> (Int, Int) {
 		guard let previous, sample.time > previous.time else { return (0, 0) }

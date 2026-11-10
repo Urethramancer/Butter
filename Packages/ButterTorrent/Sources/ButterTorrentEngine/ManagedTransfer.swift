@@ -24,22 +24,26 @@ public actor ManagedTransfer {
 	private let resources: TransferResources
 	private let budget: TCPPeerBudget?
 	private let clock: any TransportClock
+	private let peerID: Data
 	private let commands = TransferPermits(1)
 	private var configuration: TCPTransferConfiguration
 	private var transfer: TCPTransfer?
 	private var closed = false
 	private var pauseFailed = false
 	private init(metadata: TorrentMetadata, storage: TorrentStorage, configuration: TCPTransferConfiguration,
-		resources: TransferResources, budget: TCPPeerBudget?, clock: any TransportClock) {
+		resources: TransferResources, budget: TCPPeerBudget?, peerID: Data, clock: any TransportClock) {
 		self.metadata = metadata; self.storage = storage; self.configuration = configuration
 		self.resources = resources; self.budget = budget; self.clock = clock
+		self.peerID = peerID
 	}
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
 		configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared,
-		budget: TCPPeerBudget? = nil, preparedState: PreparedTransferState? = nil, clock: any TransportClock = ContinuousTransportClock()) async throws -> ManagedTransfer {
+		budget: TCPPeerBudget? = nil, preparedState: PreparedTransferState? = nil, peerID: Data? = nil, clock: any TransportClock = ContinuousTransportClock()) async throws -> ManagedTransfer {
 		try configuration.validate()
+		let identity = peerID ?? Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
+		guard identity.count == 20 else { throw PeerFailure.invalid("peer identifier") }
 		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory, selected: selected, preparedState: preparedState)
-		return ManagedTransfer(metadata: metadata, storage: storage, configuration: configuration, resources: resources, budget: budget, clock: clock)
+		return ManagedTransfer(metadata: metadata, storage: storage, configuration: configuration, resources: resources, budget: budget, peerID: identity, clock: clock)
 	}
 	public func start() async throws {
 		try await serial {
@@ -54,6 +58,15 @@ public actor ManagedTransfer {
 			try await self.transfer?.setLimits(download: download, upload: upload); self.configuration = candidate
 		}
 	}
+	public func configurePeers(maximum: Int, pex: Bool, port: UInt16, allowSameIP: Bool, addressFilter: PeerAddressFilter = .init()) async throws {
+		try await serial {
+			var candidate = self.configuration; candidate.maximumPeers = maximum; candidate.enablePEX = pex; candidate.listenPort = port; candidate.allowSameIP = allowSameIP
+			candidate.addressFilter = addressFilter
+			try candidate.validate(); let running = self.transfer != nil
+			try await self.quiesce(); self.configuration = candidate
+			if running { try await self.resume() }
+		}
+	}
 	@discardableResult public func connect(to endpoint: NetworkEndpoint, utp: UTPTransport? = nil) async throws -> UUID {
 		guard !closed, !pauseFailed, let transfer else { throw PeerFailure.closed }
 		return try await transfer.connect(to: endpoint, utp: utp)
@@ -61,6 +74,9 @@ public actor ManagedTransfer {
 	@discardableResult public func attach(_ stream: any PeerByteStream) async throws -> UUID {
 		guard !closed, !pauseFailed, let transfer else { stream.close(); throw PeerFailure.closed }
 		return try await transfer.attach(stream)
+	}
+	@discardableResult public func attach(_ channel: PeerStream) async throws -> UUID {
+		guard !closed, !pauseFailed, let transfer else { channel.close(); throw PeerFailure.closed }; return try await transfer.attach(channel)
 	}
 	public func snapshot() async throws -> ManagedTransferSnapshot {
 		try await serial {
@@ -119,7 +135,7 @@ public actor ManagedTransfer {
 	}
 	private func resume() async throws {
 		try Task.checkCancellation()
-		transfer = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration, budget: budget, resources: resources, clock: clock)
+		transfer = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration, peerID: peerID, budget: budget, resources: resources, clock: clock)
 	}
 	private func quiesce() async throws {
 		guard let transfer else { return }

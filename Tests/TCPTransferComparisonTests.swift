@@ -150,5 +150,6 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 		print("PASS: \(cases) independent libtorrent-to-Swift and Swift-to-libtorrent peer fixtures")
 		let filter = ProcessInfo.processInfo.environment["BUTTER_REFERENCE_FILTER"]
 		if filter == nil || filter == "DHT" { try await runDHTComparisons(root: root, binary: binary) }
+		if filter == nil || filter == "session" { try await runSessionComparisons(root: root, binary: binary) }
 	}
 }
