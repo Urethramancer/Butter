@@ -607,3 +607,87 @@ The fixed-width arithmetic and framing are native Swift implementations; the
 reference remains optional comparison tooling. Production transfers still use
 libtorrent. µTP, application integration and consolidated performance/dependency
 acceptance remain phases 10–12. No UI or throughput/CPU/memory comparison is claimed.
+
+## µTP (phase 10)
+
+Completed and tagged `v0.13.0`.
+
+`UTPTransport` owns one µTP subscription on an existing UDP dispatcher. TCP and
+µTP implement `PeerByteStream`, so the same peer framing, metadata exchange,
+encryption, uploads and verification run over either transport. Explicit µTP
+connections and their encryption fallback never open TCP. Peer snapshots and
+PEX flags report the observed transport. Production still uses libtorrent;
+automatic transport selection and the application adapter belong to phase 11.
+
+The BEP 29 state machine handles wrapping sequence numbers, cumulative and
+selective acknowledgements, duplicate suppression, reordered data, reliable FIN,
+fast retransmission, bounded exponential timeout and receive-window probes. Delay
+history drives LEDBAT-style window adjustment; timeout reduces the window and
+packet size. Retransmissions preserve each packet's sequence and payload. Payloads
+are at most 1,180 bytes; this phase does not implement path-MTU discovery.
+
+Defaults allow 50 connections, with a configurable ceiling of 200, and share the
+existing peer-budget leases. Receive buffers are bounded to 256 KiB per connection
+and 16 MiB per owner, including reordered data. A write is at most 1 MiB, with one
+pending writer per stream. Aggregate admission reserves twice each pending write's
+size, bounded to 16 MiB, covering retained input and packet copies. Reordering is
+limited to 128 packets, outstanding packets to 256 and sequence distance to 16,384.
+The accept queue holds 32 connections; the outgoing queue holds 512 packets. The
+owned UDP subscription buffers 256 datagrams, each bounded to 4,096 bytes, with
+at most eight extension headers. Queue overflow becomes packet loss handled by
+retransmission. Invalid or unmatched traffic cannot create unbounded state or
+reset reflection; reset output is rate-limited.
+
+Cancellation, deadlines, reset, dispatcher failure and engine shutdown settle
+pending reads, writes, opens and accepts. Shutdown drains transport tasks, releases
+leases and removes the owned subscription while preserving other UDP services.
+Ownership release also removes a subscription that was cancelled before iteration
+began. A completed stream retains EOF after its protocol record expires. Magnet
+metadata sessions drain before opening payload connections, permitting a hard
+one-peer limit without leaking the metadata slot.
+
+Deterministic injected-packet fixtures cover SYN/SYN-ACK/data/FIN loss, delay,
+duplication, reordering, sequence wrap, stale window updates across timestamp wrap,
+zero-window recovery, blackholes, spoofed endpoints, receive and aggregate write
+bounds, cancellation and stable EOF. Real IPv4/IPv6 UDP fixtures share the port
+with DHT transactions and verify ownership replacement. Headless v1/v2/hybrid
+metadata and payload transfers run with plaintext and required RC4, including
+one-peer limits and shutdown during an unanswered SYN.
+
+The independent reference harness disables TCP on both peers for its µTP cases.
+Its relay loses an initial SYN in one initiator direction and an initial SYN-ACK
+in the other, then drops selected data and injects delay, duplication and
+reordering. The pinned reference abandons an unconfirmed handshake and
+may reconnect with a new connection ID; fixtures accept continuously and inject
+one initial control loss, rather than rejecting every reconnect. Both engines'
+transport and encryption modes, counters and final bytes are checked.
+
+Packet traces exposed an interoperability difference: libtorrent emits selective
+ACK bitmaps shorter than BEP 29's four-byte minimum. The reader accepts nonempty
+bitmaps through the extension's 255-byte length limit, while outgoing bitmaps
+remain padded to four-byte units. A wire regression checks compact and maximum
+lengths, cumulative progress and selective removal. Dropping those ACKs had caused
+repeated retransmission of bytes already received; the failure is recorded rather
+than treated as a timing retry. Delayed window advertisements also cannot replace
+a newer timestamped advertisement.
+
+Debug and Release suites pass 148 package tests. The 68-test µTP, engine, MSE and
+DHT subset passes five independent fail-fast runs and an isolated Thread Sanitizer
+build. An initial sanitizer run overlapped other builds and exceeded existing
+five/eight-second encryption-fixture deadlines; those two fixtures now allow a
+bounded 15 seconds. Production deadlines are unchanged. The adjusted fixtures
+also pass under the sanitizer.
+
+Reference acceptance totals 312 peer comparisons: 156 TCP cases and 156
+TCP-disabled µTP cases, including 36 impaired µTP cases. All five encryption
+policies, both transfer directions, v1/v2/hybrid identities, magnets, selective
+files, IPv4/IPv6 and 16/64 KiB pieces are represented. Both independent DHT
+announce/lookup directions also pass. The µTP matrix was rerun in full after the
+compact-ACK fix; the TCP baseline passed separately before that µTP-only change.
+
+Protocol references are [BEP 29](https://www.bittorrent.org/beps/bep_0029.html)
+and the pinned reference's
+[µTP stream implementation](https://github.com/arvidn/libtorrent/blob/6da363d2994f17c0b3c0450d124cf73a31a73847/src/utp_stream.cpp).
+This is an independent Swift implementation. No throughput, CPU, peak-memory,
+public-network or UI acceptance is claimed. Consolidated measurements and
+dependency removal remain phase 12.

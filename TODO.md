@@ -1,7 +1,6 @@
 # Remaining audit and acceptance checks
 
 ## Swift torrent engine replacement
-- Phase 10: µTP with deterministic network-failure fixtures and TCP-disabled transfers.
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
   Quiesce peer I/O before storage mutations and coordinate aggregate disk/cache
   admission across simultaneous transfers.
