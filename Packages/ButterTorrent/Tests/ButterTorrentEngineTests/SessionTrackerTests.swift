@@ -6,17 +6,22 @@ import ButterTorrentMetadata
 
 // Each case owns several sessions; keep independent fixtures within the process-wide disk budget.
 extension NativeSessionTests { @Suite struct SessionTrackerTests {
-	@Test func privateFailoverDrainsOldPeersBeforeContactingTheReplacement() async throws {
+	@Test(arguments: [false, true]) func privateFailoverDrainsOldPeersBeforeContactingTheReplacement(_ initialFailure: Bool) async throws {
 		let fixture = try TrackerSessionFixture(), clock = EngineClock()
 		do {
 			let old = try await fixture.seed(empty: true), seed = try await fixture.seed()
 			let oldPort = try await old.snapshot().network.port, newPort = try await seed.snapshot().network.port
-			let tracker = SwitchingSessionTracker(old: try TrackerPeer(address: "127.0.0.1", port: oldPort), new: try TrackerPeer(address: "127.0.0.1", port: newPort))
+			let tracker = SwitchingSessionTracker(old: try TrackerPeer(address: "127.0.0.1", port: oldPort), new: try TrackerPeer(address: "127.0.0.1", port: newPort), initialFailure: initialFailure)
 			let down = try await fixture.download(tiers: [["http://old.test/announce"], ["http://new.test/announce"]], tracker: tracker, clock: clock)
 			await tracker.checkBeforeReplacement { try await down.snapshot().transfers[0].state.transfer?.peers.isEmpty == true }
 			try await down.run(id: "transfer", running: true)
-			try await eventually { try await down.snapshot().transfers[0].state.transfer?.peers.contains { $0.endpoint?.port == oldPort && $0.peerID != nil } == true }
-			await tracker.failPrimary(true); clock.advance(31)
+			if initialFailure {
+				try await eventually { await tracker.initialStarted }
+				_ = try await old.connect(id: "transfer", to: NetworkEndpoint("127.0.0.1", port: down.snapshot().network.port))
+			}
+			try await eventually { try await down.snapshot().transfers[0].state.transfer?.peers.contains { $0.peerID == old.peerID } == true }
+			if initialFailure { await tracker.releaseInitialFailure() }
+			else { await tracker.failPrimary(true); clock.advance(31) }
 			try await eventually { try await down.snapshot().transfers[0].state.transfer?.complete == true }
 			#expect(await tracker.oldPeersWereDrained)
 			let peers = try await down.snapshot().transfers[0].state.transfer?.peers ?? []
@@ -24,7 +29,7 @@ extension NativeSessionTests { @Suite struct SessionTrackerTests {
 			await tracker.failPrimary(false)
 			let previous = await tracker.hosts.count; clock.advance(31)
 			try await eventually { await tracker.hosts.count > previous }
-			#expect(await tracker.hosts.filter { $0 == "old.test" }.count == 2)
+			#expect(await tracker.hosts.filter { $0 == "old.test" }.count == (initialFailure ? 1 : 2))
 		} catch { await fixture.close(); throw error }; await fixture.close()
 	}
 	@Test(arguments: [true, false]) func settingsRestartTrackersAfterPeerAdmissionReopens(_ rebind: Bool) async throws {
@@ -173,13 +178,21 @@ private actor SwitchingSessionTracker: TrackerAnnouncing {
 	let new: TrackerPeer
 	var hosts: [String] = []
 	var oldPeersWereDrained = false
+	var initialStarted = false
+	private var initialFailure: Bool
 	private var failing = false
 	private var check: (@Sendable () async throws -> Bool)?
-	init(old: TrackerPeer, new: TrackerPeer) { self.old = old; self.new = new }
+	init(old: TrackerPeer, new: TrackerPeer, initialFailure: Bool) { self.old = old; self.new = new; self.initialFailure = initialFailure }
+	func releaseInitialFailure() { initialFailure = false }
 	func failPrimary(_ failure: Bool) { failing = failure }
 	func checkBeforeReplacement(_ check: @escaping @Sendable () async throws -> Bool) { self.check = check }
 	func announce(to url: URL, request: TrackerRequest) async throws -> TrackerResponse {
 		let host = url.host!; hosts.append(host)
+		if host == "old.test", initialFailure {
+			initialStarted = true
+			while initialFailure { try await Task.sleep(for: .milliseconds(5)) }
+			throw HTTPServiceError.status(503)
+		}
 		if host == "old.test", failing { throw HTTPServiceError.status(503) }
 		if host == "new.test", !oldPeersWereDrained { oldPeersWereDrained = try await check?() == true }
 		let peer = host == "old.test" ? old : new

@@ -78,6 +78,17 @@ actor ScriptedTracker: TrackerAnnouncing {
 }
 
 @Suite struct TrackerLifecycleTests {
+	@Test func initialPrivateFailureDrainsBeforeTryingAnotherTracker() async throws {
+		let a = URL(string: "https://a.invalid/announce")!, b = URL(string: "https://b.invalid/announce")!
+		let client = ScriptedTracker(), switched = TrackerSwitchRecorder()
+		await client.fail(["a.invalid"])
+		let session = try TrackerAnnouncer(tiers: [[a], [b]], request: trackerRequest(), client: client,
+			privateTorrent: true, beforeSwitch: { await switched.record($0) })
+		try await session.start(TrackerCounters(left: 3))
+		#expect(await client.calls.map(\.url) == [a, b])
+		#expect(await switched.urls == [b])
+		await client.fail([]); try await session.stop(TrackerCounters(left: 3))
+	}
 	@Test(arguments: [false, true]) func privateFailoverKeepsItsTrackerUntilFailure(_ isPrivate: Bool) async throws {
 		let a = URL(string: "https://a.invalid/announce")!, b = URL(string: "https://b.invalid/announce")!
 		let client = ScriptedTracker(), clock = TestClock(), switched = TrackerSwitchRecorder()

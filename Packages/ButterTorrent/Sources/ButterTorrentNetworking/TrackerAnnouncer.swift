@@ -34,6 +34,7 @@ public actor TrackerAnnouncer {
 	private let privateTorrent: Bool
 	private let beforeSwitch: @Sendable (URL) async throws -> Void
 	private var activeTracker: URL?
+	private var attemptedTracker: URL?
 	public init(tiers: [[URL]], request: TrackerRequest, client: any TrackerAnnouncing = HTTPTrackerClient(),
 		clock: any HTTPServiceClock = MonotonicHTTPClock(), order: @Sendable ([URL]) -> [URL] = { $0.shuffled() },
 		privateTorrent: Bool = false, beforeSwitch: @escaping @Sendable (URL) async throws -> Void = { _ in }) throws {
@@ -63,7 +64,7 @@ public actor TrackerAnnouncer {
 		guard phase == .idle || phase == .stopped else { throw HTTPServiceError.invalid("tracker lifecycle is already started") }
 		phase = .running; initialLeft = counters.left; completionPending = false; completionSent = false
 		contacted.removeAll(); trackerIDs.removeAll(); failures = 0
-		activeTracker = nil
+		activeTracker = nil; attemptedTracker = nil
 		return try await announce(counters)
 	}
 	public func announceIfDue(_ counters: TrackerCounters) async throws -> TrackerResponse? {
@@ -112,7 +113,8 @@ public actor TrackerAnnouncer {
 		for url in urls {
 			do {
 				try Task.checkCancellation()
-				if privateTorrent, let activeTracker, activeTracker != url { try await beforeSwitch(url); try Task.checkCancellation() }
+				if privateTorrent, let attemptedTracker, attemptedTracker != url { try await beforeSwitch(url); try Task.checkCancellation() }
+				attemptedTracker = url
 				var message = request; message.counters = counters; message.trackerID = trackerIDs[url]
 				message.event = contacted.contains(url) ? (completionPending ? .completed : nil) : .started
 				var response = try await client.announce(to: url, request: message)
