@@ -17,6 +17,10 @@ public final class TCPStream: @unchecked Sendable {
 	private var callbacks: [UUID: @Sendable (Error) -> Void] = [:]
 	private let opened = NetworkWaiter<Void>()
 	public var isClosed: Bool { lock.withLock { closed != nil } }
+	public var remoteEndpoint: NetworkEndpoint? {
+		guard case .hostPort(let host, let port) = connection.endpoint else { return nil }
+		return try? NetworkEndpoint(String(describing: host), port: port.rawValue)
+	}
 	private init(_ connection: NWConnection, clock: any TransportClock, onClose: @escaping @Sendable () -> Void = {}) {
 		self.connection = connection; self.clock = clock; self.onClose = onClose
 		connection.stateUpdateHandler = { [weak self] state in

@@ -3,13 +3,31 @@ import ButterTorrentNetworking
 import ButterTorrentStorage
 
 extension TCPTransfer {
-	func handshaken(_ id: UUID, handshake: PeerHandshake) throws {
-		guard !stopping, let peer = peers[id], !peer.closing, handshake.infoHash == hello.infoHash,
+	func handshaken(_ id: UUID, handshake: PeerHandshake) throws -> PeerFeatures {
+		let v2 = metadata.hashes.v2.map { Data($0.prefix(20)) }
+		guard !stopping, let peer = peers[id], !peer.closing, handshake.infoHash == metadata.hashes.v1 || handshake.infoHash == v2,
 			handshake.peerID != hello.peerID, !bannedIDs.contains(handshake.peerID),
 			!peers.contains(where: { $0.key != id && $0.value.peerID == handshake.peerID && !$0.value.closing }) else { throw PeerFailure.invalid("handshake identity or duplicate peer") }
 		peer.peerID = handshake.peerID
+		peer.features.fast = hello.reserved[7] & handshake.reserved[7] & 4 != 0
+		peer.features.extended = hello.reserved[5] & handshake.reserved[5] & 16 != 0
+		peer.features.dht = hello.reserved[7] & handshake.reserved[7] & 1 != 0
+		peer.features.v2 = handshake.infoHash == v2 || (!peer.outgoing && configuration.preferV2 && v2 != nil && handshake.reserved[7] & 16 != 0)
+		if !peer.outgoing {
+			let hash = peer.features.v2 ? v2! : handshake.infoHash
+			try peer.session.handshake(PeerHandshake(infoHash: hash, peerID: hello.peerID, reserved: hello.reserved))
+		}
 		picker.update(id, bits: try PieceBitfield(count: picker.layout.pieceCount))
-		try send(id, .bitfield(PieceBitfield(count: picker.layout.pieceCount, pieces: picker.completed).bytes))
+		if peer.features.fast && picker.completed.isEmpty { try send(id, .haveNone) }
+		else if peer.features.fast && picker.completed.count == picker.layout.pieceCount { try send(id, .haveAll) }
+		else { try send(id, .bitfield(PieceBitfield(count: picker.layout.pieceCount, pieces: picker.completed).bytes)) }
+		if peer.features.fast {
+			peer.allowedIncoming = allowedFast(address: peer.session.stream.remoteEndpoint?.address, infoHash: handshake.infoHash, pieces: picker.layout.pieceCount)
+			for piece in peer.allowedIncoming.sorted() { try send(id, .allowedFast(piece)) }
+		}
+		if peer.features.extended { try sendExtensionHandshake(id) }
+		if peer.features.dht { try send(id, .port(Int(configuration.dhtPort))) }
+		return peer.features
 	}
 	func send(_ id: UUID, _ message: PeerMessage) throws {
 		guard let peer = peers[id], !peer.closing else { throw PeerFailure.closed }
@@ -21,22 +39,50 @@ extension TCPTransfer {
 		if now - peer.window >= 1 { peer.window = now; peer.controls = 0 }
 		if case .piece = message { } else { peer.controls += 1; guard peer.controls <= 8192 else { throw PeerFailure.limit("control messages per second") } }
 		if case .keepAlive = message { return }
-		if case .bitfield = message { guard peer.firstMessage else { throw PeerFailure.invalid("late/repeated bitfield") } }
-		peer.firstMessage = false
+		switch message {
+		case .extended, .hashRequest, .hashes, .hashReject: break
+		case .bitfield, .haveAll, .haveNone:
+			guard peer.firstMessage, !peer.availabilitySeen else { throw PeerFailure.invalid("late/repeated availability") }; peer.availabilitySeen = true; peer.firstMessage = false
+		default:
+			if peer.features.fast && !peer.availabilitySeen { throw PeerFailure.invalid("missing initial Fast availability") }; peer.firstMessage = false
+		}
 		switch message {
 		case .keepAlive: break
 		case .bitfield(let bytes): picker.update(id, bits: try PieceBitfield(count: picker.layout.pieceCount, bytes: bytes)); fill(id)
 		case .have(let piece): try picker.have(id, piece: piece); fill(id)
+		case .haveAll: picker.update(id, bits: try PieceBitfield(count: picker.layout.pieceCount, pieces: Set(0..<picker.layout.pieceCount))); fill(id)
+		case .haveNone: picker.update(id, bits: try PieceBitfield(count: picker.layout.pieceCount)); fill(id)
+		case .allowedFast(let piece), .suggest(let piece):
+			guard (0..<picker.layout.pieceCount).contains(piece) else { throw PeerFailure.invalid("Fast piece index") }
+			if case .allowedFast = message { guard peer.allowedOutgoing.count < 256 else { throw PeerFailure.limit("allowed Fast pieces") }; peer.allowedOutgoing.insert(piece); fill(id) }
+			else { guard peer.suggestions.count < 64 else { throw PeerFailure.limit("suggested pieces") }; peer.suggestions.insert(piece) }
+		case .reject(let block):
+			try validate(block)
+			guard peer.pending.remove(block) != nil || peer.recent.removeValue(forKey: block) != nil else { throw PeerFailure.invalid("unsolicited rejection") }
+			picker.rejected(id, block: block); peer.allowedOutgoing.remove(block.piece); peer.retryAfter = now + min(5, configuration.requestTimeout); fillAll()
 		case .choke:
 			peer.remoteChoking = true
-			for block in peer.pending { remember(peer, block: block) }; peer.pending.removeAll(); picker.release(id); fillAll()
+			if !peer.features.fast && !peer.features.v2 { for block in peer.pending { remember(peer, block: block) }; peer.pending.removeAll(); picker.release(id) }; fillAll()
 		case .unchoke: peer.remoteChoking = false; fill(id)
 		case .interested: peer.remoteInterested = true; rechoke()
 		case .notInterested: peer.remoteInterested = false; rechoke()
 		case .request(let block): try validate(block); try requestUpload(id, block: block)
 		case .cancel(let block):
 			try validate(block)
-			if let token = peer.uploads.removeValue(forKey: block) { uploadJobs[token]?.1.cancel(); peer.session.cancel(token) }
+			if let token = peer.uploads.removeValue(forKey: block) {
+				uploadJobs[token]?.1.cancel()
+				if peer.session.cancel(token), peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }
+			}
+		case .extended(let number, let bytes): try await receivedExtension(id, number: number, bytes: bytes)
+		case .hashRequest(let request): try await serveHashes(id, request: request)
+		case .hashes(let request, let bytes): try await receiveHashes(id, request: request, bytes: bytes)
+		case .hashReject(let request):
+			guard peer.hashRequests.removeValue(forKey: request) != nil else { throw PeerFailure.invalid("unsolicited hash rejection") }
+			if hashOwners[request] == id { hashOwners[request] = nil }; peer.retryAfter = now + configuration.requestTimeout
+			peer.hashRequestSize = 2
+		case .port(let port):
+			guard peer.features.dht, !metadata.inspection.private, port > 0, let remote = peer.session.stream.remoteEndpoint else { throw PeerFailure.invalid("DHT port policy") }
+			nodeDiscovery.yield(NetworkEndpoint(address: remote.address, port: UInt16(port)))
 		case .piece(let piece, let offset, let bytes):
 			let block = PeerBlock(piece: piece, offset: offset, length: bytes.count); try validate(block)
 			if peer.pending.remove(block) == nil {
@@ -91,8 +137,10 @@ extension TCPTransfer {
 		do {
 			let interested = picker.interested(id)
 			if interested != peer.interested { peer.interested = interested; try send(id, interested ? .interested : .notInterested) }
-			guard interested, !peer.remoteChoking, clock.now() >= peer.retryAfter else { return }
-			for block in picker.allocate(id, limit: configuration.pipeline - peer.pending.count, now: clock.now()) { peer.pending.insert(block); try send(id, .request(block)) }
+			guard interested, clock.now() >= peer.retryAfter else { return }
+			try requestHashes(id)
+			guard !peer.remoteChoking || !peer.allowedOutgoing.isEmpty else { return }
+			for block in picker.allocate(id, limit: min(configuration.pipeline, peer.extensions.queueLimit) - peer.pending.count, now: clock.now(), eligible: hashReady, allowed: peer.remoteChoking ? peer.allowedOutgoing : nil, suggestions: peer.suggestions) { peer.pending.insert(block); try send(id, .request(block)) }
 		} catch { drop(id, error: error) }
 	}
 	func fillAll() { for id in peers.keys { fill(id) } }
@@ -108,7 +156,10 @@ extension TCPTransfer {
 			let choke = !selected.contains(id)
 			if choke == peer.choking { continue }; peer.choking = choke
 			if choke {
-				for token in peer.uploads.values { uploadJobs[token]?.1.cancel(); peer.session.cancel(token) }; peer.uploads.removeAll()
+				for (block, token) in peer.uploads where !peer.allowedIncoming.contains(block.piece) {
+					uploadJobs[token]?.1.cancel()
+					if peer.session.cancel(token), peer.features.fast || peer.features.v2 { try? send(id, .reject(block)) }; peer.uploads[block] = nil
+				}
 			}
 			do { try send(id, choke ? .choke : .unchoke) } catch { drop(id, error: error) }
 		}
@@ -126,6 +177,10 @@ extension TCPTransfer {
 		for (id, peer) in peers {
 			if peer.peerID == nil, now - peer.connectedAt >= 10 { drop(id, error: NetworkFailure.timedOut); continue }
 			peer.recent = peer.recent.filter { $0.value >= now }
+			for (request, time) in peer.hashRequests where now - time >= configuration.requestTimeout {
+				peer.hashRequests[request] = nil; if hashOwners[request] == id { hashOwners[request] = nil }; peer.retryAfter = now + configuration.requestTimeout
+			}
+			if peer.features.extended { do { try sendPEX(id) } catch { drop(id, error: error) } }
 			if peer.peerID != nil, !peer.closing, now - peer.lastSent >= 60 { do { try send(id, .keepAlive) } catch { drop(id, error: error) } }
 		}
 		if now - lastChoke >= 10 { lastChoke = now; rotation &+= 1; rechoke(); for peer in peers.values { peer.score = 0 } }

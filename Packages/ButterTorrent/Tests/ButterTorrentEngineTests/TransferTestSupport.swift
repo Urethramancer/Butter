@@ -59,11 +59,11 @@ final class TransferFixture {
 		do { _ = try await download.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port)); _ = try await incoming.value }
 		catch { incoming.cancel(); _ = try? await incoming.value; throw error }
 	}
-	func scripted(_ engine: TCPTransfer, identity: UInt8 = 42, hash: Data? = nil) async throws -> WirePeer {
+	func scripted(_ engine: TCPTransfer, identity: UInt8 = 42, hash: Data? = nil, reserved: Data = Data(repeating: 0, count: 8)) async throws -> WirePeer {
 		let listener = try await listen(), connecting = Task { try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port)) }
 		let stream = try await listener.accept(timeout: 3), peer = WirePeer(stream: stream)
 		_ = try await connecting.value
-		try await peer.hello(hash: hash ?? metadata.hashes.v1!, identity: identity)
+		try await peer.hello(hash: hash ?? metadata.hashes.v1!, identity: identity, reserved: reserved)
 		return peer
 	}
 	func clean() async {
@@ -83,11 +83,14 @@ final class WirePeer {
 	let stream: TCPStream
 	var decoder = PeerWireDecoder()
 	init(stream: TCPStream) { self.stream = stream }
-	func hello(hash: Data, identity: UInt8, fragmented: Bool = true) async throws {
-		let hello = try PeerHandshake(infoHash: hash, peerID: Data(repeating: identity, count: 20))
+	func hello(hash: Data, identity: UInt8, fragmented: Bool = true, reserved: Data = Data(repeating: 0, count: 8), v2: Bool = false) async throws {
+		let hello = try PeerHandshake(infoHash: hash, peerID: Data(repeating: identity, count: 20), reserved: reserved)
 		if fragmented { for byte in hello.encoded { try await stream.write(Data([byte])) } } else { try await stream.write(hello.encoded) }
 		while true {
-			if try decoder.handshake() != nil { return }
+			if let remote = try decoder.handshake() {
+				var features = PeerFeatures(); features.fast = remote.reserved[7] & reserved[7] & 4 != 0; features.extended = remote.reserved[5] & reserved[5] & 16 != 0; features.v2 = v2
+				decoder.negotiate(features); return
+			}
 			let bytes = try await stream.read(timeout: 3)
 			guard !bytes.isEmpty else { throw PeerFailure.closed }; try decoder.feed(bytes)
 		}

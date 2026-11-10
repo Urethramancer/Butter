@@ -11,6 +11,8 @@ final class PeerSession: @unchecked Sendable {
 	private var closed = false
 	private var tokens: Set<UUID> = []
 	init(stream: TCPStream) { self.stream = stream }
+	func handshake(_ hello: PeerHandshake) throws { try enqueue(Outbound(bytes: hello.encoded, payload: 0, token: nil, block: nil)) }
+	func register(_ token: UUID) { _ = lock.withLock { tokens.insert(token) } }
 	func send(_ message: PeerMessage, token: UUID? = nil, block: PeerBlock? = nil) throws {
 		let payload: Int
 		if case .piece(_, _, let bytes) = message { payload = bytes.count } else { payload = 0 }
@@ -20,23 +22,27 @@ final class PeerSession: @unchecked Sendable {
 		try lock.withLock {
 			guard !closed else { throw PeerFailure.closed }
 			guard queuedBytes + item.bytes.count <= 524_288 else { throw PeerFailure.limit("peer output bytes") }
+			if let token = item.token, !tokens.contains(token) { throw PeerFailure.closed }
 			if case .enqueued = outgoing.continuation.yield(item) {
-				queuedBytes += item.bytes.count; if let token = item.token { tokens.insert(token) }
+				queuedBytes += item.bytes.count
 			} else { throw PeerFailure.limit("peer output messages") }
 		}
 	}
-	func cancel(_ token: UUID) { _ = lock.withLock { tokens.remove(token) } }
+	@discardableResult func cancel(_ token: UUID) -> Bool { lock.withLock { tokens.remove(token) != nil } }
 	func close() { lock.withLock { closed = true; tokens.removeAll() }; outgoing.continuation.finish(); stream.close() }
-	func run(id: UUID, hello: PeerHandshake, engine: TCPTransfer, upload: TransferRateLimiter, idleTimeout: TimeInterval) async throws {
+	func run(id: UUID, hello: PeerHandshake, outgoing: Bool, engine: TCPTransfer, upload: TransferRateLimiter, idleTimeout: TimeInterval) async throws {
 		defer { close() }
-		try enqueue(Outbound(bytes: hello.encoded, payload: 0, token: nil, block: nil))
+		if outgoing { try handshake(hello) }
 		try await withThrowingTaskGroup(of: Void.self) { group in
 			group.addTask {
 				for await item in self.outgoing.stream {
 					self.lock.withLock { self.queuedBytes -= item.bytes.count }
 					try Task.checkCancellation()
 					if let token = item.token, !self.lock.withLock({ self.tokens.contains(token) }) { continue }
-					try await upload.consume(item.payload)
+					do { try await upload.consume(item.payload) { item.token.map { token in !self.lock.withLock({ self.tokens.contains(token) }) } ?? false } }
+					catch is CancellationError {
+						if !Task.isCancelled, let token = item.token, !self.lock.withLock({ self.tokens.contains(token) }) { continue }; throw CancellationError()
+					}
 					if let token = item.token, !self.lock.withLock({ self.tokens.remove(token) != nil }) { continue }
 					try await self.stream.write(item.bytes)
 					if let block = item.block, let token = item.token { await engine.uploaded(id, block: block, token: token, count: item.payload) }
@@ -50,7 +56,7 @@ final class PeerSession: @unchecked Sendable {
 					try decoder.feed(bytes)
 					if !ready {
 						guard let handshake = try decoder.handshake() else { continue }
-						try await engine.handshaken(id, handshake: handshake); ready = true
+						let features = try await engine.handshaken(id, handshake: handshake); decoder.negotiate(features); ready = true
 					}
 					while let message = try decoder.next() {
 						try Task.checkCancellation(); try await engine.received(id, message: message)

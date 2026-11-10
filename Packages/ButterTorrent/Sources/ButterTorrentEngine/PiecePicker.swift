@@ -12,13 +12,15 @@ struct PiecePicker {
 	let layout: StorageLayout
 	let wanted: Set<Int>
 	let maximumActive: Int
+	let lengths: [Int: Int]
 	private(set) var completed: Set<Int>
 	private(set) var active: [Int: Active] = [:]
 	private var peers: [UUID: PieceBitfield] = [:]
 	private(set) var availability: [Int]
-	init(layout: StorageLayout, wanted: Set<Int>, completed: Set<Int>, maximumActive: Int = 8) {
+	init(layout: StorageLayout, wanted: Set<Int>, completed: Set<Int>, maximumActive: Int = 8, lengths: [Int: Int] = [:]) {
 		self.layout = layout; self.wanted = wanted; self.completed = completed; self.maximumActive = maximumActive
 		availability = Array(repeating: 0, count: layout.pieceCount)
+		self.lengths = lengths
 	}
 	var complete: Bool { wanted.isSubset(of: completed) }
 	mutating func update(_ peer: UUID, bits: PieceBitfield) {
@@ -38,17 +40,19 @@ struct PiecePicker {
 		for piece in active.keys { for block in active[piece]!.owners.keys { active[piece]!.owners[block]![peer] = nil } }
 	}
 	func interested(_ peer: UUID) -> Bool { peers[peer]?.pieces.contains(where: { wanted.contains($0) && !completed.contains($0) }) == true }
+	func has(_ peer: UUID, piece: Int) -> Bool { peers[peer]?.contains(piece) == true }
 	func blocks(_ piece: Int) -> [PeerBlock] {
-		let length = (try? layout.length(of: piece)) ?? 0
+		let length = lengths[piece] ?? ((try? layout.length(of: piece)) ?? 0)
 		return stride(from: 0, to: length, by: 16384).map { PeerBlock(piece: piece, offset: $0, length: min(16384, length - $0)) }
 	}
-	mutating func allocate(_ peer: UUID, limit: Int, now: TimeInterval) -> [PeerBlock] {
+	mutating func allocate(_ peer: UUID, limit: Int, now: TimeInterval, eligible: Set<Int>? = nil, allowed: Set<Int>? = nil, suggestions: Set<Int> = []) -> [PeerBlock] {
 		guard let bits = peers[peer], limit > 0 else { return [] }
 		var result: [PeerBlock] = []
-		let candidates = wanted.subtracting(completed).filter { bits.contains($0) }.sorted {
+		let candidates = wanted.subtracting(completed).filter { bits.contains($0) && (eligible?.contains($0) ?? true) && (allowed?.contains($0) ?? true) }.sorted {
 			let a = active[$0] != nil, b = active[$1] != nil
 			if a != b { return a }
-			return availability[$0] == availability[$1] ? $0 < $1 : availability[$0] < availability[$1]
+			if availability[$0] != availability[$1] { return availability[$0] < availability[$1] }
+			if suggestions.contains($0) != suggestions.contains($1) { return suggestions.contains($0) }; return $0 < $1
 		}
 		for piece in candidates {
 			if active[piece] == nil {
@@ -94,6 +98,7 @@ struct PiecePicker {
 		item.writing.remove(block.offset); item.owners[block.offset] = nil
 		if availability[block.piece] == 0 && item.writing.isEmpty { active[block.piece] = nil } else { active[block.piece] = item }
 	}
+	mutating func rejected(_ peer: UUID, block: PeerBlock) { active[block.piece]?.owners[block.offset]?[peer] = nil }
 	mutating func verified(_ piece: Int, valid: Bool) -> Set<UUID> {
 		let contributors = active.removeValue(forKey: piece)?.contributors ?? []
 		if valid { completed.insert(piece) }; return contributors

@@ -11,6 +11,12 @@ public struct TCPTransferConfiguration: Sendable {
 	public var idleTimeout: TimeInterval = 180
 	public var downloadLimit = 0
 	public var uploadLimit = 0
+	public var enableFast = true
+	public var enableExtensions = true
+	public var enablePEX = true
+	public var preferV2 = true
+	public var listenPort: UInt16 = 0
+	public var dhtPort: UInt16 = 0
 	public init() {}
 	func validate() throws {
 		guard (1...200).contains(maximumPeers), (1...32).contains(pipeline), (1...32).contains(uploadSlots),
@@ -26,6 +32,8 @@ public struct TCPPeerSnapshot: Sendable {
 	public let pendingRequests: Int
 	public let downloaded: Int64
 	public let uploaded: Int64
+	public let v2: Bool
+	public let fast: Bool
 }
 public struct TCPTransferSnapshot: Sendable {
 	public let complete: Bool
@@ -62,6 +70,22 @@ final class TransferPeer {
 	var lastSent: TimeInterval
 	var window: TimeInterval
 	var controls = 0
+	var features = PeerFeatures()
+	var outgoing = false
+	var extensions = ExtensionHandshake()
+	var advertisedPort: UInt16?
+	var availabilitySeen = false
+	var allowedIncoming: Set<Int> = []
+	var allowedOutgoing: Set<Int> = []
+	var suggestions: Set<Int> = []
+	var nextPEX: TimeInterval = 0
+	var nextIncomingPEX: TimeInterval = 0
+	var pexSent: Set<NetworkEndpoint> = []
+	var pexReceived: Set<NetworkEndpoint> = []
+	var metadataRequests = 0
+	var metadataWindow: TimeInterval = 0
+	var hashRequests: [MerkleHashRequest: TimeInterval] = [:]
+	var hashRequestSize = 512
 	let connectedAt: TimeInterval
 	init(session: PeerSession, now: TimeInterval) { self.session = session; lastSent = now; window = now; connectedAt = now }
 }
@@ -79,6 +103,12 @@ public actor TCPTransfer {
 	let downloadRate: TransferRateLimiter
 	let cache: VerifiedPieceCache
 	var picker: PiecePicker
+	var hashReady: Set<Int>
+	var hashOwners: [MerkleHashRequest: UUID] = [:]
+	public nonisolated let discoveredPeers: AsyncStream<ExchangedPeer>
+	let discovery: AsyncStream<ExchangedPeer>.Continuation
+	public nonisolated let discoveredNodes: AsyncStream<NetworkEndpoint>
+	let nodeDiscovery: AsyncStream<NetworkEndpoint>.Continuation
 	var peers: [UUID: TransferPeer] = [:]
 	var openings: [UUID: Task<TCPStream, Error>] = [:]
 	var uploadJobs: [UUID: (UUID, Task<Void, Never>)] = [:]
@@ -94,10 +124,17 @@ public actor TCPTransfer {
 	var shutdownTask: (UUID, Task<Void, Error>)?
 	var lastChoke: TimeInterval
 	var rotation = 0
-	private init(metadata: TorrentMetadata, storage: TorrentStorage, initial: StorageSnapshot, configuration: TCPTransferConfiguration,
+	private init(metadata: TorrentMetadata, storage: TorrentStorage, initial: StorageSnapshot, hashes: Set<Int>, configuration: TCPTransferConfiguration,
 		peerID: Data, budget: TCPPeerBudget, clock: any TransportClock) throws {
 		self.metadata = metadata; self.storage = storage; self.configuration = configuration; self.budget = budget; self.clock = clock
-		hello = try PeerHandshake(infoHash: metadata.hashes.v1!, peerID: peerID)
+		let hash = configuration.preferV2 ? metadata.hashes.v2.map { Data($0.prefix(20)) } ?? metadata.hashes.v1! : metadata.hashes.v1 ?? Data(metadata.hashes.v2!.prefix(20))
+		var reserved = Data(repeating: 0, count: 8)
+		if configuration.enableFast { reserved[7] |= 4 }; if configuration.enableExtensions { reserved[5] |= 16 }
+		if metadata.hashes.v2 != nil && hash == metadata.hashes.v1 && configuration.preferV2 { reserved[7] |= 16 }
+		if configuration.dhtPort > 0 && !metadata.inspection.private { reserved[7] |= 1 }
+		hello = try PeerHandshake(infoHash: hash, peerID: peerID, reserved: reserved)
+		let discoveries = AsyncStream<ExchangedPeer>.makeStream(bufferingPolicy: .bufferingNewest(256)); discoveredPeers = discoveries.stream; discovery = discoveries.continuation
+		let nodes = AsyncStream<NetworkEndpoint>.makeStream(bufferingPolicy: .bufferingNewest(64)); discoveredNodes = nodes.stream; nodeDiscovery = nodes.continuation
 		uploadRate = TransferRateLimiter(rate: configuration.uploadLimit, clock: clock); downloadRate = TransferRateLimiter(rate: configuration.downloadLimit, clock: clock)
 		cache = VerifiedPieceCache(storage: storage)
 		var offset: Int64 = 0, wanted: Set<Int> = []
@@ -108,17 +145,19 @@ public actor TCPTransfer {
 			}
 			offset += file.size
 		}
-		picker = PiecePicker(layout: storage.layout, wanted: wanted, completed: initial.verifiedPieces)
+		picker = PiecePicker(layout: storage.layout, wanted: wanted, completed: initial.verifiedPieces, lengths: storage.merkleIndex.pieces.mapValues(\.length))
+		hashReady = hashes
 		downloaded = initial.downloaded; uploaded = initial.uploaded; lastChoke = clock.now()
 	}
 	public static func open(metadata: TorrentMetadata, storage: TorrentStorage, configuration: TCPTransferConfiguration = .init(),
 		peerID: Data? = nil, budget: TCPPeerBudget? = nil, clock: any TransportClock = ContinuousTransportClock()) async throws -> TCPTransfer {
 		try configuration.validate()
-		guard metadata.hashes.v1 != nil, storage.infoHashes == metadata.hashes else { throw PeerFailure.invalid("v1 metadata/storage identity") }
+		guard storage.infoHashes == metadata.hashes else { throw PeerFailure.invalid("metadata/storage identity") }
 		let initial = try await storage.snapshot()
 		guard !initial.needsRecovery else { throw StorageFailure.recoveryRequired("recover files before starting a transfer") }
 		let identity = peerID ?? Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
-		let transfer = try TCPTransfer(metadata: metadata, storage: storage, initial: initial, configuration: configuration,
+		let hashes = try await storage.availableHashes()
+		let transfer = try TCPTransfer(metadata: metadata, storage: storage, initial: initial, hashes: hashes, configuration: configuration,
 			peerID: identity, budget: budget ?? TCPPeerBudget(limit: configuration.maximumPeers), clock: clock)
 		await transfer.startTicker(); return transfer
 	}
@@ -128,15 +167,17 @@ public actor TCPTransfer {
 			do { while !Task.isCancelled { try await clock.sleep(for: interval); guard let self else { return }; await self.tick() } } catch { }
 		}
 	}
-	@discardableResult public func attach(_ stream: TCPStream) throws -> UUID {
+	@discardableResult public func attach(_ stream: TCPStream) throws -> UUID { try attach(stream, outgoing: false) }
+	@discardableResult func attach(_ stream: TCPStream, outgoing: Bool) throws -> UUID {
 		guard !stopping, storageError == nil, peers.count < configuration.maximumPeers else { stream.close(); throw PeerFailure.limit("active peers") }
 		let id = UUID(), session = PeerSession(stream: stream), peer = TransferPeer(session: session, now: clock.now())
 		peers[id] = peer
+		peer.outgoing = outgoing
 		let hello = hello, rate = uploadRate, timeout = configuration.idleTimeout
 		peer.task = Task { [weak self] in
 			guard let self else { session.close(); return }
 			var failure: Error?
-			do { try await session.run(id: id, hello: hello, engine: self, upload: rate, idleTimeout: timeout) } catch { failure = error }
+			do { try await session.run(id: id, hello: hello, outgoing: outgoing, engine: self, upload: rate, idleTimeout: timeout) } catch { failure = error }
 			await self.ended(id, error: failure)
 		}
 		return id
@@ -149,13 +190,13 @@ public actor TCPTransfer {
 		defer { openings[id] = nil }
 		return try await withTaskCancellationHandler {
 			let stream = try await task.value
-			do { try Task.checkCancellation(); return try attach(stream) } catch { stream.close(); throw error }
+			do { try Task.checkCancellation(); return try attach(stream, outgoing: true) } catch { stream.close(); throw error }
 		} onCancel: { task.cancel() }
 	}
 	public func snapshot() -> TCPTransferSnapshot {
 		TCPTransferSnapshot(complete: picker.complete, verifiedPieces: picker.completed, wantedPieces: picker.wanted,
 			peers: peers.map { id, peer in TCPPeerSnapshot(id: id, peerID: peer.peerID, remoteChoking: peer.remoteChoking, choking: peer.choking,
-				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded) },
+				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded, v2: peer.features.v2, fast: peer.features.fast) },
 			downloaded: downloaded, uploaded: uploaded, corruptPieces: corruptPieces, writingBlocks: picker.active.values.reduce(0) { $0 + $1.writing.count }, lastPeerError: lastPeerError, storageError: storageError, stopped: stopped)
 	}
 	public func setLimits(download: Int, upload: Int) async throws {
@@ -171,6 +212,7 @@ public actor TCPTransfer {
 	}
 	private func finishShutdown() async throws {
 		stopping = true; ticker?.cancel()
+		discovery.finish(); nodeDiscovery.finish()
 		let connecting = Array(openings.values), running = peers.values.compactMap(\.task), uploads = uploadJobs.values.map(\.1)
 		for task in connecting { task.cancel() }
 		for peer in peers.values { peer.closing = true; peer.session.close(); peer.task?.cancel() }
@@ -184,6 +226,7 @@ public actor TCPTransfer {
 	func ended(_ id: UUID, error: Error?) async {
 		guard let peer = peers.removeValue(forKey: id) else { return }
 		peer.session.close(); picker.remove(id)
+		for request in peer.hashRequests.keys where hashOwners[request] == id { hashOwners[request] = nil }
 		let jobs = uploadJobs.values.filter { $0.0 == id }.map(\.1)
 		for task in jobs { task.cancel() }; for task in jobs { await task.value }
 		if !stopping, let error, !(error is CancellationError) { lastPeerError = error.localizedDescription }

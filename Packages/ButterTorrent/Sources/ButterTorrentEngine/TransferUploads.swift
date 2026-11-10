@@ -2,11 +2,14 @@ import Foundation
 
 extension TCPTransfer {
 	func requestUpload(_ id: UUID, block: PeerBlock) throws {
-		guard let peer = peers[id], !peer.choking else { return }
-		guard picker.completed.contains(block.piece) else { throw PeerFailure.invalid("request for an unavailable piece") }
-		if peer.uploads[block] != nil { return }
+		guard let peer = peers[id] else { return }
+		if peer.features.v2, let actual = storage.merkleIndex.pieces[block.piece]?.length, block.offset + block.length > actual { throw PeerFailure.invalid("v2 request crosses a file boundary") }
+		if (peer.choking && !peer.allowedIncoming.contains(block.piece)) || !picker.completed.contains(block.piece) {
+			if peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }; return
+		}
+		if peer.uploads[block] != nil { throw PeerFailure.invalid("duplicate upload request") }
 		guard peer.uploads.count < 32, uploadJobs.count < 64 else { throw PeerFailure.limit("upload requests") }
-		let token = UUID(); peer.uploads[block] = token
+		let token = UUID(); peer.uploads[block] = token; peer.session.register(token)
 		let task = Task { [weak self] in
 			guard let self else { return }
 			do { try await self.buildUpload(id, block: block, token: token) }
@@ -21,7 +24,7 @@ extension TCPTransfer {
 			try Task.checkCancellation()
 			let piece = try await cache.piece(block.piece)
 			try Task.checkCancellation()
-			guard !stopping, let peer = peers[id], !peer.closing, !peer.choking, peer.uploads[block] == token else { throw PeerFailure.closed }
+			guard !stopping, let peer = peers[id], !peer.closing, !peer.choking || peer.allowedIncoming.contains(block.piece), peer.uploads[block] == token else { throw PeerFailure.closed }
 			let data = piece.subdata(in: block.offset..<(block.offset + block.length))
 			try peer.session.send(.piece(block.piece, block.offset, data), token: token, block: block); peer.lastSent = clock.now()
 		} catch { await disk.release(); throw error }

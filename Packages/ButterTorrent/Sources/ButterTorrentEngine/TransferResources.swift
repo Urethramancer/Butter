@@ -38,10 +38,11 @@ actor TransferRateLimiter {
 	private let clock: any TransportClock
 	init(rate: Int, clock: any TransportClock) { self.rate = rate; tokens = Double(rate); self.clock = clock; updated = clock.now() }
 	func set(_ rate: Int) { self.rate = rate; tokens = min(tokens, Double(rate)); updated = clock.now() }
-	func consume(_ bytes: Int) async throws {
+	func consume(_ bytes: Int, isCancelled: @Sendable () -> Bool = { false }) async throws {
 		var remaining = Double(bytes)
 		while remaining > 0 {
 			try Task.checkCancellation()
+			if isCancelled() { throw CancellationError() }
 			if rate == 0 { return }
 			let now = clock.now(); tokens = min(Double(rate), tokens + max(0, now - updated) * Double(rate)); updated = now
 			let count = min(remaining, tokens); remaining -= count; tokens -= count

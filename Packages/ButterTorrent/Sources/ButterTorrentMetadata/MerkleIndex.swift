@@ -70,9 +70,9 @@ public struct MerkleIndex: Sendable {
 		}
 		self.files = files; self.pieces = pieces; self.starts = starts
 	}
-	public func request(for piece: Int) -> MerkleHashRequest? {
+	public func request(for piece: Int, maximum: Int = 512) -> MerkleHashRequest? {
 		guard let mapping = pieces[piece], let file = files[mapping.root], file.leaves > 1 else { return nil }
-		let count = min(512, file.leaves)
+		let count = min(1 << MerkleMath.log2(max(2, min(512, maximum))), file.leaves)
 		return MerkleHashRequest(root: file.root, base: file.base, index: mapping.local / count * count, count: count, proofLayers: file.height - file.base - 1)
 	}
 }
