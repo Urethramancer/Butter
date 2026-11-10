@@ -920,11 +920,12 @@ continue to exercise concurrent transfers and commands.
 Verification passes 209 package tests in Debug and Release, nine focused tests
 under Thread Sanitizer, the three-backend app contract, five fail-fast concurrent
 engine-suite runs and five isolated reference runs of the previously failing
-pure-v2 µTP case. An earlier concurrent full-suite run also closed the controlled
-MSE regression stream unexpectedly. Subsequent runs have not reproduced it;
-stage diagnostics and the remaining investigation are recorded in TODO.md rather
-than treating repetition as a fix. Failed logs remain available; successful logs
-are removed automatically.
+pure-v2 µTP case. Subsequent fixture work replaces its controlled MSE wait with a
+gated µTP acknowledgement and aligns the reference provider's wait with the
+metadata deadline. Five fail-fast runs in each of Debug, Release and Thread
+Sanitizer pass all 94 engine tests with those configurations running concurrently.
+The audit retains the earlier failures and explains the fixture changes. Failed
+logs remain available; successful logs are removed automatically.
 
 Magnet imports, local discovery, mapping, tracker accounting and the
 remaining phase 11 acceptance work stay in TODO.md. Production still uses

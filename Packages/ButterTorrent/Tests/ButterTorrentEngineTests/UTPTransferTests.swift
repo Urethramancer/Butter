@@ -7,45 +7,52 @@ import ButterTorrentNetworking
 @Suite struct UTPTransferTests {
 	@Test(arguments: [false, true]) func crossedUTPConnectionsResolveBeforePeerIDs(_ localPortIsLower: Bool) async throws {
 		try await transferFixture { fixture in
-			let sockets = try (0..<2).map { _ in try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0)) }.sorted { $0.localEndpoint.port < $1.localEndpoint.port }
-			let leftUDP = UDPDispatcher(transport: sockets[localPortIsLower ? 0 : 1]), rightUDP = UDPDispatcher(transport: sockets[localPortIsLower ? 1 : 0])
+			let leftEndpoint = try NetworkEndpoint("127.0.0.1", port: localPortIsLower ? 41001 : 41002), rightEndpoint = try NetworkEndpoint("127.0.0.1", port: localPortIsLower ? 41002 : 41001)
+			let link = CrossedUTPLink(initiator: leftEndpoint)
+			let leftPort = CrossedUTPPort(endpoint: leftEndpoint, link: link), rightPort = CrossedUTPPort(endpoint: rightEndpoint, link: link)
+			await link.add(leftPort); await link.add(rightPort)
+			let leftUDP = UDPDispatcher(transport: leftPort), rightUDP = UDPDispatcher(transport: rightPort)
 			let left = try await UTPTransport.open(dispatcher: leftUDP), right = try await UTPTransport.open(dispatcher: rightUDP)
-			var configuration = plainTransferConfiguration(); configuration.encryption = .init(incoming: .disabled, outgoing: .required)
-			let engine = try await fixture.transfer("download", configuration: configuration)
+			let engine = try await fixture.transfer("download")
 			let connecting = Task { try await engine.connect(to: right.localEndpoint, utp: left) }
 			var stage = "accept outgoing"
 			do {
-				// Hold outgoing MSE until the opposite direction has completed its wire handshake.
+				// Hold its STATE reply so the outgoing connection cannot finish early.
 				let pending = try await right.accept(timeout: 3)
+				try await eventually { await link.holding }
 				stage = "open incoming"
-				let incoming = Task { try await engine.attach(left.accept(timeout: 3)) }
+				let incoming = Task { try await left.accept(timeout: 3) }
 				let remote = try await right.connect(to: left.localEndpoint, timeout: 3), peer = WirePeer(stream: remote)
+				let raw = try await incoming.value
 				let retained: UUID?
 				stage = "admit incoming"
 				if localPortIsLower {
-					await #expect(throws: (any Error).self) { try await incoming.value }; retained = nil
+					await #expect(throws: PeerFailure.self) { try await engine.attach(raw) }; retained = nil
 				} else {
-					retained = try await incoming.value
-					try await peer.hello(hash: fixture.metadata.hashes.v1!, identity: 77)
+					retained = try await engine.attach(raw)
+					try await peer.hello(hash: fixture.metadata.hashes.v1!, identity: 77, fragmented: false)
 					try await eventually { await engine.snapshot().peers.contains { $0.id == retained && $0.peerID != nil } }
 				}
-				let negotiated: PeerStream?
-				stage = "finish outgoing MSE"
-				do { negotiated = try await PeerStream.accept(pending, hashes: [fixture.metadata.hashes.v1!], configuration: .init(incoming: .required)) }
-				catch { guard !localPortIsLower, error as? NetworkFailure == .closed else { throw error }; negotiated = nil }
+				await link.release()
+				stage = "wait outgoing result"
 				let connected = try await connecting.value
 				stage = "wire handshake"
 				let serving: WirePeer
-				if localPortIsLower { serving = WirePeer(channel: try #require(negotiated)); try await serving.hello(hash: fixture.metadata.hashes.v1!, identity: 77) }
+				if localPortIsLower { serving = WirePeer(stream: pending); try await serving.hello(hash: fixture.metadata.hashes.v1!, identity: 77, fragmented: false) }
 				else { #expect(connected == retained); serving = peer }
 				#expect(await engine.snapshot().peers.count == 1)
 				stage = "payload transfer"
 				try await serving.seed(pieceCount: 3)
 				for block in try await serving.requests(6) { try await serving.reply(block, bytes: fixture.bytes) }
 				try await eventually { await engine.snapshot().complete }
-				negotiated?.close(); peer.stream.close()
+				pending.close(); peer.stream.close()
 			} catch {
-				connecting.cancel(); await left.shutdown(); await right.shutdown(); try? await leftUDP.shutdown(); try? await rightUDP.shutdown(); throw PeerFailure.invalid("crossed µTP \(stage): \(error)")
+				connecting.cancel()
+				let connection: String
+				do { connection = "retained \(try await connecting.value)" } catch { connection = String(describing: error) }
+				let state = await engine.snapshot()
+				await left.shutdown(); await right.shutdown(); try? await leftUDP.shutdown(); try? await rightUDP.shutdown()
+				throw PeerFailure.invalid("crossed µTP \(stage): \(error); outgoing: \(connection); peer error: \(state.lastPeerError ?? "")")
 			}
 			await left.shutdown(); await right.shutdown(); try await leftUDP.shutdown(); try await rightUDP.shutdown()
 		}

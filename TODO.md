@@ -9,8 +9,6 @@
   announces; current session announces use its selected wire identity.
   Keep snapshots and unrelated commands responsive during long filesystem operations.
   Verify interruption and disk-failure recovery during repository publication/discard.
-  Resolve the intermittent closed stream in the controlled crossed-µTP/MSE fixture
-  under concurrent suite load; stage diagnostics are now retained on failure.
   Resolve inherited PCP-before-NAT-PMP behaviour from the pinned reference;
   the Swift mapping clients currently implement UPnP and NAT-PMP.
   Select or retry hybrid wire identities automatically. Hybrid magnets with

@@ -33,7 +33,8 @@ final class V2Fixture {
 	}
 	func provider(_ engine: TCPTransfer, count: Int = 1) async throws -> (NetworkEndpoint, Task<Void, Error>) {
 		let listener = try await TCPListener.listen(address: IPAddress("127.0.0.1")); listeners.append(listener)
-		let task = Task { for _ in 0..<count { _ = try await engine.attach(listener.accept(timeout: 5)) } }
+		// MetadataExchange permits fifteen seconds before opening the payload stream.
+		let task = Task { for _ in 0..<count { _ = try await engine.attach(listener.accept(timeout: 20)) } }
 		return (try NetworkEndpoint("127.0.0.1", port: listener.port), task)
 	}
 	func close() async {
