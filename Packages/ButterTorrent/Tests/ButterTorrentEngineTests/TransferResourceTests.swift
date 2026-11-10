@@ -39,6 +39,35 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 }
 
 @Suite struct TransferResourceTests {
+	@Test func diskScopesShareAdmissionAndClosingOnePreservesOtherTransfers() async throws {
+		let resources = try TransferResources(maximumDiskOperations: 1)
+		let first = TransferDiskScope(resources: resources), second = TransferDiskScope(resources: resources)
+		try await first.acquire()
+		let waiting = Task { try await second.acquire() }
+		try await eventually { await resources.snapshot().waitingDiskOperations == 1 }
+		#expect(await resources.snapshot().diskOperations == 1)
+		waiting.cancel(); await #expect(throws: CancellationError.self) { try await waiting.value }
+		await first.close(); await first.release()
+		try await second.acquire(); await second.release()
+		#expect(await resources.snapshot().diskOperations == 0)
+		await #expect(throws: PeerFailure.self) { try await first.acquire() }
+		await second.close()
+	}
+	@Test func cacheEvictsAcrossOwnersAndOwnerCloseReleasesOnlyItsBytes() async throws {
+		try await transferFixture { fixture in
+			_ = try await fixture.transfer("seed", seed: true)
+			let pool = SharedPieceCache(limit: 40_000), first = PieceCacheOwner(), second = PieceCacheOwner()
+			let storage = fixture.stores[0]
+			#expect(try await pool.piece(0, storage: storage, owner: first) == fixture.bytes.prefix(32768))
+			#expect(try await pool.piece(1, storage: storage, owner: second) == fixture.bytes.subdata(in: 32768..<65536))
+			let (cached, loading) = await pool.usage; #expect(cached == 32768 && loading == 0)
+			await pool.close(first)
+			let (surviving, _) = await pool.usage; #expect(surviving == 32768)
+			await #expect(throws: PeerFailure.self) { try await pool.piece(0, storage: storage, owner: first) }
+			await pool.close(second)
+			let (empty, pending) = await pool.usage; #expect(empty == 0 && pending == 0)
+		}
+	}
 	@Test(arguments: [false, true]) func cancellingPayloadAlreadyWaitingForRateLimitUnblocksControlReplies(_ encrypted: Bool) async throws {
 		try await transferFixture { fixture in
 			let clock = EngineClock(); var config = plainTransferConfiguration(); config.uploadLimit = 1024

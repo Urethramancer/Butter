@@ -102,7 +102,7 @@ public actor TCPTransfer {
 	var configuration: TCPTransferConfiguration
 	let hello: PeerHandshake
 	let budget: TCPPeerBudget
-	let disk = TransferPermits()
+	let disk: TransferDiskScope
 	let uploadRate: TransferRateLimiter
 	let downloadRate: TransferRateLimiter
 	let cache: VerifiedPieceCache
@@ -129,7 +129,7 @@ public actor TCPTransfer {
 	var lastChoke: TimeInterval
 	var rotation = 0
 	private init(metadata: TorrentMetadata, storage: TorrentStorage, initial: StorageSnapshot, hashes: Set<Int>, configuration: TCPTransferConfiguration,
-		peerID: Data, budget: TCPPeerBudget, clock: any TransportClock) throws {
+		peerID: Data, budget: TCPPeerBudget, resources: TransferResources, clock: any TransportClock) throws {
 		self.metadata = metadata; self.storage = storage; self.configuration = configuration; self.budget = budget; self.clock = clock
 		let hash = configuration.preferV2 ? metadata.hashes.v2.map { Data($0.prefix(20)) } ?? metadata.hashes.v1! : metadata.hashes.v1 ?? Data(metadata.hashes.v2!.prefix(20))
 		var reserved = Data(repeating: 0, count: 8)
@@ -140,7 +140,7 @@ public actor TCPTransfer {
 		let discoveries = AsyncStream<ExchangedPeer>.makeStream(bufferingPolicy: .bufferingNewest(256)); discoveredPeers = discoveries.stream; discovery = discoveries.continuation
 		let nodes = AsyncStream<NetworkEndpoint>.makeStream(bufferingPolicy: .bufferingNewest(64)); discoveredNodes = nodes.stream; nodeDiscovery = nodes.continuation
 		uploadRate = TransferRateLimiter(rate: configuration.uploadLimit, clock: clock); downloadRate = TransferRateLimiter(rate: configuration.downloadLimit, clock: clock)
-		cache = VerifiedPieceCache(storage: storage)
+		disk = TransferDiskScope(resources: resources); cache = VerifiedPieceCache(storage: storage, resources: resources)
 		var offset: Int64 = 0, wanted: Set<Int> = []
 		for file in storage.layout.files {
 			if !file.pad, initial.selected[file.index], file.size > 0 {
@@ -154,7 +154,7 @@ public actor TCPTransfer {
 		downloaded = initial.downloaded; uploaded = initial.uploaded; lastChoke = clock.now()
 	}
 	public static func open(metadata: TorrentMetadata, storage: TorrentStorage, configuration: TCPTransferConfiguration = .init(),
-		peerID: Data? = nil, budget: TCPPeerBudget? = nil, clock: any TransportClock = ContinuousTransportClock()) async throws -> TCPTransfer {
+		peerID: Data? = nil, budget: TCPPeerBudget? = nil, resources: TransferResources = .shared, clock: any TransportClock = ContinuousTransportClock()) async throws -> TCPTransfer {
 		try configuration.validate()
 		guard storage.infoHashes == metadata.hashes else { throw PeerFailure.invalid("metadata/storage identity") }
 		let initial = try await storage.snapshot()
@@ -162,7 +162,7 @@ public actor TCPTransfer {
 		let identity = peerID ?? Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
 		let hashes = try await storage.availableHashes()
 		let transfer = try TCPTransfer(metadata: metadata, storage: storage, initial: initial, hashes: hashes, configuration: configuration,
-			peerID: identity, budget: budget ?? TCPPeerBudget(limit: configuration.maximumPeers), clock: clock)
+			peerID: identity, budget: budget ?? TCPPeerBudget(limit: configuration.maximumPeers), resources: resources, clock: clock)
 		await transfer.startTicker(); return transfer
 	}
 	func startTicker() {

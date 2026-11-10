@@ -4,10 +4,12 @@ import ButterTorrentStorage
 
 actor TransferPermits {
 	private var available: Int
+	private let capacity: Int
 	private var waiting: [(UUID, CheckedContinuation<Void, Error>)] = []
 	private var closed = false
 	var waitingCount: Int { waiting.count }
-	init(_ count: Int = 4) { available = count }
+	var activeCount: Int { capacity - available }
+	init(_ count: Int = 4) { available = count; capacity = count }
 	func acquire() async throws {
 		try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }
 		if available > 0 { available -= 1; return }
@@ -53,37 +55,11 @@ actor TransferRateLimiter {
 
 actor VerifiedPieceCache {
 	private let storage: TorrentStorage
-	private var values: [Int: (Data, UInt64)] = [:]
-	private var loading: [Int: Task<Data, Error>] = [:]
-	private var bytes = 0
-	private var order: UInt64 = 0
-	private var closed = false
-	init(storage: TorrentStorage) { self.storage = storage }
+	private let owner = PieceCacheOwner()
+	private let pool: SharedPieceCache
+	init(storage: TorrentStorage, resources: TransferResources = .shared) { self.storage = storage; pool = resources.pieces }
 	func piece(_ index: Int) async throws -> Data {
-		guard !closed else { throw PeerFailure.closed }; order &+= 1
-		if let value = values[index] { values[index] = (value.0, order); return value.0 }
-		let task: Task<Data, Error>
-		if let existing = loading[index] { task = existing }
-		else {
-			guard loading.count < 4 else { throw PeerFailure.limit("piece cache loads") }
-			task = Task { try await storage.readVerifiedPiece(index) }; loading[index] = task
-		}
-		do {
-			let data = try await task.value; loading[index] = nil
-			guard !closed else { throw PeerFailure.closed }
-			if values[index] == nil {
-				while bytes + data.count > 32 * 1024 * 1024 || values.count >= 8 {
-					guard let oldest = values.min(by: { $0.value.1 < $1.value.1 }) else { break }
-					bytes -= oldest.value.0.count; values[oldest.key] = nil
-				}
-				order &+= 1; values[index] = (data, order); bytes += data.count
-			}
-			return data
-		} catch { loading[index] = nil; throw error }
+		try await pool.piece(index, storage: storage, owner: owner)
 	}
-	func close() async {
-		closed = true
-		let tasks = Array(loading.values); loading.removeAll(); values.removeAll(); bytes = 0
-		for task in tasks { task.cancel() }; for task in tasks { _ = try? await task.value }
-	}
+	func close() async { owner.close(); await pool.close(owner) }
 }
