@@ -3,6 +3,7 @@ import ButterTorrentNetworking
 import ButterTorrentStorage
 
 extension TCPTransfer {
+	func negotiated(_ id: UUID, mode: PeerEncryptionMode) { peers[id]?.encryption = mode }
 	func handshaken(_ id: UUID, handshake: PeerHandshake) throws -> PeerFeatures {
 		let v2 = metadata.hashes.v2.map { Data($0.prefix(20)) }
 		guard !stopping, let peer = peers[id], !peer.closing, handshake.infoHash == metadata.hashes.v1 || handshake.infoHash == v2,

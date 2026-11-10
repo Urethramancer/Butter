@@ -16,6 +16,7 @@ public actor MagnetDownload {
 	private let stateDirectory: URL
 	private let registry: TorrentIdentityRegistry
 	private let exchange: MetadataExchange
+	private let configuration: TCPTransferConfiguration
 	private var current: (UUID, Task<MagnetResolution, Error>)?
 	private var result: MagnetResolution?
 	private var closed = false
@@ -23,12 +24,14 @@ public actor MagnetDownload {
 	private var stopTask: (UUID, Task<Void, Error>)?
 	public private(set) var connectionFailures: [NetworkEndpoint: String] = [:]
 	public init(magnet: Magnet, destination: URL, stateDirectory: URL, registry: TorrentIdentityRegistry,
-		id: UUID = UUID(), exchange: MetadataExchange = MetadataExchange()) {
-		self.magnet = magnet; self.destination = destination; self.stateDirectory = stateDirectory; self.registry = registry; self.id = id; self.exchange = exchange
+		id: UUID = UUID(), exchange: MetadataExchange? = nil, configuration: TCPTransferConfiguration = .init()) {
+		self.magnet = magnet; self.destination = destination; self.stateDirectory = stateDirectory; self.registry = registry; self.id = id
+		self.configuration = configuration; self.exchange = exchange ?? MetadataExchange(encryption: configuration.encryption)
 	}
 	public var discoveryAllowed: Bool { if case .ready(let metadata, _, _) = result { return !metadata.inspection.private && !closed }; return false }
 	public func resolve(peers: [NetworkEndpoint]) async throws -> MagnetResolution {
 		guard !closed else { throw PeerFailure.closed }
+		try configuration.validate()
 		if let result { return result }
 		let entry: (UUID, Task<MagnetResolution, Error>)
 		if let current { entry = current } else { entry = (UUID(), Task { try await self.open(peers: peers) }); current = entry }
@@ -45,7 +48,7 @@ public actor MagnetDownload {
 		do {
 			try Task.checkCancellation()
 			let disk = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory); storage = disk
-			let transfer = try await TCPTransfer.open(metadata: metadata, storage: disk); engine = transfer
+			let transfer = try await TCPTransfer.open(metadata: metadata, storage: disk, configuration: configuration); engine = transfer
 			for endpoint in peers.prefix(8) where !metadata.inspection.private {
 				try Task.checkCancellation()
 				do { _ = try await transfer.connect(to: endpoint) } catch {

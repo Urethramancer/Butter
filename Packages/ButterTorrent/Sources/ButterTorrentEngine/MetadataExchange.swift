@@ -6,17 +6,18 @@ import ButterTorrentNetworking
 public actor MetadataExchange {
 	private let clock: any TransportClock
 	private let budget: TCPPeerBudget
+	private let encryption: PeerEncryptionConfiguration
 	private var busy = false
-	public init(clock: any TransportClock = ContinuousTransportClock(), budget: TCPPeerBudget = TCPPeerBudget(limit: 4)) { self.clock = clock; self.budget = budget }
+	public init(clock: any TransportClock = ContinuousTransportClock(), budget: TCPPeerBudget = TCPPeerBudget(limit: 4), encryption: PeerEncryptionConfiguration = .init()) { self.clock = clock; self.budget = budget; self.encryption = encryption }
 	public func fetch(_ magnet: Magnet, peers: [NetworkEndpoint], timeout: TimeInterval = 60) async throws -> TorrentMetadata {
 		guard !busy else { throw PeerFailure.limit("simultaneous metadata resolutions") }
 		guard (1...32).contains(peers.count), timeout.isFinite, (0.1...120).contains(timeout) else { throw PeerFailure.invalid("metadata resolution limits") }
 		busy = true; defer { busy = false }
 		var seen: Set<NetworkEndpoint> = []
-		let peers = peers.filter { seen.insert($0).inserted }, clock = clock, budget = budget, deadline = clock.now() + timeout
+		let peers = peers.filter { seen.insert($0).inserted }, clock = clock, budget = budget, encryption = encryption, deadline = clock.now() + timeout
 		return try await withThrowingTaskGroup(of: Result<TorrentMetadata, Error>.self) { group in
 			func add(_ endpoint: NetworkEndpoint) {
-				group.addTask { do { return .success(try await Self.fetchPeer(magnet, endpoint: endpoint, deadline: deadline, clock: clock, budget: budget)) } catch { return .failure(error) } }
+				group.addTask { do { return .success(try await Self.fetchPeer(magnet, endpoint: endpoint, deadline: deadline, clock: clock, budget: budget, encryption: encryption)) } catch { return .failure(error) } }
 			}
 			var next = 0, failure: Error = PeerFailure.invalid("no metadata provider")
 			while next < min(4, peers.count) { add(peers[next]); next += 1 }
@@ -30,12 +31,12 @@ public actor MetadataExchange {
 			throw failure
 		}
 	}
-	private static func fetchPeer(_ magnet: Magnet, endpoint: NetworkEndpoint, deadline: TimeInterval, clock: any TransportClock, budget: TCPPeerBudget) async throws -> TorrentMetadata {
+	private static func fetchPeer(_ magnet: Magnet, endpoint: NetworkEndpoint, deadline: TimeInterval, clock: any TransportClock, budget: TCPPeerBudget, encryption: PeerEncryptionConfiguration) async throws -> TorrentMetadata {
 		func remaining() throws -> TimeInterval { let seconds = deadline - clock.now(); guard seconds > 0 else { throw NetworkFailure.timedOut }; return min(10, seconds) }
-		let stream = try await TCPStream.connect(to: endpoint, timeout: remaining(), clock: clock, budget: budget)
-		defer { stream.close() }
 		var reserved = Data(repeating: 0, count: 8); reserved[5] = 16
 		let wireHash = magnet.hashes.v2.map { Data($0.prefix(20)) } ?? magnet.hashes.v1!
+		let stream = try await PeerStream.connect(to: endpoint, hash: wireHash, configuration: encryption, timeout: remaining(), clock: clock, budget: budget)
+		defer { stream.close() }
 		let hello = try PeerHandshake(infoHash: wireHash, peerID: Data("-BTMETA-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) }), reserved: reserved)
 		try await stream.write(hello.encoded, timeout: remaining())
 		var decoder = PeerWireDecoder(), handshaken = false, extensions = ExtensionHandshake(), size: Int?, chunks: [Int: Data] = [:], pending: Set<Int> = [], requested = 0

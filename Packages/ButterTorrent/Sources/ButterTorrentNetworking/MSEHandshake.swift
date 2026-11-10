@@ -53,10 +53,18 @@ struct MSEHandshake {
 	}
 	func keyPair() async throws -> MSEKeyPair {
 		let secret = try mseRandom(20)
-		return try await MSEWorkers.shared.run { try MSEKeyPair(secret: secret) }
+		return try await calculate { try MSEKeyPair(secret: secret) }
 	}
 	func shared(_ pair: MSEKeyPair, remote: Data) async throws -> Data {
-		try await MSEWorkers.shared.run { try pair.shared(remote) }
+		try await calculate { try pair.shared(remote) }
+	}
+	func calculate<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
+		let timeout = try remaining(), clock = clock
+		return try await withThrowingTaskGroup(of: T.self) { group in
+			group.addTask { try await MSEWorkers.shared.run(body) }
+			group.addTask { try await clock.sleep(for: timeout); throw NetworkFailure.timedOut }
+			defer { group.cancelAll() }; return try await group.next()!
+		}
 	}
 	func ciphers(secret: Data, hash: Data, outgoing: Bool) throws -> (MSECipher, MSECipher) {
 		let a = try MSECipher(key: mseHash("keyA", secret, hash)), b = try MSECipher(key: mseHash("keyB", secret, hash))

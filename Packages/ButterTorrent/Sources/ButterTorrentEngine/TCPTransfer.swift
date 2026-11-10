@@ -17,6 +17,7 @@ public struct TCPTransferConfiguration: Sendable {
 	public var preferV2 = true
 	public var listenPort: UInt16 = 0
 	public var dhtPort: UInt16 = 0
+	public var encryption = PeerEncryptionConfiguration()
 	public init() {}
 	func validate() throws {
 		guard (1...200).contains(maximumPeers), (1...32).contains(pipeline), (1...32).contains(uploadSlots),
@@ -34,6 +35,7 @@ public struct TCPPeerSnapshot: Sendable {
 	public let uploaded: Int64
 	public let v2: Bool
 	public let fast: Bool
+	public let encryption: PeerEncryptionMode
 }
 public struct TCPTransferSnapshot: Sendable {
 	public let complete: Bool
@@ -72,6 +74,7 @@ final class TransferPeer {
 	var controls = 0
 	var features = PeerFeatures()
 	var outgoing = false
+	var encryption: PeerEncryptionMode = .plaintext
 	var extensions = ExtensionHandshake()
 	var advertisedPort: UInt16?
 	var availabilitySeen = false
@@ -110,7 +113,7 @@ public actor TCPTransfer {
 	public nonisolated let discoveredNodes: AsyncStream<NetworkEndpoint>
 	let nodeDiscovery: AsyncStream<NetworkEndpoint>.Continuation
 	var peers: [UUID: TransferPeer] = [:]
-	var openings: [UUID: Task<TCPStream, Error>] = [:]
+	var openings: [UUID: Task<PeerStream, Error>] = [:]
 	var uploadJobs: [UUID: (UUID, Task<Void, Never>)] = [:]
 	var bannedIDs: Set<Data> = []
 	var downloaded: Int64
@@ -168,16 +171,17 @@ public actor TCPTransfer {
 		}
 	}
 	@discardableResult public func attach(_ stream: TCPStream) throws -> UUID { try attach(stream, outgoing: false) }
-	@discardableResult func attach(_ stream: TCPStream, outgoing: Bool) throws -> UUID {
+	@discardableResult func attach(_ stream: TCPStream, outgoing: Bool, transport: PeerStream? = nil) throws -> UUID {
 		guard !stopping, storageError == nil, peers.count < configuration.maximumPeers else { stream.close(); throw PeerFailure.limit("active peers") }
-		let id = UUID(), session = PeerSession(stream: stream), peer = TransferPeer(session: session, now: clock.now())
+		let id = UUID(), session = PeerSession(stream: stream, transport: transport), peer = TransferPeer(session: session, now: clock.now())
 		peers[id] = peer
 		peer.outgoing = outgoing
-		let hello = hello, rate = uploadRate, timeout = configuration.idleTimeout
+		let hello = hello, rate = uploadRate, timeout = configuration.idleTimeout, encryption = configuration.encryption, clock = clock
+		let hashes = [metadata.hashes.v1, metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }
 		peer.task = Task { [weak self] in
 			guard let self else { session.close(); return }
 			var failure: Error?
-			do { try await session.run(id: id, hello: hello, outgoing: outgoing, engine: self, upload: rate, idleTimeout: timeout) } catch { failure = error }
+			do { try await session.run(id: id, hello: hello, outgoing: outgoing, engine: self, upload: rate, idleTimeout: timeout, hashes: hashes, encryption: encryption, clock: clock) } catch { failure = error }
 			await self.ended(id, error: failure)
 		}
 		return id
@@ -185,18 +189,18 @@ public actor TCPTransfer {
 	@discardableResult public func connect(to endpoint: NetworkEndpoint) async throws -> UUID {
 		try Task.checkCancellation()
 		guard !stopping, storageError == nil, peers.count + openings.count < configuration.maximumPeers else { throw PeerFailure.limit("active and connecting peers") }
-		let id = UUID(), budget = budget, clock = clock
-		let task = Task { try await TCPStream.connect(to: endpoint, clock: clock, budget: budget) }; openings[id] = task
+		let id = UUID(), budget = budget, clock = clock, hash = hello.infoHash, encryption = configuration.encryption
+		let task = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption, clock: clock, budget: budget) }; openings[id] = task
 		defer { openings[id] = nil }
 		return try await withTaskCancellationHandler {
 			let stream = try await task.value
-			do { try Task.checkCancellation(); return try attach(stream, outgoing: true) } catch { stream.close(); throw error }
+			do { try Task.checkCancellation(); return try attach(stream.raw, outgoing: true, transport: stream) } catch { stream.close(); throw error }
 		} onCancel: { task.cancel() }
 	}
 	public func snapshot() -> TCPTransferSnapshot {
 		TCPTransferSnapshot(complete: picker.complete, verifiedPieces: picker.completed, wantedPieces: picker.wanted,
 			peers: peers.map { id, peer in TCPPeerSnapshot(id: id, peerID: peer.peerID, remoteChoking: peer.remoteChoking, choking: peer.choking,
-				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded, v2: peer.features.v2, fast: peer.features.fast) },
+				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded, v2: peer.features.v2, fast: peer.features.fast, encryption: peer.encryption) },
 			downloaded: downloaded, uploaded: uploaded, corruptPieces: corruptPieces, writingBlocks: picker.active.values.reduce(0) { $0 + $1.writing.count }, lastPeerError: lastPeerError, storageError: storageError, stopped: stopped)
 	}
 	public func setLimits(download: Int, upload: Int) async throws {

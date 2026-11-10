@@ -5,6 +5,10 @@ import ButterTorrentNetworking
 import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
+func plainTransferConfiguration() -> TCPTransferConfiguration {
+	var configuration = TCPTransferConfiguration(); configuration.encryption.outgoing = .disabled; return configuration
+}
+
 func eventually(_ operation: @escaping @Sendable () async throws -> Bool) async throws {
 	let deadline = ProcessInfo.processInfo.systemUptime + 6
 	while ProcessInfo.processInfo.systemUptime < deadline { if try await operation() { return }; try await Task.sleep(for: .milliseconds(5)) }
@@ -43,7 +47,7 @@ final class TransferFixture {
 		let info: [Data: BencodeValue] = [Data("name".utf8): .bytes(Data("bundle".utf8)), Data("files".utf8): .list(files), Data("piece length".utf8): .integer(32768), Data("pieces".utf8): .bytes(hashes)]
 		metadata = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
 	}
-	func transfer(_ name: String, seed: Bool = false, selected: [Bool]? = nil, configuration: TCPTransferConfiguration = .init(), clock: any TransportClock = ContinuousTransportClock()) async throws -> TCPTransfer {
+	func transfer(_ name: String, seed: Bool = false, selected: [Bool]? = nil, configuration: TCPTransferConfiguration = plainTransferConfiguration(), clock: any TransportClock = ContinuousTransportClock()) async throws -> TCPTransfer {
 		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent(name), stateDirectory: root.appendingPathComponent(name + "-state"), selected: selected)
 		stores.append(storage)
 		if seed { try await storage.importFiles(from: root.appendingPathComponent("source")); for piece in 0..<storage.layout.pieceCount { #expect(try await storage.verify(piece: piece)) } }

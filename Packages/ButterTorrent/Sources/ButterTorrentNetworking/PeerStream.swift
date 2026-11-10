@@ -19,7 +19,8 @@ public final class PeerStream: @unchecked Sendable {
 		let raw = try await TCPStream.connect(to: endpoint, timeout: timeout, clock: clock, budget: budget)
 		if configuration.outgoing == .disabled { return PeerStream(raw: raw) }
 		do {
-			var handshake = MSEHandshake(stream: raw, clock: clock, deadline: deadline, configuration: configuration)
+			let negotiationDeadline = configuration.outgoing == .enabled ? clock.now() + max(0.05, (deadline - clock.now()) / 2) : deadline
+			var handshake = MSEHandshake(stream: raw, clock: clock, deadline: negotiationDeadline, configuration: configuration)
 			return try await handshake.initiate(hash: hash)
 		} catch {
 			raw.close(); try Task.checkCancellation()

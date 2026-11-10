@@ -9,6 +9,7 @@
 #include <libtorrent/alert_types.hpp>
 #include <libtorrent/settings_pack.hpp>
 #include <libtorrent/magnet_uri.hpp>
+#include <libtorrent/peer_info.hpp>
 #include <csignal>
 #include <thread>
 #include <chrono>
@@ -91,7 +92,12 @@ int main(int argc, char** argv) { @autoreleasepool { try {
 	for (auto setting : {lt::settings_pack::enable_dht, lt::settings_pack::enable_lsd, lt::settings_pack::enable_upnp, lt::settings_pack::enable_natpmp, lt::settings_pack::enable_incoming_utp, lt::settings_pack::enable_outgoing_utp}) settings.set_bool(setting, false);
 	settings.set_bool(lt::settings_pack::enable_incoming_tcp, true); settings.set_bool(lt::settings_pack::enable_outgoing_tcp, true);
 	settings.set_bool(lt::settings_pack::allow_multiple_connections_per_ip, true);
-	settings.set_int(lt::settings_pack::in_enc_policy, lt::settings_pack::pe_disabled); settings.set_int(lt::settings_pack::out_enc_policy, lt::settings_pack::pe_disabled);
+	settings.set_bool(lt::settings_pack::close_redundant_connections, false);
+	NSString* encryption = job[@"encryption"] ?: @"disabled";
+	int policy = [encryption isEqualToString:@"disabled"] ? lt::settings_pack::pe_disabled : [encryption isEqualToString:@"fallback"] ? lt::settings_pack::pe_enabled : lt::settings_pack::pe_forced;
+	settings.set_int(lt::settings_pack::in_enc_policy, policy); settings.set_int(lt::settings_pack::out_enc_policy, policy);
+	settings.set_int(lt::settings_pack::allowed_enc_level, [encryption isEqualToString:@"rc4"] ? lt::settings_pack::pe_rc4 : lt::settings_pack::pe_both);
+	settings.set_bool(lt::settings_pack::prefer_rc4, [encryption isEqualToString:@"prefer-rc4"]);
 	settings.set_int(lt::settings_pack::alert_mask, static_cast<std::uint32_t>(lt::alert_category::error | lt::alert_category::storage | lt::alert_category::status));
 	lt::session session(settings);
 	lt::error_code error;
@@ -109,7 +115,9 @@ int main(int argc, char** argv) { @autoreleasepool { try {
 		if (!connected && [job[@"remotePort"] intValue] && status.state != lt::torrent_status::checking_files && status.state != lt::torrent_status::checking_resume_data) {
 			handle.connect_peer({lt::make_address([job[@"remoteHost"] UTF8String]), static_cast<unsigned short>([job[@"remotePort"] intValue])}); connected = true;
 		}
-		publish(@{@"port":@(session.listen_port()), @"complete":@(status.has_metadata && status.is_finished), @"seeding":@(status.is_seeding),
+		int rc4 = 0, negotiated = 0; std::vector<lt::peer_info> peers; handle.get_peer_info(peers);
+		for (auto const& peer : peers) { if (peer.flags & lt::peer_info::rc4_encrypted) ++rc4; if (peer.flags & lt::peer_info::plaintext_encrypted) ++negotiated; }
+		publish(@{@"port":@(session.listen_port()), @"complete":@(status.has_metadata && status.is_finished), @"seeding":@(status.is_seeding), @"rc4":@(rc4), @"negotiated":@(negotiated),
 			@"downloaded":@(status.total_payload_download), @"uploaded":@(status.total_payload_upload), @"done":@(status.total_wanted_done), @"wanted":@(status.total_wanted)}, job[@"status"]);
 		std::this_thread::sleep_for(std::chrono::milliseconds(20));
 	}

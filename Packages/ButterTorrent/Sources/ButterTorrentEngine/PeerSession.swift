@@ -5,12 +5,13 @@ import ButterTorrentNetworking
 final class PeerSession: @unchecked Sendable {
 	struct Outbound: Sendable { let bytes: Data; let payload: Int; let token: UUID?; let block: PeerBlock? }
 	let stream: TCPStream
+	private let transport: PeerStream?
 	private let lock = NSLock()
 	private let outgoing = AsyncStream<Outbound>.makeStream(bufferingPolicy: .bufferingOldest(128))
 	private var queuedBytes = 0
 	private var closed = false
 	private var tokens: Set<UUID> = []
-	init(stream: TCPStream) { self.stream = stream }
+	init(stream: TCPStream, transport: PeerStream? = nil) { self.stream = stream; self.transport = transport }
 	func handshake(_ hello: PeerHandshake) throws { try enqueue(Outbound(bytes: hello.encoded, payload: 0, token: nil, block: nil)) }
 	func register(_ token: UUID) { _ = lock.withLock { tokens.insert(token) } }
 	func send(_ message: PeerMessage, token: UUID? = nil, block: PeerBlock? = nil) throws {
@@ -30,8 +31,12 @@ final class PeerSession: @unchecked Sendable {
 	}
 	@discardableResult func cancel(_ token: UUID) -> Bool { lock.withLock { tokens.remove(token) != nil } }
 	func close() { lock.withLock { closed = true; tokens.removeAll() }; outgoing.continuation.finish(); stream.close() }
-	func run(id: UUID, hello: PeerHandshake, outgoing: Bool, engine: TCPTransfer, upload: TransferRateLimiter, idleTimeout: TimeInterval) async throws {
+	func run(id: UUID, hello: PeerHandshake, outgoing: Bool, engine: TCPTransfer, upload: TransferRateLimiter, idleTimeout: TimeInterval,
+		hashes: [Data], encryption: PeerEncryptionConfiguration, clock: any TransportClock) async throws {
 		defer { close() }
+		let channel: PeerStream
+		if let transport { channel = transport } else { channel = try await PeerStream.accept(stream, hashes: hashes, configuration: encryption, clock: clock) }
+		await engine.negotiated(id, mode: channel.mode)
 		if outgoing { try handshake(hello) }
 		try await withThrowingTaskGroup(of: Void.self) { group in
 			group.addTask {
@@ -44,14 +49,14 @@ final class PeerSession: @unchecked Sendable {
 						if !Task.isCancelled, let token = item.token, !self.lock.withLock({ self.tokens.contains(token) }) { continue }; throw CancellationError()
 					}
 					if let token = item.token, !self.lock.withLock({ self.tokens.remove(token) != nil }) { continue }
-					try await self.stream.write(item.bytes)
+					try await channel.write(item.bytes)
 					if let block = item.block, let token = item.token { await engine.uploaded(id, block: block, token: token, count: item.payload) }
 				}
 			}
 			group.addTask {
 				var decoder = PeerWireDecoder(), ready = false, frames = 0
 				while true {
-					let bytes = try await self.stream.read(timeout: ready ? idleTimeout : 10)
+					let bytes = try await channel.read(timeout: ready ? idleTimeout : 10)
 					if bytes.isEmpty { try decoder.finish(); return }
 					try decoder.feed(bytes)
 					if !ready {

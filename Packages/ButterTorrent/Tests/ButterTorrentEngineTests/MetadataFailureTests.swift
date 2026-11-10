@@ -41,7 +41,7 @@ private func metadataProvider(_ fixture: V2Fixture, behaviour: MetadataBehaviour
 		let fixture = try V2Fixture(version: 3)
 		do {
 			let (endpoint, provider) = try await metadataProvider(fixture, behaviour: MetadataBehaviour(rawValue: name)!)
-			do { _ = try await MetadataExchange().fetch(Magnet(hashes: fixture.metadata.hashes), peers: [endpoint], timeout: 3); Issue.record("Invalid metadata was accepted: \(name)") } catch {}
+			do { _ = try await MetadataExchange(encryption: .disabled).fetch(Magnet(hashes: fixture.metadata.hashes), peers: [endpoint], timeout: 3); Issue.record("Invalid metadata was accepted: \(name)") } catch {}
 			try await provider.value
 		} catch { await fixture.close(); throw error }; await fixture.close()
 	}
@@ -49,7 +49,7 @@ private func metadataProvider(_ fixture: V2Fixture, behaviour: MetadataBehaviour
 		let fixture = try V2Fixture(version: 2)
 		do {
 			let (bad, badWork) = try await metadataProvider(fixture, behaviour: .corrupt), (silent, silentWork) = try await metadataProvider(fixture, behaviour: .silent), (good, goodWork) = try await metadataProvider(fixture, behaviour: .good)
-			let metadata = try await MetadataExchange().fetch(Magnet(hashes: fixture.metadata.hashes), peers: [bad, silent, good], timeout: 3)
+			let metadata = try await MetadataExchange(encryption: .disabled).fetch(Magnet(hashes: fixture.metadata.hashes), peers: [bad, silent, good], timeout: 3)
 			#expect(metadata.originalInfo == fixture.metadata.originalInfo)
 			// Competing providers may see cancellation before their response is written.
 			_ = try? await badWork.value; try await goodWork.value; try await silentWork.value
@@ -57,7 +57,7 @@ private func metadataProvider(_ fixture: V2Fixture, behaviour: MetadataBehaviour
 	}
 	@Test func privateMetadataArrivalNeverReconnectsUntrustedHints() async throws {
 		let fixture = try V2Fixture(version: 3, isPrivate: true), registry = TorrentIdentityRegistry()
-		let download = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("download"), stateDirectory: fixture.root.appendingPathComponent("state"), registry: registry)
+		let download = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("download"), stateDirectory: fixture.root.appendingPathComponent("state"), registry: registry, exchange: MetadataExchange(encryption: .disabled))
 		do {
 			let (endpoint, provider) = try await metadataProvider(fixture, behaviour: .good)
 			guard case .ready(let metadata, let engine, _) = try await download.resolve(peers: [endpoint]) else { throw PeerFailure.invalid("unexpected duplicate") }

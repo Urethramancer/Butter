@@ -41,7 +41,7 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 @Suite struct TransferResourceTests {
 	@Test func cancellingPayloadAlreadyWaitingForRateLimitUnblocksControlReplies() async throws {
 		try await transferFixture { fixture in
-			let clock = EngineClock(); var config = TCPTransferConfiguration(); config.uploadLimit = 1024
+			let clock = EngineClock(); var config = plainTransferConfiguration(); config.uploadLimit = 1024
 			let seed = try await fixture.transfer("seed", seed: true, configuration: config, clock: clock)
 			_ = try await clock.nextSleep() // Drain the ticker's initial wait before observing the writer.
 			let ticker = await seed.ticker; ticker?.cancel(); await ticker?.value
@@ -109,7 +109,7 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 	}
 	@Test func incompleteHandshakeExpiresAndPeerLimitRejectsAnotherConnection() async throws {
 		try await transferFixture { fixture in
-			let clock = EngineClock(); var config = TCPTransferConfiguration(); config.maximumPeers = 1
+			let clock = EngineClock(); var config = plainTransferConfiguration(); config.maximumPeers = 1
 			let engine = try await fixture.transfer("download", configuration: config, clock: clock), listener = try await fixture.listen()
 			let connect = Task { try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port)) }
 			let stream = try await listener.accept(timeout: 3); defer { stream.close() }; _ = try await connect.value

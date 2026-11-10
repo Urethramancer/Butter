@@ -24,7 +24,7 @@ import ButterTorrentNetworking
 	}
 	@Test func repeatedUnsolicitedDuplicateIsClosed() async throws {
 		try await transferFixture { fixture in
-			var configuration = TCPTransferConfiguration(); configuration.pipeline = 1
+			var configuration = plainTransferConfiguration(); configuration.pipeline = 1
 			let engine = try await fixture.transfer("download", configuration: configuration), peer = try await fixture.scripted(engine)
 			try await peer.seed(pieceCount: 3); let first = try await peer.requests(1)[0]
 			try await peer.reply(first, bytes: fixture.bytes); try await peer.reply(first, bytes: fixture.bytes)
@@ -68,7 +68,7 @@ import ButterTorrentNetworking
 	}
 	@Test func endgameCancelsDuplicatesAndDisconnectCompletes() async throws {
 		try await transferFixture { fixture in
-			var config = TCPTransferConfiguration(); config.pipeline = 32
+			var config = plainTransferConfiguration(); config.pipeline = 32
 			let engine = try await fixture.transfer("download", configuration: config)
 			let first = try await fixture.scripted(engine, identity: 11), second = try await fixture.scripted(engine, identity: 12)
 			try await first.seed(pieceCount: 3); let requests = try await first.requests(6)
@@ -121,7 +121,7 @@ import ButterTorrentNetworking
 	}
 	@Test func concurrentShutdownCancelsRateLimitedUploads() async throws {
 		try await transferFixture { fixture in
-			var config = TCPTransferConfiguration(); config.uploadLimit = 1024
+			var config = plainTransferConfiguration(); config.uploadLimit = 1024
 			let seed = try await fixture.transfer("seed", seed: true, configuration: config), download = try await fixture.transfer("download")
 			try await fixture.join(download, seed)
 			try await eventually { await download.snapshot().peers.contains { $0.pendingRequests > 0 } }

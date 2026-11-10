@@ -24,11 +24,11 @@ final class V2Fixture {
 		if version == 2 { for key in ["pieces", "files", "length"] { info[Data(key.utf8)] = nil } }
 		fields[Data("info".utf8)] = .dictionary(info); metadata = try TorrentMetadata(BencodeValue.dictionary(fields).encoded())
 	}
-	func engine(_ name: String, seed: Bool, sparse: Bool = false, preferV2: Bool = true) async throws -> TCPTransfer {
+	func engine(_ name: String, seed: Bool, sparse: Bool = false, preferV2: Bool = true, encryption: PeerEncryptionConfiguration = .init(outgoing: .disabled)) async throws -> TCPTransfer {
 		let metadata = sparse ? try TorrentMetadata(infoBytes: metadata.originalInfo, expected: metadata.hashes) : metadata
 		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent(name), stateDirectory: root.appendingPathComponent(name + "-state")); stores.append(storage)
 		if seed { try await storage.importFiles(from: root.appendingPathComponent("source")); for piece in 0..<storage.layout.pieceCount { #expect(try await storage.verify(piece: piece)) } }
-		var configuration = TCPTransferConfiguration(); configuration.preferV2 = preferV2
+		var configuration = TCPTransferConfiguration(); configuration.preferV2 = preferV2; configuration.encryption = encryption
 		let engine = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration); engines.append(engine); return engine
 	}
 	func provider(_ engine: TCPTransfer, count: Int = 1) async throws -> (NetworkEndpoint, Task<Void, Error>) {
@@ -93,7 +93,7 @@ final class V2Fixture {
 	}
 	@Test func fastCancellationRepliesOnceWithoutWaitingForPayloadThrottle() async throws {
 		try await transferFixture { fixture in
-			var config = TCPTransferConfiguration(); config.uploadLimit = 1024
+			var config = plainTransferConfiguration(); config.uploadLimit = 1024
 			let seed = try await fixture.transfer("seed", seed: true, configuration: config)
 			var flags = Data(repeating: 0, count: 8); flags[7] = 4
 			let peer = try await fixture.scripted(seed, reserved: flags)

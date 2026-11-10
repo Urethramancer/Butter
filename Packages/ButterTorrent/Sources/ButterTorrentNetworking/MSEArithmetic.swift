@@ -92,9 +92,21 @@ struct MSEKeyPair: Sendable {
 actor MSEWorkers {
 	static let shared = MSEWorkers()
 	private var active = 0
+	private var waiters: [(UUID, CheckedContinuation<Void, Error>)] = []
+	private func acquire() async throws {
+		try Task.checkCancellation()
+		if active < 4 { active += 1; return }
+		guard waiters.count < 64 else { throw NetworkFailure.limit("MSE arithmetic workers") }
+		let id = UUID()
+		try await withTaskCancellationHandler {
+			try Task.checkCancellation()
+			try await withCheckedThrowingContinuation { waiters.append((id, $0)) }
+		} onCancel: { Task { await self.cancel(id) } }
+	}
+	private func cancel(_ id: UUID) { if let index = waiters.firstIndex(where: { $0.0 == id }) { waiters.remove(at: index).1.resume(throwing: CancellationError()) } }
+	private func release() { if waiters.isEmpty { active -= 1 } else { waiters.removeFirst().1.resume() } }
 	func run<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
-		try Task.checkCancellation(); guard active < 4 else { throw NetworkFailure.limit("MSE arithmetic workers") }
-		active += 1; defer { active -= 1 }
+		try await acquire(); defer { release() }
 		let work = Task.detached(priority: .utility) { try Task.checkCancellation(); return try body() }
 		return try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
 	}
