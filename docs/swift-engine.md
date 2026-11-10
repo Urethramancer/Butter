@@ -1,8 +1,8 @@
 # Swift engine replacement
 
-Production still uses libtorrent. Cut-over requires all twelve phases and the
-complete acceptance suite; completing a utility does not enable Swift transfers.
-Keep layouts, `EngineOperations`, scheduling and completion policies unchanged.
+The application now uses the local Swift package. The pinned reference remains
+available for independent comparisons. The phase records below describe each
+implementation boundary and the checks that passed at that point.
 
 ## Reference and comparison boundary (phase 1)
 
@@ -12,11 +12,9 @@ The immutable application reference is `v0.3.0`, commit
 `e2268d90f7bd4960d100ab0b9da5997572c6651b`. Do not move the tag. Its bootstrap
 pins libtorrent `6da363d2994f17c0b3c0450d124cf73a31a73847` (2.1.2), Boost
 1.88.0, OpenSSL 3.5.9 and try_signal
-`105cce59972f925a33aa6b1c3109e4cd3caf583d`. Build the reference in a separate
-checkout when production no longer includes it; reference dependencies remain
-optional developer tooling after cut-over. Following the updated release
-instruction, create an annotated minor tag after each completed phase, beginning
-with `v0.4.0` for phase 1. Keep tags local; preserve `v0.3.0`.
+`105cce59972f925a33aa6b1c3109e4cd3caf583d`. The reference dependencies remain
+optional developer tooling after cut-over. Annotated minor tags record the
+completed phases, beginning with `v0.4.0` for phase 1.
 
 `EngineOperations` in `Butter/Engine/EngineClient.swift` is the app boundary:
 immutable JSON commands return `Data`; snapshots decode into `EngineSnapshot`;
@@ -1180,3 +1178,43 @@ and compared exact files after shutdown. Debug engine tests, focused Release and
 Thread Sanitizer checks, and the native disk and process-interruption suite passed.
 The app continues to use libtorrent at this boundary. Phase 12 covers production
 cut-over, dependency-free builds, native UI acceptance and resource measurements.
+
+## Production cut-over (phase 12)
+
+The app constructs `SwiftEngineClient` behind `EngineOperations`. Xcode links the
+local package directly. The Objective-C++ bridge and optional reference licences
+live in `Tests/Reference`. The app retains the attribution for adapted path
+sanitisation. No changes to view layouts, queue policies or app state schemas
+were needed for the switch.
+
+The native app contract checks system Trash selection and receipt bytes using one
+generated file. Lifecycle checks also cover watched imports, completion moves,
+source seeding, tracker favourites and orderly persistence. Tracker catalogue
+validation preserves favourite URLs while announce-time checks enforce the
+loopback and resolved-address policy.
+
+### Release transfer measurements
+
+`Scripts/verify.sh benchmark` ran three Release trials for each engine and
+format on an Apple M1 Max with 32 GiB RAM and macOS 26.7.3. Each trial downloaded
+the same 32 MiB file in 256 KiB pieces over plaintext loopback TCP from a fresh
+libtorrent seed. The timer covered downloader startup through the shutdown
+flush. Each flushed output matched the seed byte for byte.
+
+| Format | Downloader | Median MiB/s | Median CPU seconds | Median peak RSS MiB |
+| --- | --- | ---: | ---: | ---: |
+| v1 | libtorrent 2.1.2 | 45.71 | 0.14 | 16.31 |
+| v1 | Swift | 66.67 | 0.57 | 14.25 |
+| Hybrid | libtorrent 2.1.2 | 47.06 | 0.13 | 16.55 |
+| Hybrid | Swift | 61.54 | 0.61 | 14.50 |
+
+The Swift downloader finished sooner in this fixture and used roughly four to
+five times the CPU time. These short single-peer runs use warm local file caches,
+and the reported RSS covers the downloader process only. The figures do not
+measure sustained WAN throughput, encryption, µTP or multi-peer load.
+
+The ten local web-seed comparisons verified 300,003–310,022 bytes in
+73–111 ms. Piece seeds used 19–20 HTTP requests. File seeds issued 38–40 requests,
+half of them redirects. The transport opens a connection for each request, so
+redirects doubled connection count in those fixtures. All payloads subsequently
+transferred to libtorrent and matched the original bytes.

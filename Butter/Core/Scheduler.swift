@@ -4,7 +4,7 @@ enum TransferStoppingPolicy {
 	static func reachedRatio(_ transfer: TransferSnapshot, limit: Double) -> Bool { transfer.complete && limit > 0 && transfer.ratio >= limit }
 }
 
-// A single coordinator owns admission and bandwidth decisions. libtorrent auto-management is disabled.
+// A single coordinator owns admission and bandwidth decisions.
 struct TransferObservation {
 	var id: String
 	var order: Int
@@ -20,7 +20,7 @@ struct TransferObservation {
 }
 struct ScheduleDecision: Equatable {
 	var running: Bool
-	// Zero means unrestricted to libtorrent; a blocked direction receives a small allowance.
+	// Zero means unrestricted to the engine. A blocked direction receives a small allowance.
 	var downloadLimit: Int = 0
 	var uploadLimit: Int = 0
 }

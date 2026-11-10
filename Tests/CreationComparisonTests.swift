@@ -1,4 +1,5 @@
 import Foundation
+import ButterTorrentMetadata
 
 @main struct CreationComparisonTests {
 	struct Fixture: Codable { let torrent: String; let destination: String; let output: String }
@@ -14,7 +15,7 @@ import Foundation
 				try payload.prefix(count).write(to: seed.appendingPathComponent(path))
 			}
 			try fm.createSymbolicLink(at: seed.appendingPathComponent("Bundle/link"), withDestinationURL: seed.appendingPathComponent("single.bin"))
-			let engine = EngineClient(storage: root.appendingPathComponent("native-engine"))
+			let engine = SwiftEngineClient(storage: root.appendingPathComponent("native-engine"))
 			var fixtures: [Fixture] = []
 			for (index, path) in ["single.bin", "Bundle"].enumerated() {
 				let result = try await engine.perform("create", ["id": "native-\(index)", "source": seed.appendingPathComponent(path).path, "trackers": [], "private": false])
@@ -54,7 +55,7 @@ import Foundation
 			guard !fm.fileExists(atPath: root.appendingPathComponent("native-engine/cancelled.torrent").path) else { throw MetadataError.invalid("cancelled creation wrote metadata") }
 			let blockedStorage = root.appendingPathComponent("blocked-storage")
 			try Data([1]).write(to: blockedStorage)
-			let failureEngine = EngineClient(storage: blockedStorage)
+			let failureEngine = SwiftEngineClient(storage: blockedStorage)
 			do { _ = try await failureEngine.perform("create", ["id": "failure", "source": seed.appendingPathComponent("single.bin").path]); throw MetadataError.invalid("storage failure was ignored") }
 			catch let error as MetadataError { throw error }
 			catch { }

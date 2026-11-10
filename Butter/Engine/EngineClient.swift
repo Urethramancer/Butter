@@ -1,4 +1,5 @@
 import Foundation
+import ButterTorrentMetadata
 
 protocol EngineOperations: Sendable {
 	func perform(_ command: String, _ payload: [String: Any]) async throws -> Data
@@ -9,58 +10,6 @@ protocol EngineOperations: Sendable {
 extension EngineOperations {
 	func perform(_ command: String) async throws -> Data { try await perform(command, [:]) }
 }
-final class EngineClient: EngineOperations, @unchecked Sendable {
-	let bridge: ButterEngine
-	private let metadata = MetadataInspectionWorker()
-	private let creation: TorrentCreationWorker
-	init(storage: URL) { bridge = ButterEngine(storage: storage.path); creation = TorrentCreationWorker(storage: storage) }
-	var creationProgress: Double { creation.progress }
-	func cancelCreation() { creation.cancel() }
-	func perform(_ command: String, _ payload: [String: Any] = [:]) async throws -> Data {
-		do {
-			if command == "create" { return try await creation.create(payload) }
-			if command == "shutdown" { await creation.waitForCompletion() }
-			if command == "inspect" {
-				guard let source = payload["source"] as? String, !source.isEmpty, !source.utf8.contains(0) else {
-					throw MetadataError.invalid("a torrent path is required")
-				}
-				return try await metadata.inspect(URL(fileURLWithPath: source))
-			}
-			if command == "magnet" {
-				let data = try await bridgePerform("magnetFields", payload)
-				let fields = try JSONDecoder().decode(MagnetFields.self, from: data)
-				let magnet = Magnet(hashes: try InfoHashes(hex: fields.hashes), name: fields.name, trackers: fields.trackers)
-				return try JSONEncoder().encode(["magnet": magnet.uri])
-			}
-			return try await bridgePerform(command, payload)
-		} catch {
-			let message = error is CancellationError ? "Creation cancelled." : error.localizedDescription
-			throw NSError(domain: "Butter.Engine", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
-		}
-	}
-	private struct MagnetFields: Decodable { let hashes: [String]; let name: String; let trackers: [String] }
-	private func bridgePerform(_ command: String, _ payload: [String: Any]) async throws -> Data {
-		let input = try JSONSerialization.data(withJSONObject: payload)
-		return try await withCheckedThrowingContinuation { continuation in
-			bridge.perform(command, payload: input) { data, error in
-				if let error { continuation.resume(throwing: NSError(domain: "Butter.Engine", code: 1, userInfo: [NSLocalizedDescriptionKey: error])) }
-				else { continuation.resume(returning: data ?? Data()) }
-			}
-		}
-	}
-	func snapshot() async throws -> EngineSnapshot {
-		let data: Data = try await withCheckedThrowingContinuation { continuation in
-			bridge.snapshot { data, error in
-				if let error { continuation.resume(throwing: NSError(domain: "Butter.Engine", code: 1, userInfo: [NSLocalizedDescriptionKey: error])) }
-				else { continuation.resume(returning: data ?? Data()) }
-			}
-		}
-		var snapshot = try JSONDecoder().decode(EngineSnapshot.self, from: data)
-		snapshot.creationProgress = creation.progress
-		return snapshot
-	}
-}
-
 // Serialise bounded metadata reads/hashing away from the app's main actor.
 actor MetadataInspectionWorker {
 	func inspect(_ url: URL) throws -> Data {
@@ -71,14 +20,14 @@ actor MetadataInspectionWorker {
 
 final class TorrentCreationWorker: @unchecked Sendable {
 	private let storage: URL
-	private let publish: (@Sendable (Data, String) throws -> Void)?
+	private let publish: @Sendable (Data, String) throws -> Void
 	private let queue = DispatchQueue(label: "net.grimdork.Butter.creation", qos: .utility)
 	private let lock = NSLock()
 	private var active: UUID?
 	private var cancelled = false
 	private var fraction = 0.0
 	private var waiters: [CheckedContinuation<Void, Never>] = []
-	init(storage: URL, publish: (@Sendable (Data, String) throws -> Void)? = nil) { self.storage = storage; self.publish = publish }
+	init(storage: URL, publish: @escaping @Sendable (Data, String) throws -> Void) { self.storage = storage; self.publish = publish }
 	var progress: Double { lock.withLock { fraction } }
 	func cancel() { lock.withLock { if active != nil { cancelled = true } } }
 	private func cancel(_ id: UUID) { lock.withLock { if active == id { cancelled = true } } }
@@ -124,13 +73,8 @@ final class TorrentCreationWorker: @unchecked Sendable {
 						// Cancellation and publication have one ordering point. A committed file is success.
 						try lock.withLock {
 							guard active == token && !cancelled else { throw CancellationError() }
-							if let publish { try publish(bytes, id) }
-							else {
-								try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
-								guard !FileManager.default.fileExists(atPath: output.path) else { throw MetadataError.invalid("torrent output already exists") }
-								try bytes.write(to: output, options: .atomic)
-							}
-							fraction = 1
+							try publish(bytes, id)
+						fraction = 1
 						}
 						return response
 					}

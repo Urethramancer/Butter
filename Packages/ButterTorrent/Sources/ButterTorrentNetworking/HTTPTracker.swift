@@ -33,6 +33,9 @@ public struct TrackerRequest: Sendable {
 	}
 	public func url(for tracker: URL) throws -> URL {
 		try HTTPURL.validate(tracker, tracker: true)
+		return try announceURL(for: tracker)
+	}
+	func announceURL(for tracker: URL) throws -> URL {
 		try validateFields()
 		var fields = [
 			("info_hash", HTTPURL.encode(infoHash)), ("peer_id", HTTPURL.encode(peerID)), ("port", String(port)),

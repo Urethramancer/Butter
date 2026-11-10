@@ -1,11 +1,9 @@
-#if canImport(ButterTorrentEngine)
 import Foundation
 import ButterTorrentEngine
 import ButterTorrentMetadata
 import ButterTorrentNetworking
 import ButterTorrentStorage
 
-// Compiled by the headless comparison harness until the production cut-over.
 final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 	private let session: TorrentSession
 	private let metadata = MetadataInspectionWorker()
@@ -170,4 +168,3 @@ actor NativeSnapshotMapper {
 		return (rate(sample.down - previous.down), rate(sample.up - previous.up))
 	}
 }
-#endif

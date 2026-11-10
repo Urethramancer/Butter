@@ -67,7 +67,7 @@ public actor TrackerAnnouncer {
 	}
 	public static func validate(tracker: URL, request: TrackerRequest) throws {
 		if tracker.scheme?.lowercased() == "udp" { _ = try UDPTrackerClient.destination(tracker); try request.validateFields() }
-		else { _ = try request.url(for: tracker) }
+		else { _ = try request.announceURL(for: tracker) }
 	}
 	@discardableResult public func start(_ counters: TrackerCounters) async throws -> TrackerResponse {
 		guard !busy else { throw HTTPServiceError.busy }

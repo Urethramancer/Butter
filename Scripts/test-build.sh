@@ -1,7 +1,6 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-Scripts/build-bridge.sh
 out=$PWD/.build/verification
 mkdir -p "$out"
 for configuration in Debug Release; do
@@ -14,6 +13,11 @@ for configuration in Debug Release; do
 	if /usr/bin/grep -E '(/opt/homebrew|/usr/local|libtorrent|libssl|libcrypto)' "$out/$configuration-linkage.txt"; then
 		echo 'Unexpected dynamic dependency' >&2; exit 1
 	fi
+	xcrun llvm-nm --demangle "$app/Contents/MacOS/Butter" > "$out/$configuration-symbols.txt"
+	if rg '(^|[[:space:]])(lt::|boost::|try_signal::|_?OPENSSL_init|_?SSL_CTX_|_?CRYPTO_malloc)' "$out/$configuration-symbols.txt"; then
+		echo 'Unexpected reference-engine symbols' >&2; exit 1
+	fi
+	for obsolete in Boost libtorrent OpenSSL try_signal; do test ! -e "$app/Contents/Resources/$obsolete.txt"; done
 	for licence in Butter/Licences/*.txt; do cmp "$licence" "$app/Contents/Resources/$(basename "$licence")"; done
 	done
 xcodebuild -project Butter.xcodeproj -scheme Butter -configuration Debug \
@@ -24,4 +28,4 @@ if /usr/bin/grep -E '^SwiftCompile |^CompileC ' "$out/repeat.log"; then
 	echo 'Unexpected compilation during unchanged repeat build' >&2; exit 1
 fi
 rm "$out/Debug.log" "$out/Release.log" "$out/repeat.log"
-printf 'PASS: unsigned Debug/Release builds, static dependencies, bundled licences and unchanged repeat build\n'
+printf 'PASS: unsigned Debug/Release builds, native linkage, retained licences and unchanged repeat build\n'

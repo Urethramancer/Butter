@@ -3,7 +3,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 root=$PWD/.dependencies
-mkdir -p "$root/downloads" "$root/src" "$root/install" Butter/Licences
+mkdir -p "$root/downloads" "$root/src" "$root/install"
 fetch() {
 	file=$1 url=$2 checksum=$3
 	[ -f "$root/downloads/$file" ] || curl --fail --location --retry 3 "$url" -o "$root/downloads/$file"
@@ -32,7 +32,3 @@ cmake -S "$root/src/libtorrent-6da363d" -B "$root/engine-apple-build" \
 	-DCMAKE_POLICY_DEFAULT_CMP0167=OLD
 cmake --build "$root/engine-apple-build" --parallel "$jobs"
 cmake --install "$root/engine-apple-build"
-cp "$root/src/libtorrent-6da363d/LICENSE" Butter/Licences/libtorrent.txt
-cp "$root/src/boost_1_88_0/LICENSE_1_0.txt" Butter/Licences/Boost.txt
-cp "$root/src/openssl-3.5.9/LICENSE.txt" Butter/Licences/OpenSSL.txt
-cp "$root/src/libtorrent-6da363d/deps/try_signal/LICENSE" Butter/Licences/try_signal.txt

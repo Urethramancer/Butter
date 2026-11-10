@@ -62,7 +62,7 @@ struct AddRequest: Identifiable {
 	init(root: URL? = nil, engine: (any EngineOperations)? = nil, storage: (any StatePersisting)? = nil, automaticPolling: Bool = true, allowsSystemIntegration: Bool = true, now: @escaping () -> Date = Date.init) {
 		self.root = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("Butter", isDirectory: true)
 		self.storage = storage ?? StateStorage(root: self.root)
-		self.engine = engine ?? EngineClient(storage: self.root.appendingPathComponent("Engine", isDirectory: true))
+		self.engine = engine ?? SwiftEngineClient(storage: self.root.appendingPathComponent("Engine", isDirectory: true))
 		self.automaticPolling = automaticPolling
 		self.allowsSystemIntegration = allowsSystemIntegration
 		self.now = now

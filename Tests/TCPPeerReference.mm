@@ -152,6 +152,7 @@ int main(int argc, char** argv) { @autoreleasepool { try {
 		for (auto const& peer : peers) if (!(peer.flags & (lt::peer_info::handshake | lt::peer_info::connecting))) ++readyPeers;
 		publish(@{@"port":@(session.listen_port()), @"complete":@(status.has_metadata && status.is_finished), @"seeding":@(status.is_seeding), @"rc4":@(rc4), @"negotiated":@(negotiated), @"utp":@(utpPeers), @"tcp":@(tcpPeers),
 			@"downloaded":@(status.total_payload_download), @"uploaded":@(status.total_payload_upload), @"failedBytes":@(status.total_failed_bytes), @"redundantBytes":@(status.total_redundant_bytes), @"done":@(status.total_wanted_done), @"wanted":@(status.total_wanted), @"dhtPeers":@(dhtPeers), @"pexPeers":@(pexPeers), @"dhtAnnounces":@(dhtAnnounces), @"readyPeers":@(readyPeers), @"peerErrors":peerErrors}, job[@"status"]);
+		if ([job[@"benchmark"] boolValue] && status.is_finished) { stopping = true; break; }
 		std::this_thread::sleep_for(std::chrono::milliseconds(20));
 	}
 	require(stopping, "Reference job exceeded its bounded lifetime");

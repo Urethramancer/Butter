@@ -1,11 +1,11 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-binary=${BUTTER_INTERRUPTION_BINARY:-$PWD/.dependencies/bridge-build/InterruptionTests}
+binary=${BUTTER_INTERRUPTION_BINARY:-$PWD/.dependencies/reference-build/InterruptionTests}
 if [ -z "${BUTTER_INTERRUPTION_BINARY:-}" ]; then
 	Scripts/build-bridge.sh
-	cmake -S Butter/Engine -B .dependencies/bridge-build -DBUTTER_ENGINE_TESTS=ON
-	cmake --build .dependencies/bridge-build --target InterruptionTests --parallel 4
+	cmake -S Tests/Reference -B .dependencies/reference-build -DBUTTER_ENGINE_TESTS=ON
+	cmake --build .dependencies/reference-build --target InterruptionTests --parallel 4
 fi
 work=$(mktemp -d /tmp/butter-interruption-tests.XXXXXX)
 mounted=false

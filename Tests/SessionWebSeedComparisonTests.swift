@@ -17,9 +17,10 @@ extension TCPTransferComparisonTests {
 				let bytes = file.pad ? Data(repeating: 0, count: Int(file.size)) : try Data(contentsOf: root.appendingPathComponent("reference-seed/" + file.path))
 				if !file.pad { files[file.path] = bytes }; payload.append(bytes)
 			}
-			let expectedFiles = files, expectedPayload = payload
+			let expectedFiles = files, expectedPayload = payload, requests = WebSeedRequestCount()
 			let server = try await HTTPFixture.start { input in
 				guard let parts = URLComponents(string: "http://fixture" + input.target) else { return .init(status: 400) }
+				requests.record(redirect: parts.path.hasPrefix("/redirect/"))
 				if parts.path == "/piece" {
 					let fields = Dictionary((parts.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { _, last in last })
 					guard input.target.contains("info_hash=" + HTTPURL.encode(metadata.hashes.v1!)), let piece = fields["piece"].flatMap(Int.init), let range = fields["ranges"] else { return .init(status: 400) }
@@ -42,8 +43,10 @@ extension TCPTransferComparisonTests {
 				fields[Data((pieceProtocol ? "httpseeds" : "url-list").utf8)] = .list([.bytes(Data(url.utf8))])
 				let source = work.appendingPathComponent("web.torrent"); try BencodeValue.dictionary(fields).encoded().write(to: source)
 				_ = try await session.add(id: "transfer", source: source, destination: work.appendingPathComponent("native-download"))
+				let started = ProcessInfo.processInfo.systemUptime
 				try await session.run(id: "transfer", running: true)
 				try await wait { try await session.snapshot().transfers[0].state.transfer?.complete == true }
+				let elapsed = ProcessInfo.processInfo.systemUptime - started
 				let downloaded = try await session.snapshot().transfers[0].state
 				guard downloaded.transfer?.peers.isEmpty == true, downloaded.transfer?.corruptPieces == 0, downloaded.storage.verifiedPieces.count > 0 else { throw PeerFailure.invalid("web seed verification or isolation") }
 				try await session.pause(id: "transfer")
@@ -59,7 +62,9 @@ extension TCPTransferComparisonTests {
 					guard try Data(contentsOf: work.appendingPathComponent("native-download/" + path)) == expected,
 						try Data(contentsOf: work.appendingPathComponent("reference-download/" + path)) == expected else { throw PeerFailure.invalid("web seed/reference payload differs") }
 				}
-				cases += 1; print("PASS: \(label), HTTP bytes verified and independently transferred to libtorrent")
+				let count = requests.snapshot
+				let bytes = expectedFiles.values.reduce(0) { $0 + $1.count }
+				cases += 1; print("PASS: \(label), \(bytes) bytes in \(count.total) HTTP requests (\(count.redirects) redirects), verified locally in \(String(format: "%.3f", elapsed)) s and transferred to libtorrent")
 			} catch {
 				try? await session.close(); await server.stop()
 				if process.isRunning { process.terminate(); try? await stop(process); if process.isRunning { kill(process.processIdentifier, SIGKILL) } }
@@ -68,4 +73,11 @@ extension TCPTransferComparisonTests {
 		} } }
 		print("PASS: \(cases) HTTP-to-native-to-libtorrent web-seed comparisons")
 	}
+}
+
+private final class WebSeedRequestCount: @unchecked Sendable {
+	private let lock = NSLock()
+	private var total = 0, redirects = 0
+	func record(redirect: Bool) { lock.withLock { total += 1; if redirect { redirects += 1 } } }
+	var snapshot: (total: Int, redirects: Int) { lock.withLock { (total, redirects) } }
 }

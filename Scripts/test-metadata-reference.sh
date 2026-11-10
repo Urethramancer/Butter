@@ -2,13 +2,15 @@
 set -eu
 cd "$(dirname "$0")/.."
 Scripts/build-bridge.sh
-cmake -S Butter/Engine -B .dependencies/bridge-build -DBUTTER_ENGINE_TESTS=ON
-cmake --build .dependencies/bridge-build --target MetadataReference --parallel 4
+cmake -S Tests/Reference -B .dependencies/reference-build -DBUTTER_ENGINE_TESTS=ON
+cmake --build .dependencies/reference-build --target MetadataReference --parallel 4
+bin=$(Scripts/build-native.sh)
 work=$(mktemp -d /tmp/butter-metadata-reference.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
-.dependencies/bridge-build/MetadataReference "$work"
-swiftc -module-cache-path /tmp/butter-swift-cache -import-objc-header Butter/Engine/ButterEngine.h \
-	Packages/ButterTorrent/Sources/ButterTorrentMetadata/*.swift Butter/Core/*.swift Butter/Engine/EngineClient.swift Tests/MetadataComparisonTests.swift \
-	-L .dependencies/bridge-build -L .dependencies/install/lib -lButterEngine -ltorrent-rasterbar -lssl -lcrypto -lc++ \
+.dependencies/reference-build/MetadataReference "$work"
+swiftc -module-cache-path /tmp/butter-swift-cache -import-objc-header Tests/Reference/ButterEngine.h \
+	Butter/Core/*.swift Butter/Engine/*.swift Tests/Reference/ReferenceEngineClient.swift Tests/MetadataComparisonTests.swift \
+	-I "$bin" -L "$bin" -lButterTorrentEngine -lButterTorrentStorage -lButterTorrentNetworking -lButterTorrentMetadata \
+	-L .dependencies/reference-build -L .dependencies/install/lib -lButterEngine -ltorrent-rasterbar -lssl -lcrypto -lc++ \
 	-framework AppKit -framework SystemConfiguration -o "$work/MetadataComparisonTests"
 "$work/MetadataComparisonTests" "$work"

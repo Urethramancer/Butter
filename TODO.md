@@ -1,17 +1,10 @@
 # Remaining audit and acceptance checks
 
 ## Swift torrent engine replacement
-- Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
-  Measure web-seed request overhead; current bounded downloads request 16 KiB
-  blocks and open a connection for each HTTP request, without range coalescing.
+- Phase 12: finish the consolidated dependency-free acceptance run.
   Preserve `v0.3.0`; commit, create an annotated minor tag and push after phase 12.
   Details and gates are in
   [the migration record](docs/swift-engine.md).
-
-## Filesystem integration
-- Verify native system Trash destination selection and Finder receipt behaviour
-  when connecting the Swift adapter. Multi-file interruption recovery and receipt
-  bytes pass with disposable Trash directories, including cross-volume copies.
 
 ## Native interaction and appearance
 - Automate real drag/drop, blocklist import/export dialogs, destination-folder

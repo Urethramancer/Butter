@@ -1,38 +1,17 @@
 import Foundation
 
-// Run the same assertions on the original bridge and the production utility adapter.
-private final class ReferenceEngineClient: EngineOperations, @unchecked Sendable {
-	let bridge: ButterEngine
-	init(storage: URL) { bridge = ButterEngine(storage: storage.path) }
-	var creationProgress: Double { bridge.creationProgress }
-	func cancelCreation() { bridge.cancelCreation() }
-	func perform(_ command: String, _ payload: [String: Any]) async throws -> Data {
-		let bytes = try JSONSerialization.data(withJSONObject: payload)
-		return try await withCheckedThrowingContinuation { continuation in
-			bridge.perform(command, payload: bytes) { data, error in
-				if let error { continuation.resume(throwing: EngineContractCases.Failure(description: error)) }
-				else { continuation.resume(returning: data ?? Data()) }
-			}
-		}
-	}
-	func snapshot() async throws -> EngineSnapshot {
-		let bytes: Data = try await withCheckedThrowingContinuation { continuation in
-			bridge.snapshot { data, error in
-				if let error { continuation.resume(throwing: EngineContractCases.Failure(description: error)) }
-				else { continuation.resume(returning: data ?? Data()) }
-			}
-		}
-		return try JSONDecoder().decode(EngineSnapshot.self, from: bytes)
-	}
-}
-
 @main struct EngineContractTests {
 	static func main() async {
 		do {
+			if ProcessInfo.processInfo.environment["BUTTER_TEST_SYSTEM_TRASH"] == "1" {
+				try await EngineContractCases.runSystemTrash { SwiftEngineClient(storage: $0) }
+				print("PASS: native app adapter moved a generated file into the system Trash and returned its exact receipt")
+				return
+			}
+			#if BUTTER_REFERENCE_ENGINE
 			try await check("reference") { ReferenceEngineClient(storage: $0) }
-			try await check("production") { EngineClient(storage: $0) }
+			#endif
 			try await check("native") { SwiftEngineClient(storage: $0) }
-			print("PASS: shared command, snapshot, error and persistence contract against reference, production utility adapter and native Swift session adapter")
 		} catch {
 			fputs("FAIL: \(error)\n", stderr)
 			exit(1)
@@ -42,6 +21,7 @@ private final class ReferenceEngineClient: EngineOperations, @unchecked Sendable
 		do {
 			try await EngineContractCases.run(makeEngine: makeEngine)
 			try await EngineContractCases.runSimultaneous(makeEngine: makeEngine)
+			print("PASS: shared command, snapshot, persistence and simultaneous-transfer contract against \(name)")
 		}
 		catch { throw EngineContractCases.Failure(description: "\(name): \(error)") }
 	}

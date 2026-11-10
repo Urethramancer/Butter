@@ -1,6 +1,7 @@
 import Foundation
+import ButterTorrentMetadata
 
-// Shared app-facing assertions for the reference, production and native Swift adapters.
+// Shared app-facing assertions for production and the optional reference adapter.
 enum EngineContractCases {
 	struct Failure: Error, CustomStringConvertible { let description: String }
 	static func require(_ value: Bool, _ message: String) throws {
@@ -24,6 +25,26 @@ enum EngineContractCases {
 			try await Task.sleep(for: .milliseconds(10))
 		}
 		throw Failure(description: "Engine contract deadline")
+	}
+	static func runSystemTrash(makeEngine: (URL) -> any EngineOperations) async throws {
+		let fm = FileManager.default, identifier = UUID().uuidString
+		let root = fm.temporaryDirectory.appendingPathComponent("ButterTrash-\(identifier)")
+		let destination = root.appendingPathComponent("payload")
+		try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+		defer { try? fm.removeItem(at: root) }
+		let bytes = Data([19, 23, 42]), input = destination.appendingPathComponent("ButterTrash-\(identifier).bin")
+		try bytes.write(to: input)
+		let trash = try fm.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: destination, create: true).standardizedFileURL.resolvingSymlinksInPath()
+		let engine = makeEngine(root.appendingPathComponent("library"))
+		let created = try object(await engine.perform("create", ["id": "trash", "source": input.path]))
+		_ = try await engine.perform("add", ["id": "trash", "source": created["source"] as? String ?? "", "destination": destination.path])
+		let removed = try object(await engine.perform("remove", ["id": "trash", "trash": true]))
+		guard let paths = removed["trashed"] as? [String], paths.count == 1 else { throw Failure(description: "Expected one system Trash receipt") }
+		let receipt = URL(fileURLWithPath: paths[0]).standardizedFileURL
+		try require(receipt.deletingLastPathComponent().resolvingSymlinksInPath().path == trash.path && receipt.lastPathComponent.hasSuffix(input.lastPathComponent), "Receipt was outside the system Trash or named an unexpected file")
+		defer { try? fm.removeItem(at: receipt) }
+		try require(try Data(contentsOf: receipt) == bytes && !fm.fileExists(atPath: input.path), "System Trash did not retain exact payload bytes")
+		_ = try await engine.perform("shutdown")
 	}
 	static func runSimultaneous(makeEngine: (URL) -> any EngineOperations) async throws {
 		let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("ButterConcurrent-\(UUID().uuidString)")

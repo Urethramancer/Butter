@@ -1,4 +1,5 @@
 import Foundation
+import ButterTorrentMetadata
 
 @main struct MetadataComparisonTests {
 	struct Record: Decodable {
@@ -11,7 +12,7 @@ import Foundation
 			guard CommandLine.arguments.count == 2 else { throw MetadataError.invalid("expected reference fixtures") }
 			let root = URL(fileURLWithPath: CommandLine.arguments[1])
 			let records = try JSONDecoder().decode([Record].self, from: Data(contentsOf: root.appendingPathComponent("reference.json")))
-			let engine = EngineClient(storage: root.appendingPathComponent("swift-magnets"))
+			let engine = ReferenceEngineClient(storage: root.appendingPathComponent("swift-magnets"))
 			for (index, record) in records.enumerated() {
 				let metadata = try TorrentMetadata(contentsOf: root.appendingPathComponent(record.file))
 				guard metadata.inspection == record.inspection else {

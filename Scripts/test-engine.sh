@@ -2,6 +2,6 @@
 set -eu
 cd "$(dirname "$0")/.."
 Scripts/build-bridge.sh
-cmake -S Butter/Engine -B .dependencies/bridge-build -DBUTTER_ENGINE_TESTS=ON
-cmake --build .dependencies/bridge-build --parallel 4
-.dependencies/bridge-build/EngineTests
+cmake -S Tests/Reference -B .dependencies/reference-build -DBUTTER_ENGINE_TESTS=ON
+cmake --build .dependencies/reference-build --parallel 4
+.dependencies/reference-build/EngineTests

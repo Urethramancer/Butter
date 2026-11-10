@@ -2,11 +2,16 @@
 # A disposable image exercises actual ENOSPC without filling the user's disk.
 set -eu
 cd "$(dirname "$0")/.."
-engine=${BUTTER_ENGINE_DISK_BINARY:-$PWD/.dependencies/bridge-build/EngineDiskFailureTests}
-if [ -z "${BUTTER_ENGINE_DISK_BINARY:-}" ]; then
+case "${1:-}" in
+	''|--reference) ;;
+	*) echo 'Usage: Scripts/test-disk.sh [--reference]' >&2; exit 2 ;;
+esac
+engine=${BUTTER_ENGINE_DISK_BINARY:-}
+if [ "${1:-}" = --reference ] && [ -z "$engine" ]; then
 	Scripts/build-bridge.sh
-	cmake -S Butter/Engine -B .dependencies/bridge-build -DBUTTER_ENGINE_TESTS=ON
-	cmake --build .dependencies/bridge-build --target EngineDiskFailureTests --parallel 4
+	cmake -S Tests/Reference -B .dependencies/reference-build -DBUTTER_ENGINE_TESTS=ON
+	cmake --build .dependencies/reference-build --target EngineDiskFailureTests --parallel 4
+	engine=$PWD/.dependencies/reference-build/EngineDiskFailureTests
 fi
 work=$(mktemp -d /tmp/butter-disk-tests.XXXXXX)
 mounted=false
@@ -28,15 +33,17 @@ hdiutil attach "$work/fixture.dmg" -mountpoint "$work/mount" -nobrowse >/dev/nul
 mounted=true
 touch "$work/mount/.butter-disk-test"
 "$binary" "$work/mount"
-"$engine" "$work/mount" "$work/source"
+[ -z "$engine" ] || "$engine" "$work/mount" "$work/source"
 hdiutil detach "$work/mount" >/dev/null
 mounted=false
 hdiutil attach "$work/fixture.dmg" -mountpoint "$work/mount" -nobrowse -readonly >/dev/null
 mounted=true
 "$binary" "$work/mount" --read-only
-"$engine" "$work/mount" "$work/source" --read-only
-hdiutil detach "$work/mount" >/dev/null
-mounted=false
-hdiutil attach "$work/fixture.dmg" -mountpoint "$work/mount" -nobrowse >/dev/null
-mounted=true
-"$engine" "$work/mount" "$work/source" --cleanup
+[ -z "$engine" ] || "$engine" "$work/mount" "$work/source" --read-only
+if [ -n "$engine" ]; then
+	hdiutil detach "$work/mount" >/dev/null
+	mounted=false
+	hdiutil attach "$work/fixture.dmg" -mountpoint "$work/mount" -nobrowse >/dev/null
+	mounted=true
+	"$engine" "$work/mount" "$work/source" --cleanup
+fi
