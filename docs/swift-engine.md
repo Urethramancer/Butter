@@ -437,3 +437,94 @@ fixtures establish correctness and interoperability, without a speed claim.
 
 Wire references: [BEP 3](https://www.bittorrent.org/beps/bep_0003.html) and the
 negotiation boundary in [BEP 6](https://www.bittorrent.org/beps/bep_0006.html).
+
+## Metadata, discovery and v2/hybrid transfers (phase 8)
+
+Completed and tagged `v0.11.0`.
+
+The headless engine negotiates Fast, extension and v2 capabilities before decoding
+their messages. Fast availability, allowed pieces, suggestions, explicit rejection
+and cancellation share the bounded picker and upload queues. A cancelled request
+receives either its already-started payload or one rejection, including cancellation
+during a payload rate wait. Hybrid uploads accept the pinned reference's padded v1
+request lengths after its handshake upgrades to v2; pure v2 requests retain file
+boundary checks. Hosts can select v1 identities for legacy hybrid connections.
+
+Extension handshakes support directional IDs, additive remapping and disabling,
+with a cumulative map bound. Metadata exchange retains the exact original info
+dictionary, verifies every supplied full magnet hash, bounds assembly to 32 MiB
+per peer and runs at most four providers per resolver. A good provider cancels and
+drains its competitors. Malformed, unsolicited, resized and poisoned metadata
+fail before storage creation. Unknown metadata message types are ignored.
+
+`MagnetDownload` owns resolution, storage, transfer and shutdown. The identity
+registry aliases v1/v2 only after authenticating the complete info dictionary.
+Reservations become visible duplicates only after the owning transfer opens;
+failed storage releases its reservation so a waiting arrival can take ownership.
+Cancelled publication waiters drain without taking ownership. Connection failures
+remain available to the host. Metadata arrival never authorises DHT/PEX/LSD for
+private torrents, and untrusted explicit magnet hints are not reconnected after
+the metadata proves private. Private metadata providers suppress `ut_metadata`,
+matching the pinned reference.
+
+PEX handles bounded compact IPv4/IPv6 additions, removals and flags, with per-peer
+memory and minute update limits. It advertises confirmed connected peers, preserves
+unsent removals and exposes bounded discovery streams. Private PEX is neither
+advertised nor accepted. DHT PORT hints also require negotiated, known-public
+metadata. Discovery consumers and listening/UDP owners remain host responsibilities.
+
+`DHTNode` implements BEP 5/32/42 on a shared dispatcher, one address family per
+instance. Only registered public metadata can start searches or announces.
+Routing buckets retain responsive, address-validated contacts; referrals must
+answer a source/transaction-matched challenge before entering routing. Iterative
+lookups have three parallel queries, at most 32 visited nodes, a 30-second budget,
+four simultaneous searches and sixteen outstanding queries. Node/peer caches,
+datagrams, subscriptions and incoming query rates have explicit bounds. Announce
+tokens bind the source address, expire across two five-minute windows and cannot
+register another address. Unknown external addresses require matching reports
+from three independent network prefixes before replacing the node ID. Bootstrap
+uses the pinned reference's `dht.libtorrent.org:25401`, with injectable endpoints,
+DNS and clocks; tests send no public traffic. Shutdown cancels/drains DHT work
+without closing the shared UDP transport.
+
+The metadata/storage layers authenticate sparse SHA-256 Merkle proofs against
+info-dictionary file roots before making pieces eligible. Hash responses are
+solicited, geometry checked and bounded. Piece-layer and available leaf proofs can
+be served to peers. Received hashes are atomically checkpointed before use;
+restored records revalidate their root chains and identity. V2 downloads verify
+16 KiB leaves and subtree padding; hybrid verification also checks SHA-1. Export
+reconstructs complete authenticated piece layers while retaining original info
+bytes. Missing hashes and poisoned proofs never become verified progress.
+
+Debug and Release package suites cover 119 tests. Thirty-eight engine/DHT cases
+run five times without retries, and an isolated Thread Sanitizer build covers
+those paths. Native failure fixtures cover competing providers, private arrival,
+publication handoff, corrupt proofs, recovery and cancellation during rate waits.
+The real storage matrix still passes 18 killed-operation boundaries, four atomic
+checkpoint interruptions, cross-volume corruption, ENOSPC and read-only volumes.
+
+`peer-reference` now generates independent v1/v2/hybrid metadata with the pinned
+libtorrent creator. Its 48 transfers cover both directions, single/multifile
+layouts, 16/64 KiB pieces, selective files and fragmented IPv4/IPv6 streams.
+Public magnets exchange metadata in both directions; native v2/hybrid downloads
+start without piece layers and fetch authenticated hashes. Private transfers use
+supplied metadata because the reference disables private metadata exchange. Two
+additional DHT cases verify tokens, announces and returned peer endpoints in both
+directions with libtorrent. Byte checks follow both engines' shutdown barriers.
+
+Production remains on libtorrent. Automatic hybrid identity fallback and hybrid
+magnets served exclusively by legacy v1 peers remain integration work in TODO.md;
+the current native harness needs complete piece layers or a v2 hash provider.
+No UI, public DHT, sustained throughput, CPU or memory comparison is claimed.
+Encryption and µTP remain phases 9 and 10; aggregate policies, adapter integration
+and final performance/dependency acceptance remain phases 11 and 12.
+
+Protocol references: [BEP 5](https://www.bittorrent.org/beps/bep_0005.html),
+[BEP 6](https://www.bittorrent.org/beps/bep_0006.html),
+[BEP 9](https://www.bittorrent.org/beps/bep_0009.html),
+[BEP 10](https://www.bittorrent.org/beps/bep_0010.html),
+[BEP 11](https://www.bittorrent.org/beps/bep_0011.html),
+[BEP 27](https://www.bittorrent.org/beps/bep_0027.html),
+[BEP 32](https://www.bittorrent.org/beps/bep_0032.html),
+[BEP 42](https://www.bittorrent.org/beps/bep_0042.html) and
+[BEP 52](https://www.bittorrent.org/beps/bep_0052.html).

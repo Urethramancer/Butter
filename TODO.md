@@ -1,8 +1,6 @@
 # Remaining audit and acceptance checks
 
 ## Swift torrent engine replacement
-- Phase 8: extension negotiation (including inherited Fast extensions), metadata
-  exchange, PEX, DHT, v2/hybrid transfers and private discovery enforcement.
 - Phase 9: negotiated peer encryption and plaintext fallback interoperability.
 - Phase 10: µTP with deterministic network-failure fixtures and TCP-disabled transfers.
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
@@ -10,6 +8,11 @@
   admission across simultaneous transfers.
   Resolve inherited PCP-before-NAT-PMP behaviour from the pinned reference;
   the Swift mapping clients currently implement UPnP and NAT-PMP.
+  Select or retry hybrid wire identities automatically. Hybrid magnets with
+  only legacy v1 providers need reconstruction of missing v2 piece layers from
+  SHA-1-verified file data; the current harness requires a v2 hash provider or
+  complete `.torrent` piece layers. Connect tracker-derived private peers only
+  after metadata arrival; untrusted magnet hints are not reconnected.
 - Phase 12: consolidated acceptance and measurements, cut-over and dependency removal.
   Preserve `v0.3.0`; create an annotated minor tag after each completed phase;
   do not push. Details and gates are in
@@ -33,9 +36,9 @@
   router port mapping in a controlled user session. Automation deliberately stubs
   these integrations; no hardware/service acceptance pass is claimed.
 - Verify private-torrent discovery restrictions with packet observation. Tests
-  cover private tracker retention, inherited discovery-disable flags and native
-  LSD suppression with injected datagrams; actual interface packet observation
-  remains outstanding.
+  cover private tracker retention, inherited discovery-disable flags, native LSD
+  suppression, DHT send suppression and PEX rejection on loopback wire fixtures;
+  actual interface packet observation remains outstanding.
 - Run a longer cancellation/shutdown/removal stress campaign with concurrent
   creation and filesystem operations. Current export tests settle every request
   and repeat without retries; they are not a long-running stress campaign.

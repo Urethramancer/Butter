@@ -81,9 +81,12 @@ port ownership, pinned HTTP DNS, UDP trackers, discovery and router-mapping fixt
 `Scripts/verify.sh native-storage` checks native layouts, verification, checkpoints
 and file operations, including killed child processes and real disk failures on a
 disposable image. Production storage remains on libtorrent.
-`Scripts/verify.sh peer` exercises the headless v1 TCP engine. `peer-reference`
-additionally checks both transfer directions against the optional pinned
-libtorrent build, including selective files and fragmented IPv4/IPv6 streams.
+`Scripts/verify.sh peer` exercises the headless v1/v2/hybrid TCP engine, magnet
+metadata, authenticated hash exchange, Fast extensions and private PEX policy.
+`peer-reference` checks 48 transfers against the optional pinned libtorrent build,
+including selective files, magnets and fragmented IPv4/IPv6 streams, plus DHT
+announce/lookup interoperability in both directions. These transfers remain
+outside the production backend.
 
 ```sh
 Scripts/verify.sh final audit
