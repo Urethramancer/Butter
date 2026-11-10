@@ -69,9 +69,9 @@ enum EngineContractCases {
 		try require(row.state == "Paused" && row.hashes == preview.hashes && row.metadata, "Import must start paused with metadata")
 		try require(row.files[0].original == "fixture.bin" && row.files[0].path == "fixture.bin", "Import changed file paths")
 		_ = try await engine.perform("select", ["id": "fixture", "selected": [0]])
-		let selected = try await engine.snapshot()
-		try require(!selected.transfers[0].files[0].selected, "Selection did not reach snapshot")
+		_ = try await wait(engine) { $0.transfers.first?.files.first?.selected == false }
 		_ = try await engine.perform("select", ["id": "fixture", "selected": [1]])
+		_ = try await wait(engine) { $0.transfers.first?.files.first?.selected == true }
 		let magnet = try object(await engine.perform("magnet", ["id": "fixture"]))
 		guard let link = magnet["magnet"] as? String else { throw Failure(description: "Missing magnet") }
 		try require(preview.hashes.allSatisfy { link.contains($0) }, "Magnet lost hybrid identity")
