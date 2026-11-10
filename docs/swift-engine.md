@@ -1013,3 +1013,27 @@ connection budget bounds unidentified sockets. A deterministic reproduction fail
 with the old check and transfers successfully with the new one. The full package
 suite, focused Release/Thread Sanitizer cases and five fail-fast engine suite
 repetitions pass after the fix; no automatic test retry is used.
+
+### Session local discovery
+
+The Swift adapter now accepts enabled LSD. The native session owns interface
+membership, announcements, bounded discovered-peer connections and shutdown.
+Only running public metadata is advertised; private and paused rows remain
+absent. Withdrawing a target cancels and drains its connection attempts. Service
+generations reject buffered hints from an earlier registration. Interface services
+share a self-filter cookie and retain the inherited 32-hop multicast limit.
+Failure to start discovery reports an error while leaving TCP/µTP operational.
+
+Darwin multicast port sharing requires both `SO_REUSEADDR` and `SO_REUSEPORT`.
+The first real libtorrent comparison exposed the missing latter option; raw BSD
+socket tests cover both address families. The reference fixture also requests its
+initial LSD announce after file checking, avoiding a skipped initial announcement
+followed by the normal five-minute timer. Neither change adds a peer shortcut.
+
+Twelve independent transfers use real IPv4 loopback multicast as their only peer
+source, across v1/v2/hybrid metadata, TCP/µTP and both payload directions. Exact
+flushed files match. Select them with `BUTTER_REFERENCE_FILTER=lsd`, optionally
+`BUTTER_LSD_FILTER`. The reference harness now contains 426 transfers plus two DHT
+protocol comparisons. Package tests, focused Release/Thread Sanitizer checks and
+the shared app contract pass. Physical-interface and router acceptance remain
+separate checks, and phase 11 is still in progress.

@@ -98,6 +98,7 @@ int main(int argc, char** argv) { @autoreleasepool { try {
 	for (auto setting : {lt::settings_pack::enable_dht, lt::settings_pack::enable_lsd, lt::settings_pack::enable_upnp, lt::settings_pack::enable_natpmp, lt::settings_pack::enable_incoming_utp, lt::settings_pack::enable_outgoing_utp}) settings.set_bool(setting, false);
 	settings.set_bool(lt::settings_pack::enable_incoming_tcp, true); settings.set_bool(lt::settings_pack::enable_outgoing_tcp, true);
 	bool utp = [job[@"transport"] isEqualToString:@"utp"];
+	settings.set_bool(lt::settings_pack::enable_lsd, [job[@"lsd"] boolValue]);
 	bool dhtEnabled = [job[@"dht"] boolValue] || [job[@"dhtPort"] intValue] > 0;
 	if (dhtEnabled) {
 		settings.set_bool(lt::settings_pack::enable_dht, true); settings.set_str(lt::settings_pack::dht_bootstrap_nodes, "");
@@ -126,7 +127,7 @@ int main(int argc, char** argv) { @autoreleasepool { try {
 	if ([job[@"noPayload"] boolValue]) params.extensions.push_back([](lt::torrent_handle const&, lt::client_data_t) { return std::make_shared<NoPayloadTorrent>(); });
 	if (NSArray* selected = job[@"selected"]) for (NSNumber* value in selected) params.file_priorities.push_back(value.boolValue ? lt::default_priority : lt::dont_download);
 	auto handle = session.add_torrent(params, error); require(!error, "Cannot add reference torrent");
-	bool connected = false, dhtAnnounced = false; int dhtAnnounces = 0;
+	bool connected = false, dhtAnnounced = false, lsdAnnounced = false; int dhtAnnounces = 0;
 	NSMutableArray<NSString*>* peerErrors = [NSMutableArray array];
 	auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(45);
 	while (!stopping && std::chrono::steady_clock::now() < deadline) {
@@ -135,10 +136,13 @@ int main(int argc, char** argv) { @autoreleasepool { try {
 			if (dhtEnabled && !dhtAnnounced) session.post_dht_stats(); std::vector<lt::alert*> alerts; session.pop_alerts(&alerts);
 			int contacts = 0; for (auto alert : alerts) if (auto stats = lt::alert_cast<lt::dht_stats_alert>(alert)) for (auto const& bucket : stats->routing_table) contacts += bucket.num_nodes;
 			for (auto alert : alerts) if (lt::alert_cast<lt::dht_announce_alert>(alert)) ++dhtAnnounces;
-			for (auto alert : alerts) if (lt::alert_cast<lt::peer_error_alert>(alert) || lt::alert_cast<lt::peer_disconnected_alert>(alert)) {
+			for (auto alert : alerts) if (lt::alert_cast<lt::peer_error_alert>(alert) || lt::alert_cast<lt::peer_disconnected_alert>(alert) || lt::alert_cast<lt::lsd_error_alert>(alert)) {
 				if (peerErrors.count == 64) [peerErrors removeObjectAtIndex:0]; [peerErrors addObject:[NSString stringWithUTF8String:alert->message().c_str()]];
 			}
 			if (!dhtAnnounced && contacts > 0 && status.state != lt::torrent_status::checking_files && status.state != lt::torrent_status::checking_resume_data) { handle.force_dht_announce(); dhtAnnounced = true; }
+		}
+		if ([job[@"lsd"] boolValue] && !lsdAnnounced && session.listen_port() > 0 && status.has_metadata && status.state != lt::torrent_status::checking_files && status.state != lt::torrent_status::checking_resume_data) {
+			handle.force_lsd_announce(); lsdAnnounced = true;
 		}
 		if (!connected && [job[@"remotePort"] intValue] && status.state != lt::torrent_status::checking_files && status.state != lt::torrent_status::checking_resume_data) {
 			handle.connect_peer({lt::make_address([job[@"remoteHost"] UTF8String]), static_cast<unsigned short>([job[@"remotePort"] intValue])}); connected = true;

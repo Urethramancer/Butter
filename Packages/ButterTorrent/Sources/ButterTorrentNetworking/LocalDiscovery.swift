@@ -4,6 +4,7 @@ import ButterTorrentMetadata
 public struct DiscoveredPeer: Sendable {
 	public let infoHash: Data
 	public let endpoint: NetworkEndpoint
+	public let revision: UUID
 }
 
 /// LocalDiscovery implements BEP 14, advertising only metadata known to be public.
@@ -22,6 +23,7 @@ public actor LocalDiscovery {
 	private var pump: Task<Void, Never>?
 	private var closed = false
 	private var updating = false
+	public private(set) var revision = UUID()
 	public init(dispatcher: UDPDispatcher, peerPort: UInt16, cookie: String = UUID().uuidString,
 		clock: any HTTPServiceClock = MonotonicHTTPClock(), ownsTransport: Bool = false) throws {
 		guard peerPort > 0, !cookie.isEmpty, cookie.utf8.count <= 64, cookie.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || $0 == 45 }) else { throw NetworkFailure.invalid("local discovery configuration") }
@@ -29,12 +31,12 @@ public actor LocalDiscovery {
 		target = try NetworkEndpoint(dispatcher.localEndpoint.address.isIPv6 ? "ff15::efc0:988f" : "239.192.152.143", port: 6771)
 		let pair = AsyncStream<DiscoveredPeer>.makeStream(bufferingPolicy: .bufferingNewest(64)); peers = pair.stream; continuation = pair.continuation
 	}
-	public static func open(interface: IPAddress, interfaceIndex: UInt32 = 0, peerPort: UInt16) throws -> LocalDiscovery {
+	public static func open(interface: IPAddress, interfaceIndex: UInt32 = 0, peerPort: UInt16, cookie: String = UUID().uuidString, clock: any TransportClock = ContinuousTransportClock()) throws -> LocalDiscovery {
 		let group = try IPAddress(interface.isIPv6 ? "ff15::efc0:988f" : "239.192.152.143")
 		let socket = try DatagramSocket(bind: NetworkEndpoint(interface.isIPv6 ? "::" : "0.0.0.0", port: 6771), reusePort: true)
-		do { try socket.joinMulticast(group, interfaceAddress: interface, interfaceIndex: interfaceIndex == 0 ? interface.scope : interfaceIndex) }
+		do { try socket.joinMulticast(group, interfaceAddress: interface, interfaceIndex: interfaceIndex == 0 ? interface.scope : interfaceIndex, hops: 32) }
 		catch { socket.close(); throw error }
-		return try LocalDiscovery(dispatcher: UDPDispatcher(transport: socket), peerPort: peerPort, ownsTransport: true)
+		return try LocalDiscovery(dispatcher: UDPDispatcher(transport: socket, clock: clock), peerPort: peerPort, cookie: cookie, clock: clock, ownsTransport: true)
 	}
 	public func setTorrents(_ metadata: [TorrentMetadata]) async throws {
 		guard !closed else { throw NetworkFailure.closed }
@@ -46,9 +48,10 @@ public actor LocalDiscovery {
 			if let v2 = torrent.hashes.v2 { allowed.insert(Data(v2.prefix(20))) }
 			guard allowed.count <= 4096 else { throw NetworkFailure.limit("local discovery swarms") }
 		}
-		hashes = allowed.sorted { $0.lexicographicallyPrecedes($1) }; cursor = 0
+		hashes = allowed.sorted { $0.lexicographicallyPrecedes($1) }; cursor = 0; revision = UUID()
 		if pump == nil {
 			let incoming = try await dispatcher.subscribe(.localDiscovery)
+			guard !closed else { throw NetworkFailure.closed }
 			pump = Task { [weak self] in for await packet in incoming { await self?.receive(packet) } }
 		}
 		guard !closed else { pump?.cancel(); pump = nil; throw NetworkFailure.closed }
@@ -84,11 +87,11 @@ public actor LocalDiscovery {
 		var seen: Set<Data> = []
 		for text in fields["infohash"] ?? [] {
 			guard let hash = try? InfoHashes(hex: [text]).v1, hashes.contains(hash), seen.insert(hash).inserted else { continue }
-			continuation.yield(DiscoveredPeer(infoHash: hash, endpoint: NetworkEndpoint(address: packet.source.address, port: port)))
+			continuation.yield(DiscoveredPeer(infoHash: hash, endpoint: NetworkEndpoint(address: packet.source.address, port: port), revision: revision))
 		}
 	}
 	public func shutdown() async throws {
-		closed = true; pump?.cancel(); pump = nil; continuation.finish()
+		closed = true; let previous = pump; previous?.cancel(); await previous?.value; pump = nil; continuation.finish()
 		if ownsTransport { try await dispatcher.shutdown() }
 	}
 }

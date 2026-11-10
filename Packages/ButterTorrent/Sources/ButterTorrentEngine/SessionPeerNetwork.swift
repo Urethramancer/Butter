@@ -10,6 +10,7 @@ public struct SessionPeerSettings: Sendable, Equatable {
 	public var torrentPeers = 80
 	public var pex = true
 	public var dht = false
+	public var lsd = false
 	public var allowSameIP = false
 	public init() {}
 	func validate() throws {
@@ -24,6 +25,7 @@ public struct SessionNetworkSnapshot: Sendable {
 	public let pendingHandshakes: Int
 	public let peers: Int
 	public let discovery: SessionDHTSnapshot
+	public let localDiscovery: Bool
 }
 
 struct SessionPeerTarget: Sendable {
@@ -51,12 +53,14 @@ actor SessionPeerNetwork {
 	private var stopping: Task<Void, Never>?
 	private var dht: SessionDHT?
 	private var discoveryFailure = ""
+	private var localDiscovery: SessionLocalDiscovery?
+	private var localDiscoveryFailure = ""
 	private init(listener: ListeningPort, utp4: UTPTransport?, utp6: UTPTransport?, encryption: PeerEncryptionConfiguration, filter: PeerAddressFilter, clock: any TransportClock) {
 		self.listener = listener; self.utp4 = utp4; self.utp6 = utp6; self.encryption = encryption; self.clock = clock
 		self.filter = filter
 	}
 	static func open(settings: SessionPeerSettings, budget: TCPPeerBudget, encryption: PeerEncryptionConfiguration, filter: PeerAddressFilter, loopbackOnly: Bool, clock: any TransportClock,
-		bootstrap: [NetworkEndpoint]?, connect: @escaping @Sendable (SessionDHTTarget, NetworkEndpoint) async -> Void) async throws -> SessionPeerNetwork {
+		bootstrap: [NetworkEndpoint]?, localDiscoveryFactory: LocalDiscoveryFactory? = nil, connect: @escaping @Sendable (SessionDHTTarget, NetworkEndpoint) async -> Void) async throws -> SessionPeerNetwork {
 		try settings.validate()
 		let listener = try await ListeningPort.bind(port: settings.port, maximumPeers: settings.maximumPeers, loopbackOnly: loopbackOnly, clock: clock, budget: budget, incomingTCP: settings.tcp)
 		var v4: UTPTransport?, v6: UTPTransport?
@@ -67,16 +71,30 @@ actor SessionPeerNetwork {
 			}
 			let owner = SessionPeerNetwork(listener: listener, utp4: v4, utp6: v6, encryption: encryption, filter: filter, clock: clock)
 			if settings.dht { try await owner.enableDHT(bootstrap: bootstrap ?? (loopbackOnly ? [] : nil), connect: connect) }
+			if settings.lsd { await owner.enableLocalDiscovery(factory: localDiscoveryFactory, loopbackOnly: loopbackOnly, connect: connect) }
 			await owner.start(tcp: settings.tcp); return owner
 		} catch { await v4?.shutdown(); await v6?.shutdown(); try? await listener.shutdown(); throw error }
+	}
+	private func enableLocalDiscovery(factory: LocalDiscoveryFactory?, loopbackOnly: Bool, connect: @escaping @Sendable (SessionDHTTarget, NetworkEndpoint) async -> Void) {
+		do {
+			let services = try factory?(listener.port, clock) ?? SessionLocalDiscovery.interfaces(port: listener.port, clock: clock, loopbackOnly: loopbackOnly)
+			guard !services.isEmpty else { throw NetworkFailure.invalid("no multicast interface is available for local discovery") }
+			localDiscovery = SessionLocalDiscovery(services: services, clock: clock, connect: connect)
+		} catch { localDiscoveryFailure = error.localizedDescription }
 	}
 	private func enableDHT(bootstrap: [NetworkEndpoint]?, connect: @escaping @Sendable (SessionDHTTarget, NetworkEndpoint) async -> Void) throws {
 		dht = try SessionDHT(dispatchers: [listener.udp4, listener.udp6], port: listener.port, bootstrap: bootstrap, filter: filter, clock: clock, connect: connect)
 	}
 	func updateDiscovery(_ targets: [SessionDHTTarget], metadata: [TorrentMetadata]) async {
-		guard !closed, let dht else { return }
-		do { try await dht.update(targets, metadata: metadata) }
-		catch { discoveryFailure = error.localizedDescription; await dht.shutdown(); self.dht = nil }
+		guard !closed else { return }
+		if let dht {
+			do { try await dht.update(targets, metadata: metadata) }
+			catch { discoveryFailure = error.localizedDescription; await dht.shutdown(); self.dht = nil }
+		}
+		if let localDiscovery {
+			do { try await localDiscovery.update(targets) }
+			catch { localDiscoveryFailure = error.localizedDescription; await localDiscovery.shutdown(); self.localDiscovery = nil }
+		}
 	}
 	func suspendDiscovery() async { await updateDiscovery([], metadata: []) }
 	func learnNode(_ endpoint: NetworkEndpoint, for target: SessionDHTTarget) async throws { try await dht?.learnNode(endpoint, for: target) }
@@ -147,8 +165,9 @@ actor SessionPeerNetwork {
 		return TrackerClient(http: http, udp: try UDPTrackerClient(dispatchers: [listener.udp4, listener.udp6], clock: clock, timeout: 10))
 	}
 	func snapshot() async -> SessionNetworkSnapshot {
-		SessionNetworkSnapshot(port: closed ? 0 : listener.port, udp: !closed, error: failure, pendingHandshakes: opening.count, peers: listener.peers.count,
-			discovery: await dht?.snapshot() ?? SessionDHTSnapshot(enabled: false, contacts: 0, searches: 0, error: discoveryFailure))
+		let localError = await localDiscovery?.failure ?? localDiscoveryFailure
+		return SessionNetworkSnapshot(port: closed ? 0 : listener.port, udp: !closed, error: failure.isEmpty ? localError : failure, pendingHandshakes: opening.count, peers: listener.peers.count,
+			discovery: await dht?.snapshot() ?? SessionDHTSnapshot(enabled: false, contacts: 0, searches: 0, error: discoveryFailure), localDiscovery: !closed && localDiscovery != nil)
 	}
 	private func failed(_ error: Error) {
 		guard !closed, !(error is CancellationError) else { return }
@@ -165,7 +184,7 @@ actor SessionPeerNetwork {
 	}
 	private func finish() async {
 		closed = true; for task in pumps { task.cancel() }
-		await drainOpening(); await dht?.shutdown(); await utp4?.shutdown(); await utp6?.shutdown(); try? await listener.shutdown()
+		await drainOpening(); await dht?.shutdown(); await localDiscovery?.shutdown(); await utp4?.shutdown(); await utp6?.shutdown(); try? await listener.shutdown()
 		for task in pumps { await task.value }; pumps.removeAll(); routes.removeAll(); catalog = nil
 	}
 }

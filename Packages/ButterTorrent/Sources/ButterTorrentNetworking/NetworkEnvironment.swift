@@ -14,7 +14,7 @@ public struct NetworkEnvironmentSnapshot: Sendable {
 
 /// NetworkEnvironment discovers interface addresses and default gateways without sending probes.
 public enum NetworkEnvironment {
-	public static func interfaces(includeLoopback: Bool = false) throws -> [NetworkInterfaceAddress] {
+	public static func interfaces(includeLoopback: Bool = false, multicastOnly: Bool = false) throws -> [NetworkInterfaceAddress] {
 		var head: UnsafeMutablePointer<ifaddrs>?
 		guard getifaddrs(&head) == 0 else { throw NetworkFailure.system(errno) }
 		defer { if let head { freeifaddrs(head) } }
@@ -23,6 +23,7 @@ public enum NetworkEnvironment {
 			defer { current = entry.pointee.ifa_next }
 			guard entry.pointee.ifa_flags & UInt32(IFF_UP) != 0, let address = entry.pointee.ifa_addr,
 				address.pointee.sa_family == AF_INET || address.pointee.sa_family == AF_INET6 else { continue }
+			guard !multicastOnly || entry.pointee.ifa_flags & UInt32(IFF_MULTICAST) != 0 else { continue }
 			let length = Int(address.pointee.sa_len)
 			guard length <= MemoryLayout<sockaddr_storage>.size else { continue }
 			var storage = sockaddr_storage()

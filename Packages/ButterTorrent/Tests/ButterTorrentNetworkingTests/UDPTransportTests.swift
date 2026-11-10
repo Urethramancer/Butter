@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Testing
 @testable import ButterTorrentNetworking
 
@@ -28,6 +29,21 @@ actor InjectedDatagrams: DatagramTransport {
 }
 
 @Suite struct UDPTransportTests {
+	@Test(arguments: ["0.0.0.0", "::"]) func sharedPortsInteroperateWithBSDMulticastSocketOptions(_ host: String) async throws {
+		let owner = try DatagramSocket(bind: NetworkEndpoint(host, port: 0), reusePort: true)
+		let fd = socket(owner.localEndpoint.address.isIPv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+		guard fd >= 0 else { try await owner.shutdown(); throw NetworkFailure.system(errno) }
+		defer { Darwin.close(fd) }
+		do {
+			var yes: Int32 = 1
+			for option in [SO_REUSEADDR, SO_REUSEPORT] {
+				try #require(setsockopt(fd, SOL_SOCKET, option, &yes, socklen_t(MemoryLayout<Int32>.size)) == 0)
+			}
+			if owner.localEndpoint.address.isIPv6 { try #require(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes, socklen_t(MemoryLayout<Int32>.size)) == 0) }
+			#expect(owner.localEndpoint.withSockAddr { Darwin.bind(fd, $0, $1) } == 0)
+			try await owner.shutdown()
+		} catch { try? await owner.shutdown(); throw error }
+	}
 	@Test func loopbackIPv4AndIPv6Datagrams() async throws {
 		for host in ["127.0.0.1", "::1"] {
 			let a = try DatagramSocket(bind: NetworkEndpoint(host, port: 0)), b = try DatagramSocket(bind: NetworkEndpoint(host, port: 0))

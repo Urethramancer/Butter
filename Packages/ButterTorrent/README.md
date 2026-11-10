@@ -88,6 +88,13 @@ Mapping clients support lease renewal, reboot detection and removal. UPnP checks
 existing mappings before changing or deleting them. Callers drive discovery,
 announce and renewal ticks and explicitly shut down owned transports.
 
+The headless native session owns local discovery when `SessionPeerSettings.lsd`
+is enabled. It advertises running public torrents on multicast-capable interfaces,
+shares a cookie across its interface services, and bounds discovered connection
+attempts. Pausing, removal, settings changes and shutdown drain that work.
+Discovery errors remain visible without closing the peer listener. The Swift app
+adapter accepts the existing LSD setting; production transfers still use libtorrent.
+
 Tracker services encode binary identifiers without text conversion, parse compact
 IPv4/IPv6 and dictionary peers, retain tracker IDs, honour intervals, shuffle and
 promote tier members, and send started/completed/stopped events. The caller ticks

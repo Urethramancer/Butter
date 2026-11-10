@@ -64,6 +64,7 @@ public actor TorrentSession {
 	private let httpTracker: any TrackerAnnouncing
 	private let webSeedTransport: (any HTTPTransport)?
 	private let dhtBootstrap: [NetworkEndpoint]?
+	private let localDiscoveryFactory: LocalDiscoveryFactory?
 	private var trackerClient: TrackerClient?
 	private var network: SessionPeerNetwork?
 	private var peerSettings: SessionPeerSettings?
@@ -75,12 +76,13 @@ public actor TorrentSession {
 	private var events: [SessionEvent] = []
 	private var peerHints: PeerCandidateQueue<SessionPeerHint>?
 	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
-		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient(), webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil) {
+		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient(), webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil, localDiscoveryFactory: LocalDiscoveryFactory? = nil) {
 		repository = TransferRepository(root: storage); self.configuration = configuration; self.resources = resources; budget = TCPPeerBudget(limit: maximumPeers)
 		self.loopbackOnly = loopbackOnly; self.clock = clock
 		self.httpTracker = httpTracker
 		self.webSeedTransport = webSeedTransport
 		self.dhtBootstrap = dhtBootstrap
+		self.localDiscoveryFactory = localDiscoveryFactory
 		peerID = Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
 	}
 	public var currentPeerSettings: SessionPeerSettings {
@@ -248,7 +250,7 @@ public actor TorrentSession {
 			}
 			let wire = await self.network?.snapshot()
 			let status = SessionNetworkSnapshot(port: wire?.port ?? 0, udp: wire?.udp ?? false, error: wire?.error.isEmpty == false ? wire!.error : self.networkError,
-				pendingHandshakes: wire?.pendingHandshakes ?? 0, peers: self.budget.count, discovery: wire?.discovery ?? .disabled)
+				pendingHandshakes: wire?.pendingHandshakes ?? 0, peers: self.budget.count, discovery: wire?.discovery ?? .disabled, localDiscovery: wire?.localDiscovery ?? false)
 			let result = TorrentSessionSnapshot(transfers: snapshots, events: self.events, network: status); self.events.removeAll(); return result
 		}
 	}
@@ -257,7 +259,7 @@ public actor TorrentSession {
 		return try await serial {
 			if settings.port != 0, settings == self.peerSettings, let network = self.network {
 				let state = await network.snapshot()
-				if state.port == settings.port && state.error.isEmpty && state.discovery.enabled == settings.dht { return state.port }
+				if state.port == settings.port && state.error.isEmpty && state.discovery.enabled == settings.dht && state.localDiscovery == settings.lsd { return state.port }
 			}
 			self.networkChanging = true; defer { self.networkChanging = false }
 			let running = try await self.pauseForSettings()
@@ -269,7 +271,7 @@ public actor TorrentSession {
 			var bindError: Error?
 			do {
 				self.network = try await SessionPeerNetwork.open(settings: settings, budget: self.budget, encryption: self.configuration.encryption,
-					filter: self.configuration.addressFilter, loopbackOnly: self.loopbackOnly, clock: self.clock, bootstrap: self.dhtBootstrap) { [weak self] target, endpoint in
+					filter: self.configuration.addressFilter, loopbackOnly: self.loopbackOnly, clock: self.clock, bootstrap: self.dhtBootstrap, localDiscoveryFactory: self.localDiscoveryFactory) { [weak self] target, endpoint in
 						await self?.connectDiscovered(target, to: endpoint)
 					}
 			} catch { self.networkError = error.localizedDescription; bindError = error }
@@ -413,7 +415,7 @@ public actor TorrentSession {
 			if network == nil && peerSettings == nil {
 				let settings = currentPeerSettings
 				network = try await SessionPeerNetwork.open(settings: settings, budget: budget, encryption: configuration.encryption,
-					filter: configuration.addressFilter, loopbackOnly: loopbackOnly, clock: clock, bootstrap: dhtBootstrap) { [weak self] target, endpoint in
+					filter: configuration.addressFilter, loopbackOnly: loopbackOnly, clock: clock, bootstrap: dhtBootstrap, localDiscoveryFactory: localDiscoveryFactory) { [weak self] target, endpoint in
 						await self?.connectDiscovered(target, to: endpoint)
 					}
 				configuration.listenPort = await network!.snapshot().port; peerSettings = settings

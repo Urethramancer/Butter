@@ -2,11 +2,11 @@
 
 ## Swift torrent engine replacement
 - Phase 11: complete Swift adapter, displays, counters, lifecycle and dual-engine scenarios.
-  Complete magnet-import commands and native local-discovery/mapping settings
-  (enabled LSD and mapping currently reject explicitly in the adapter).
+  Complete magnet-import commands and native router-mapping settings
+  (mapping currently rejects explicitly in the adapter).
   Allow enabled DHT for unresolved magnets; cancel and drain discovery when
   private metadata arrives before publishing the resolved transfer to the app.
-  Coordinate local-discovery and mapping lifecycles in that session.
+  Coordinate mapping lifecycles in that session.
   Keep snapshots and unrelated commands responsive during long filesystem operations.
   Verify interruption and disk-failure recovery during repository publication/discard.
   Resolve inherited PCP-before-NAT-PMP behaviour from the pinned reference;

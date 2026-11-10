@@ -10,6 +10,6 @@ work=$(mktemp -d /tmp/butter-tcp-reference.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 swiftc -swift-version 6 -parse-as-library -module-cache-path /tmp/butter-swift-cache -I "$bin" -L "$bin" \
 	-lButterTorrentEngine -lButterTorrentStorage -lButterTorrentNetworking -lButterTorrentMetadata \
-	Tests/TCPTransferComparisonTests.swift Tests/HybridIdentityComparisonTests.swift Tests/SessionPeerComparisonTests.swift Tests/SessionTrackerComparisonTests.swift Tests/SessionDHTComparisonTests.swift Tests/SessionHintComparisonTests.swift Tests/SessionWebSeedComparisonTests.swift Packages/ButterTorrent/Tests/ButterTorrentNetworkingTests/HTTPTestSupport.swift Tests/TCPFragmentingRelay.swift Tests/UTPImpairingRelay.swift Tests/DHTComparisonTests.swift -o "$work/TCPTransferComparisonTests"
+	Tests/TCPTransferComparisonTests.swift Tests/HybridIdentityComparisonTests.swift Tests/SessionLocalDiscoveryComparisonTests.swift Tests/SessionPeerComparisonTests.swift Tests/SessionTrackerComparisonTests.swift Tests/SessionDHTComparisonTests.swift Tests/SessionHintComparisonTests.swift Tests/SessionWebSeedComparisonTests.swift Packages/ButterTorrent/Tests/ButterTorrentNetworkingTests/HTTPTestSupport.swift Tests/TCPFragmentingRelay.swift Tests/UTPImpairingRelay.swift Tests/DHTComparisonTests.swift -o "$work/TCPTransferComparisonTests"
 .dependencies/bridge-build/TCPPeerReference --create "$work"
 "$work/TCPTransferComparisonTests" "$work" "$PWD/.dependencies/bridge-build/TCPPeerReference"
