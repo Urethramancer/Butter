@@ -75,4 +75,11 @@ public struct StorageLayout: Sendable {
 		let sorted = paths.map(pathKey).sorted()
 		for (left, right) in zip(sorted, sorted.dropFirst()) where left == right || right.hasPrefix(left + "/") { throw StorageFailure.collision(right) }
 	}
+	static func validateIsolation(destination: URL, paths: [String], state: URL) throws {
+		let root = pathKey(state.path)
+		for path in paths {
+			let file = pathKey(destination.appendingPathComponent(path).path)
+			guard file != root, !file.hasPrefix(root + "/"), !root.hasPrefix(file + "/") else { throw StorageFailure.invalid("payload overlaps its checkpoint directory") }
+		}
+	}
 }

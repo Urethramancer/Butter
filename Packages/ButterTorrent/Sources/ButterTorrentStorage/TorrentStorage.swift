@@ -5,13 +5,19 @@ import ButterTorrentMetadata
 
 /// TorrentStorage exposes serial, bounded disk operations without GUI dependencies.
 public actor TorrentStorage {
-	let worker = StorageWorker()
+	let worker: StorageWorker
 	let state: StorageState
 	public nonisolated let layout: StorageLayout
-	public init(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
-		coordinator: StorageCoordinator = .shared, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) throws {
-		layout = try StorageLayout(metadata: metadata)
-		state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, event: event)
+	private init(state: StorageState, worker: StorageWorker) { self.state = state; self.worker = worker; layout = state.layout }
+	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
+		coordinator: StorageCoordinator = .shared, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TorrentStorage {
+		let worker = StorageWorker()
+		let state = try await worker.run { cancellation in
+			let layout = try StorageLayout(metadata: metadata)
+			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, event: event)
+			try cancellation.check(); return state
+		}
+		return TorrentStorage(state: state, worker: worker)
 	}
 	public func snapshot() async throws -> StorageSnapshot { try await worker.run { [state] _ in try state.snapshot() } }
 	public func read(piece: Int, offset: Int, count: Int, verifiedOnly: Bool = true) async throws -> Data {
@@ -61,8 +67,6 @@ final class StorageState: @unchecked Sendable {
 			if try state.inspect("checkpoint.plist") != nil {
 				record = try PropertyListDecoder().decode(StorageCheckpoint.self, from: state.read("checkpoint.plist", maximum: 16_777_216))
 				try record.validate(layout: layout, identity: identity)
-				let stored = try TorrentMetadata(state.read("metadata.torrent", maximum: 33_554_432))
-				guard stored.originalInfo == metadata.originalInfo else { throw StorageFailure.invalid("saved metadata identity") }
 			} else {
 				let selection = selected ?? layout.files.map { !$0.pad }
 				guard selection.count == layout.files.count else { throw StorageFailure.invalid("selection count") }
@@ -71,17 +75,19 @@ final class StorageState: @unchecked Sendable {
 					spilled: selection.enumerated().map { !$0.element && !layout.files[$0.offset].pad }, stamps: Array(repeating: nil, count: layout.files.count),
 					verified: Data(repeating: 0, count: (layout.pieceCount + 7) / 8))
 				try record.validate(layout: layout, identity: identity)
-				try state.atomic(metadata.document.original, path: "metadata.torrent")
 			}
 			payload = try StorageDirectory(URL(fileURLWithPath: record.destination))
+			try StorageLayout.validateIsolation(destination: payload.url, paths: record.paths, state: state.url)
+			if try state.inspect("metadata.torrent") != nil {
+				let stored = try TorrentMetadata(state.read("metadata.torrent", maximum: 33_554_432))
+				guard stored.originalInfo == metadata.originalInfo else { throw StorageFailure.invalid("saved metadata identity") }
+			} else { try state.atomic(metadata.document.original, path: "metadata.torrent") }
 		} catch { throw error }
 		do {
 			try claim()
 			hasJournal = try state.inspect("operation.plist") != nil
 			if !hasJournal {
-				for index in layout.files.indices where layout.files[index].size == 0 && record.selected[index] {
-					if try payload.inspect(record.paths[index]) == nil { let file = try payload.openFile(record.paths[index], write: true); close(file) }
-				}
+				try prepareEmptyFiles()
 				try invalidateChangedFiles()
 				try save()
 			}
@@ -95,6 +101,11 @@ final class StorageState: @unchecked Sendable {
 	func ready() throws {
 		guard !closed else { throw StorageFailure.closed }
 		guard !hasJournal else { throw StorageFailure.recoveryRequired("a filesystem operation is pending") }
+	}
+	func prepareEmptyFiles() throws {
+		for index in layout.files.indices where layout.files[index].size == 0 && record.selected[index] {
+			if try payload.inspect(record.paths[index]) == nil { let file = try payload.openFile(record.paths[index], write: true); close(file) }
+		}
 	}
 	func location(_ index: Int) -> (StorageDirectory, String) {
 		record.spilled[index] ? (state, "unwanted/\(index)") : (payload, record.paths[index])
@@ -121,7 +132,10 @@ final class StorageState: @unchecked Sendable {
 		// Flush payload before publishing any progress record.
 		for index in record.paths.indices where !layout.files[index].pad {
 			let (directory, path) = location(index)
-			if try directory.inspect(path) != nil { let file = try directory.openFile(path); defer { close(file) }; try directory.sync(file) }
+			if try directory.inspect(path) != nil {
+				let file = try directory.openFile(path); defer { close(file) }
+				try directory.sync(file); try directory.parent(path) { parent, _ in try directory.sync(parent) }
+			}
 		}
 		try invalidateChangedFiles(); record.generation &+= 1
 		try state.atomic(record.encoded(), path: "checkpoint.plist")
@@ -138,6 +152,7 @@ final class StorageState: @unchecked Sendable {
 		_ = try layout.length(of: piece)
 		if verifiedOnly { try invalidateChangedFiles(); guard record.contains(piece) else { throw StorageFailure.invalid("piece has not been verified") } }
 		let segments = try layout.segments(piece: piece, offset: offset, count: count)
+		let before = verifiedOnly ? try stamps() : []
 		var result = Data()
 		for segment in segments {
 			try check()
@@ -150,6 +165,7 @@ final class StorageState: @unchecked Sendable {
 				guard !data.isEmpty else { throw StorageFailure.invalid("short payload read") }; done += data.count; result.append(data)
 			}
 		}
+		if verifiedOnly, try stamps() != before { try invalidateChangedFiles(); throw StorageFailure.invalid("payload changed during read") }
 		return result
 	}
 	func write(piece: Int, offset: Int, data: Data, check: () throws -> Void) throws {
@@ -161,7 +177,10 @@ final class StorageState: @unchecked Sendable {
 			if segment.padding, data[cursor..<(cursor + segment.count)].contains(where: { $0 != 0 }) { throw StorageFailure.invalid("nonzero padding") }; cursor += segment.count
 		}
 		// Durable invalidation precedes modifying bytes previously advertised as verified.
-		if record.contains(piece) { record.set(piece, false); try save() }
+		if record.contains(piece) {
+			record.set(piece, false)
+			do { try save() } catch { record.set(piece, true); throw error }
+		}
 		cursor = 0
 		for segment in segments {
 			defer { cursor += segment.count }

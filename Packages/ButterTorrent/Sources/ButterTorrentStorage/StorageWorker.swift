@@ -22,24 +22,34 @@ final class DiskCancellation: @unchecked Sendable {
 
 // A serial worker bounds both outstanding commands and simultaneous disk/hash work.
 final class StorageWorker: @unchecked Sendable {
-	private let queue = DispatchQueue(label: "Butter.Storage")
+	private static let queue = DispatchQueue(label: "Butter.Storage")
+	private static let budget = DiskWorkBudget()
 	private let lock = NSLock()
 	private var pending = 0
 	func run<T: Sendable>(_ operation: @escaping @Sendable (DiskCancellation) throws -> T) async throws -> T {
 		try Task.checkCancellation()
 		let admitted = lock.withLock { if pending >= 8 { return false }; pending += 1; return true }
 		guard admitted else { throw StorageFailure.limit("queued disk commands") }
+		guard Self.budget.acquire() else { lock.withLock { pending -= 1 }; throw StorageFailure.limit("global disk commands") }
 		let cancellation = DiskCancellation()
 		return try await withTaskCancellationHandler {
 			try await withCheckedThrowingContinuation { continuation in
-				queue.async {
+				Self.queue.async {
 					let result = Result { try cancellation.check(); return try operation(cancellation) }
 					self.lock.withLock { self.pending -= 1 }
+					Self.budget.release()
 					continuation.resume(with: result)
 				}
 			}
 		} onCancel: { cancellation.cancel() }
 	}
+}
+
+private final class DiskWorkBudget: @unchecked Sendable {
+	private let lock = NSLock()
+	private var pending = 0
+	func acquire() -> Bool { lock.withLock { guard pending < 64 else { return false }; pending += 1; return true } }
+	func release() { lock.withLock { pending -= 1 } }
 }
 
 /// StorageCoordinator protects paths shared by live native transfers in one process.

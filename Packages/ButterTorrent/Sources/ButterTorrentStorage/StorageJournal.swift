@@ -56,8 +56,9 @@ extension StorageState {
 		try invalidateChangedFiles()
 		var after = after
 		for index in after.verified.indices { after.verified[index] &= record.verified[index] }
-		try claim(extra: entries.map { URL(fileURLWithPath: $0.destinationRoot).appendingPathComponent($0.destination) })
 		let journal = StorageJournal(before: record, after: after, entries: entries)
+		try journal.validate(layout: layout, identity: record.metadataHash)
+		try claim(extra: futurePaths(after) + entries.map { URL(fileURLWithPath: $0.destinationRoot).appendingPathComponent($0.destination) })
 		do { try persist(journal) } catch { try? claim(); throw error }
 		hasJournal = true; event(.journalDurable)
 		try recover(acceptMatchingCopies: false, check: check)
@@ -67,7 +68,7 @@ extension StorageState {
 		guard hasJournal else { return }
 		var journal = try PropertyListDecoder().decode(StorageJournal.self, from: state.read("operation.plist", maximum: 33_554_432))
 		try journal.validate(layout: layout, identity: record.metadataHash)
-		try claim(extra: journal.entries.flatMap { [URL(fileURLWithPath: $0.sourceRoot).appendingPathComponent($0.source), URL(fileURLWithPath: $0.destinationRoot).appendingPathComponent($0.destination)] })
+		try claim(extra: futurePaths(journal.after) + journal.entries.flatMap { [URL(fileURLWithPath: $0.sourceRoot).appendingPathComponent($0.source), URL(fileURLWithPath: $0.destinationRoot).appendingPathComponent($0.destination)] })
 		for index in journal.entries.indices {
 			try check()
 			var entry = journal.entries[index]
@@ -100,6 +101,7 @@ extension StorageState {
 		try check()
 		record = journal.after
 		payload = try StorageDirectory(URL(fileURLWithPath: record.destination), create: false)
+		try prepareEmptyFiles()
 		record.stamps = try stamps(); try save(); event(.checkpointDurable)
 		for entry in journal.entries where entry.copy && entry.removeSource {
 			try check()
@@ -112,6 +114,11 @@ extension StorageState {
 		guard let operation = try state.inspect("operation.plist") else { throw StorageFailure.invalid("missing operation journal") }
 		try state.remove("operation.plist", expected: operation)
 		hasJournal = false; try claim()
+	}
+	private func futurePaths(_ checkpoint: StorageCheckpoint) throws -> [URL] {
+		let destination = URL(fileURLWithPath: checkpoint.destination)
+		try StorageLayout.validateIsolation(destination: destination, paths: checkpoint.paths, state: state.url)
+		return checkpoint.paths.indices.filter { !layout.files[$0].pad }.map { checkpoint.spilled[$0] ? state.url.appendingPathComponent("unwanted/\($0)") : destination.appendingPathComponent(checkpoint.paths[$0]) }
 	}
 	private func copy(_ entry: inout StorageJournal.Entry, source: StorageDirectory, target: StorageDirectory,
 		journal: inout StorageJournal, index: Int, check: () throws -> Void) throws {

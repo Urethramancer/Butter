@@ -4,11 +4,32 @@ import ButterTorrentMetadata
 @testable import ButterTorrentStorage
 
 @Suite struct StorageOperationTests {
+	@Test func missingFilesStillReserveRenameTargetsAndEmptySelectionsCreateFiles() async throws {
+		try await storageFixture { root in
+			let (metadata, _) = try storageMetadata(root), destination = root.appendingPathComponent("download")
+			let first = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: root.appendingPathComponent("state1"))
+			func single(_ name: String, size: Int64) throws -> TorrentMetadata {
+				let fields: [Data: BencodeValue] = [Data("name".utf8): .bytes(Data(name.utf8)), Data("length".utf8): .integer(size),
+					Data("piece length".utf8): .integer(16384), Data("pieces".utf8): .bytes(Data(repeating: 42, count: size == 0 ? 0 : 20))]
+				return try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(fields)]).encoded())
+			}
+			let other = try await TorrentStorage.open(metadata: single("reserved", size: 1), destination: destination, stateDirectory: root.appendingPathComponent("state2"))
+			await #expect(throws: StorageFailure.self) { try await first.rename([0: "reserved"]) }
+			let snapshot = try await first.snapshot()
+			#expect(snapshot.paths[0] == metadata.inspection.files[0].path && !snapshot.needsRecovery)
+			try await other.shutdown(); try await first.shutdown()
+			let empty = try await TorrentStorage.open(metadata: single("empty", size: 0), destination: destination, stateDirectory: root.appendingPathComponent("empty-state"), selected: [false])
+			#expect(!FileManager.default.fileExists(atPath: destination.appendingPathComponent("empty").path))
+			try await empty.select([true])
+			#expect(try Data(contentsOf: destination.appendingPathComponent("empty")).isEmpty)
+			try await empty.shutdown()
+		}
+	}
 	@Test func importRenameMoveSelectAndTrash() async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try storageMetadata(root)
 			let selected = metadata.inspection.files.map { !$0.pad && $0.path.hasSuffix("/a") }
-			let storage = try TorrentStorage(metadata: metadata, destination: root.appendingPathComponent("download"), stateDirectory: root.appendingPathComponent("state"), selected: selected)
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("download"), stateDirectory: root.appendingPathComponent("state"), selected: selected)
 			try await storage.importFiles(from: root)
 			#expect(try Data(contentsOf: root.appendingPathComponent("source/a")) == bytes)
 			for piece in 0..<storage.layout.pieceCount { #expect(try await storage.verify(piece: piece)) }
@@ -25,7 +46,7 @@ import ButterTorrentMetadata
 			#expect(try await storage.snapshot().verifiedPieces.isEmpty)
 			#expect(try await storage.snapshot().trashReceipts == receipts)
 			try await storage.shutdown()
-			let restored = try TorrentStorage(metadata: metadata, destination: root, stateDirectory: root.appendingPathComponent("state"))
+			let restored = try await TorrentStorage.open(metadata: metadata, destination: root, stateDirectory: root.appendingPathComponent("state"))
 			#expect(try await restored.snapshot().trashReceipts == receipts)
 			try await restored.shutdown()
 		}
@@ -33,8 +54,8 @@ import ButterTorrentMetadata
 	@Test func collisionAndSharedTransferPreflightLeavesSourcesUntouched() async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try storageMetadata(root), destination = root.appendingPathComponent("download")
-			let first = try TorrentStorage(metadata: metadata, destination: destination, stateDirectory: root.appendingPathComponent("state1"))
-			#expect(throws: StorageFailure.self) { try TorrentStorage(metadata: metadata, destination: destination, stateDirectory: root.appendingPathComponent("state2")) }
+			let first = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: root.appendingPathComponent("state1"))
+			await #expect(throws: StorageFailure.self) { try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: root.appendingPathComponent("state2")) }
 			try await first.importFiles(from: root)
 			try Data([42]).write(to: destination.appendingPathComponent("collision"))
 			await #expect(throws: StorageFailure.self) { try await first.rename([0: "renamed", 2: "collision"]) }
@@ -47,7 +68,7 @@ import ButterTorrentMetadata
 	@Test func verifiedProgressRejectsExternalChangesBeforeCheckpointAndInvalidRanges() async throws {
 		try await storageFixture { root in
 			let (metadata, _) = try storageMetadata(root), destination = root.appendingPathComponent("download"), state = root.appendingPathComponent("state")
-			let storage = try TorrentStorage(metadata: metadata, destination: destination, stateDirectory: state)
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state)
 			try await storage.importFiles(from: root)
 			#expect(try await storage.verify(piece: 0))
 			let file = try FileHandle(forWritingTo: destination.appendingPathComponent("source/a"))
@@ -62,7 +83,7 @@ import ButterTorrentMetadata
 			let directory = try StorageDirectory(state)
 			var checkpoint = try PropertyListDecoder().decode(StorageCheckpoint.self, from: directory.read("checkpoint.plist", maximum: 16_777_216))
 			checkpoint.version = 99; try directory.atomic(checkpoint.encoded(), path: "checkpoint.plist")
-			#expect(throws: StorageFailure.self) { try TorrentStorage(metadata: metadata, destination: destination, stateDirectory: state) }
+			await #expect(throws: StorageFailure.self) { try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state) }
 		}
 	}
 }

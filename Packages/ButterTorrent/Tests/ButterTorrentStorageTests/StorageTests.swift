@@ -24,7 +24,7 @@ func storageMetadata(_ root: URL) throws -> (TorrentMetadata, Data) {
 			let (metadata, bytes) = try storageMetadata(root), layout = try StorageLayout(metadata: metadata)
 			let selected = metadata.inspection.files.map { !$0.pad && $0.path.hasSuffix("/a") }
 			let destination = root.appendingPathComponent("download"), state = root.appendingPathComponent("state")
-			var storage: TorrentStorage? = try TorrentStorage(metadata: metadata, destination: destination, stateDirectory: state, selected: selected)
+			var storage: TorrentStorage? = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state, selected: selected)
 			let payload = bytes + Data(repeating: 0, count: 32768 - bytes.count) + Data([1, 2, 3]) + Data(repeating: 0, count: 16384 - 3)
 			for piece in 0..<layout.pieceCount {
 				let count = try layout.length(of: piece)
@@ -35,7 +35,7 @@ func storageMetadata(_ root: URL) throws -> (TorrentMetadata, Data) {
 			#expect(try Data(contentsOf: destination.appendingPathComponent("source/a")) == bytes)
 			try await storage!.checkpoint(downloaded: 20003, uploaded: 9)
 			try await storage!.shutdown(); storage = nil
-			let restored = try TorrentStorage(metadata: metadata, destination: destination, stateDirectory: state)
+			let restored = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state)
 			let snapshot = try await restored.snapshot()
 			#expect(snapshot.selected == selected && snapshot.verifiedPieces.count == layout.pieceCount && snapshot.uploaded == 9)
 			try Data([7]).write(to: destination.appendingPathComponent("source/a"))
@@ -50,17 +50,21 @@ func storageMetadata(_ root: URL) throws -> (TorrentMetadata, Data) {
 			try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
 			try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
 			try FileManager.default.createSymbolicLink(at: destination.appendingPathComponent("source"), withDestinationURL: external)
-			#expect(throws: (any Error).self) { try TorrentStorage(metadata: metadata, destination: destination, stateDirectory: root.appendingPathComponent("state")) }
+			await #expect(throws: (any Error).self) { try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: root.appendingPathComponent("state")) }
 			try FileManager.default.removeItem(at: destination.appendingPathComponent("source"))
 			try FileManager.default.createDirectory(at: destination.appendingPathComponent("source"), withIntermediateDirectories: true)
 			let file = destination.appendingPathComponent("source/a")
 			try Data([42]).write(to: file)
 			try FileManager.default.linkItem(at: file, to: external.appendingPathComponent("link"))
-			#expect(throws: StorageFailure.self) { try TorrentStorage(metadata: metadata, destination: destination, stateDirectory: root.appendingPathComponent("state")) }
+			await #expect(throws: StorageFailure.self) { try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: root.appendingPathComponent("state")) }
 			#expect(try Data(contentsOf: file) == Data([42]))
 			#expect(throws: StorageFailure.self) { try StorageLayout.validatePaths(["a", "a/b"]) }
 			#expect(throws: StorageFailure.self) { try StorageLayout.validatePaths(["A", "a"]) }
 			#expect(throws: StorageFailure.self) { try StorageLayout.components("../a") }
+			await #expect(throws: StorageFailure.self) {
+				try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("overlap"), stateDirectory: root.appendingPathComponent("overlap/source"))
+			}
+			#expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("overlap/source/metadata.torrent").path))
 		}
 	}
 }
