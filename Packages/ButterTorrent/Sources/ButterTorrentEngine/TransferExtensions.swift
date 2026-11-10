@@ -4,7 +4,8 @@ import ButterTorrentNetworking
 
 extension TCPTransfer {
 	func sendExtensionHandshake(_ id: UUID) throws {
-		var mapping: [String: BencodeValue] = ["ut_metadata": .integer(1)]
+		var mapping: [String: BencodeValue] = [:]
+		if !metadata.inspection.private { mapping["ut_metadata"] = .integer(1) }
 		if configuration.enablePEX && !metadata.inspection.private { mapping["ut_pex"] = .integer(2) }
 		let fields: [String: BencodeValue] = ["m": extensionDictionary(mapping), "metadata_size": .integer(Int64(metadata.originalInfo.count)),
 			"v": .bytes(Data("Butter Swift".utf8)), "reqq": .integer(32), "p": .integer(Int64(configuration.listenPort))]
@@ -16,6 +17,7 @@ extension TCPTransfer {
 		case 0:
 			try peer.extensions.apply(bytes); peer.advertisedPort = peer.extensions.port
 		case 1:
+			guard !metadata.inspection.private else { throw PeerFailure.invalid("private metadata exchange") }
 			let parsed = try BencodeDocument.prefix(bytes, limits: .init(bytes: 32_768, depth: 8, values: 64))
 			guard let type = parsed.value["msg_type"]?.integer else { throw PeerFailure.invalid("metadata request type") }
 			if type != 0 { return }

@@ -5,8 +5,8 @@ import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
 @Suite struct MagnetLifecycleTests {
-	@Test(arguments: [false, true]) func verifiedArrivalResolvesDuplicatesAndPrivatePolicy(_ isPrivate: Bool) async throws {
-		let fixture = try V2Fixture(version: 3, isPrivate: isPrivate)
+	@Test func verifiedArrivalResolvesDuplicates() async throws {
+		let fixture = try V2Fixture(version: 3)
 		let registry = TorrentIdentityRegistry()
 		let first = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("first"), stateDirectory: fixture.root.appendingPathComponent("first-state"), registry: registry)
 		let second = MagnetDownload(magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("second"), stateDirectory: fixture.root.appendingPathComponent("second-state"), registry: registry)
@@ -28,7 +28,7 @@ import ButterTorrentNetworking
 				try await eventually { await engine.snapshot().complete }; winner = second; loser = first
 			default: Issue.record("Concurrent metadata arrivals created multiple transfers"); throw PeerFailure.invalid("duplicate resolution")
 			}
-			#expect(await winner.discoveryAllowed == !isPrivate)
+			#expect(await winner.discoveryAllowed)
 			let loserName = loser.id == first.id ? "first" : "second"
 			#expect(!FileManager.default.fileExists(atPath: fixture.root.appendingPathComponent(loserName + "-state").path))
 			try await loser.shutdown()

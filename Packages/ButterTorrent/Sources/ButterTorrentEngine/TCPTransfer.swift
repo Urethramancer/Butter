@@ -90,7 +90,7 @@ final class TransferPeer {
 	init(session: PeerSession, now: TimeInterval) { self.session = session; lastSent = now; window = now; connectedAt = now }
 }
 
-/// TCPTransfer runs a v1 plaintext swarm against the native storage layer.
+/// TCPTransfer runs v1, v2 and hybrid plaintext swarms against the native storage layer.
 public actor TCPTransfer {
 	let metadata: TorrentMetadata
 	let storage: TorrentStorage

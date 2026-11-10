@@ -46,7 +46,7 @@ public actor MagnetDownload {
 			try Task.checkCancellation()
 			let disk = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory); storage = disk
 			let transfer = try await TCPTransfer.open(metadata: metadata, storage: disk); engine = transfer
-			for endpoint in peers.prefix(8) {
+			for endpoint in peers.prefix(8) where !metadata.inspection.private {
 				try Task.checkCancellation()
 				do { _ = try await transfer.connect(to: endpoint) } catch {
 					if Task.isCancelled { throw CancellationError() }
