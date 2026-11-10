@@ -2,22 +2,13 @@ import Foundation
 import Testing
 @testable import ButterTorrentNetworking
 
-private final class ArithmeticGate: @unchecked Sendable {
-	private let lock = NSLock()
-	private var started = 0
-	private let semaphore = DispatchSemaphore(value: 0)
-	var count: Int { lock.withLock { started } }
-	func hold() -> Int { lock.withLock { started += 1 }; semaphore.wait(); return 1 }
-	func release() { for _ in 0..<4 { semaphore.signal() } }
-}
-
 @Suite struct MSEWorkerTests {
 	@Test func workerAndQueueBoundsCancellationAndQueuedDeadline() async throws {
-		let workers = MSEWorkers(), gate = ArithmeticGate()
-		let holders = (0..<4).map { _ in Task { try await workers.run { gate.hold() } } }
+		let workers = MSEWorkers()
+		// Reserve admission directly so the fixture also works on machines with fewer than four cores.
+		for _ in 0..<4 { try await workers.acquire() }
 		var queued: [Task<Int, Error>] = []
 		do {
-			try await deadline { while gate.count < 4 { try await Task.sleep(for: .milliseconds(1)) } }
 			queued = (0..<64).map { _ in Task { try await workers.run { 0 } } }
 			try await deadline { while await workers.waitingCount < 64 { try await Task.sleep(for: .milliseconds(1)) } }
 			await #expect(throws: NetworkFailure.limit("MSE arithmetic workers")) { try await workers.run { 0 } }
@@ -34,8 +25,9 @@ private final class ArithmeticGate: @unchecked Sendable {
 			#expect(await workers.waitingCount == 0)
 			raw.close(); peer.close(); try await listener.shutdown()
 		} catch {
-			gate.release(); for task in holders { task.cancel(); _ = try? await task.value }; for task in queued { task.cancel(); _ = try? await task.value }; throw error
+			for task in queued { task.cancel(); _ = try? await task.value }; for _ in 0..<4 { await workers.release() }; throw error
 		}
-		gate.release(); for task in holders { #expect(try await task.value == 1) }
+		for _ in 0..<4 { await workers.release() }
+		#expect(try await workers.run { 1 } == 1)
 	}
 }

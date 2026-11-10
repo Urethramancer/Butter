@@ -94,7 +94,7 @@ actor MSEWorkers {
 	private var active = 0
 	private var waiters: [(UUID, CheckedContinuation<Void, Error>)] = []
 	var waitingCount: Int { waiters.count }
-	private func acquire() async throws {
+	func acquire() async throws {
 		try Task.checkCancellation()
 		if active < 4 { active += 1; return }
 		guard waiters.count < 64 else { throw NetworkFailure.limit("MSE arithmetic workers") }
@@ -105,7 +105,7 @@ actor MSEWorkers {
 		} onCancel: { Task { await self.cancel(id) } }
 	}
 	private func cancel(_ id: UUID) { if let index = waiters.firstIndex(where: { $0.0 == id }) { waiters.remove(at: index).1.resume(throwing: CancellationError()) } }
-	private func release() { if waiters.isEmpty { active -= 1 } else { waiters.removeFirst().1.resume() } }
+	func release() { if waiters.isEmpty { active -= 1 } else { waiters.removeFirst().1.resume() } }
 	func run<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
 		try await acquire(); defer { release() }
 		let work = Task.detached(priority: .utility) { try Task.checkCancellation(); return try body() }
