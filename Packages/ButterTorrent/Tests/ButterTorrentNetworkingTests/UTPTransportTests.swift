@@ -14,6 +14,12 @@ func utpRead(_ stream: UTPStream, count: Int) async throws -> Data {
 		let a = try await UTPTransport.open(dispatcher: aUDP), b = try await UTPTransport.open(dispatcher: bUDP)
 		do {
 			let connect = Task { try await a.connect(to: bSocket.localEndpoint) }, server = try await b.accept(timeout: 3), client = try await connect.value
+			let incomingDHT = try await bUDP.subscribe(.dht)
+			let response = Task {
+				for await packet in incomingDHT { try await bUDP.send(Data("d1:t2:ab1:y1:re".utf8), to: packet.source); return }; throw NetworkFailure.closed
+			}
+			let trackerless = try await aUDP.exchange(Data("d1:t2:ab1:y1:qe".utf8), with: bSocket.localEndpoint, reply: .dht(Data("ab".utf8)), timeout: 3)
+			#expect(trackerless.payload == Data("d1:t2:ab1:y1:re".utf8)); try await response.value
 			let data = Data((0..<300_003).map { UInt8(($0 * 71 + $0 / 97) % 251) })
 			async let first = client.write(data, timeout: 10), second = server.write(Data(data.reversed()), timeout: 10)
 			async let receivedA = utpRead(client, count: data.count), receivedB = utpRead(server, count: data.count)
@@ -46,5 +52,20 @@ func utpRead(_ stream: UTPStream, count: Int) async throws -> Data {
 		try await udp.shutdown()
 		await #expect(throws: NetworkFailure.closed) { try await accepting.value }
 		await owner.shutdown()
+	}
+	@Test func spoofedSourceAndConnectionIdentifiersCannotResetAnOpening() async throws {
+		let transport = try InjectedDatagrams(), udp = UDPDispatcher(transport: transport), owner = try await UTPTransport.open(dispatcher: udp)
+		let endpoint = try NetworkEndpoint("127.0.0.1", port: 54321), other = try NetworkEndpoint("127.0.0.1", port: 54322)
+		let opening = Task { try await owner.connect(to: endpoint) }
+		let sent = try await transport.nextSent(), syn = try UTPPacket(sent.0)
+		let reset = UTPPacket(type: .reset, connection: syn.connection, sequence: 1, acknowledgement: syn.sequence)
+		await transport.inject(try reset.encoded(), source: other)
+		let wrongID = UTPPacket(type: .reset, connection: syn.connection &+ 7, sequence: 1, acknowledgement: syn.sequence)
+		await transport.inject(try wrongID.encoded(), source: endpoint)
+		let valid = UTPPacket(type: .state, connection: syn.connection, sequence: 40, acknowledgement: syn.sequence)
+		await transport.inject(try valid.encoded(), source: endpoint)
+		let stream = try await opening.value
+		#expect(await owner.snapshot().connections == 1)
+		try await stream.shutdown(); await owner.shutdown(); try await udp.shutdown()
 	}
 }

@@ -39,6 +39,15 @@ public actor MetadataExchange {
 		let stream = try await PeerStream.connect(to: endpoint, hash: wireHash, configuration: encryption, timeout: remaining(), clock: clock, budget: budget, utp: utp)
 		defer { stream.close() }
 		let hello = try PeerHandshake(infoHash: wireHash, peerID: Data("-BTMETA-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) }), reserved: reserved)
+		do {
+			let metadata = try await receiveInfo(magnet, stream: stream, hello: hello, deadline: deadline, clock: clock)
+			if let datagramStream = stream.raw as? UTPStream, deadline > clock.now() { try? await datagramStream.finish(timeout: min(2, deadline - clock.now())) }
+			try? await stream.raw.shutdown(); return metadata
+		} catch { try? await stream.raw.shutdown(); throw error }
+	}
+	private static func receiveInfo(_ magnet: Magnet, stream: PeerStream, hello: PeerHandshake, deadline: TimeInterval, clock: any TransportClock) async throws -> TorrentMetadata {
+		func remaining() throws -> TimeInterval { let seconds = deadline - clock.now(); guard seconds > 0 else { throw NetworkFailure.timedOut }; return min(10, seconds) }
+		let wireHash = hello.infoHash
 		try await stream.write(hello.encoded, timeout: remaining())
 		var decoder = PeerWireDecoder(), handshaken = false, extensions = ExtensionHandshake(), size: Int?, chunks: [Int: Data] = [:], pending: Set<Int> = [], requested = 0
 		var messages = 0

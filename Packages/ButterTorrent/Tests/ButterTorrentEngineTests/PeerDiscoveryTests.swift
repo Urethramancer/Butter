@@ -5,6 +5,31 @@ import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
 @Suite struct PeerDiscoveryTests {
+	@Test func pexAdvertisesTheConfirmedUTPTransport() async throws {
+		try await transferFixture { fixture in
+			let sourceSocket = try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0)), localSocket = try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0))
+			let sourceUDP = UDPDispatcher(transport: sourceSocket), localUDP = UDPDispatcher(transport: localSocket)
+			let source = try await UTPTransport.open(dispatcher: sourceUDP), local = try await UTPTransport.open(dispatcher: localUDP)
+			do {
+				let seed = try await fixture.transfer("seed", seed: true), engine = try await fixture.transfer("download")
+				let accept = Task { try await seed.attach(source.accept(timeout: 5)) }
+				_ = try await engine.connect(to: sourceSocket.localEndpoint, utp: local); _ = try await accept.value
+				try await eventually { await engine.snapshot().complete }
+				var flags = Data(repeating: 0, count: 8); flags[5] = 16
+				let observer = try await fixture.scripted(engine, identity: 99, reserved: flags)
+				try await observer.send(.bitfield(PieceBitfield(count: 3).bytes))
+				try await observer.send(.extended(0, extensionDictionary(["m": extensionDictionary(["ut_pex": .integer(9)])]).encoded()))
+				var received = false
+				while !received {
+					if case .extended(9, let bytes) = try await observer.next() {
+						let peers = try PeerExchange(bytes)
+						#expect(peers.added.contains { $0.endpoint == sourceSocket.localEndpoint && $0.flags & 4 != 0 && $0.flags & 16 != 0 }); received = true
+					}
+				}
+			} catch { await source.shutdown(); await local.shutdown(); try? await sourceUDP.shutdown(); try? await localUDP.shutdown(); throw error }
+			await source.shutdown(); await local.shutdown(); try await sourceUDP.shutdown(); try await localUDP.shutdown()
+		}
+	}
 	@Test(arguments: [false, true]) func pexIsNegotiatedAndAcceptedOnlyForVerifiedPublicMetadata(_ isPrivate: Bool) async throws {
 		let fixture = try V2Fixture(version: 1, isPrivate: isPrivate)
 		do {

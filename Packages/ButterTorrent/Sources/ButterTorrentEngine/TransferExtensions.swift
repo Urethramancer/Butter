@@ -51,15 +51,20 @@ extension TCPTransfer {
 		guard !metadata.inspection.private, configuration.enablePEX, let peer = peers[id], !peer.closing,
 			let number = peer.extensions.ids["ut_pex"], clock.now() >= peer.nextPEX else { return }
 		var current: Set<NetworkEndpoint> = []
+		var flags: [NetworkEndpoint: UInt8] = [:]
 		for (otherID, other) in peers where otherID != id && !other.closing && other.peerID != nil {
 			guard let endpoint = other.session.stream.remoteEndpoint else { continue }
-			if other.outgoing { current.insert(endpoint) }
-			else if let port = other.advertisedPort { current.insert(NetworkEndpoint(address: endpoint.address, port: port)) }
+			let advertised: NetworkEndpoint
+			if other.outgoing { advertised = endpoint }
+			else if let port = other.advertisedPort { advertised = NetworkEndpoint(address: endpoint.address, port: port) }
+			else { continue }
+			current.insert(advertised)
+			flags[advertised] = (other.outgoing ? 16 : 0) | (other.session.stream.kind == .utp ? 4 : 0) | (other.encryption == .plaintext ? 0 : 1)
 		}
 		let added = Array(current.subtracting(peer.pexSent).sorted { $0.description < $1.description }.prefix(50))
 		let dropped = Array(peer.pexSent.subtracting(current).sorted { $0.description < $1.description }.prefix(50))
 		guard !added.isEmpty || !dropped.isEmpty else { return }
-		try send(id, .extended(number, PeerExchange.encode(added: added.map { ExchangedPeer(endpoint: $0, flags: 16) }, dropped: dropped)))
+		try send(id, .extended(number, PeerExchange.encode(added: added.map { ExchangedPeer(endpoint: $0, flags: flags[$0] ?? 0) }, dropped: dropped)))
 		peer.pexSent.formUnion(added); peer.pexSent.subtract(dropped); peer.nextPEX = clock.now() + 60
 	}
 	func requestHashes(_ id: UUID) throws {
