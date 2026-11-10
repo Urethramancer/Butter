@@ -108,3 +108,18 @@ Tests use temporary loopback HTTP/TLS listeners and injected failures. On macOS
 imported only into memory; no keychain or trust settings change. No public service
 or third-party dependency installation is needed. Package Release tests verify
 the same harness; the native UI suite is reserved for later integration.
+
+`ButterTorrentStorage` supplies bounded piece/file mapping, virtual padding,
+skipped-file storage, SHA-1 verification for v1/hybrid data and versioned binary
+property-list checkpoints with compact progress bits. Verification of v2 Merkle
+hashes belongs to phase 8. Descriptor-relative file operations refuse symlinked
+descendants and destructive access to hard-linked files. A shared coordinator
+protects live transfer paths; an OS lock protects each checkpoint directory.
+Disk/hash commands run serially on a worker with at most eight pending commands.
+
+Imports copy without deleting their sources. Rename, selection, move and Trash
+operations use durable journals, exclusive publication and content-checked copies
+across volumes. Recovery blocks ordinary I/O and advertising of verified pieces
+until reconciliation finishes. A copy published before its receipt needs explicit
+acceptance after review; both source and destination are retained meanwhile.
+Production storage remains on libtorrent while phase 6 recovery/failure gates run.
