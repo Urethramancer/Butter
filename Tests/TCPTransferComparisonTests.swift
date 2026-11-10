@@ -32,7 +32,7 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 	static func run() async throws {
 		let root = URL(fileURLWithPath: CommandLine.arguments[1]), binary = URL(fileURLWithPath: CommandLine.arguments[2])
 		var cases = 0
-		for transport in ["tcp", "utp"] { for encryption in ["disabled", "rc4", "negotiated", "prefer-rc4", "fallback"] { for version in [1, 2, 3] { for multi in [false, true] { for size in [16384, 65536] { for nativeSeed in [false, true] { for selective in (multi ? [false, true] : [false]) { for fragmented in (size == 65536 && !selective && transport == "tcp" ? [false, true] : [false]) {
+		for transport in ["tcp", "utp"] { for encryption in ["disabled", "rc4", "negotiated", "prefer-rc4", "fallback"] { for version in [1, 2, 3] { for multi in [false, true] { for size in [16384, 65536] { for nativeSeed in [false, true] { for selective in (multi ? [false, true] : [false]) { for fragmented in (size == 65536 && !selective ? [false, true] : [false]) {
 			if ["prefer-rc4", "fallback"].contains(encryption) && (multi || size != 16384 || fragmented) { continue }
 			let host = fragmented && !multi ? "::1" : "127.0.0.1"
 			let suffix = version == 1 ? "" : version == 2 ? "-v2" : "-hybrid"
@@ -64,10 +64,14 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 			if let udp { utp = try await UTPTransport.open(dispatcher: udp) } else { utp = nil }
 			let listeningPort = listener?.port ?? utp!.localEndpoint.port
 			var relay: TCPFragmentingRelay?
-			if nativeSeed && fragmented { relay = try await TCPFragmentingRelay.open(host: host, target: NetworkEndpoint(host, port: listeningPort), handshakeBytes: encryption == "disabled" ? 68 : 2048) }
+			var impaired: UTPImpairingRelay?
+			if nativeSeed && fragmented {
+				if transport == "utp" { impaired = try await UTPImpairingRelay.open(host: host, target: NetworkEndpoint(host, port: listeningPort), loseSYN: false, loseSYNACK: true) }
+				else { relay = try await TCPFragmentingRelay.open(host: host, target: NetworkEndpoint(host, port: listeningPort), handshakeBytes: encryption == "disabled" ? 68 : 2048) }
+			}
 			let record = work.appendingPathComponent("status.json"), jobURL = work.appendingPathComponent("job.json")
 			var job: [String: Any] = ["torrent": metadataURL.path, "destination": nativeSeed ? work.appendingPathComponent("reference-download").path : root.appendingPathComponent("reference-seed").path,
-				"listen": host == "::1" ? "[::1]:0" : "127.0.0.1:0", "status": record.path, "remoteHost": host, "remotePort": nativeSeed ? Int(relay?.port ?? listeningPort) : 0, "transport": transport]
+				"listen": host == "::1" ? "[::1]:0" : "127.0.0.1:0", "status": record.path, "remoteHost": host, "remotePort": nativeSeed ? Int(relay?.port ?? impaired?.port ?? listeningPort) : 0, "transport": transport]
 			if nativeSeed && selective { job["selected"] = selected }
 			job["encryption"] = encryption == "fallback" && !nativeSeed ? "disabled" : encryption
 			if nativeSeed && version > 1 && !multi { job["magnet"] = Magnet(hashes: metadata.hashes).uri }
@@ -75,7 +79,13 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 			let process = Process(); process.executableURL = binary; process.arguments = ["--run", jobURL.path]
 			var accept: Task<UUID, Error>?
 			do {
-				if nativeSeed { accept = Task { var id = UUID(); for _ in 0..<(encryption == "fallback" ? 2 : 1) { if let utp { id = try await engine.attach(utp.accept(timeout: 10)) } else { id = try await engine.attach(listener!.accept(timeout: 10)) } }; return id } }
+				if nativeSeed {
+					accept = Task {
+						var id = UUID()
+						if let utp { while !Task.isCancelled { id = try await engine.attach(utp.accept(timeout: 30)) }; throw CancellationError() }
+						for _ in 0..<(encryption == "fallback" ? 2 : 1) { id = try await engine.attach(listener!.accept(timeout: 10)) }; return id
+					}
+				}
 				try process.run()
 				if !nativeSeed {
 					try await wait { let s = try status(record, process: process); return s?.seeding == true && s!.port > 0 }
@@ -84,10 +94,13 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 						let fetched = try await MetadataExchange(encryption: configuration.encryption, utp: utp).fetch(Magnet(hashes: metadata.hashes), peers: [NetworkEndpoint(host, port: s.port)], timeout: 10)
 						try require(fetched.originalInfo == metadata.originalInfo && fetched.pieceLayers.isEmpty, "Reference metadata exchange changed info bytes")
 					}
-					if fragmented { relay = try await TCPFragmentingRelay.open(host: host, target: NetworkEndpoint(host, port: s.port), handshakeBytes: encryption == "disabled" ? 68 : 2048) }
-					_ = try await engine.connect(to: NetworkEndpoint(host, port: relay?.port ?? s.port), utp: utp)
+					if fragmented {
+						if transport == "utp" { impaired = try await UTPImpairingRelay.open(host: host, target: NetworkEndpoint(host, port: s.port)) }
+						else { relay = try await TCPFragmentingRelay.open(host: host, target: NetworkEndpoint(host, port: s.port), handshakeBytes: encryption == "disabled" ? 68 : 2048) }
+					}
+					_ = try await engine.connect(to: NetworkEndpoint(host, port: relay?.port ?? impaired?.port ?? s.port), utp: utp)
 				}
-				if let accept { _ = try await accept.value }
+				if let accept, utp == nil { _ = try await accept.value }
 				try await wait {
 					let reference = try status(record, process: process)
 					if nativeSeed { return reference?.complete == true && reference!.downloaded > 0 }
@@ -98,10 +111,15 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 				try require(swift.peers.contains { $0.peerID != nil && $0.encryption == expectedMode }, "Native negotiated mode differs")
 				try require(swift.peers.contains { $0.peerID != nil && $0.transport == (transport == "utp" ? .utp : .tcp) }, "Native transport differs")
 				if transport == "utp" { try require(reference.utp > 0 && reference.tcp == 0, "Reference used TCP in a TCP-disabled fixture") }
+				if let impaired {
+					let drops = await impaired.dropped, duplicates = await impaired.duplicated, reorders = await impaired.reordered
+					try require(drops > 0 && duplicates > 0 && reorders > 0, "UDP fixture did not exercise every impairment")
+				}
 				if expectedMode == .rc4 { try require(reference.rc4 > 0, "Reference did not record RC4") }
 				if expectedMode == .negotiatedPlaintext { try require(reference.negotiated > 0, "Reference did not record negotiated plaintext") }
 				try require(nativeSeed ? swift.uploaded > 0 && reference.downloaded > 0 : swift.downloaded > 0 && reference.uploaded > 0, "No cross-engine payload traffic was recorded")
-				try await engine.shutdown(); try await listener?.shutdown(); await relay?.close(); await utp?.shutdown(); try await udp?.shutdown(); try await stop(process); try await storage.shutdown()
+				if utp != nil { accept?.cancel(); _ = try? await accept?.value }
+				try await engine.shutdown(); try await listener?.shutdown(); await relay?.close(); await impaired?.close(); await utp?.shutdown(); try await udp?.shutdown(); try await stop(process); try await storage.shutdown()
 				let output = nativeSeed ? work.appendingPathComponent("reference-download") : destination
 				for file in metadata.inspection.files where !file.pad && (!selective || file.path.hasSuffix("a.bin")) {
 					let expected = try Data(contentsOf: root.appendingPathComponent("reference-seed").appendingPathComponent(file.path))
@@ -110,15 +128,16 @@ struct ReferenceStatus: Decodable { let port: UInt16; let complete: Bool; let se
 				if selective, !nativeSeed { try require(!FileManager.default.fileExists(atPath: output.appendingPathComponent("Bundle/nested/b.bin").path), "Skipped file was materialised") }
 				cases += 1; print("PASS: \(label), verified bytes after both shutdown barriers")
 			} catch {
+				if let impaired { try? FileHandle.standardError.write(contentsOf: Data((await impaired.diagnostics() + "\n").utf8)) }
 				let snapshot = await engine.snapshot()
 				let detail = "FAIL: \(label): \(error); native peer=\(snapshot.lastPeerError ?? "none") disk=\(snapshot.storageError ?? "none") up=\(snapshot.uploaded) down=\(snapshot.downloaded) peers=\(snapshot.peers.count)\n"
 				try? FileHandle.standardError.write(contentsOf: Data(detail.utf8))
 				if let data = try? Data(contentsOf: record) { try? FileHandle.standardError.write(contentsOf: data) }
-				accept?.cancel(); try? await engine.shutdown(); try? await listener?.shutdown(); await relay?.close(); await utp?.shutdown(); try? await udp?.shutdown(); try? await storage.shutdown()
+				accept?.cancel(); try? await engine.shutdown(); try? await listener?.shutdown(); await relay?.close(); await impaired?.close(); await utp?.shutdown(); try? await udp?.shutdown(); try? await storage.shutdown()
 				if process.isRunning { process.terminate(); try? await stop(process); if process.isRunning { kill(process.processIdentifier, SIGKILL) } }; throw error
 			}
 		} } } } } } } }
-		print("PASS: \(cases) independent libtorrent-to-Swift and Swift-to-libtorrent TCP fixtures")
+		print("PASS: \(cases) independent libtorrent-to-Swift and Swift-to-libtorrent peer fixtures")
 		let filter = ProcessInfo.processInfo.environment["BUTTER_REFERENCE_FILTER"]
 		if filter == nil || filter == "DHT" { try await runDHTComparisons(root: root, binary: binary) }
 	}
