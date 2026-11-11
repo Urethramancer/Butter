@@ -110,7 +110,7 @@ struct TransferSnapshot: Codable, Identifiable {
 	var uploaded: Int64
 	var demand: Bool
 	var hashes: [String]
-	var pieces: [Int]
+	var pieces: [UInt8]
 	var files: [TransferFile]
 	var trackers: [TrackerSnapshot]
 	var peers: [PeerSnapshot]

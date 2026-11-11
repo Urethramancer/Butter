@@ -19,6 +19,19 @@ func storageMetadata(_ root: URL) throws -> (TorrentMetadata, Data) {
 }
 
 @Suite struct StorageTests {
+	@Test func directReadHandlesShortReadsAndEOF() async throws {
+		try await storageFixture { root in
+			let bytes = Data((0..<65539).map { UInt8(truncatingIfNeeded: $0) })
+			try bytes.write(to: root.appendingPathComponent("payload"))
+			let directory = try StorageDirectory(root), file = try directory.openFile("payload")
+			defer { close(file) }
+			for (offset, count) in [(0, 0), (0, 65536), (65530, 64), (65539, 64), (65540, 64)] {
+				let start = min(offset, bytes.count), end = min(offset + count, bytes.count)
+				#expect(try StorageDirectory.read(file, offset: Int64(offset), count: count) == bytes.subdata(in: start..<end))
+			}
+			#expect(throws: (any Error).self) { try StorageDirectory.read(-1, offset: 0, count: 1) }
+		}
+	}
 	@Test func mappingPaddingSelectiveWritesAndRestart() async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try storageMetadata(root), layout = try StorageLayout(metadata: metadata)

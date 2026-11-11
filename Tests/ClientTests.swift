@@ -14,6 +14,7 @@ func observation(_ id: String, _ priority: TransferPriority = .normal, order: In
 		do {
 			let cases: [(String, () async throws -> Void)] = [
 				("groups", { try groups() }), ("queue", { try queue() }), ("bandwidth", { try bandwidth() }),
+				("piece-state-encoding", { try pieceStateEncoding() }),
 				("blocklists", { try blocklists() }), ("persistence-watcher", { try await persistenceAndWatcher() }),
 				("port-checker", { try await checker() }), ("parser-invariants", { try CoreRegressionTests.parsers() }),
 				("estimator-expiry", { try CoreRegressionTests.estimator() }),
@@ -27,6 +28,14 @@ func observation(_ id: String, _ priority: TransferPriority = .normal, order: In
 			guard filter == nil || cases.contains(where: { $0.0 == filter }) else { throw TestFailure(description: "Unknown test case: \(filter!)") }
 			for (name, run) in cases where filter == nil || filter == name { try await run(); print("PASS: \(name)") }
 		} catch { fputs("FAIL: \(error)\n", stderr); exit(1) }
+	}
+	static func pieceStateEncoding() throws {
+		var snapshot = fixture(); snapshot.pieces = [0, 1, 2, 3, 4]
+		let encoded = try JSONEncoder().encode(snapshot)
+		let object = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+		try require(object["pieces"] as? [Int] == [0, 1, 2, 3, 4], "Compact states retain the numeric JSON contract")
+		let decoded = try JSONDecoder().decode(TransferSnapshot.self, from: encoded)
+		try require(decoded.pieces == snapshot.pieces, "All display states round-trip")
 	}
 	static func groups() throws {
 		let t = fixture()

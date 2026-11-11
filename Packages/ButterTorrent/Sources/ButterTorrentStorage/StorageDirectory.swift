@@ -114,10 +114,15 @@ final class StorageDirectory: @unchecked Sendable {
 		}
 	}
 	static func read(_ file: Int32, offset: Int64, count: Int) throws -> Data {
-		var bytes = [UInt8](repeating: 0, count: count)
-		let readCount = pread(file, &bytes, count, off_t(offset))
-		if readCount < 0 { if errno == EINTR { return try read(file, offset: offset, count: count) }; throw diskError("Cannot read file") }
-		return Data(bytes.prefix(readCount))
+		var bytes = Data(count: count)
+		while true {
+			let readCount = bytes.withUnsafeMutableBytes { pread(file, $0.baseAddress, count, off_t(offset)) }
+			if readCount < 0 {
+				if errno == EINTR { continue }; throw diskError("Cannot read file")
+			}
+			bytes.count = readCount
+			return bytes
+		}
 	}
 	static func write(_ data: Data, to file: Int32, offset: Int64, check: () throws -> Void) throws {
 		try data.withUnsafeBytes { bytes in

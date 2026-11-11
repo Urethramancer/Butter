@@ -48,7 +48,7 @@ public struct TCPTransferSnapshot: Sendable {
 	public let complete: Bool
 	public let verifiedPieces: Set<Int>
 	public let wantedPieces: Set<Int>
-	public let pieceStates: [Int]
+	public let pieceStates: [UInt8]
 	public let peers: [TCPPeerSnapshot]
 	public let downloaded: Int64
 	public let uploaded: Int64

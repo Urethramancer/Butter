@@ -108,7 +108,7 @@ struct TorrentRow: View {
 	}
 }
 struct PieceProgress: View {
-	let pieces: [Int]
+	let pieces: [UInt8]
 	private let colours: [Color] = [.gray.opacity(0.25), .green, .yellow, .blue, .red]
 	var body: some View {
 		Canvas { context, size in
@@ -116,7 +116,7 @@ struct PieceProgress: View {
 			let width = size.width / Double(pieces.count)
 			var start = 0
 			while start < pieces.count {
-				let value = min(4, max(0, pieces[start])); var end = start + 1
+				let value = Int(min(4, pieces[start])); var end = start + 1
 				while end < pieces.count && pieces[end] == pieces[start] { end += 1 }
 				context.fill(Path(CGRect(x: Double(start) * width, y: 0, width: Double(end - start) * width, height: size.height)), with: .color(colours[value])); start = end
 			}
