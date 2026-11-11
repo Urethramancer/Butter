@@ -151,6 +151,12 @@ task/timer creation. These are sampled stacks, including waits, rather than
 CPU percentages or allocation counts. Raw phase user/system accounting and
 counterpart samples accompany them. No instrumented result enters acceptance.
 
+Subsequent trials also retain Swift's most recent peer failure per transfer,
+read through a bounded actor property without constructing snapshots. Both
+engine and counterpart metrics expose `peer_errors`; the native driver retains
+its bounded alert history. New environment records include production Swift
+source hashes, both driver hashes and the reference CMake compiler/flag values.
+
 The [raw directory](raw) also retains earlier harness failures and incomplete
 diagnostic runs. They are historical development evidence, not pooled samples.
 

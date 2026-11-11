@@ -141,7 +141,8 @@ public actor TCPTransfer {
 	var corruptBytes: Int64
 	var redundantBytes: Int64
 	var activePayloadBytes: [Int: Int64] = [:]
-	var lastPeerError: String?
+	/// The most recent peer failure, available without constructing a transfer snapshot.
+	public private(set) var lastPeerError: String?
 	var storageError: String?
 	var stopping = false
 	var stopped = false

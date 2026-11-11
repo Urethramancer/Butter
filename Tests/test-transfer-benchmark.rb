@@ -15,6 +15,7 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 	def test_phase_cpu_and_payload_accounting
 		child = Object.new
 		phases = H::PHASES.each_with_index.to_h { |phase, i| [phase, { 'time' => 10.0 + i, 'user' => i * 0.25, 'system' => i * 0.1, 'payload_bytes' => 1_073_741_824 }] }
+		phases.fetch('stopped')['peer_errors'] = ['peer reset']
 		child.define_singleton_method(:phase) { |name| phases.fetch(name) }
 		child.define_singleton_method(:whole) { { peak_rss: 12345 } }
 		metrics = H.metrics(child, 1_073_741_824)
@@ -23,6 +24,7 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 		assert_in_delta 0.35, metrics[:verified_cpu_seconds_per_gib], 1e-12
 		assert_equal 1.0, metrics[:persistence][:wall]
 		assert_equal 12345, metrics[:whole][:peak_rss]
+		assert_equal ['peer reset'], metrics[:peer_errors]
 		assert_raises(RuntimeError) { H.metrics(child, 0) }
 		assert_raises(RuntimeError) { H.metrics(child, 1_073_741_823) }
 	end

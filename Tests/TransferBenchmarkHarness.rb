@@ -133,7 +133,8 @@ module TransferBenchmarkHarness
 		raise 'Zero transfer duration' unless transfer[:wall] > 0 && durable[:wall] >= transfer[:wall]
 		values.merge(verified_bytes_per_second: bytes / transfer[:wall], durable_bytes_per_second: bytes / durable[:wall],
 			verified_cpu_seconds_per_gib: (transfer[:user] + transfer[:system]) / (bytes.to_f / 1_073_741_824),
-			cpu_seconds_per_gib: (durable[:user] + durable[:system]) / (bytes.to_f / 1_073_741_824), whole: child.whole)
+			cpu_seconds_per_gib: (durable[:user] + durable[:system]) / (bytes.to_f / 1_073_741_824),
+			peer_errors: child.phase('stopped').fetch('peer_errors', []), whole: child.whole)
 	end
 	def self.orders(count, seed)
 		raise 'Pair count must be positive and even' unless count > 0 && count.even?

@@ -11,12 +11,12 @@ import ButterTorrentEngine
 	struct Item: Codable { let torrent: String; let destination: String; let state: String }
 	struct Job: Codable { let role: String; let items: [Item] }
 	struct Command: Decodable { let command: String; let ports: [UInt16]? }
-	static func emit(_ phase: String, ports: [UInt16] = [], bytes: Int64 = 0) throws {
+	static func emit(_ phase: String, ports: [UInt16] = [], bytes: Int64 = 0, errors: [String] = []) throws {
 		var usage = rusage(); guard getrusage(RUSAGE_SELF, &usage) == 0 else { throw CocoaError(.fileReadUnknown) }
 		let record: [String: Any] = ["phase": phase, "pid": getpid(), "time": ProcessInfo.processInfo.systemUptime,
 			"user": Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6,
 			"system": Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6,
-			"peak_rss": usage.ru_maxrss, "ports": ports, "payload_bytes": bytes, "request_window": TCPTransferConfiguration().pipeline]
+			"peak_rss": usage.ru_maxrss, "ports": ports, "payload_bytes": bytes, "request_window": TCPTransferConfiguration().pipeline, "peer_errors": errors]
 		var bytes = try JSONSerialization.data(withJSONObject: record); bytes.append(10)
 		try FileHandle.standardOutput.write(contentsOf: bytes)
 	}
@@ -91,7 +91,10 @@ import ButterTorrentEngine
 					try await group.waitForAll()
 				}
 			}
-			try emit("verified")
+			// Read only bounded failure diagnostics; never allocate progress/peer snapshots.
+			var failures: [String] = []
+			for engine in engines { if let error = await engine.lastPeerError { failures.append(error) } }
+			try emit("verified", errors: failures)
 			_ = try await command("persist")
 			try emit("persistence")
 			for engine in engines { try await engine.checkpoint() }
@@ -101,7 +104,7 @@ import ButterTorrentEngine
 			for task in accepts { task.cancel(); _ = try? await task.value }
 			for engine in engines { try await engine.shutdown() }
 			for storage in stores { try await storage.shutdown() }
-			try emit("stopped")
+			try emit("stopped", errors: failures)
 		} catch {
 			for listener in listeners { try? await listener.shutdown() }
 			for task in accepts { task.cancel(); _ = try? await task.value }
