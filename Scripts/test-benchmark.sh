@@ -1,67 +1,46 @@
 #!/bin/sh
-# Optional Release comparison. Both downloaders use the same local reference seed.
+# Optional Release comparison with the pinned libtorrent counterpart.
 set -eu
 cd "$(dirname "$0")/.."
-Scripts/build-bridge.sh
-cmake -S Tests/Reference -B .dependencies/reference-build -DBUTTER_ENGINE_TESTS=ON
-cmake --build .dependencies/reference-build --target TCPPeerReference --parallel 4
+mode=${1:---full}
+case "$mode" in --full|--smoke|--profile) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--profile] [OUTPUT]' >&2; exit 2 ;; esac
+out=${2:-$PWD/.build/benchmarks/$(date -u +%Y%m%dT%H%M%SZ)}
+mkdir -p "$out"
+out=$(cd "$out" && pwd)
+[ ! -e "$out/environment.json" ] && [ ! -e "$out/trials.jsonl" ] || { echo 'Use a fresh output directory to preserve previous results.' >&2; exit 2; }
+work=$(mktemp -d /tmp/butter-benchmark.XXXXXX)
+trap 'rm -rf "$work"' EXIT
+trap 'exit 1' HUP INT TERM
+Scripts/build-bridge.sh > "$out/build.log" 2>&1
+cmake -S Tests/Reference -B .dependencies/reference-build -DBUTTER_ENGINE_TESTS=ON >> "$out/build.log" 2>&1
+cmake --build .dependencies/reference-build --target TCPPeerReference --parallel 4 >> "$out/build.log" 2>&1
 reference=$PWD/.dependencies/reference-build/TCPPeerReference
 scratch=$PWD/.build/benchmark-release
-swift build -c release --package-path Packages/ButterTorrent --scratch-path "$scratch"
+swift build -c release --package-path Packages/ButterTorrent --scratch-path "$scratch" >> "$out/build.log" 2>&1
 bin=$(swift build -c release --package-path Packages/ButterTorrent --scratch-path "$scratch" --show-bin-path)
-work=$(mktemp -d /tmp/butter-benchmark.XXXXXX)
-seed=
-cleanup() {
-	if [ -n "$seed" ]; then kill "$seed" 2>/dev/null || :; wait "$seed" || :; fi
-	rm -rf "$work"
-}
-trap cleanup EXIT
-trap 'exit 1' HUP INT TERM
 swiftc -O -swift-version 6 -parse-as-library -module-cache-path "$work/modules" -I "$bin" -L "$bin" \
 	-lButterTorrentEngine -lButterTorrentStorage -lButterTorrentNetworking -lButterTorrentMetadata \
-	Tests/TransferBenchmark.swift -o "$work/TransferBenchmark"
-"$work/TransferBenchmark" fixture "$work"
-job() {
-	ruby -rjson -e 'print JSON.generate(torrent: ARGV[0], destination: ARGV[1], status: ARGV[2], listen: "127.0.0.1:0", transport: "tcp", encryption: "disabled", pex: false, remoteHost: "127.0.0.1", remotePort: ARGV[3].to_i, benchmark: ARGV[4] == "true")' "$@"
-}
-printf 'format\tengine\ttrial\tseconds\tMiB/s\tCPU seconds\tpeak RSS MiB\n'
-for format in v1 hybrid; do
-	for trial in 1 2 3; do
-		for engine in libtorrent Swift; do
-			torrent=$work/$format.torrent
-			seedStatus=$work/seed-status.json
-			rm -f "$seedStatus"
-			job "$torrent" "$work/seed" "$seedStatus" 0 false > "$work/seed-job.json"
-			"$reference" --run "$work/seed-job.json" &
-			seed=$!
-			port=
-			attempt=0
-			while kill -0 "$seed" 2>/dev/null && [ "$attempt" -lt 100 ]; do
-				if [ -f "$seedStatus" ]; then port=$(ruby -rjson -e 's=JSON.parse(File.read(ARGV[0])); print s["port"] if s["seeding"] && s["port"] > 0' "$seedStatus"); fi
-				[ -z "$port" ] || break
-				attempt=$((attempt + 1))
-				sleep 0.02
-			done
-			[ -n "$port" ] || { echo 'Benchmark seed did not start' >&2; exit 1; }
-			destination=$work/download-$format-$trial-$engine
-			if [ "$engine" = Swift ]; then
-				set -- "$work/TransferBenchmark" download "$torrent" "$destination" "$destination-state" "$port"
-			else
-				job "$torrent" "$destination" "$work/download-status.json" "$port" true > "$work/download-job.json"
-				set -- "$reference" --run "$work/download-job.json"
-			fi
-			/usr/bin/time -l "$@" 2> "$work/time" || { cat "$work/time" >&2; exit 1; }
-			kill "$seed"; wait "$seed"; seed=
-			cmp "$work/seed/payload.bin" "$destination/payload.bin"
-			awk -v format="$format" -v engine="$engine" -v trial="$trial" '
-				/ real .* user .* sys/ { wall=$1; cpu=$3+$5 }
-				/maximum resident set size/ { rss=$1 }
-				END {
-					if (wall <= 0 || rss <= 0) exit 1
-					printf "%s\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\n", format, engine, trial, wall, 32/wall, cpu, rss/1048576
-				}
-			' "$work/time"
-			rm -rf "$destination" "$destination-state"
-		done
-	done
-done
+	Tests/TransferBenchmark.swift -o "$work/TransferBenchmark" >> "$out/build.log" 2>&1
+ruby -rjson -rdigest -ropen3 -e '
+  capture = ->(*cmd) { output, status = Open3.capture2e(*cmd); raise output unless status.success?; output.strip }
+  root, out, mode = ARGV
+  record = {schema: 1, mode: mode, revision: capture.call("git", "rev-parse", "HEAD"), dirty: capture.call("git", "status", "--short"),
+    libtorrent_revision: "6da363d2994f17c0b3c0450d124cf73a31a73847", swift: capture.call("swift", "--version"), clang: capture.call("clang++", "--version"),
+    os: capture.call("sw_vers"), machine: capture.call("sysctl", "-n", "hw.model", "hw.memsize", "hw.logicalcpu"),
+    filesystem: capture.call("df", "-h", root), resource_limits: capture.call("sh", "-c", "ulimit -a"),
+    filters: ENV.select { |key, _| key.start_with?("BUTTER_BENCHMARK_") },
+    swift_flags: "Release; swiftc -O -swift-version 6", reference_flags: "CMake Release; arm64; pinned static libtorrent",
+    transport: "loopback TCP, encryption disabled, PEX/discovery disabled; production request windows",
+    cache: "fresh processes and destinations; sources streamed and SHA256 checked before every trial; explicitly warm, no cold-cache claim",
+    durability: "Swift native payload fsync then atomic state fsync/rename/directory fsync; libtorrent flush_disk_cache fence plus explicit payload/directory fsync then resume fsync/rename/directory fsync",
+    sampling: "one warm-up per engine per case, six balanced shuffled pairs; extend inconclusive cases to twelve pairs; smoke uses one pair and 32 MiB",
+    timing: "phase wall/user/system from each driver; CPU/GiB through durable completion; whole process wall/user/system/peak RSS from /usr/bin/time -l, including teardown"}
+  files = %w[Tests/TransferBenchmark.swift Tests/TransferBenchmarkReference.hpp Tests/TCPPeerReference.mm Tests/TransferBenchmarkHarness.rb Scripts/test-benchmark.sh]
+  record[:harness_sha256] = files.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }
+  File.write(File.join(out, "environment.json"), JSON.pretty_generate(record))
+' "$work" "$out" "$mode"
+if [ "$mode" = --smoke ]; then "$work/TransferBenchmark" fixture "$work/fixtures" --small
+else "$work/TransferBenchmark" fixture "$work/fixtures"; fi
+ruby Tests/TransferBenchmarkHarness.rb "$work/TransferBenchmark" "$reference" "$out" "$work" "$mode"
+rm -f "$out/build.log"
+printf 'Raw results and summaries: %s\n' "$out"

@@ -1,0 +1,317 @@
+# Shared controller/statistics for Scripts/test-benchmark.sh. No third-party gems.
+require 'json'
+require 'digest'
+require 'fileutils'
+require 'tmpdir'
+require 'rbconfig'
+require 'time'
+
+module TransferBenchmarkHarness
+	PHASES = %w[prepare ready start verified persistence durable shutdown stopped].freeze
+	def self.now
+		Process.clock_gettime(Process::CLOCK_MONOTONIC)
+	end
+	def self.terminate(pid)
+		return if Process.waitpid(pid, Process::WNOHANG)
+		Process.kill('TERM', -pid)
+		deadline = now + 0.5
+		while now < deadline
+			return if Process.waitpid(pid, Process::WNOHANG)
+			sleep 0.01
+		end
+		Process.kill('KILL', -pid)
+		Process.waitpid(pid)
+	rescue Errno::ESRCH, Errno::ECHILD
+	end
+	def self.run_bounded(command, log, timeout: 600)
+		pid = Process.spawn(*command, out: File::NULL, err: log, pgroup: true)
+		deadline = now + timeout
+		loop do
+			if (result = Process.waitpid2(pid, Process::WNOHANG))
+				return result[1].success?
+			end
+			raise "Reopen deadline: #{log}" if now >= deadline
+			sleep 0.01
+		end
+	ensure
+		terminate(pid) if pid
+	end
+
+	class Child
+		attr_reader :events, :pid, :log, :job_path, :whole, :failure
+		def initialize(command, job_path, log)
+			@job_path, @log, @events, @buffer = job_path, log, [], ''.b
+			input, @control = IO.pipe
+			@output, output = IO.pipe
+			@pid = Process.spawn('/usr/bin/time', '-l', *command, '--benchmark', job_path,
+				in: input, out: output, err: log, pgroup: true)
+			input.close; output.close
+		end
+		def send_command(command, fields = {})
+			bytes = JSON.generate(fields.merge(command: command)) + "\n"
+			raise 'Oversized control command' if bytes.bytesize > 4096
+			@control.write(bytes); @control.flush
+		end
+		def read_available
+			loop do
+				bytes = @output.read_nonblock(4096)
+				@buffer << bytes
+				raise 'Oversized phase event' if @buffer.bytesize > 65_536
+				while (index = @buffer.index("\n"))
+					line = @buffer.slice!(0, index + 1)
+					event = JSON.parse(line)
+					raise "Unexpected phase #{event['phase']}" unless event['phase'] == PHASES[@events.length]
+					%w[time user system peak_rss].each { |key| raise "Invalid accounting #{key}" unless event[key].is_a?(Numeric) && event[key].finite? && event[key] >= 0 }
+					if (previous = @events.last)
+						%w[time user system peak_rss].each { |key| raise "Regressing accounting #{key}" if event[key] < previous[key] }
+					end
+					@events << event
+				end
+			end
+		rescue IO::WaitReadable
+		rescue EOFError
+			@eof = true
+			raise "Child exited before stopped: #{@log}" unless phase('stopped') && @buffer.empty?
+		end
+		def output
+			@eof ? nil : @output
+		end
+		def phase(name)
+			@events.find { |event| event['phase'] == name }
+		end
+		def finish(deadline: 10)
+			finish_by = TransferBenchmarkHarness.now + deadline
+			loop do
+				if (result = Process.waitpid2(@pid, Process::WNOHANG))
+					@reaped = true
+					raise "Child failed (#{result[1]}): #{@log}" unless result[1].success?
+					break
+				end
+				raise "Child shutdown deadline: #{@log}" if TransferBenchmarkHarness.now >= finish_by
+				sleep 0.01
+			end
+			text = File.read(@log)
+			match = text.match(/([\d.]+) real\s+([\d.]+) user\s+([\d.]+) sys/)
+			rss = text.match(/(\d+)\s+maximum resident set size/)
+			raise "Missing whole-process accounting: #{@log}" unless match && rss
+			@whole = { wall: match[1].to_f, user: match[2].to_f, system: match[3].to_f, peak_rss: rss[1].to_i }
+		end
+		def cleanup
+			TransferBenchmarkHarness.terminate(@pid) unless @reaped
+			@control.close unless @control.closed?
+			@output.close unless @output.closed?
+		end
+		def diagnose
+			event = phase('ready')
+			Process.kill('USR1', event['pid']) if event && !event.key?('libtorrent')
+		rescue Errno::ESRCH
+		end
+	end
+
+	# Monitor every child, including the counterpart, during every phase deadline.
+	def self.wait(children, targets, timeout: 600)
+		deadline = now + timeout
+		until targets.all? { |child, phase| child.phase(phase) }
+			raise 'Benchmark phase deadline' if now >= deadline
+			readers = children.map(&:output).compact
+			raise 'All benchmark children closed' if readers.empty?
+			ready = IO.select(readers, nil, nil, [deadline - now, 0.1].min)
+			next unless ready
+			children.each { |child| child.read_available if ready[0].include?(child.output) }
+		end
+	end
+
+	def self.delta(first, last)
+		{ wall: last.fetch('time') - first.fetch('time'), user: last.fetch('user') - first.fetch('user'), system: last.fetch('system') - first.fetch('system') }
+	end
+	def self.metrics(child, bytes)
+		raise 'Invalid payload byte count' unless bytes.is_a?(Integer) && bytes > 0
+		phases = { setup: %w[prepare ready], transfer: %w[start verified], persistence: %w[persistence durable], shutdown: %w[shutdown stopped], through_durable: %w[start durable] }
+		values = phases.transform_values { |a, b| delta(child.phase(a), child.phase(b)) }
+		transfer, durable = values.fetch(:transfer), values.fetch(:through_durable)
+		raise 'Zero transfer duration' unless transfer[:wall] > 0 && durable[:wall] >= transfer[:wall]
+		values.merge(verified_bytes_per_second: bytes / transfer[:wall], durable_bytes_per_second: bytes / durable[:wall],
+			verified_cpu_seconds_per_gib: (transfer[:user] + transfer[:system]) / (bytes.to_f / 1_073_741_824),
+			cpu_seconds_per_gib: (durable[:user] + durable[:system]) / (bytes.to_f / 1_073_741_824), whole: child.whole)
+	end
+	def self.orders(count, seed)
+		raise 'Pair count must be positive and even' unless count > 0 && count.even?
+		(Array.new(count / 2) { %w[Swift libtorrent] } + Array.new(count / 2) { %w[libtorrent Swift] }).shuffle(random: Random.new(seed))
+	end
+	def self.median(values)
+		sorted = values.sort; n = sorted.length
+		raise 'No observations' if n == 0
+		n.odd? ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
+	end
+	def self.interval(values, seed: 11011)
+		random = Random.new(seed)
+		samples = Array.new(10_000) { median(Array.new(values.length) { values[random.rand(values.length)] }) }.sort
+		{ median: median(values), lower: samples[249], upper: samples[9749], method: 'paired median percentile bootstrap, 10000 resamples, 95%' }
+	end
+	def self.summary(trials)
+		measured = trials.reject { |trial| trial[:warmup] }
+		pairs = measured.group_by { |trial| trial[:pair] }.values
+		valid = pairs.select { |pair| pair.length == 2 && pair.all? { |trial| trial[:accepted] } }
+		return { status: 'failed', pairs: pairs.length, valid_pairs: valid.length } if valid.length != pairs.length || valid.empty?
+		ratios = %i[verified_bytes_per_second durable_bytes_per_second cpu_seconds_per_gib].to_h do |key|
+			values = valid.map do |pair|
+				swift = pair.find { |trial| trial[:engine] == 'Swift' }[:engine_metrics][key]
+				other = pair.find { |trial| trial[:engine] == 'libtorrent' }[:engine_metrics][key]
+				raise 'Zero reference measurement' unless other > 0
+				swift / other
+			end
+			[key, interval(values)]
+		end
+		throughput, cpu = ratios[:verified_bytes_per_second], ratios[:cpu_seconds_per_gib]
+		crosses = (throughput[:lower] < 0.9 && throughput[:upper] >= 0.9) || (cpu[:lower] <= 1.25 && cpu[:upper] > 1.25)
+		status = crosses ? 'inconclusive' : throughput[:lower] >= 0.9 && cpu[:upper] <= 1.25 ? 'throughput-and-cpu-pass' : 'target-unmet'
+		medians = %w[Swift libtorrent].to_h do |engine|
+			records = measured.select { |trial| trial[:engine] == engine }
+			[engine, %i[verified_bytes_per_second durable_bytes_per_second cpu_seconds_per_gib].to_h { |key| [key, median(records.map { |trial| trial[:engine_metrics][key] })] }]
+		end
+		{ status: status, pairs: pairs.length, ratios: ratios, medians: medians, memory: 'Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred.' }
+	end
+	def self.memory_summary(trials, baseline)
+		sets = [trials, baseline].map { |set| set.select { |trial| !trial[:warmup] && trial[:engine] == 'Swift' } }
+		return { status: 'failed', reason: 'Missing or failed baseline/candidate trials' } if sets.any? { |set| set.empty? || set.any? { |trial| !trial[:accepted] } }
+		candidate, original = sets.map { |set| set.map { |trial| trial[:engine_metrics][:whole][:peak_rss] } }
+		random = Random.new(11011)
+		values = Array.new(10_000) do
+			median(Array.new(candidate.size) { candidate[random.rand(candidate.size)] }) / median(Array.new(original.size) { original[random.rand(original.size)] }).to_f
+		end.sort
+		maximum_ratio = candidate.max.to_f / original.max
+		status = values[249] <= 1.1 && values[9749] > 1.1 ? 'inconclusive' : values[9749] <= 1.1 && maximum_ratio <= 1.1 ? 'pass' : 'target-unmet'
+		{ status: status, median_peak_rss_ratio: median(candidate) / median(original).to_f, lower: values[249], upper: values[9749], maximum_peak_rss_ratio: maximum_ratio, method: 'independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10' }
+	end
+
+	class Runner
+		def initialize(swift, reference, output, work, smoke: false, profile: false)
+			@commands = { 'Swift' => [swift], 'libtorrent' => [reference] }
+			@output, @work, @smoke, @profile = output, work, smoke, profile
+			@trials = []
+			if (baseline = ENV['BUTTER_BENCHMARK_BASELINE'])
+				raise 'A representative full baseline is required' unless JSON.parse(File.read(File.join(baseline, 'environment.json')))['mode'] == '--full'
+				raise 'Baseline fixture hashes differ' unless JSON.parse(File.read(File.join(baseline, 'fixtures.json'))) == JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
+				@baseline = File.readlines(File.join(baseline, 'trials.jsonl')).map { |line| JSON.parse(line, symbolize_names: true) }
+			end
+		end
+		def trial(fixture, format, direction, engine, pair, warmup)
+			id = [fixture['case'], format, direction, pair, engine, warmup ? 'warmup' : 'measured'].join('-')
+			folder = File.join(@work, id); FileUtils.mkdir_p(folder)
+			log_dir = File.join(@output, id); FileUtils.mkdir_p(log_dir)
+			root = File.join(@work, 'fixtures', fixture['case'])
+			# Explicitly warm every source with an independent streaming digest, outside timing.
+			fixture['files'].each do |file|
+				raise 'Source digest changed' unless Digest::SHA256.file(File.join(root, 'seed', file['path'])).hexdigest == file['sha256']
+			end
+			items = fixture['torrents'][format].each_with_index.map do |torrent, index|
+				{ torrent: File.join(root, torrent), destination: File.join(folder, "download-#{index}"), state: File.join(folder, "download-state-#{index}") }
+			end
+			seed_items = items.each_with_index.map { |item, index| item.merge(destination: File.join(root, 'seed'), state: File.join(folder, "seed-state-#{index}")) }
+			jobs = { 'seed' => { role: 'seed', items: seed_items }, 'download' => { role: 'download', items: items } }
+			record = { id: id, case: fixture['case'], format: format, direction: direction, engine: engine, pair: pair, warmup: warmup, bytes: fixture['bytes'], accepted: false }
+			children = []; profilers = []
+			begin
+				roles = {}
+				jobs.each do |role, job|
+					job_path = File.join(folder, "#{role}.json"); File.write(job_path, JSON.generate(job))
+					selected = (direction == 'download' ? role == 'download' : role == 'seed') ? engine : 'libtorrent'
+					roles[role] = Child.new(@commands.fetch(selected), job_path, File.join(log_dir, "#{role}.log")); children << roles[role]
+				end
+				seed, down = roles.values_at('seed', 'download')
+				timeout = @smoke ? 30 : 600
+				TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'ready'] }, timeout: timeout)
+				seed.send_command('start'); down.send_command('start', ports: seed.phase('ready').fetch('ports'))
+				if @profile
+					TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'start'] }, timeout: timeout)
+					roles.each do |role, child|
+						path = File.join(@output, "#{id}-#{role}.sample.txt")
+						profilers << Process.spawn('/usr/bin/sample', child.phase('start').fetch('pid').to_s, '2', '-file', path, out: File::NULL, err: File.join(log_dir, "#{role}-profile.log"), pgroup: true)
+					end
+				end
+				TransferBenchmarkHarness.wait(children, [[down, 'verified']], timeout: timeout)
+				seed.send_command('verified')
+				TransferBenchmarkHarness.wait(children, [[seed, 'verified']], timeout: timeout)
+				children.each { |child| child.send_command('persist') }
+				TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'durable'] }, timeout: timeout)
+				children.each { |child| child.send_command('stop') }
+				TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'stopped'] }, timeout: timeout)
+				children.each(&:finish)
+				# Measurements have ended. Check each file independently, then reopen native recovery state.
+				fixture['files'].each do |file|
+					index = fixture['case'] == 'concurrent' ? file['path'][/payload-(\d+)/, 1].to_i : 0
+					path = File.join(items[index][:destination], file['path'])
+					raise "Payload size/digest mismatch: #{file['path']}" unless File.size(path) == file['size'] && Digest::SHA256.file(path).hexdigest == file['sha256']
+				end
+				jobs.each_key do |role|
+					selected = (direction == 'download' ? role == 'download' : role == 'seed') ? engine : 'libtorrent'
+					raise "Reopen failed: #{role}" unless TransferBenchmarkHarness.run_bounded([*@commands[selected], '--verify', roles[role].job_path], File.join(log_dir, "#{role}-reopen.log"), timeout: timeout)
+				end
+				tested, counterpart = direction == 'download' ? [down, seed] : [seed, down]
+				record[:engine_metrics] = TransferBenchmarkHarness.metrics(tested, fixture['bytes'])
+				record[:counterpart_metrics] = TransferBenchmarkHarness.metrics(counterpart, fixture['bytes'])
+				record[:accepted] = true
+				profilers.each { |pid| raise 'Profiler failed' unless Process.waitpid2(pid)[1].success? }
+			rescue Interrupt => error
+				record[:error] = error.message; raise
+			rescue StandardError => error
+				record[:accepted] = false
+				record[:error] = "#{error.class}: #{error.message}"
+				children.each(&:diagnose); sleep 0.05
+				record[:failure_files] = Dir.glob(File.join(folder, '**', '*')).select { |path| File.file?(path) }.map { |path| { path: path.delete_prefix(folder + '/'), bytes: File.size(path) } }
+			ensure
+				children.each(&:cleanup)
+				profilers.each { |pid| TransferBenchmarkHarness.terminate(pid) }
+				record[:events] = jobs.keys.zip(children.map(&:events)).to_h
+				File.open(File.join(@output, 'trials.jsonl'), 'a') { |file| file.puts(JSON.generate(record)) }
+				@trials << record
+				FileUtils.rm_rf(folder)
+				FileUtils.rm_rf(log_dir) if record[:accepted]
+			end
+			puts "#{id}: #{record[:accepted] ? 'verified' : record[:error]}"; $stdout.flush
+		end
+		def run(fixtures)
+			Signal.trap('TERM') { raise Interrupt, 'Benchmark terminated' }
+			results = []
+			fixtures.each_with_index do |fixture, index|
+				next if ENV['BUTTER_BENCHMARK_CASE'] && ENV['BUTTER_BENCHMARK_CASE'] != fixture['case']
+				%w[v1 v2 hybrid].each_with_index do |format, format_index|
+					next if ENV['BUTTER_BENCHMARK_FORMAT'] && ENV['BUTTER_BENCHMARK_FORMAT'] != format
+					%w[download seed].each_with_index do |direction, direction_index|
+						next if ENV['BUTTER_BENCHMARK_DIRECTION'] && ENV['BUTTER_BENCHMARK_DIRECTION'] != direction
+						if @profile
+							next unless [["single", "v1", "download"], ["single", "hybrid", "download"], ["many", "hybrid", "download"], ["single", "v1", "seed"]].include?([fixture['case'], format, direction])
+						end
+						seed = 11011 + index * 100 + format_index * 10 + direction_index
+						key = { case: fixture['case'], format: format, direction: direction, order_seed: seed }
+						%w[Swift libtorrent].each { |engine| trial(fixture, format, direction, engine, -1, true) } unless @profile
+						orders = @smoke || @profile ? [%w[Swift libtorrent]] : TransferBenchmarkHarness.orders(6, seed)
+						orders.each_with_index { |order, pair| order.each { |engine| trial(fixture, format, direction, engine, pair, false) } }
+						select = -> { @trials.select { |trial| trial[:case] == fixture['case'] && trial[:format] == format && trial[:direction] == direction } }
+						result = TransferBenchmarkHarness.summary(select.call)
+						baseline = @baseline&.select { |trial| trial[:case] == fixture['case'] && trial[:format] == format && trial[:direction] == direction }
+						result[:memory] = TransferBenchmarkHarness.memory_summary(select.call, baseline) if baseline
+						if !@smoke && !@profile && (result[:status] == 'inconclusive' || (baseline && result[:memory][:status] == 'inconclusive'))
+							TransferBenchmarkHarness.orders(6, seed + 1000).each_with_index { |order, pair| order.each { |engine| trial(fixture, format, direction, engine, pair + 6, false) } }
+							result = TransferBenchmarkHarness.summary(select.call)
+							result[:memory] = TransferBenchmarkHarness.memory_summary(select.call, baseline) if baseline
+						end
+						result[:status] = @profile ? 'profile-only' : 'smoke-only' if @profile || @smoke
+						results << key.merge(result).merge(smoke: @smoke, profiled: @profile)
+						File.write(File.join(@output, 'summary.json'), JSON.pretty_generate(results))
+					end
+				end
+			end
+			raise 'Benchmark contains failed trials; see raw results' if @trials.any? { |trial| !trial[:accepted] }
+			raise 'No benchmark cases selected' if results.empty?
+		end
+	end
+end
+
+if $PROGRAM_NAME == __FILE__
+	swift, reference, output, work, mode = ARGV
+	FileUtils.mkdir_p(output)
+	manifest = JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
+	FileUtils.cp(File.join(work, 'fixtures', 'manifest.json'), File.join(output, 'fixtures.json'))
+	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: mode == '--profile').run(manifest)
+end

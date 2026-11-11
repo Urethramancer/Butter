@@ -15,6 +15,8 @@
 #include <thread>
 #include <chrono>
 #include <stdexcept>
+#include <iostream>
+#include <set>
 namespace lt = libtorrent;
 // Introducers exchange discovery messages while never supplying torrent payload.
 struct NoPayloadPeer : lt::peer_plugin { bool on_request(lt::peer_request const&) override { return true; } };
@@ -24,6 +26,7 @@ struct NoPayloadTorrent : lt::torrent_plugin {
 static volatile sig_atomic_t stopping = 0;
 static void stop(int) { stopping = 1; }
 static void require(bool value, char const* message) { if (!value) throw std::runtime_error(message); }
+#include "TransferBenchmarkReference.hpp"
 static void publish(NSDictionary* record, NSString* path) {
 	NSError* error = nil;
 	NSData* bytes = [NSJSONSerialization dataWithJSONObject:record options:0 error:&error];
@@ -84,6 +87,10 @@ static void dht(NSDictionary* job) {
 int main(int argc, char** argv) { @autoreleasepool { try {
 	require(argc == 3, "Expected --create directory or --run job.json");
 	NSString* path = [NSString stringWithUTF8String:argv[2]];
+	if (std::string(argv[1]) == "--benchmark" || std::string(argv[1]) == "--verify") {
+		NSDictionary* job = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:path] options:0 error:nil];
+		require(job != nil, "Cannot read benchmark job"); benchmark(job, std::string(argv[1]) == "--verify"); return 0;
+	}
 	if (std::string(argv[1]) == "--create") { create(path); return 0; }
 	if (std::string(argv[1]) == "--dht") {
 		NSDictionary* job = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:path] options:0 error:nil]; require(job != nil, "Cannot read DHT job");
