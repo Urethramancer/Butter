@@ -119,8 +119,8 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 	}
 	static func interruptions(root: URL, volume: URL) async throws {
 		let cases: [(String, String, Bool)] = [
-			("rename", "journal", false), ("rename", "published-0", false), ("rename", "entry-0", false), ("rename", "checkpoint", false),
-			("move", "published-0", false), ("move", "entry-0", false),
+			("rename", "journal", false), ("rename", "claimed-0", false), ("rename", "published-0", false), ("rename", "entry-0", false), ("rename", "checkpoint", false),
+			("move", "claimed-0", false), ("move", "published-0", false), ("move", "entry-0", false),
 			("move", "published-0", true), ("move", "entry-0", true), ("move", "checkpoint", true), ("move", "claimed-0", true), ("move", "removed-0", true),
 			("trash", "published-0", false), ("trash", "entry-0", false),
 			("trash", "entry-0", true), ("trash", "removed-0", true),
@@ -133,6 +133,8 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			let metadata = try await prepare(work, selected: operation != "select", importData: operation != "import")
 			let target = (cross ? volume : work).appendingPathComponent("target-\(iteration)")
 			try await stopChild(work, operation: operation, boundary: boundary, target: target)
+			let recreatedSource = operation == "move" && !cross && boundary == "published-0"
+			if recreatedSource { try Data([99]).write(to: work.appendingPathComponent("data/bundle/" + name(0)), options: .atomic) }
 			// Every managed byte must survive outside the untouched seed backup.
 			var candidates: [Data] = []
 			for directory in [work.appendingPathComponent("data"), work.appendingPathComponent("state/unwanted"), target] {
@@ -161,11 +163,13 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 				for piece in 0..<storage.layout.pieceCount { let valid = try await storage.verify(piece: piece); try require(valid, "Recovered piece failed verification") }
 			}
 			try await storage.shutdown()
+			if recreatedSource { try require(try Data(contentsOf: work.appendingPathComponent("data/bundle/" + name(0))) == Data([99]), "Rename recovery removed a recreated source") }
 			print("PASS: killed \(operation)/\(boundary)\(cross ? " across volumes" : ""); recovered every managed byte")
 		}
 		try await copyCorruption(root: root.appendingPathComponent("copy-corruption"), target: volume.appendingPathComponent("target-corruption"))
 		for afterClaim in [false, true] {
 			try await sourceReplacement(root: root.appendingPathComponent("source-replacement-\(afterClaim)"), target: volume.appendingPathComponent("target-replacement-\(afterClaim)"), afterClaim: afterClaim)
+			try await renameReplacement(root: root.appendingPathComponent("rename-replacement-\(afterClaim)"), afterClaim: afterClaim)
 		}
 		try await claimReplacement(root: root.appendingPathComponent("claim-replacement"), target: volume.appendingPathComponent("target-claim-replacement"))
 		for iteration in 0..<4 {
@@ -259,6 +263,21 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		}
 		try await storage.shutdown()
 		print("PASS: cross-volume source replacement \(afterClaim ? "after" : "before") claim is retained")
+	}
+	static func renameReplacement(root: URL, afterClaim: Bool) async throws {
+		let metadata = try await prepare(root), source = root.appendingPathComponent("data/bundle/" + name(0)), target = root.appendingPathComponent("moved"), replacement = Data([21, 22])
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), event: { event in
+			if event == (afterClaim ? .sourceClaimed(0) : .sourceWillBeClaimed(0)) { try? replacement.write(to: source, options: .atomic) }
+		})
+		var rejected = false
+		do { try await storage.move(to: target) } catch StorageFailure.recoveryRequired { rejected = true }
+		try require(rejected != afterClaim, "Rename must validate ownership after claiming")
+		try require(try Data(contentsOf: source) == replacement, "Rename lost a replacement source")
+		if afterClaim {
+			for index in 0..<8 { try require(try Data(contentsOf: target.appendingPathComponent("bundle/" + name(index))) == contents(index), "Rename changed managed bytes") }
+			try await storage.shutdown()
+		} else { try require(try await storage.snapshot().needsRecovery, "Rejected rename must retain its journal") }
+		print("PASS: same-volume replacement \(afterClaim ? "after" : "before") source claim is retained")
 	}
 	static func claimReplacement(root: URL, target: URL) async throws {
 		let metadata = try await prepare(root)

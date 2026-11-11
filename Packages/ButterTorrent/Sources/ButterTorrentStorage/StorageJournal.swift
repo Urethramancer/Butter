@@ -92,7 +92,7 @@ extension StorageState {
 				if let published = entry.published {
 					guard existing.sameFile(published) else { throw StorageFailure.recoveryRequired("published destination was replaced") }
 				} else if !entry.copy {
-					guard existing.sameFile(entry.original), try source.inspect(entry.source) == nil else { throw StorageFailure.recoveryRequired("rename has conflicting files") }
+					guard existing.sameFile(entry.original) else { throw StorageFailure.recoveryRequired("rename has conflicting files") }
 				} else {
 					guard acceptMatchingCopies else { throw StorageFailure.recoveryRequired("copy was published before its receipt; review both paths, then explicitly accept matching copies") }
 				}
@@ -101,11 +101,14 @@ extension StorageState {
 				entry.published = checked.stamp
 			} else {
 				guard entry.published == nil else { throw StorageFailure.recoveryRequired("published destination is missing") }
-				guard let existing = try source.inspect(entry.source), existing == entry.original,
-					try source.digest(entry.source, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("source changed before operation") }
 				if entry.copy {
+					guard let existing = try source.inspect(entry.source), existing == entry.original,
+						try source.digest(entry.source, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("source changed before operation") }
 					try copy(&entry, source: source, target: target, journal: &journal, index: index, check: check)
-				} else { try source.rename(entry.source, to: target, path: entry.destination) }
+				} else {
+					guard try claimSource(entry, from: source, check: check) != nil else { throw StorageFailure.recoveryRequired("rename source is missing") }
+					try source.rename(entry.claimedSource, to: target, path: entry.destination)
+				}
 				event(.filePublished(entry.index))
 				let checked = try target.checkedDigest(entry.destination, check: check)
 				guard checked.hash == entry.digest else { throw StorageFailure.recoveryRequired("published bytes changed") }
@@ -137,10 +140,16 @@ extension StorageState {
 		hasJournal = false; try claim()
 	}
 	private func removeCopiedSource(_ entry: StorageJournal.Entry, from source: StorageDirectory, check: () throws -> Void) throws {
+		guard let stamp = try claimSource(entry, from: source, check: check) else { return }
+		try check()
+		try source.remove(entry.claimedSource, expected: stamp)
+		event(.sourceRemoved(entry.index))
+	}
+	private func claimSource(_ entry: StorageJournal.Entry, from source: StorageDirectory, check: () throws -> Void) throws -> FileStamp? {
 		let claimed = entry.claimedSource
 		var claimedNow = false
 		if try source.inspect(claimed) == nil {
-			guard let current = try source.inspect(entry.source) else { return }
+			guard let current = try source.inspect(entry.source) else { return nil }
 			guard current == entry.original, try source.digest(entry.source, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("source copy changed; it was retained") }
 			event(.sourceWillBeClaimed(entry.index))
 			try source.rename(entry.source, to: source, path: claimed)
@@ -155,9 +164,7 @@ extension StorageState {
 			throw StorageFailure.recoveryRequired("source changed during cleanup; it was retained")
 		}
 		event(.sourceClaimed(entry.index))
-		try check()
-		try source.remove(claimed, expected: checked.stamp)
-		event(.sourceRemoved(entry.index))
+		return checked.stamp
 	}
 	private func futurePaths(_ checkpoint: StorageCheckpoint) throws -> [URL] {
 		let destination = URL(fileURLWithPath: checkpoint.destination)

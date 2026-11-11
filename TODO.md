@@ -2,8 +2,7 @@
 
 ## Swift cut-over audit findings
 
-- Extend journalled identity claims to repository discard and same-volume source
-  renames (A10).
+- Extend journalled identity claims to repository discard (A10).
 - Reduce whole-payload flushes per verified piece and profile stamp/descriptor
   work with many-file torrents (A16).
 
