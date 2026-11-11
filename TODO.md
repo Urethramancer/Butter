@@ -9,7 +9,6 @@
 - Bound watch-folder reads and aggregate retained import data (A11).
 - Enforce the quit deadline across polling drain, persistence and engine shutdown (A12).
 - Preserve original remote filename components for BEP 19 web-seed requests (A13).
-- Open creation sources nonblocking before regular-file validation (A14).
 - Reduce repeated piece-candidate sorting and unchanged verified-layout scans,
   then rerun the 32/256 MiB CPU comparisons and recovery tests (A15–A16).
 

@@ -196,7 +196,7 @@ public enum TorrentCreator {
 			close(parent); parent = next
 		}
 		guard let name = path.last else { throw MetadataError.invalid("missing source filename") }
-		let fd = openat(parent, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+		let fd = openat(parent, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
 		guard fd >= 0 else { throw posix("Cannot read source file") }
 		return fd
 	}

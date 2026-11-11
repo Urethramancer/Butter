@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import CryptoKit
+import Darwin
 @testable import ButterTorrentMetadata
 
 @Suite struct CreationTests {
@@ -52,6 +53,32 @@ import CryptoKit
 			}
 			#expect(throws: MetadataError.self) { try TorrentCreator.create(source: file, trackers: [], isPrivate: true) }
 			#expect(throws: MetadataError.self) { try TorrentCreator.create(source: file, trackers: [], isPrivate: false, pieceLength: 3) }
+		}
+	}
+	@Test func replacedSourceRejectsFIFOWithoutWaitingForAWriter() throws {
+		try fixture { root in
+			let first = root.appendingPathComponent("a"), replaced = root.appendingPathComponent("b")
+			try Data([1]).write(to: first); try Data([2]).write(to: replaced)
+			var changed = false, replacementError: Error?
+			// Bound the regression case too: a blocking open receives a writer after one second.
+			let release = DispatchWorkItem {
+				let descriptor = open(replaced.path, O_RDWR | O_NONBLOCK | O_CLOEXEC)
+				if descriptor >= 0 { close(descriptor) }
+			}
+			defer { release.cancel() }
+			let began = ContinuousClock.now
+			#expect(throws: MetadataError.self) {
+				try TorrentCreator.create(source: root, trackers: [], isPrivate: false, progress: { _ in
+					guard !changed else { return }; changed = true
+					do {
+						try FileManager.default.removeItem(at: replaced)
+						guard mkfifo(replaced.path, 0o600) == 0 else { throw POSIXError(.EIO) }
+						DispatchQueue.global().asyncAfter(deadline: .now() + 1, execute: release)
+					} catch { replacementError = error }
+				})
+			}
+			#expect(replacementError == nil && changed)
+			#expect(began.duration(to: .now) < .milliseconds(800))
 		}
 	}
 }
