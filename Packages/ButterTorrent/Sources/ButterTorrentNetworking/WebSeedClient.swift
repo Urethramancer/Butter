@@ -36,17 +36,21 @@ public actor WebSeedClient {
 
 	/// Fetches a BEP 19 file range. Remote path components must come from original metadata.
 	public func fileRange(from seed: URL, path: [String], fileSize: Int64, range: Range<Int64>, multiFile: Bool) async throws -> Data {
+		try await fileRange(from: seed, pathBytes: path.map { Data($0.utf8) }, fileSize: fileSize, range: range, multiFile: multiFile)
+	}
+	/// Fetches a BEP 19 range using the original metadata bytes before local sanitisation.
+	public func fileRange(from seed: URL, pathBytes: [Data], fileSize: Int64, range: Range<Int64>, multiFile: Bool) async throws -> Data {
 		try HTTPURL.validate(seed)
 		guard fileSize >= 0, range.lowerBound >= 0, range.upperBound <= fileSize, !range.isEmpty,
-			range.upperBound - range.lowerBound <= maximumBytes, !path.isEmpty, path.count <= 100,
-			path.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 4096 && $0 != "." && $0 != ".." && !$0.contains("/") && !$0.utf8.contains(0) }),
-			path.reduce(0, { $0 + $1.utf8.count }) <= 16_384 else {
+			range.upperBound - range.lowerBound <= maximumBytes, !pathBytes.isEmpty, pathBytes.count <= 100,
+			pathBytes.allSatisfy({ !$0.isEmpty && $0.count <= 4096 && $0 != Data(".".utf8) && $0 != Data("..".utf8) && !$0.contains(47) && !$0.contains(0) }),
+			pathBytes.reduce(0, { $0 + $1.count }) <= 16_384 else {
 			throw HTTPServiceError.invalid("web seed file range or path")
 		}
 		var parts = URLComponents(url: seed, resolvingAgainstBaseURL: false)!
 		if multiFile && !parts.percentEncodedPath.hasSuffix("/") { throw HTTPServiceError.invalid("multifile web seed must be a directory URL") }
 		if parts.percentEncodedPath.hasSuffix("/") {
-			parts.percentEncodedPath += path.map { HTTPURL.encode(Data($0.utf8)) }.joined(separator: "/")
+			parts.percentEncodedPath += pathBytes.map(HTTPURL.encode).joined(separator: "/")
 		}
 		guard let url = parts.url else { throw HTTPServiceError.invalid("web seed path encoding") }
 		try HTTPURL.validate(url)

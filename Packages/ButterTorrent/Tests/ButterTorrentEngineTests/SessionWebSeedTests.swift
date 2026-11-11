@@ -7,6 +7,34 @@ import ButterTorrentStorage
 
 // Independent multi-session fixtures share the production disk and HTTP budgets.
 extension NativeSessionTests { @Suite struct SessionWebSeedTests {
+	@Test(arguments: [1, 2, 3]) func remoteNamesSurviveLocalSanitisation(_ version: Int) async throws {
+		try await transferFixture { fixture in
+			let remoteName = "remote\\name\u{200B}.bin", bytes = Data("abc".utf8)
+			let original = fixture.root.appendingPathComponent(remoteName)
+			try bytes.write(to: original)
+			let hybrid = try TorrentMetadata(TorrentCreator.create(source: original, trackers: [], isPrivate: false))
+			var fields = hybrid.document.root.dictionary!, info = hybrid.document.root["info"]!.dictionary!
+			if version == 1 { info[Data("meta version".utf8)] = nil; info[Data("file tree".utf8)] = nil; fields[Data("piece layers".utf8)] = nil }
+			if version == 2 { info[Data("length".utf8)] = nil; info[Data("pieces".utf8)] = nil }
+			fields[Data("info".utf8)] = .dictionary(info)
+			let metadata = try webMetadata(TorrentMetadata(BencodeValue.dictionary(fields).encoded()), urls: ["http://seed.invalid/files/"])
+			let local = metadata.inspection.files.first { !$0.pad }!
+			#expect(local.path != remoteName && metadata.remotePaths[local.index] == [Data(remoteName.utf8)])
+			let source = fixture.root.appendingPathComponent("web-source")
+			try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+			try bytes.write(to: source.appendingPathComponent(local.path))
+			let transport = try SeedFileTransport(metadata: metadata, root: source)
+			let session = TorrentSession(storage: fixture.root.appendingPathComponent("web-library"), webSeedTransport: transport)
+			do {
+				try await addWebTransfer(session, metadata: metadata, root: fixture.root)
+				try await session.run(id: "transfer", running: true)
+				try await eventually { try await session.snapshot().transfers[0].state.transfer?.complete == true }
+				#expect(await transport.requests.first?.url.absoluteString.contains("remote%5Cname%E2%80%8B.bin") == true)
+				#expect(try Data(contentsOf: fixture.root.appendingPathComponent("download/" + local.path)) == bytes)
+				try await session.close()
+			} catch { try? await session.close(); throw error }
+		}
+	}
 	@Test func partialRangeFailureRetainsReceivedCountersAndHonoursBackoff() async throws {
 		try await transferFixture { fixture in
 			let transport = try SeedFileTransport(metadata: fixture.metadata, root: fixture.root.appendingPathComponent("source")), clock = EngineClock()
@@ -189,7 +217,7 @@ private actor SeedFileTransport: HTTPTransport {
 		var files: [String: Data] = [:], payload = Data()
 		for file in metadata.inspection.files {
 			let bytes = file.pad ? Data(repeating: 0, count: Int(file.size)) : try Data(contentsOf: root.appendingPathComponent(file.path))
-			if !file.pad { files[file.path] = bytes }; payload.append(bytes)
+			if !file.pad { files[metadata.remotePaths[file.index]!.map { String(decoding: $0, as: UTF8.self) }.joined(separator: "/")] = bytes }; payload.append(bytes)
 		}
 		self.files = files; self.payload = payload; pieceLength = Int(metadata.pieceLength)
 	}

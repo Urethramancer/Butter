@@ -23,6 +23,8 @@ public struct TorrentMetadata: Sendable {
 	public let httpSeeds: [String]
 	public let pieceLayers: [Data: Data]
 	public let fileRoots: [Int: Data]
+	/// Original byte components for remote web-seed paths, indexed by local file index.
+	public let remotePaths: [Int: [Data]]
 	public var originalInfo: Data { document.infoBytes! }
 
 	public init(_ data: Data, limits: BencodeLimits = .init()) throws {
@@ -33,12 +35,14 @@ public struct TorrentMetadata: Sendable {
 		if let version = info["meta version"], version.integer != 2 { throw MetadataError.invalid("unsupported meta version") }
 		let v2 = info["meta version"] != nil
 		let name = try Self.component(info["name.utf-8"] ?? info["name"], force: false)
+		let remoteName = (info["name.utf-8"] ?? info["name"])!.bytes!
 		guard !name.isEmpty else { throw MetadataError.invalid("missing name") }
 		guard let pieceLength = info["piece length"]?.integer, pieceLength > 0, pieceLength <= 1 << 29,
 			!v2 || (pieceLength >= 16384 && (pieceLength & (pieceLength - 1)) == 0) else {
 			throw MetadataError.invalid("invalid piece length")
 		}
 		var v1Files: [File] = []
+		var remoteByPath: [String: [Data]] = [:]
 		let hasV1 = info["pieces"] != nil
 		if hasV1 {
 			if let entries = info["files"]?.list {
@@ -48,11 +52,13 @@ public struct TorrentMetadata: Sendable {
 						throw MetadataError.invalid("missing file path")
 					}
 					let components = try path.map { try Self.component($0) }
+					remoteByPath[([name] + components).joined(separator: "/")] = [remoteName] + path.map { $0.bytes! }
 					v1Files.append(File(index: v1Files.count, path: ([name] + components).joined(separator: "/"),
 						size: try Self.length(entry), pad: entry["attr"]?.text?.contains("p") == true))
 				}
 			} else {
 				v1Files = [File(index: 0, path: name, size: try Self.length(info), pad: false)]
+				remoteByPath[name] = [remoteName]
 			}
 			let total = try Self.total(v1Files)
 			guard let pieces = info["pieces"]?.bytes, pieces.count % 20 == 0,
@@ -66,7 +72,7 @@ public struct TorrentMetadata: Sendable {
 			guard let tree = info["file tree"]?.dictionary, !tree.isEmpty else { throw MetadataError.invalid("missing file tree") }
 			var v2Files: [File] = []
 			let single = tree.count == 1 && tree.values.first?.dictionary?.count == 1 && tree.values.first?[""] != nil && info["files"] == nil
-			func walk(_ tree: [Data: BencodeValue], prefix: [String]) throws {
+			func walk(_ tree: [Data: BencodeValue], prefix: [String], remotePrefix: [Data]) throws {
 				for key in tree.keys.sorted(by: { $0.lexicographicallyPrecedes($1) }) {
 					let component = try Self.component(.bytes(key))
 					guard let node = tree[key]?.dictionary else { throw MetadataError.invalid("invalid file tree node") }
@@ -81,16 +87,17 @@ public struct TorrentMetadata: Sendable {
 							}
 						}
 						v2Files.append(File(index: v2Files.count, path: path.joined(separator: "/"), size: size, pad: false))
+						remoteByPath[path.joined(separator: "/")] = remotePrefix + [key]
 						if let root = leaf["pieces root"]?.bytes { rootsByPath[path.joined(separator: "/")] = root }
 						// Match the reference layout, including virtual tail padding in v2-only metadata.
 						if size % pieceLength != 0 {
 							let padding = pieceLength - size % pieceLength
 							v2Files.append(File(index: v2Files.count, path: "\(name)/.pad/\(padding)", size: padding, pad: true))
 						}
-					} else { try walk(node, prefix: path) }
+					} else { try walk(node, prefix: path, remotePrefix: remotePrefix + [key]) }
 				}
 			}
-			try walk(tree, prefix: single ? [] : [name])
+			try walk(tree, prefix: single ? [] : [name], remotePrefix: single ? [] : [remoteName])
 			if hasV1 {
 				if v2Files.count == v1Files.count + 1 && v2Files.last?.pad == true { v2Files.removeLast() }
 				guard v2Files == v1Files else { throw MetadataError.invalid("inconsistent hybrid file layouts") }
@@ -105,6 +112,7 @@ public struct TorrentMetadata: Sendable {
 		let hashes = try InfoHashes(v1: hasV1 ? digest.sha1 : nil, v2: v2 ? digest.sha256 : nil)
 		self.document = document; self.hashes = hashes; self.pieceLength = pieceLength
 		inspection = Inspection(name: name, private: (info["private"]?.integer ?? 0) != 0, files: files, hashes: hashes.hex)
+		remotePaths = Dictionary(uniqueKeysWithValues: files.filter { !$0.pad }.map { ($0.index, remoteByPath[$0.path]!) })
 		let tiers = document.root["announce-list"]?.list?.compactMap { tier -> [String]? in
 			guard let entries = tier.list else { return nil }
 			let urls = entries.compactMap(\.text).filter { !$0.isEmpty }

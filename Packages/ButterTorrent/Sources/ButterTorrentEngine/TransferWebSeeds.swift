@@ -95,7 +95,7 @@ extension TCPTransfer {
 			if segment.padding { bytes.append(Data(repeating: 0, count: segment.count)); continue }
 			let file = metadata.inspection.files[segment.file]
 			bytes.append(try await fetchWebData(seed, admission: admission) {
-				try await client.fileRange(from: url, path: file.path.split(separator: "/").map(String.init), fileSize: file.size,
+				try await client.fileRange(from: url, pathBytes: self.metadata.remotePaths[file.index]!, fileSize: file.size,
 					range: segment.offset..<(segment.offset + Int64(segment.count)), multiFile: multiFile)
 			})
 		}
