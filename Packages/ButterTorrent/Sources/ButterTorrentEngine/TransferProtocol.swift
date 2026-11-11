@@ -45,7 +45,7 @@ extension TCPTransfer {
 		guard let peer = peers[id], !peer.closing else { throw PeerFailure.closed }
 		try peer.session.send(message); peer.lastSent = clock.now()
 	}
-	func received(_ id: UUID, message: PeerMessage) async throws {
+	func prepareMessage(_ id: UUID, message: PeerMessage) throws -> (TransferPeer, TimeInterval) {
 		guard !stopping, storageError == nil, let peer = peers[id], !peer.closing, peer.peerID != nil else { throw PeerFailure.closed }
 		let now = clock.now()
 		if now - peer.window >= 1 { peer.window = now; peer.controls = 0 }
@@ -53,7 +53,7 @@ extension TCPTransfer {
 		case .piece, .request: break
 		default: try recordControlMessage(peer)
 		}
-		if case .keepAlive = message { return }
+		if case .keepAlive = message { return (peer, now) }
 		switch message {
 		case .extended, .hashRequest, .hashes, .hashReject: break
 		case .bitfield, .haveAll, .haveNone:
@@ -61,6 +61,10 @@ extension TCPTransfer {
 		default:
 			if peer.features.fast && !peer.availabilitySeen { throw PeerFailure.invalid("missing initial Fast availability") }; peer.firstMessage = false
 		}
+		return (peer, now)
+	}
+	func received(_ id: UUID, message: PeerMessage) async throws {
+		let (peer, now) = try prepareMessage(id, message: message)
 		switch message {
 		case .keepAlive: break
 		case .bitfield(let bytes): picker.update(id, bits: try PieceBitfield(count: picker.layout.pieceCount, bytes: bytes)); fill(id)
@@ -101,12 +105,8 @@ extension TCPTransfer {
 			guard peer.features.dht, !metadata.inspection.private, port > 0, let remote = peer.session.stream.remoteEndpoint else { throw PeerFailure.invalid("DHT port policy") }
 			nodeDiscovery.yield(NetworkEndpoint(address: remote.address, port: UInt16(port)))
 		case .piece(let piece, let offset, let bytes):
-			let block = PeerBlock(piece: piece, offset: offset, length: bytes.count); try validate(block)
-			if peer.pending.remove(block) == nil {
-				guard let deadline = peer.recent.removeValue(forKey: block), deadline >= now else { throw PeerFailure.invalid("unsolicited piece block") }
-			}
-			downloaded = min(Int64.max - Int64(bytes.count), downloaded) + Int64(bytes.count)
-			peer.downloaded += Int64(bytes.count)
+			let block = PeerBlock(piece: piece, offset: offset, length: bytes.count)
+			try acceptPayload(peer, block: block, now: now)
 			var delivered = false
 			do {
 				try await downloadRate.consume(bytes.count); try Task.checkCancellation()
@@ -129,22 +129,28 @@ extension TCPTransfer {
 		if peer.recent.count >= 256, let oldest = peer.recent.min(by: { $0.value < $1.value }) { peer.recent[oldest.key] = nil }
 		peer.recent[block] = clock.now() + configuration.requestTimeout * 2
 	}
-	func receiveBlock(_ id: UUID, block: PeerBlock, bytes: Data, payloadBytes: Int64? = nil) async throws {
+	func stageBlock(_ id: UUID, block: PeerBlock, bytes: Data, payloadBytes: Int64? = nil) throws -> Bool {
 		let payload = payloadBytes ?? Int64(bytes.count)
 		guard !stopping, peers[id]?.closing == false || webSeeds.contains(where: { $0.id == id && !$0.banned }) else { recordUnusablePayload(payload); throw PeerFailure.closed }
 		var cursor = 0
 		for segment in try picker.layout.segments(piece: block.piece, offset: block.offset, count: block.length) {
 			if segment.padding, bytes[cursor..<(cursor + segment.count)].contains(where: { $0 != 0 }) { recordUnusablePayload(payload, corrupt: true); throw PeerFailure.corruptPiece(block.piece) }; cursor += segment.count
 		}
-		guard let cancellations = picker.begin(id, block: block) else { recordUnusablePayload(payload); return }
+		guard let cancellations = picker.begin(id, block: block) else { recordUnusablePayload(payload); return false }
 		activePayloadBytes[block.piece, default: 0] += payload
 		for other in cancellations {
 			if let peer = peers[other] { peer.pending.remove(block); remember(peer, block: block); try? send(other, .cancel(block)) }
 		}
+		return true
+	}
+	func receiveBlock(_ id: UUID, block: PeerBlock, bytes: Data, payloadBytes: Int64? = nil) async throws {
+		guard try stageBlock(id, block: block, bytes: bytes, payloadBytes: payloadBytes) else { return }
 		do { try await storage.write(piece: block.piece, offset: block.offset, data: bytes) }
 		catch { picker.abortedWrite(block); discardUnretainedPayload(); diskFailed(error); throw error }
 		guard picker.written(block) else { return }
-		let piece = block.piece
+		try await verifyReceivedPiece(block.piece)
+	}
+	func verifyReceivedPiece(_ piece: Int) async throws {
 		var staged = legacyHybrid && !hashReady.contains(piece)
 		let valid: Bool
 		do {
@@ -155,10 +161,10 @@ extension TCPTransfer {
 			} else { valid = try await storage.verify(piece: piece) }
 		} catch { _ = picker.verified(piece, valid: false); discardUnretainedPayload(); diskFailed(error); throw error }
 		let contributors = staged && valid ? picker.stage(piece) : picker.verified(piece, valid: valid)
-		let received = activePayloadBytes.removeValue(forKey: block.piece) ?? 0
+		let received = activePayloadBytes.removeValue(forKey: piece) ?? 0
 		if !valid { recordUnusablePayload(received, corrupt: true) }
 		if valid {
-			for contributor in contributors { peers[contributor]?.score += try picker.layout.length(of: block.piece) / max(1, contributors.count) }
+			for contributor in contributors { peers[contributor]?.score += try picker.layout.length(of: piece) / max(1, contributors.count) }
 			if !staged { advertise(piece) }
 			if legacyHybrid {
 				do { try await recoverLegacyLayer(after: piece, staged: staged) }
@@ -169,7 +175,7 @@ extension TCPTransfer {
 			for contributor in contributors {
 				if let seed = webSeeds.first(where: { $0.id == contributor }) { await banWebSeed(seed) }
 				if let identity = peers[contributor]?.peerID, bannedIDs.count < 1024 { bannedIDs.insert(identity) }
-				drop(contributor, error: PeerFailure.corruptPiece(block.piece))
+				drop(contributor, error: PeerFailure.corruptPiece(piece))
 			}
 		}
 	}

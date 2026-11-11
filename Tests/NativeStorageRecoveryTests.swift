@@ -90,6 +90,13 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			try Data([1]).write(to: root.appendingPathComponent("armed"))
 			try await storage.write(piece: 0, offset: 0, data: Data([255]))
 			if boundary == "written" { stopAtBoundary(root) }
+		case "batched-write":
+			try await storage.importFiles(from: root.appendingPathComponent("seed"))
+			try require(try await storage.verify(piece: 0), "Batch setup verification failed"); try await storage.flush()
+			try require(try await storage.verify(piece: 1), "Batch setup verification failed")
+			try Data([1]).write(to: root.appendingPathComponent("armed"))
+			try await storage.writeBatch([StorageWrite(piece: 0, offset: 0, data: Data([255])), StorageWrite(piece: 1, offset: 0, data: Data([254]))])
+			if boundary == "written" { stopAtBoundary(root) }
 		case "rename":
 			let paths = Dictionary(uniqueKeysWithValues: metadata.inspection.files.filter { !$0.pad }.map { ($0.index, "renamed/" + URL(fileURLWithPath: $0.path).lastPathComponent) })
 			try await storage.rename(paths)
@@ -233,6 +240,18 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			try require(try await storage.recoverExistingPiece(0) == (boundary != "written"), "Recovery trusted an overwritten piece")
 			try await storage.shutdown()
 			print("PASS: killed overwrite at \(boundary); durable invalidation preceded modifying bytes")
+		}
+		for boundary in ["progress-checkpoint", "written"] {
+			let work = root.appendingPathComponent("batch-" + boundary), metadata = try await prepare(work, importData: false)
+			try await stopChild(work, operation: "batched-write", boundary: boundary, target: work)
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: work.appendingPathComponent("data"), stateDirectory: work.appendingPathComponent("state"))
+			let snapshot = try await storage.snapshot()
+			try require(!snapshot.verifiedPieces.contains(0) && !snapshot.verifiedPieces.contains(1), "Mixed batch retained a committed or newly published target bit")
+			for piece in [0, 1] { try require(try await storage.recoverExistingPiece(piece) == (boundary != "written"), "Batch recovery trusted overwritten bytes") }
+			let bytes = try Data(contentsOf: work.appendingPathComponent("data/bundle/" + name(0)))
+			try require(bytes.count == contents(0).count && bytes[0] == (boundary == "written" ? 255 : contents(0)[0]) && bytes[16384] == (boundary == "written" ? 254 : contents(0)[16384]), "Mixed batch lost or unexpectedly changed payload")
+			try await storage.shutdown()
+			print("PASS: killed mixed committed/pending write batch at \(boundary); all target bits were durably invalidated")
 		}
 	}
 	static func repositoryPublicationInterruptions(root: URL) async throws {

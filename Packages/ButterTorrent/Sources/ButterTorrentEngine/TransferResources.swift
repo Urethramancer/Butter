@@ -40,6 +40,8 @@ actor TransferRateLimiter {
 	private let clock: any TransportClock
 	init(rate: Int, clock: any TransportClock) { self.rate = rate; tokens = Double(rate); self.clock = clock; updated = clock.now() }
 	func set(_ rate: Int) { self.rate = rate; tokens = min(tokens, Double(rate)); updated = clock.now() }
+	// Grant only currently unrestricted work; later limit changes apply to the next batch.
+	func consumeUnrestrictedBatch() -> Bool { rate == 0 }
 	func consume(_ bytes: Int, isCancelled: @Sendable () -> Bool = { false }) async throws {
 		var remaining = Double(bytes)
 		while remaining > 0 {

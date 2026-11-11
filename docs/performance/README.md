@@ -153,3 +153,15 @@ counterpart samples accompany them. No instrumented result enters acceptance.
 
 The [raw directory](raw) also retains earlier harness failures and incomplete
 diagnostic runs. They are historical development evidence, not pooled samples.
+
+The [bounded-write experiment](raw/write-batching/summary.json) retains 66
+accepted full-size v1 download trials. Each disk job accepts at most sixteen
+blocks / 256 KiB, with at most eight temporary descriptors and unchanged queue
+admission. Available frames flush before controls, yields and network waits.
+Single-file CPU/GiB fell to 10.70, many-file to 18.21 and concurrent to 11.11.
+Single/concurrent memory checks pass; the many-file memory interval remains
+inconclusive after twelve pairs (median ratio 1.072, interval 1.051–1.106).
+Parity remains unmet. A subsequent safeguard also validates the first opened
+descriptor against its anchored pathname and recorded stamp, covering a
+replacement between invalidation and open; final-candidate measurements must
+include that check.

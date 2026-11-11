@@ -247,31 +247,9 @@ final class StorageState: @unchecked Sendable {
 		return result
 	}
 	func write(piece: Int, offset: Int, data: Data, check: () throws -> Void) throws {
-		try ready(); try check()
-		let segments = try layout.segments(piece: piece, offset: offset, count: data.count)
-		try invalidateChangedFiles()
-		var cursor = data.startIndex
-		for segment in segments {
-			if segment.padding, data[cursor..<(cursor + segment.count)].contains(where: { $0 != 0 }) { throw StorageFailure.invalid("nonzero padding") }; cursor += segment.count
-		}
-		// Durable invalidation precedes modifying bytes previously advertised as verified.
-		if committedContains(piece) {
-			record.set(piece, false)
-			try save()
-		}
-		record.set(piece, false); try forgetPendingVerification(piece)
-		cursor = data.startIndex
-		for segment in segments {
-			defer { cursor += segment.count }
-			if segment.padding { continue }
-			let (directory, path) = location(segment.file), file = try directory.openFile(path, write: true)
-			defer { close(file) }
-			// Include partial writes when cancellation or a disk error interrupts pwrite.
-			pendingFlush.insert(segment.file)
-			try StorageDirectory.write(data.subdata(in: cursor..<(cursor + segment.count)), to: file, offset: segment.offset, check: check)
-			record.stamps[segment.file] = try directory.stamp(file)
-		}
+		try writeOperations([StorageWrite(piece: piece, offset: offset, data: data)], maximumBytes: 1_048_576, maximumCount: 1, check: check)
 	}
+
 	func verify(piece: Int, check: () throws -> Void) throws -> Bool {
 		try ready()
 		_ = try layout.length(of: piece)
