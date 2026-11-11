@@ -1,6 +1,22 @@
 import Foundation
 
 extension CoreRegressionTests {
+	static func watcherReadLimits() async throws {
+		let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		try fm.createDirectory(at: root, withIntermediateDirectories: true)
+		defer { try? fm.removeItem(at: root) }
+		let watcher = FolderWatcher(maximumBytes: 8, maximumBatchBytes: 12), now = Date().addingTimeInterval(10)
+		for name in ["a", "b", "c"] { try Data(repeating: 1, count: 6).write(to: root.appendingPathComponent(name + ".torrent")) }
+		_ = try await watcher.scan(root.path, imported: [], now: now)
+		let batch = try await watcher.scan(root.path, imported: [], now: now.addingTimeInterval(4))
+		try require(batch.count == 2 && batch.reduce(0, { $0 + $1.contents.count }) == 12, "Watch imports must respect their aggregate byte budget")
+		let remaining = try await watcher.scan(root.path, imported: Set(batch.map(\.signature)), now: now.addingTimeInterval(8))
+		try require(remaining.count == 1, "Deferred imports must remain available on the next scan")
+		let oversized = root.appendingPathComponent("large.torrent")
+		try Data(repeating: 2, count: 9).write(to: oversized)
+		do { _ = try await watcher.scan(root.path, imported: [], now: now); throw TestFailure(description: "Oversized watched metadata was accepted") }
+		catch let error as CocoaError { try require(error.code == .fileReadTooLarge, "Report the watched metadata byte limit") }
+	}
 	static func watcherRaceBoundaries() async throws {
 		let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		try fm.createDirectory(at: root, withIntermediateDirectories: true)

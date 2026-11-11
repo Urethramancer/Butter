@@ -2,11 +2,8 @@
 
 ## Swift cut-over audit findings
 
-- Apply blocklists to HTTP/HTTPS and UDP tracker destinations, including changes
-  during running announces. See A09 in [the audit](docs/audit-2026-11-11.md).
 - Close the file-identity race between storage preflight and destructive pathname
   operations, including cross-volume source deletion and repository discard (A10).
-- Bound watch-folder reads and aggregate retained import data (A11).
 - Enforce the quit deadline across polling drain, persistence and engine shutdown (A12).
 - Preserve original remote filename components for BEP 19 web-seed requests (A13).
 - Reduce repeated piece-candidate sorting and unchanged verified-layout scans,

@@ -20,6 +20,7 @@ func observation(_ id: String, _ priority: TransferPriority = .normal, order: In
 				("storage-failures", { try await CoreRegressionTests.storageFailures() }),
 				("watched-replacement", { try await CoreRegressionTests.watchedReplacement() }),
 				("watcher-race-boundaries", { try await CoreRegressionTests.watcherRaceBoundaries() }),
+				("watcher-read-limits", { try await CoreRegressionTests.watcherReadLimits() }),
 				("quit-modes", { try CoreRegressionTests.quitModes() })
 			]
 			let filter = ProcessInfo.processInfo.environment["BUTTER_TEST_CASE"]
