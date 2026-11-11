@@ -7,20 +7,28 @@ import ButterTorrentMetadata
 public actor TorrentStorage {
 	let worker: StorageWorker
 	let state: StorageState
+	let checkpointClock: any StorageCheckpointClock
+	var checkpointTimer: Task<Void, Never>?
+	var checkpointTimerID: UUID?
+	var checkpointTimerDeadline: TimeInterval?
+	var closing = false
+	var shutdownCompleted = false
 	public nonisolated let layout: StorageLayout
 	public nonisolated let infoHashes: InfoHashes
 	public nonisolated let merkleIndex: MerkleIndex
-	private init(state: StorageState, worker: StorageWorker) { self.state = state; self.worker = worker; layout = state.layout; infoHashes = state.metadata.hashes; merkleIndex = state.merkle.index }
+	private init(state: StorageState, worker: StorageWorker, clock: any StorageCheckpointClock) { self.state = state; self.worker = worker; checkpointClock = clock; layout = state.layout; infoHashes = state.metadata.hashes; merkleIndex = state.merkle.index }
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
-		coordinator: StorageCoordinator = .shared, preparedState: PreparedTransferState? = nil, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TorrentStorage {
+		coordinator: StorageCoordinator = .shared, preparedState: PreparedTransferState? = nil, checkpointPolicy: StorageCheckpointPolicy = .immediate,
+		checkpointClock: any StorageCheckpointClock = ContinuousStorageCheckpointClock(), event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TorrentStorage {
+		try checkpointPolicy.validate()
 		guard preparedState == nil || preparedState?.directory == stateDirectory else { throw StorageFailure.invalid("prepared checkpoint directory") }
 		let worker = StorageWorker()
 		let state = try await worker.run(bulk: true) { cancellation in
 			let layout = try StorageLayout(metadata: metadata)
-			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, anchoredState: preparedState?.anchor, event: event, check: cancellation.check)
+			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, anchoredState: preparedState?.anchor, checkpointPolicy: checkpointPolicy, checkpointClock: checkpointClock, event: event, check: cancellation.check)
 			try cancellation.check(); return state
 		}
-		return TorrentStorage(state: state, worker: worker)
+		return TorrentStorage(state: state, worker: worker, clock: checkpointClock)
 	}
 	public func snapshot() async throws -> StorageSnapshot { try await worker.run { [state] _ in try state.snapshot() } }
 	public func read(piece: Int, offset: Int, count: Int, verifiedOnly: Bool = true) async throws -> Data {
@@ -34,24 +42,31 @@ public actor TorrentStorage {
 		try await worker.run { [state] cancellation in try state.verifiedPiece(piece, check: cancellation.check) }
 	}
 	@discardableResult public func verify(piece: Int) async throws -> Bool {
-		try await worker.run { [state] cancellation in try state.verify(piece: piece, check: cancellation.check) }
+		let result = try await worker.run { [state] cancellation in
+			let valid = try state.verify(piece: piece, check: cancellation.check); return (valid, state.checkpointDeadline)
+		}
+		armCheckpointTimer(result.1); return result.0
 	}
 	public func checkpoint(downloaded: Int64, uploaded: Int64, corruptBytes: Int64? = nil, redundantBytes: Int64? = nil) async throws {
-		try await worker.run { [state] cancellation in
-			try state.ready(); try cancellation.check()
+		let deadline = checkpointTimerDeadline
+		await drainCheckpointTimer()
+		do { try await worker.run { [state] cancellation in
+			try state.ready(allowCheckpointRetry: true); try cancellation.check()
 			let corrupt = corruptBytes ?? state.record.corruptBytes ?? 0, redundant = redundantBytes ?? state.record.redundantBytes ?? 0
 			guard downloaded >= 0, uploaded >= 0, corrupt >= 0, redundant >= 0, corrupt <= downloaded, redundant <= downloaded - corrupt else { throw StorageFailure.invalid("payload counters") }
 			state.record.corruptBytes = corrupt; state.record.redundantBytes = redundant
 			state.record.downloaded = downloaded; state.record.uploaded = uploaded; try state.save()
-		}
+		} } catch { armCheckpointTimer(deadline); throw error }
 	}
 	public func shutdown() async throws {
-		try await worker.run { [state] _ in
+		closing = true; await drainCheckpointTimer()
+		do { try await worker.run { [state] _ in
 			if state.closed { return }
 			guard !state.hasJournal else { throw StorageFailure.recoveryRequired("a filesystem operation is pending") }
 			try state.save(); state.closed = true; state.coordinator.release(state.owner); state.lease.release()
-		}
+		}; shutdownCompleted = true } catch { closing = shutdownCompleted; throw error }
 	}
+	deinit { checkpointTimer?.cancel() }
 }
 
 // Access is confined to the session's serial disk worker after initialisation.
@@ -69,8 +84,23 @@ final class StorageState: @unchecked Sendable {
 	var closed = false
 	var hasJournal = false
 	var pendingFlush: Set<Int> = []
-	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, anchoredState: StorageDirectory? = nil, event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
+	let checkpointPolicy: StorageCheckpointPolicy
+	let checkpointClock: any StorageCheckpointClock
+	var committedVerified: Data
+	var pendingVerified: Data
+	var recoveryChecked: Data
+	var pendingVerifiedBytes: Int64 = 0
+	var pendingSince: TimeInterval?
+	let checkpointFailures = StorageCheckpointFailures()
+	var checkpointError: (any Error)? {
+		get { checkpointFailures.error }
+		set { checkpointFailures.set(newValue) }
+	}
+	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, anchoredState: StorageDirectory? = nil,
+		checkpointPolicy: StorageCheckpointPolicy = .immediate, checkpointClock: any StorageCheckpointClock = ContinuousStorageCheckpointClock(), event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
 		self.metadata = metadata; self.layout = layout; self.coordinator = coordinator; self.event = event
+		try checkpointPolicy.validate(); self.checkpointPolicy = checkpointPolicy; self.checkpointClock = checkpointClock
+		committedVerified = Data(repeating: 0, count: (layout.pieceCount + 7) / 8); pendingVerified = committedVerified; recoveryChecked = committedVerified
 		merkle = try MerkleCatalog(metadata: metadata)
 		state = try anchoredState ?? StorageDirectory(stateDirectory)
 		lease = try StorageLease(directory: state)
@@ -79,6 +109,7 @@ final class StorageState: @unchecked Sendable {
 			if try state.inspect("checkpoint.plist") != nil {
 				record = try PropertyListDecoder().decode(StorageCheckpoint.self, from: state.read("checkpoint.plist", maximum: 16_777_216))
 				try record.validate(layout: layout, identity: identity)
+				committedVerified = record.verified
 			} else {
 				let selection = selected ?? layout.files.map { !$0.pad }
 				guard selection.count == layout.files.count else { throw StorageFailure.invalid("selection count") }
@@ -123,9 +154,10 @@ final class StorageState: @unchecked Sendable {
 		let paths = record.paths.indices.filter { !layout.files[$0].pad }.map { location($0).0.url.appendingPathComponent(location($0).1) }
 		try coordinator.claim(owner, paths: [state.url] + paths + extra)
 	}
-	func ready() throws {
+	func ready(allowCheckpointRetry: Bool = false) throws {
 		guard !closed else { throw StorageFailure.closed }
 		guard !hasJournal else { throw StorageFailure.recoveryRequired("a filesystem operation is pending") }
+		if !allowCheckpointRetry, let checkpointError { throw checkpointError }
 	}
 	func prepareEmptyFiles() throws {
 		for index in layout.files.indices where layout.files[index].size == 0 && record.selected[index] {
@@ -154,18 +186,22 @@ final class StorageState: @unchecked Sendable {
 		record.stamps = current
 	}
 	func save() throws {
-		// Flush payload before publishing any progress record.
-		for index in pendingFlush.sorted() {
-			let (directory, path) = location(index)
-			if try directory.inspect(path) != nil {
-				let file = try directory.openFile(path); defer { close(file) }
-				try directory.sync(file); try directory.parent(path) { parent, _ in try directory.sync(parent) }
-				event(.payloadFlushed(index))
+		do {
+			// Flush payload before publishing any progress record.
+			for index in pendingFlush.sorted() {
+				let (directory, path) = location(index)
+				if try directory.inspect(path) != nil {
+					let file = try directory.openFile(path); defer { close(file) }
+					try directory.sync(file); try directory.parent(path) { parent, _ in try directory.sync(parent) }
+					event(.payloadFlushed(index))
+				}
 			}
-		}
-		try invalidateChangedFiles(); record.generation &+= 1
-		try state.atomic(record.encoded(), path: "checkpoint.plist")
-		pendingFlush.removeAll()
+			try invalidateChangedFiles(); record.generation &+= 1
+			try state.atomic(record.encoded(), path: "checkpoint.plist")
+			committedVerified = record.verified; pendingFlush.removeAll()
+			pendingVerified.resetBytes(in: 0..<pendingVerified.count); pendingVerifiedBytes = 0; pendingSince = nil; checkpointError = nil
+			event(.progressCheckpointDurable)
+		} catch { if case .batched = checkpointPolicy { checkpointError = error }; throw error }
 	}
 	func requireFlush(piece: Int) throws {
 		let length = try layout.length(of: piece)
@@ -177,8 +213,9 @@ final class StorageState: @unchecked Sendable {
 	}
 	func snapshot() throws -> StorageSnapshot {
 		guard !closed else { throw StorageFailure.closed }
+		if let checkpointError { throw checkpointError }
 		if !hasJournal { try invalidateChangedFiles() }
-		return StorageSnapshot(destination: payload.url, paths: record.paths, selected: record.selected,
+		return StorageSnapshot(hasExistingPayload: record.stamps.contains { ($0?.size ?? 0) > 0 }, destination: payload.url, paths: record.paths, selected: record.selected,
 			verifiedPieces: hasJournal ? [] : Set((0..<layout.pieceCount).filter { record.contains($0) }), downloaded: record.downloaded, uploaded: record.uploaded,
 			corruptBytes: record.corruptBytes ?? 0, redundantBytes: record.redundantBytes ?? 0,
 			trashReceipts: record.receipts.map { URL(fileURLWithPath: $0) }, needsRecovery: hasJournal)
@@ -213,16 +250,17 @@ final class StorageState: @unchecked Sendable {
 		try ready(); try check()
 		let segments = try layout.segments(piece: piece, offset: offset, count: data.count)
 		try invalidateChangedFiles()
-		var cursor = 0
+		var cursor = data.startIndex
 		for segment in segments {
 			if segment.padding, data[cursor..<(cursor + segment.count)].contains(where: { $0 != 0 }) { throw StorageFailure.invalid("nonzero padding") }; cursor += segment.count
 		}
 		// Durable invalidation precedes modifying bytes previously advertised as verified.
-		if record.contains(piece) {
+		if committedContains(piece) {
 			record.set(piece, false)
-			do { try save() } catch { record.set(piece, true); throw error }
+			try save()
 		}
-		cursor = 0
+		record.set(piece, false); try forgetPendingVerification(piece)
+		cursor = data.startIndex
 		for segment in segments {
 			defer { cursor += segment.count }
 			if segment.padding { continue }
@@ -238,11 +276,14 @@ final class StorageState: @unchecked Sendable {
 		try ready()
 		_ = try layout.length(of: piece)
 		try invalidateChangedFiles()
-		record.set(piece, false)
+		try prepareVerification(of: piece)
+		let wasVerified = record.contains(piece); record.set(piece, false)
 		let valid = try checkedPiece(piece, check: check).valid
 		if valid { try requireFlush(piece: piece) }
 		record.set(piece, valid)
-		do { try save() } catch { record.set(piece, false); throw error }
+		if case .immediate = checkpointPolicy {
+			do { try save() } catch { record.set(piece, false); throw error }
+		} else if valid && !wasVerified { try newlyVerified(piece) }
 		return valid
 	}
 	func verifiedPiece(_ piece: Int, check: () throws -> Void) throws -> Data {

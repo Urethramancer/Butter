@@ -55,7 +55,8 @@ extension TCPTransfer {
 			guard clock.now() >= seed.retryAt, !Task.isCancelled, !stopping else { continue }
 			do {
 				if !seed.registered { picker.update(seed.id, bits: try PieceBitfield(count: picker.layout.pieceCount, pieces: picker.wanted)); seed.registered = true }
-				guard let block = picker.allocate(seed.id, limit: 1, now: clock.now(), eligible: hashReady).first else { continue }
+				guard let block = picker.allocate(seed.id, limit: 1, now: clock.now(), eligible: hashReady, excluding: Set(localRecoveries.keys)).first else { continue }
+				if deferForLocalRecovery(seed.id, block: block) { await localRecoveries[block.piece]?.value; return 0 }
 				seed.active = true
 				let initialBytes = seed.downloaded
 				var delivered = false

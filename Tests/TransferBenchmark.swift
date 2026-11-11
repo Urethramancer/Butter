@@ -56,7 +56,7 @@ import ButterTorrentEngine
 		do {
 			for item in job.items {
 				let metadata = try TorrentMetadata(contentsOf: URL(fileURLWithPath: item.torrent))
-				let storage = try await TorrentStorage.open(metadata: metadata, destination: URL(fileURLWithPath: item.destination), stateDirectory: URL(fileURLWithPath: item.state)); stores.append(storage)
+				let storage = try await TorrentStorage.open(metadata: metadata, destination: URL(fileURLWithPath: item.destination), stateDirectory: URL(fileURLWithPath: item.state), checkpointPolicy: .managed); stores.append(storage)
 				if job.role == "seed" { for piece in 0..<storage.layout.pieceCount { guard try await storage.verify(piece: piece) else { throw PeerFailure.corruptPiece(piece) } } }
 				var configuration = TCPTransferConfiguration(); configuration.encryption = .disabled; configuration.enablePEX = false
 				let engine = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration); engines.append(engine)
@@ -93,11 +93,7 @@ import ButterTorrentEngine
 			try emit("verified")
 			_ = try await command("persist")
 			try emit("persistence")
-			for (engine, storage) in zip(engines, stores) {
-				let counters = await engine.snapshot()
-				if let error = counters.storageError { throw PeerFailure.invalid(error) }
-				try await storage.checkpoint(downloaded: counters.downloaded, uploaded: counters.uploaded, corruptBytes: counters.corruptBytes, redundantBytes: counters.redundantBytes)
-			}
+			for engine in engines { try await engine.checkpoint() }
 			try emit("durable")
 			_ = try await command("stop"); try emit("shutdown")
 			for listener in listeners { try await listener.shutdown() }

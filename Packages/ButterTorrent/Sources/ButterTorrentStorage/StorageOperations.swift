@@ -3,9 +3,11 @@ import Darwin
 
 extension TorrentStorage {
 	public func recover(acceptMatchingCopies: Bool = false) async throws {
+		await drainCheckpointTimer()
 		try await worker.run(bulk: true) { [state] cancellation in try state.recover(acceptMatchingCopies: acceptMatchingCopies, check: cancellation.check) }
 	}
 	public func rename(_ changes: [Int: String]) async throws {
+		try await flush()
 		try await worker.run(bulk: true) { [state] cancellation in
 			try state.ready(); var after = state.record
 			for (index, path) in changes {
@@ -21,6 +23,7 @@ extension TorrentStorage {
 		}
 	}
 	public func move(to destination: URL) async throws {
+		try await flush()
 		try await worker.run(bulk: true) { [state] cancellation in
 			try state.ready(); let target = try StorageDirectory(destination)
 			if target.url == state.payload.url { return }
@@ -33,6 +36,7 @@ extension TorrentStorage {
 		}
 	}
 	public func select(_ selected: [Bool]) async throws {
+		try await flush()
 		try await worker.run(bulk: true) { [state] cancellation in
 			try state.ready()
 			guard selected.count == state.layout.files.count else { throw StorageFailure.invalid("selection count") }
@@ -50,6 +54,7 @@ extension TorrentStorage {
 	}
 	/// Copies existing files without removing the import source or trusting their hashes.
 	public func importFiles(from directory: URL) async throws {
+		try await flush()
 		try await worker.run(bulk: true) { [state] cancellation in
 			try state.ready(); let source = try StorageDirectory(directory, create: false)
 			var entries: [StorageJournal.Entry] = []
@@ -69,7 +74,8 @@ extension TorrentStorage {
 	}
 	/// Uses the system Trash by default; fixtures may supply a disposable Trash directory.
 	public func trash(directory: URL? = nil) async throws -> [URL] {
-		try await worker.run(bulk: true) { [state] cancellation in
+		try await flush()
+		return try await worker.run(bulk: true) { [state] cancellation in
 			try state.ready()
 			let url: URL
 			if let directory { url = directory }

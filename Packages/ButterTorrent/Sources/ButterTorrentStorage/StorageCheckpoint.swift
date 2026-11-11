@@ -47,6 +47,7 @@ struct StorageCheckpoint: Codable {
 }
 
 public struct StorageSnapshot: Sendable {
+	public let hasExistingPayload: Bool
 	public let destination: URL
 	public let paths: [String]
 	public let selected: [Bool]

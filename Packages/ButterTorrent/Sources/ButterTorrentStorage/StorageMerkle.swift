@@ -38,13 +38,17 @@ extension TorrentStorage {
 	}
 	/// Reconstructs one full v2 file layer from v1-verified bytes and publishes progress only after both checks.
 	public func reconstructHybridLayer(containing piece: Int) async throws -> HybridLayerVerification {
-		try await worker.run(bulk: true) { [state] cancellation in try state.reconstructHybridLayer(containing: piece, check: cancellation.check) }
+		let result = try await worker.run(bulk: true) { [state] cancellation in
+			let result = try state.reconstructHybridLayer(containing: piece, check: cancellation.check); return (result, state.checkpointDeadline)
+		}
+		armCheckpointTimer(result.1); return result.0
 	}
 	public func hashResponse(_ request: MerkleHashRequest) async throws -> Data? {
 		try await worker.run { [state] cancellation in try state.hashResponse(request, check: cancellation.check) }
 	}
 	public func exportMetadata() async throws -> Data {
-		try await worker.run { [state] _ in
+		try await flush()
+		return try await worker.run { [state] _ in
 			try state.ready()
 			return state.merkle.index.enabled ? try state.metadata.withPieceLayers(state.merkle.completeLayers()) : state.metadata.document.original
 		}
@@ -84,9 +88,17 @@ extension StorageState {
 		try candidate.installLayer(layer, root: file.root)
 		try check(); try persistHashes(candidate)
 		let newlyVerified = legacyPieces.filter { !record.contains($0) }
-		for index in legacyPieces { try requireFlush(piece: index); record.set(index, true) }
-		do { try save() }
-		catch { for index in newlyVerified { record.set(index, false) }; throw error }
+		for index in legacyPieces.sorted() {
+			try prepareVerification(of: index)
+			guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
+			try requireFlush(piece: index); record.set(index, true)
+			if case .batched = checkpointPolicy, newlyVerified.contains(index) { try self.newlyVerified(index) }
+			guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
+		}
+		if case .immediate = checkpointPolicy {
+			do { try save() }
+			catch { for index in newlyVerified { record.set(index, false) }; throw error }
+		}
 		return .verified(Set(legacyPieces.filter(record.contains)))
 	}
 

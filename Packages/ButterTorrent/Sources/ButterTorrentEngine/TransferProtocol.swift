@@ -189,7 +189,10 @@ extension TCPTransfer {
 			try requestHashes(id)
 			guard !peer.remoteChoking || !peer.allowedOutgoing.isEmpty else { return }
 			let eligible = legacyHybrid && !peer.features.v2 ? nil : hashReady
-			for block in picker.allocate(id, limit: min(configuration.pipeline, peer.extensions.queueLimit) - peer.pending.count, now: clock.now(), eligible: eligible, allowed: peer.remoteChoking ? peer.allowedOutgoing : nil, suggestions: peer.suggestions) { peer.pending.insert(block); try send(id, .request(block)) }
+			for block in picker.allocate(id, limit: min(configuration.pipeline, peer.extensions.queueLimit) - peer.pending.count, now: clock.now(), eligible: eligible, allowed: peer.remoteChoking ? peer.allowedOutgoing : nil, suggestions: peer.suggestions, excluding: Set(localRecoveries.keys)) {
+				if deferForLocalRecovery(id, block: block) { continue }
+				peer.pending.insert(block); try send(id, .request(block))
+			}
 		} catch { drop(id, error: error) }
 	}
 	func fillAll() { for id in peers.keys { fill(id) } }

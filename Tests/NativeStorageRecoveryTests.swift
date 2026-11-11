@@ -22,6 +22,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			case "--child": try await child(root: URL(fileURLWithPath: args[2]), operation: args[3], boundary: args[4], target: URL(fileURLWithPath: args[5]))
 			case "--disk": try await disk(root: URL(fileURLWithPath: args[2]), volume: URL(fileURLWithPath: args[3]))
 			case "--read-only": try await readOnly(volume: URL(fileURLWithPath: args[2]))
+			case "--checkpoint": try await checkpointInterruptions(root: URL(fileURLWithPath: args[2]))
 			default: try await interruptions(root: URL(fileURLWithPath: args[1]), volume: URL(fileURLWithPath: args[2]))
 			}
 		} catch { try? FileHandle.standardError.write(contentsOf: Data("FAIL: \(error)\n".utf8)); exit(1) }
@@ -51,6 +52,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		case .sourceClaimed(let index): "claimed-\(index)"
 		case .pieceLayersChanged: "piece-layers"
 		case .payloadFlushed(let index): "flushed-\(index)"
+		case .progressCheckpointDurable: "progress-checkpoint"
 		}
 	}
 	static func files(in directory: URL) throws -> [Data] {
@@ -70,14 +72,24 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			else { _ = try await publishRepositoryStorage(repository, id: "transfer", metadata: metadata, destination: root.appendingPathComponent("data")) }
 			return
 		}
-		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), event: { event in
-			if label(event) == boundary, operation != "verify" || fm.fileExists(atPath: root.appendingPathComponent("armed").path) { stopAtBoundary(root) }
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), checkpointPolicy: operation.hasPrefix("batched-") ? .managed : .immediate, event: { event in
+			if label(event) == boundary, (operation != "verify" && !operation.hasPrefix("batched-")) || fm.fileExists(atPath: root.appendingPathComponent("armed").path) { stopAtBoundary(root) }
 		})
 		switch operation {
 		case "verify":
 			try Data([1]).write(to: root.appendingPathComponent("armed"))
 			try await storage.write(piece: 0, offset: 0, data: contents(0).prefix(16384))
 			try await storage.verify(piece: 0)
+		case "batched-verify":
+			try Data([1]).write(to: root.appendingPathComponent("armed"))
+			try await storage.write(piece: 0, offset: 0, data: contents(0).prefix(16384))
+			try require(try await storage.verify(piece: 0), "Batched fixture failed verification")
+			if boundary == "pending" { stopAtBoundary(root) }
+			try await storage.flush()
+		case "batched-overwrite":
+			try Data([1]).write(to: root.appendingPathComponent("armed"))
+			try await storage.write(piece: 0, offset: 0, data: Data([255]))
+			if boundary == "written" { stopAtBoundary(root) }
 		case "rename":
 			let paths = Dictionary(uniqueKeysWithValues: metadata.inspection.files.filter { !$0.pad }.map { ($0.index, "renamed/" + URL(fileURLWithPath: $0.path).lastPathComponent) })
 			try await storage.rename(paths)
@@ -194,9 +206,34 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		try require(try await verifiedStorage.verify(piece: 0), "Interrupted flushed piece did not reverify")
 		try await verifiedStorage.shutdown()
 		print("PASS: killed verification after payload flush; progress remains invalid until reverified")
+		try await checkpointInterruptions(root: root.appendingPathComponent("checkpoint-policy"))
 		try await repositoryPublicationInterruptions(root: root)
 		try await repositoryDiscardInterruptions(root: root)
 		try await repositoryClaimReplacement(root: root.appendingPathComponent("repository-claim-replacement"))
+	}
+	static func checkpointInterruptions(root: URL) async throws {
+		for boundary in ["pending", "flushed-0", "progress-checkpoint"] {
+			let work = root.appendingPathComponent(boundary), metadata = try await prepare(work, importData: false)
+			try await stopChild(work, operation: "batched-verify", boundary: boundary, target: work)
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: work.appendingPathComponent("data"), stateDirectory: work.appendingPathComponent("state"))
+			let snapshot = try await storage.snapshot()
+			try require(snapshot.verifiedPieces.contains(0) == (boundary == "progress-checkpoint"), "Crash published uncommitted verification")
+			try require(try Data(contentsOf: work.appendingPathComponent("data/bundle/" + name(0))) == contents(0).prefix(16384), "Uncheckpointed bytes were removed")
+			try require(try await storage.recoverExistingPiece(0), "Lazy recovery failed to reuse hash-checked bytes")
+			try await storage.shutdown()
+			print("PASS: killed batched verification at \(boundary); retained bytes and recovered only after hashing")
+		}
+		for boundary in ["progress-checkpoint", "written"] {
+			let work = root.appendingPathComponent("overwrite-" + boundary), metadata = try await prepare(work)
+			try await stopChild(work, operation: "batched-overwrite", boundary: boundary, target: work)
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: work.appendingPathComponent("data"), stateDirectory: work.appendingPathComponent("state"))
+			try require(try await !storage.snapshot().verifiedPieces.contains(0), "Crash restored overwritten verification")
+			let bytes = try Data(contentsOf: work.appendingPathComponent("data/bundle/" + name(0)))
+			try require(bytes.count == contents(0).count && bytes[0] == (boundary == "written" ? 255 : contents(0)[0]), "Overwrite crash lost payload bytes")
+			try require(try await storage.recoverExistingPiece(0) == (boundary != "written"), "Recovery trusted an overwritten piece")
+			try await storage.shutdown()
+			print("PASS: killed overwrite at \(boundary); durable invalidation preceded modifying bytes")
+		}
 	}
 	static func repositoryPublicationInterruptions(root: URL) async throws {
 		for boundary in ["stagingDurable", "checkpointDirectoryDurable", "torrentDurable", "locatorDurable"] {

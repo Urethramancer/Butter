@@ -50,7 +50,8 @@ public actor ManagedTransfer {
 		try configuration.validate()
 		let identity = peerID ?? Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
 		guard identity.count == 20 else { throw PeerFailure.invalid("peer identifier") }
-		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory, selected: selected, preparedState: preparedState, event: event)
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory, selected: selected, preparedState: preparedState,
+			checkpointPolicy: .managed, checkpointClock: TransferCheckpointClock(clock: clock), event: event)
 		return ManagedTransfer(metadata: metadata, storage: storage, configuration: configuration, resources: resources, budget: budget, peerID: identity, clock: clock, webSeedTransport: webSeedTransport)
 	}
 	public func start() async throws {
@@ -120,6 +121,7 @@ public actor ManagedTransfer {
 				catch StorageFailure.invalid("short payload read") { }
 				catch StorageFailure.missingHashes { }
 			}
+			try await storage.flush()
 		}
 	}
 	public func exportMetadata() async throws -> Data {
@@ -133,9 +135,9 @@ public actor ManagedTransfer {
 	public func save() async throws { try await serial { try await self.checkpoint() } }
 	private func checkpoint() async throws {
 		if let transfer {
-			let counters = await transfer.snapshot(); try await storage.checkpoint(downloaded: counters.downloaded, uploaded: counters.uploaded, corruptBytes: counters.corruptBytes, redundantBytes: counters.redundantBytes)
+			try await transfer.checkpoint()
 		} else {
-			let counters = try await storage.snapshot(); try await storage.checkpoint(downloaded: counters.downloaded, uploaded: counters.uploaded)
+			try await storage.flush()
 		}
 	}
 	public func close() async throws {
@@ -181,4 +183,10 @@ public actor ManagedTransfer {
 		} catch { await commands.release(); throw error }
 	}
 	deinit { for task in discoveryPumps { task.cancel() } }
+}
+
+private struct TransferCheckpointClock: StorageCheckpointClock {
+	let clock: any TransportClock
+	func now() -> TimeInterval { clock.now() }
+	func sleep(for seconds: TimeInterval) async throws { try await clock.sleep(for: seconds) }
 }

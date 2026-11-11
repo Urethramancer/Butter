@@ -11,6 +11,7 @@ public enum StorageEvent: Sendable, Equatable {
 	case sourceClaimed(Int)
 	case pieceLayersChanged
 	case payloadFlushed(Int)
+	case progressCheckpointDurable
 }
 
 struct StorageJournal: Codable {
@@ -63,6 +64,7 @@ extension StorageState {
 	func persist(_ journal: StorageJournal) throws { try state.atomic(journal.encoded(), path: "operation.plist") }
 	func perform(after: StorageCheckpoint, entries: [StorageJournal.Entry], check: () throws -> Void) throws {
 		try ready(); try check()
+		try save()
 		try invalidateChangedFiles()
 		var after = after
 		for index in after.verified.indices { after.verified[index] &= record.verified[index] }

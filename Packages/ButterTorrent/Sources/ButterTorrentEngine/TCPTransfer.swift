@@ -148,6 +148,10 @@ public actor TCPTransfer {
 	var ticker: Task<Void, Never>?
 	var shutdownTask: (UUID, Task<Void, Error>)?
 	var completionWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
+	var completionCheckpoint: Task<Void, Error>?
+	let hasExistingPayload: Bool
+	var locallyChecked: PieceBitfield
+	var localRecoveries: [Int: Task<Void, Never>] = [:]
 	var webSeeds: [TransferWebSeed] = []
 	var webTask: Task<Void, Never>?
 	var webClient: WebSeedClient?
@@ -176,6 +180,7 @@ public actor TCPTransfer {
 			offset += file.size
 		}
 		picker = PiecePicker(layout: storage.layout, wanted: wanted, completed: initial.verifiedPieces, lengths: storage.merkleIndex.pieces.mapValues(\.length))
+		hasExistingPayload = initial.hasExistingPayload; locallyChecked = try PieceBitfield(count: storage.layout.pieceCount)
 		hashReady = hashes
 		downloaded = initial.downloaded; uploaded = initial.uploaded; corruptBytes = initial.corruptBytes; redundantBytes = initial.redundantBytes; lastChoke = clock.now()
 	}
@@ -189,9 +194,19 @@ public actor TCPTransfer {
 		let hashes = try await storage.availableHashes()
 		let transfer = try TCPTransfer(metadata: metadata, storage: storage, initial: initial, hashes: hashes, configuration: configuration,
 			peerID: identity, budget: budget ?? TCPPeerBudget(limit: configuration.maximumPeers), resources: resources, clock: clock)
+		try await transfer.flushInitialCompletion()
 		await transfer.startTicker()
 		await transfer.startWebSeeds(client: webSeedClient ?? WebSeedClient(transport: NetworkHTTPTransport(clock: clock, addressFilter: configuration.addressFilter), clock: clock, maximumBytes: 16384), admission: resources.web)
 		return transfer
+	}
+	private func flushInitialCompletion() async throws { if picker.complete { try await storage.flush(retryFailed: false) } }
+	func checkpointCompletion() {
+		guard !stopping, picker.complete, completionCheckpoint == nil else { return }
+		let storage = storage
+		completionCheckpoint = Task { [weak self] in
+			do { try await storage.flush(retryFailed: false) }
+			catch { await self?.diskFailed(error); throw error }
+		}
 	}
 	func startTicker() {
 		let clock = clock, interval = min(1, configuration.requestTimeout / 2)
@@ -308,6 +323,11 @@ public actor TCPTransfer {
 		configuration.downloadLimit = download; configuration.uploadLimit = upload
 		await downloadRate.set(download); await uploadRate.set(upload)
 	}
+	/// Persists counters and verified progress after draining the completion checkpoint.
+	public func checkpoint() async throws {
+		if !stopping, let completionCheckpoint { try await completionCheckpoint.value }
+		try await storage.checkpoint(downloaded: downloaded, uploaded: uploaded, corruptBytes: corruptBytes, redundantBytes: redundantBytes)
+	}
 	public func shutdown() async throws {
 		if stopped { return }
 		let entry: (UUID, Task<Void, Error>)
@@ -316,9 +336,11 @@ public actor TCPTransfer {
 	}
 	private func finishShutdown() async throws {
 		stopping = true; ticker?.cancel(); webTask?.cancel()
+		let completing = completionCheckpoint; completing?.cancel()
 		settleCompletionWaiters(PeerFailure.closed)
 		discovery.finish(); nodeDiscovery.finish()
-		let connecting = Array(openings.values), running = peers.values.compactMap(\.task), uploads = uploadJobs.values.map(\.1), retrying = Array(identityRetries.values)
+		let connecting = Array(openings.values), running = peers.values.compactMap(\.task), uploads = uploadJobs.values.map(\.1), retrying = Array(identityRetries.values), recovering = Array(localRecoveries.values)
+		for task in recovering { task.cancel() }
 		for task in retrying { task.cancel() }
 		for task in connecting { task.cancel() }
 		for peer in peers.values { peer.closing = true; peer.session.close(); peer.task?.cancel() }
@@ -326,11 +348,13 @@ public actor TCPTransfer {
 		await disk.close(); await cache.close()
 		for task in connecting { if let stream = try? await task.value { stream.close() } }
 		for task in running { await task.value }; for task in uploads { await task.value }
+		for task in recovering { await task.value }
+		_ = try? await completing?.value
 		for task in retrying { await task.value }
 		await webTask?.value; webTask = nil
 		if let ticker { await ticker.value }; ticker = nil
 		for bytes in activePayloadBytes.values { recordUnusablePayload(bytes) }; activePayloadBytes.removeAll()
-		try await storage.checkpoint(downloaded: downloaded, uploaded: uploaded, corruptBytes: corruptBytes, redundantBytes: redundantBytes); stopped = true
+		try await checkpoint(); stopped = true
 	}
 	func ended(_ id: UUID, error: Error?) async {
 		guard let peer = peers.removeValue(forKey: id) else { return }

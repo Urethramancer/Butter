@@ -49,9 +49,9 @@ struct PiecePicker {
 		let length = lengths[piece] ?? ((try? layout.length(of: piece)) ?? 0)
 		return stride(from: 0, to: length, by: 16384).map { PeerBlock(piece: piece, offset: $0, length: min(16384, length - $0)) }
 	}
-	mutating func allocate(_ peer: UUID, limit: Int, now: TimeInterval, eligible: Set<Int>? = nil, allowed: Set<Int>? = nil, suggestions: Set<Int> = []) -> [PeerBlock] {
+	mutating func allocate(_ peer: UUID, limit: Int, now: TimeInterval, eligible: Set<Int>? = nil, allowed: Set<Int>? = nil, suggestions: Set<Int> = [], excluding: Set<Int> = []) -> [PeerBlock] {
 		guard let bits = peers[peer], limit > 0 else { return [] }
-		let permitted: (Int) -> Bool = { bits.contains($0) && (eligible?.contains($0) ?? true) && (allowed?.contains($0) ?? true) }
+		let permitted: (Int) -> Bool = { !excluding.contains($0) && bits.contains($0) && (eligible?.contains($0) ?? true) && (allowed?.contains($0) ?? true) }
 		let order: (Int, Int) -> Bool = {
 			if availability[$0] != availability[$1] { return availability[$0] < availability[$1] }
 			if suggestions.contains($0) != suggestions.contains($1) { return suggestions.contains($0) }; return $0 < $1
