@@ -49,7 +49,10 @@ extension TCPTransfer {
 		guard !stopping, storageError == nil, let peer = peers[id], !peer.closing, peer.peerID != nil else { throw PeerFailure.closed }
 		let now = clock.now()
 		if now - peer.window >= 1 { peer.window = now; peer.controls = 0 }
-		if case .piece = message { } else { peer.controls += 1; guard peer.controls <= 8192 else { throw PeerFailure.limit("control messages per second") } }
+		switch message {
+		case .piece, .request: break
+		default: try recordControlMessage(peer)
+		}
 		if case .keepAlive = message { return }
 		switch message {
 		case .extended, .hashRequest, .hashes, .hashReject: break
@@ -78,7 +81,9 @@ extension TCPTransfer {
 		case .unchoke: peer.remoteChoking = false; fill(id)
 		case .interested: peer.remoteInterested = true; rechoke()
 		case .notInterested: peer.remoteInterested = false; rechoke()
-		case .request(let block): try validate(block); try requestUpload(id, block: block)
+		case .request(let block):
+			try validate(block)
+			if try !requestUpload(id, block: block) { try recordControlMessage(peer) }
 		case .cancel(let block):
 			try validate(block)
 			if let token = peer.uploads.removeValue(forKey: block) {
@@ -111,6 +116,10 @@ extension TCPTransfer {
 				await disk.release(); fillAll()
 			} catch { if !delivered { recordUnusablePayload(Int64(bytes.count)) }; throw error }
 		}
+	}
+	func recordControlMessage(_ peer: TransferPeer) throws {
+		peer.controls += 1
+		guard peer.controls <= 8192 else { throw PeerFailure.limit("control messages per second") }
 	}
 	func validate(_ block: PeerBlock) throws {
 		let length = try picker.layout.length(of: block.piece)

@@ -1,16 +1,20 @@
 import Foundation
 
 extension TCPTransfer {
-	func requestUpload(_ id: UUID, block: PeerBlock) throws {
-		guard let peer = peers[id] else { return }
+	func requestUpload(_ id: UUID, block: PeerBlock) throws -> Bool {
+		guard let peer = peers[id] else { return false }
 		// Hybrid peers may retain v1 block lengths after upgrading the handshake to v2.
 		// The validated hybrid layout fills the remainder of each file's last piece with zero padding.
 		if peer.features.v2, metadata.hashes.v1 == nil, let actual = storage.merkleIndex.pieces[block.piece]?.length, block.offset + block.length > actual { throw PeerFailure.invalid("v2 request crosses a file boundary") }
 		if (peer.choking && !peer.allowedIncoming.contains(block.piece)) || !picker.completed.contains(block.piece) {
-			if peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }; return
+			if peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }; return false
 		}
 		if peer.uploads[block] != nil { throw PeerFailure.invalid("duplicate upload request") }
-		guard peer.uploads.count < 32, uploadJobs.count < 64 else { throw PeerFailure.limit("upload requests") }
+		// A replacement request can arrive before the writer's completion callback.
+		// Reject excess work without dropping the connection or enlarging either queue.
+		guard peer.uploads.count < 32, uploadJobs.count < 64 else {
+			if peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }; return false
+		}
 		let token = UUID(); peer.uploads[block] = token; peer.session.register(token)
 		let task = Task { [weak self] in
 			guard let self else { return }
@@ -19,6 +23,7 @@ extension TCPTransfer {
 			await self.uploadJobFinished(token)
 		}
 		uploadJobs[token] = (id, task)
+		return true
 	}
 	func buildUpload(_ id: UUID, block: PeerBlock, token: UUID) async throws {
 		try await disk.acquire()
