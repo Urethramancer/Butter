@@ -100,3 +100,26 @@ two seconds using the system sampler. Sample stacks and raw CPU accounting are
 retained; these instrumented results are labelled profile-only and never used
 as timing acceptance evidence. Sampling attributes stacks and waits; allocation
 counts require additional Instruments Allocations recordings when indicated.
+
+## Checkpoint policy
+
+Direct `TorrentStorage` callers retain `.immediate`. Managed transfers use a
+one-second or 16 MiB newly verified payload budget, whichever arrives first.
+Padding and repeated verification do not count towards that budget. A piece
+which would exceed the remaining byte budget first commits existing progress;
+verification and checkpoint work remain subject to the bounded disk worker.
+The clock is injectable. A single owned task schedules expiry work; it does not
+promise that a blocked filesystem call will finish within one second.
+
+In-memory verified bits and the last committed bits are separate. Payload is
+fsynced before publishing claims, and previously committed progress is durably
+invalidated before overwriting its bytes. Failed flushes/publications retain
+pending work and surface errors; explicit flush/save/shutdown can retry.
+Completion, pause, save/export, shutdown and filesystem changes force a barrier.
+Shutdown cancels and drains scheduled checkpoint work.
+
+A restart retains uncheckpointed bytes. Before requesting an existing unverified
+piece, the picker performs one bounded local check for that piece, lazily and
+under existing disk admission limits. Only fully verified data is advertised;
+missing or corrupt data falls back to normal requests. Recovery bookkeeping uses
+bounded bitsets and introduces no eager payload scan or legacy resume importer.
