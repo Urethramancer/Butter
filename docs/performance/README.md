@@ -187,3 +187,11 @@ and complete download case remain in raw evidence. The seeding samples are
 incomplete and cannot support an acceptance claim. Cleanup also masked the
 original disconnect reason; correcting that diagnostic is required before the
 final matrix.
+
+The [seeding diagnostic](raw/seeding-diagnosis/summary.json) retained an output
+byte-limit disconnect at 64.8 seconds. Admission now reserves the complete
+encoded frame and message slot before disk work, within the existing 512 KiB /
+128-message queue, 32-request and 64-job bounds. The [complete output-credit
+comparison](raw/output-credits/summary.json) passed all fourteen full-size
+trials. Its seven Swift transfers took 4.44–4.62 seconds without peer errors;
+there were no reconnect outliers in that run. CPU parity remains unmet.

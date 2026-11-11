@@ -15,7 +15,11 @@ extension TCPTransfer {
 		guard peer.uploads.count < 32, uploadJobs.count < 64 else {
 			if peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }; return false
 		}
-		let token = UUID(); peer.uploads[block] = token; peer.session.register(token)
+		let token = UUID()
+		guard peer.session.register(token, bytes: block.length + 13) else {
+			if peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }; return false
+		}
+		peer.uploads[block] = token
 		let task = Task { [weak self] in
 			guard let self else { return }
 			do { try await self.buildUpload(id, block: block, token: token) }

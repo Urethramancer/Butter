@@ -9,11 +9,20 @@ final class PeerSession: @unchecked Sendable {
 	private let lock = NSLock()
 	private let outgoing = AsyncStream<Outbound>.makeStream(bufferingPolicy: .bufferingOldest(128))
 	private var queuedBytes = 0
+	private var queuedMessages = 0
+	private var reservedBytes = 0
+	private var reservations: [UUID: Int] = [:]
 	private var closed = false
 	private var tokens: Set<UUID> = []
 	init(stream: any PeerByteStream, transport: PeerStream? = nil) { self.stream = stream; self.transport = transport }
 	func handshake(_ hello: PeerHandshake) throws { try enqueue(Outbound(bytes: hello.encoded, payload: 0, token: nil, block: nil)) }
-	func register(_ token: UUID) { _ = lock.withLock { tokens.insert(token) } }
+	func register(_ token: UUID, bytes: Int) -> Bool {
+		lock.withLock {
+			guard !closed, bytes > 0, bytes <= 524_288 - queuedBytes - reservedBytes,
+				queuedMessages + reservations.count < 128, !tokens.contains(token) else { return false }
+			tokens.insert(token); reservations[token] = bytes; reservedBytes += bytes; return true
+		}
+	}
 	func send(_ message: PeerMessage, token: UUID? = nil, block: PeerBlock? = nil) throws {
 		let payload: Int
 		if case .piece(_, _, let bytes) = message { payload = bytes.count } else { payload = 0 }
@@ -22,15 +31,26 @@ final class PeerSession: @unchecked Sendable {
 	private func enqueue(_ item: Outbound) throws {
 		try lock.withLock {
 			guard !closed else { throw PeerFailure.closed }
-			guard queuedBytes + item.bytes.count <= 524_288 else { throw PeerFailure.limit("peer output bytes") }
-			if let token = item.token, !tokens.contains(token) { throw PeerFailure.closed }
+			let credit: Int
+			if let token = item.token {
+				guard tokens.contains(token), let reserved = reservations[token] else { throw PeerFailure.closed }
+				guard reserved == item.bytes.count else { throw PeerFailure.invalid("upload output reservation") }; credit = reserved
+			} else { credit = 0 }
+			guard queuedBytes + reservedBytes - credit + item.bytes.count <= 524_288 else { throw PeerFailure.limit("peer output bytes") }
+			guard queuedMessages + reservations.count - (item.token == nil ? 0 : 1) < 128 else { throw PeerFailure.limit("peer output messages") }
 			if case .enqueued = outgoing.continuation.yield(item) {
-				queuedBytes += item.bytes.count
+				if let token = item.token { reservations[token] = nil; reservedBytes -= credit }
+				queuedBytes += item.bytes.count; queuedMessages += 1
 			} else { throw PeerFailure.limit("peer output messages") }
 		}
 	}
-	@discardableResult func cancel(_ token: UUID) -> Bool { lock.withLock { tokens.remove(token) != nil } }
-	func close() { lock.withLock { closed = true; tokens.removeAll() }; outgoing.continuation.finish(); stream.close() }
+	@discardableResult func cancel(_ token: UUID) -> Bool {
+		lock.withLock {
+			if let bytes = reservations.removeValue(forKey: token) { reservedBytes -= bytes }
+			return tokens.remove(token) != nil
+		}
+	}
+	func close() { lock.withLock { closed = true; tokens.removeAll(); reservations.removeAll(); reservedBytes = 0 }; outgoing.continuation.finish(); stream.close() }
 	func run(id: UUID, hello: PeerHandshake, outgoing: Bool, engine: TCPTransfer, upload: TransferRateLimiter, idleTimeout: TimeInterval,
 		hashes: [Data], encryption: PeerEncryptionConfiguration, clock: any TransportClock) async throws {
 		defer { close() }
@@ -41,7 +61,7 @@ final class PeerSession: @unchecked Sendable {
 		try await withThrowingTaskGroup(of: Void.self) { group in
 			group.addTask {
 				for await item in self.outgoing.stream {
-					self.lock.withLock { self.queuedBytes -= item.bytes.count }
+					self.lock.withLock { self.queuedBytes -= item.bytes.count; self.queuedMessages -= 1 }
 					try Task.checkCancellation()
 					if let token = item.token, !self.lock.withLock({ self.tokens.contains(token) }) { continue }
 					do { try await upload.consume(item.payload) { item.token.map { token in !self.lock.withLock({ self.tokens.contains(token) }) } ?? false } }

@@ -33,6 +33,17 @@ private func blockedUploadFixture(_ body: (TCPTransfer, WirePeer) async throws -
 }
 
 @Suite struct UploadAdmissionTests {
+	@Test func fullSizedUploadsReserveFramingBeforeDiskWorkWithoutGrowingTheQueue() async throws {
+		try await blockedUploadFixture { seed, peer in
+			for offset in 0..<32 { try await peer.send(.request(PeerBlock(piece: 0, offset: offset, length: 16384))) }
+			var rejected: PeerBlock?
+			while rejected == nil { if case .reject(let block) = try await peer.next() { rejected = block } }
+			#expect(rejected == PeerBlock(piece: 0, offset: 31, length: 16384))
+			#expect(await seed.uploadAdmissionState().queued == 31)
+			#expect(await seed.snapshot().peers.count == 1)
+			#expect(await seed.lastPeerError == nil)
+		}
+	}
 	@Test func fullUploadQueueRejectsExcessWithoutDroppingThePeer() async throws {
 		try await blockedUploadFixture { seed, peer in
 			let before = await seed.uploadAdmissionState()
