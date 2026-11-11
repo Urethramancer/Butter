@@ -2,8 +2,7 @@
 
 ## Swift cut-over audit findings
 
-- Reduce whole-payload flushes per verified piece and profile stamp/descriptor
-  work with many-file torrents (A16).
+- Reduce stamp/descriptor work and profile many-file torrents (A16).
 
 ## Native interaction and appearance
 - Automate real drag/drop, blocklist import/export dialogs, destination-folder

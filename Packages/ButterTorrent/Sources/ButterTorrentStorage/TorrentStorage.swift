@@ -68,6 +68,7 @@ final class StorageState: @unchecked Sendable {
 	let lease: StorageLease
 	var closed = false
 	var hasJournal = false
+	var pendingFlush: Set<Int> = []
 	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, anchoredState: StorageDirectory? = nil, event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
 		self.metadata = metadata; self.layout = layout; self.coordinator = coordinator; self.event = event
 		merkle = try MerkleCatalog(metadata: metadata)
@@ -97,6 +98,8 @@ final class StorageState: @unchecked Sendable {
 		do {
 			try claim()
 			try restoreHashes()
+			// Reopened files may contain externally written bytes awaiting durability.
+			pendingFlush = Set(layout.files.indices.filter { !layout.files[$0].pad })
 			hasJournal = try state.inspect("operation.plist") != nil
 			if !hasJournal {
 				try prepareEmptyFiles()
@@ -126,7 +129,9 @@ final class StorageState: @unchecked Sendable {
 	}
 	func prepareEmptyFiles() throws {
 		for index in layout.files.indices where layout.files[index].size == 0 && record.selected[index] {
-			if try payload.inspect(record.paths[index]) == nil { let file = try payload.openFile(record.paths[index], write: true); close(file) }
+			if try payload.inspect(record.paths[index]) == nil {
+				let file = try payload.openFile(record.paths[index], write: true); close(file); pendingFlush.insert(index)
+			}
 		}
 	}
 	func location(_ index: Int) -> (StorageDirectory, String) {
@@ -154,15 +159,25 @@ final class StorageState: @unchecked Sendable {
 	}
 	func save() throws {
 		// Flush payload before publishing any progress record.
-		for index in record.paths.indices where !layout.files[index].pad {
+		for index in pendingFlush.sorted() {
 			let (directory, path) = location(index)
 			if try directory.inspect(path) != nil {
 				let file = try directory.openFile(path); defer { close(file) }
 				try directory.sync(file); try directory.parent(path) { parent, _ in try directory.sync(parent) }
+				event(.payloadFlushed(index))
 			}
 		}
 		try invalidateChangedFiles(); record.generation &+= 1
 		try state.atomic(record.encoded(), path: "checkpoint.plist")
+		pendingFlush.removeAll()
+	}
+	func requireFlush(piece: Int) throws {
+		let length = try layout.length(of: piece)
+		for offset in stride(from: 0, to: length, by: 1_048_576) {
+			for segment in try layout.segments(piece: piece, offset: offset, count: min(1_048_576, length - offset)) where !segment.padding {
+				pendingFlush.insert(segment.file)
+			}
+		}
 	}
 	func snapshot() throws -> StorageSnapshot {
 		guard !closed else { throw StorageFailure.closed }
@@ -217,6 +232,8 @@ final class StorageState: @unchecked Sendable {
 			if segment.padding { continue }
 			let (directory, path) = location(segment.file), file = try directory.openFile(path, write: true)
 			defer { close(file) }
+			// Include partial writes when cancellation or a disk error interrupts pwrite.
+			pendingFlush.insert(segment.file)
 			try StorageDirectory.write(data.subdata(in: cursor..<(cursor + segment.count)), to: file, offset: segment.offset, check: check)
 			record.stamps[segment.file] = try directory.stamp(file)
 		}
@@ -227,7 +244,10 @@ final class StorageState: @unchecked Sendable {
 		try invalidateChangedFiles()
 		record.set(piece, false)
 		let valid = try checkedPiece(piece, check: check).valid
-		record.set(piece, valid); try save(); return valid
+		if valid { try requireFlush(piece: piece) }
+		record.set(piece, valid)
+		do { try save() } catch { record.set(piece, false); throw error }
+		return valid
 	}
 	func verifiedPiece(_ piece: Int, check: () throws -> Void) throws -> Data {
 		try ready(); let length = try layout.length(of: piece); try invalidateChangedFiles()

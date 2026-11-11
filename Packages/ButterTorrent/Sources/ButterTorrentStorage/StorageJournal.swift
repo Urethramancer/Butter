@@ -10,6 +10,7 @@ public enum StorageEvent: Sendable, Equatable {
 	case sourceWillBeClaimed(Int)
 	case sourceClaimed(Int)
 	case pieceLayersChanged
+	case payloadFlushed(Int)
 }
 
 struct StorageJournal: Codable {
@@ -119,6 +120,8 @@ extension StorageState {
 		try check()
 		record = journal.after
 		payload = try StorageDirectory(URL(fileURLWithPath: record.destination), create: false)
+		// Bulk recovery can publish externally supplied or renamed files.
+		pendingFlush.formUnion(layout.files.indices.filter { !layout.files[$0].pad })
 		try prepareEmptyFiles()
 		// Preserve the stamps bound to checked content, then invalidate any later edits.
 		for entry in journal.entries {

@@ -84,7 +84,7 @@ extension StorageState {
 		try candidate.installLayer(layer, root: file.root)
 		try check(); try persistHashes(candidate)
 		let newlyVerified = legacyPieces.filter { !record.contains($0) }
-		for index in legacyPieces { record.set(index, true) }
+		for index in legacyPieces { try requireFlush(piece: index); record.set(index, true) }
 		do { try save() }
 		catch { for index in newlyVerified { record.set(index, false) }; throw error }
 		return .verified(Set(legacyPieces.filter(record.contains)))

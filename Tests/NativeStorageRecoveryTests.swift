@@ -50,6 +50,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		case .sourceWillBeClaimed(let index): "claiming-\(index)"
 		case .sourceClaimed(let index): "claimed-\(index)"
 		case .pieceLayersChanged: "piece-layers"
+		case .payloadFlushed(let index): "flushed-\(index)"
 		}
 	}
 	static func files(in directory: URL) throws -> [Data] {
@@ -70,9 +71,13 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			return
 		}
 		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), event: { event in
-			if label(event) == boundary { stopAtBoundary(root) }
+			if label(event) == boundary, operation != "verify" || fm.fileExists(atPath: root.appendingPathComponent("armed").path) { stopAtBoundary(root) }
 		})
 		switch operation {
+		case "verify":
+			try Data([1]).write(to: root.appendingPathComponent("armed"))
+			try await storage.write(piece: 0, offset: 0, data: contents(0).prefix(16384))
+			try await storage.verify(piece: 0)
 		case "rename":
 			let paths = Dictionary(uniqueKeysWithValues: metadata.inspection.files.filter { !$0.pad }.map { ($0.index, "renamed/" + URL(fileURLWithPath: $0.path).lastPathComponent) })
 			try await storage.rename(paths)
@@ -181,6 +186,14 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			try await storage.shutdown()
 		}
 		print("PASS: four atomic-checkpoint child interruptions")
+		let verifiedWork = root.appendingPathComponent("verified-flush"), verifiedMetadata = try await prepare(verifiedWork)
+		try await stopChild(verifiedWork, operation: "verify", boundary: "flushed-0", target: verifiedWork)
+		let verifiedStorage = try await TorrentStorage.open(metadata: verifiedMetadata, destination: verifiedWork.appendingPathComponent("data"), stateDirectory: verifiedWork.appendingPathComponent("state"))
+		let verifiedSnapshot = try await verifiedStorage.snapshot()
+		try require(!verifiedSnapshot.verifiedPieces.contains(0) && verifiedSnapshot.verifiedPieces.count == verifiedStorage.layout.pieceCount - 1, "Interrupted flush advertised progress before checkpoint publication")
+		try require(try await verifiedStorage.verify(piece: 0), "Interrupted flushed piece did not reverify")
+		try await verifiedStorage.shutdown()
+		print("PASS: killed verification after payload flush; progress remains invalid until reverified")
 		try await repositoryPublicationInterruptions(root: root)
 		try await repositoryDiscardInterruptions(root: root)
 		try await repositoryClaimReplacement(root: root.appendingPathComponent("repository-claim-replacement"))
