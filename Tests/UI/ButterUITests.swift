@@ -53,14 +53,8 @@ final class ButterUITests: XCTestCase {
 		XCTAssertTrue(app.staticTexts["Isolated test configuration."].waitForExistence(timeout: 5))
 	}
 	func testTorrentFilesSelectionAndRemoval() {
-		app.typeKey("o", modifierFlags: .command)
-		app.typeKey("g", modifierFlags: [.command, .shift])
-		app.typeText(root.appendingPathComponent("fixture.torrent").path)
-		app.typeKey(.return, modifierFlags: [])
-		let open = app.buttons["Open"].firstMatch
-		XCTAssertTrue(open.waitForExistence(timeout: 5)); open.click()
+		openPath(root.appendingPathComponent("fixture.torrent"))
 		let add = app.buttons["torrent-add"]
-		XCTAssertTrue(add.waitForExistence(timeout: 5))
 		app.checkBoxes["folder/b.bin"].click()
 		add.click()
 		let row = app.staticTexts["folder"].firstMatch

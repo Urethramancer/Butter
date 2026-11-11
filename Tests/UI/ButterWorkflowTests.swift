@@ -10,13 +10,33 @@ extension ButterUITests {
 		let control = app.descendants(matching: .any)[identifier].firstMatch
 		XCTAssertTrue(control.waitForExistence(timeout: 5)); control.click(); app.menuItems[value].click()
 	}
-	private func openPath(_ url: URL, selectAll: Bool = false) {
-		app.typeKey("o", modifierFlags: .command); app.typeKey("g", modifierFlags: [.command, .shift])
-		app.typeText(url.path); app.typeKey(.return, modifierFlags: [])
-		let open = app.buttons["Open"].firstMatch
-		let hittable = expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: open)
-		wait(for: [hittable], timeout: 5)
+	func openPath(_ url: URL, selectAll: Bool = false) {
+		let directory = selectAll ? url : url.deletingLastPathComponent()
+		let file = selectAll ? (try? FileManager.default.contentsOfDirectory(atPath: directory.path).sorted().first) : url.lastPathComponent
+		guard let file else { XCTFail("Missing torrent fixture"); return }
+		app.typeKey("o", modifierFlags: .command)
+		let panel = app.windows["open-panel"]
+		XCTAssertTrue(panel.waitForExistence(timeout: 5))
+		app.typeKey("g", modifierFlags: [.command, .shift])
+		let navigation = panel.sheets["GoToWindow"], path = navigation.textFields["PathTextField"]
+		XCTAssertTrue(path.waitForExistence(timeout: 5))
+		path.click(); path.typeKey("a", modifierFlags: .command)
+		path.typeText(directory.resolvingSymlinksInPath().path)
+		XCTAssertTrue(navigation.tables.firstMatch.tableRows.firstMatch.waitForExistence(timeout: 5), "The Go to Folder sheet did not resolve the fixture directory")
+		path.typeKey(.return, modifierFlags: [])
+		let navigated = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: navigation)
+		wait(for: [navigated], timeout: 5)
+		let stem = URL(fileURLWithPath: file).deletingPathExtension().lastPathComponent
+		let item = panel.descendants(matching: .any).matching(NSPredicate(format: "label IN %@ OR identifier IN %@", [file, stem], [file, stem])).firstMatch
+		XCTAssertTrue(item.waitForExistence(timeout: 10), panel.debugDescription)
+		let windowFrame = panel.frame, itemFrame = item.frame
+		XCTAssertTrue(windowFrame.contains(itemFrame), panel.debugDescription)
+		let offset = CGVector(dx: itemFrame.midX - windowFrame.minX, dy: itemFrame.midY - windowFrame.minY)
+		panel.coordinate(withNormalizedOffset: .zero).withOffset(offset).click()
 		if selectAll { app.typeKey("a", modifierFlags: .command) }
+		let open = panel.buttons["OKButton"]
+		let enabled = expectation(for: NSPredicate(format: "hittable == true AND enabled == true"), evaluatedWith: open)
+		wait(for: [enabled], timeout: 5)
 		open.click()
 		XCTAssertTrue(app.buttons["torrent-add"].waitForExistence(timeout: 5))
 	}
