@@ -32,7 +32,7 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
     swift_flags: "Release; swiftc -O -swift-version 6", reference_flags: "CMake Release; arm64; pinned static libtorrent",
     transport: "loopback TCP, encryption disabled, PEX/discovery disabled; production request windows",
     cache: "fresh processes and destinations; sources streamed and SHA256 checked before every trial; explicitly warm, no cold-cache claim",
-    durability: "Swift native payload fsync then atomic state fsync/rename/directory fsync; libtorrent flush_disk_cache fence plus explicit payload/directory fsync then resume fsync/rename/directory fsync",
+    durability: "Swift native payload fsync then atomic state fsync/rename/directory fsync; its forced completion checkpoint is inside the verified interval. Libtorrent finished precedes pause/flush_cache fence plus explicit payload/directory fsync then resume fsync/rename/directory fsync. Through-durable metrics include both placements.",
     sampling: mode == "--profile" ? "one instrumented pair per selected case; no warm-ups; profile-only, excluded from timing acceptance" : "one warm-up per engine per case, six balanced shuffled pairs; extend inconclusive cases to twelve pairs; smoke uses one pair and 32 MiB",
     timing: "phase wall/user/system from each driver; CPU/GiB through durable completion; whole process wall/user/system/peak RSS from /usr/bin/time -l, including teardown"}
   files = %w[Tests/TransferBenchmark.swift Tests/TransferBenchmarkReference.hpp Tests/TCPPeerReference.mm Tests/TransferBenchmarkHarness.rb Tests/Reference/CMakeLists.txt Scripts/test-benchmark.sh Scripts/bootstrap-engine.sh]

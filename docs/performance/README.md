@@ -53,6 +53,13 @@ file, its parent directories, and the destination's parent; it then fsyncs and
 atomically publishes resume data and fsyncs its directory and parent. These are
 POSIX fsync barriers, not claims about device power-loss guarantees.
 
+Swift's native completion API waits for its forced completion checkpoint before
+returning success, so that barrier lies inside its verified-transfer interval.
+The reference finished alert precedes its persistence barrier. Through-durable
+CPU and throughput include both placements; the raw persistence/whole-process
+measurements expose the difference. Completion errors continue to propagate
+through the production API.
+
 Inspection of the pinned source shows that `pread_disk_io::async_release_files`
 creates a fence job; `pread_storage::release_files` releases the file pool and
 flushes part-file metadata. The equivalent mmap path also releases its pool.
