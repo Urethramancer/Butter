@@ -116,6 +116,7 @@ import ButterTorrentNetworking
 			let id = await engine.snapshot().peers[0].id
 			await engine.drop(id, error: PeerFailure.invalid("fixture disconnect")); release.signal(); try await blocker.value
 			try await eventually { await engine.snapshot().peers.isEmpty }
+			#expect(await engine.lastPeerError?.contains("fixture disconnect") == true)
 			#expect(await engine.snapshot().writingBlocks == 0)
 			let seed = try await fixture.transfer("seed", seed: true); try await fixture.join(engine, seed)
 			try await eventually { await engine.snapshot().complete }

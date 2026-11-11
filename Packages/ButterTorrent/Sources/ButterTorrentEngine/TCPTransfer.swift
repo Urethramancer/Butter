@@ -364,7 +364,7 @@ public actor TCPTransfer {
 		for request in peer.hashRequests.keys where hashOwners[request] == id { hashOwners[request] = nil }
 		let jobs = uploadJobs.values.filter { $0.0 == id }.map(\.1)
 		for task in jobs { task.cancel() }; for task in jobs { await task.value }
-		if !stopping, let error, !(error is CancellationError) { lastPeerError = "\(peer.session.stream.remoteEndpoint?.description ?? "peer"): \(error.localizedDescription)" }
+		if !stopping, !peer.closing, let error, !(error is CancellationError) { lastPeerError = "\(peer.session.stream.remoteEndpoint?.description ?? "peer"): \(error.localizedDescription)" }
 		if (!peer.closing && (error == nil || error.map { PeerStream.allowsIdentityRetry(after: $0) } == true)) || peer.retryIdentityAfterClose,
 			peer.peerID == nil, let hash = peer.alternateHash, let endpoint = peer.session.stream.remoteEndpoint {
 			retryIdentity(to: endpoint, hash: hash, utp: peer.retryTransport, revision: revision)

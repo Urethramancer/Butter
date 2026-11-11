@@ -43,8 +43,8 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
   record[:ruby] = capture.call(RbConfig.ruby, "--version")
   File.write(File.join(out, "environment.json"), JSON.pretty_generate(record))
 ' "$work" "$out" "$mode" "$reference" "$work/TransferBenchmark"
+rm -f "$out/build.log"
 if [ "$mode" = --smoke ]; then "$work/TransferBenchmark" fixture "$work/fixtures" --small
 else "$work/TransferBenchmark" fixture "$work/fixtures"; fi
 ruby Tests/TransferBenchmarkHarness.rb "$work/TransferBenchmark" "$reference" "$out" "$work" "$mode"
-rm -f "$out/build.log"
 printf 'Raw results and summaries: %s\n' "$out"
