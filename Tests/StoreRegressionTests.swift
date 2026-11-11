@@ -3,16 +3,26 @@ import Foundation
 @MainActor final class FakeEngine: EngineOperations, @unchecked Sendable {
 	var commands: [String] = []
 	var addFailure = false
+	var holdSnapshot = false
+	var holdShutdown = false
+	private(set) var gateEntered = false
+	private var gate: CheckedContinuation<Void, Never>?
+	func release() { holdSnapshot = false; holdShutdown = false; gate?.resume(); gate = nil }
+	private func wait() async { gateEntered = true; await withCheckedContinuation { gate = $0 } }
 	nonisolated var creationProgress: Double { 0 }
 	nonisolated func cancelCreation() { }
 	func perform(_ command: String, _ payload: [String: Any]) async throws -> Data {
 		commands.append(command)
+		if command == "shutdown", holdShutdown { await wait() }
 		if command == "add" && addFailure { throw CocoaError(.fileReadNoPermission) }
 		await Task.yield()
 		if command == "add" { return try JSONSerialization.data(withJSONObject: ["id": payload["id"]!, "duplicate": false]) }
 		return Data("{}".utf8)
 	}
-	func snapshot() async throws -> EngineSnapshot { EngineSnapshot(transfers: [], events: [], port: 0, udp: false, networkError: "", creationProgress: 0) }
+	func snapshot() async throws -> EngineSnapshot {
+		if holdSnapshot { await wait() }
+		return EngineSnapshot(transfers: [], events: [], port: 0, udp: false, networkError: "", creationProgress: 0)
+	}
 }
 
 enum StoreRegressionTests {
@@ -20,6 +30,7 @@ enum StoreRegressionTests {
 		let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		try fm.createDirectory(at: root, withIntermediateDirectories: true)
 		defer { try? fm.removeItem(at: root) }
+		try await shutdownDeadlines(root)
 		let url = root.appendingPathComponent("state.json"), corrupt = Data("invalid state".utf8)
 		try corrupt.write(to: url)
 		let damaged = TransferStore(root: root, engine: FakeEngine(), automaticPolling: false, allowsSystemIntegration: false)
@@ -112,6 +123,37 @@ enum StoreRegressionTests {
 	}
 	@MainActor private static func drainSelectionQueue() async {
 		await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in DispatchQueue.main.async { continuation.resume() } }
+	}
+	@MainActor private static func shutdownDeadlines(_ root: URL) async throws {
+		for boundary in ["polling", "save", "engine"] {
+			let engine = FakeEngine(), storage = SuspendingStorage()
+			engine.holdSnapshot = boundary == "polling"; engine.holdShutdown = boundary == "engine"
+			let store = TransferStore(root: root.appendingPathComponent(boundary), engine: engine,
+				storage: boundary == "save" ? storage : nil, automaticPolling: boundary == "polling", allowsSystemIntegration: false, shutdownTimeout: 0.05)
+			await store.start()
+			if boundary == "polling" {
+				let deadline = ContinuousClock.now + .seconds(2)
+				while !engine.gateEntered && ContinuousClock.now < deadline { await Task.yield() }
+				try check(engine.gateEntered, "Polling reached the cancellation-insensitive gate")
+			}
+			// A fallback release bounds the old implementation's regression case too.
+			let release = Task {
+				do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+				engine.release(); await storage.release()
+			}
+			let began = ContinuousClock.now, result = await store.shutdown()
+			engine.release(); await storage.release(); release.cancel(); await release.value
+			try check(!result && began.duration(to: .now) < .milliseconds(400), "Quit deadline covers \(boundary)")
+			try check(store.error?.contains("remain open") == true, "Timed-out quit reports its retained operation")
+			let deadline = ContinuousClock.now + .seconds(2)
+			var completed = false
+			repeat {
+				completed = await store.shutdown()
+				if !completed { try await Task.sleep(for: .milliseconds(5)) }
+			} while !completed && ContinuousClock.now < deadline
+			try check(completed, "Quit can be retried after the owned \(boundary) operation settles")
+		}
+		print("PASS: quit deadlines cover polling drain, persistence and engine shutdown with owned late completion")
 	}
 }
 

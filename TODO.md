@@ -4,8 +4,6 @@
 
 - Close the file-identity race between storage preflight and destructive pathname
   operations, including cross-volume source deletion and repository discard (A10).
-- Enforce the quit deadline across polling drain, persistence and engine shutdown (A12).
-- Preserve original remote filename components for BEP 19 web-seed requests (A13).
 - Reduce repeated piece-candidate sorting and unchanged verified-layout scans,
   then rerun the 32/256 MiB CPU comparisons and recovery tests (A15–A16).
 

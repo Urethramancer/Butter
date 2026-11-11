@@ -52,6 +52,10 @@ struct AddRequest: Identifiable {
 	private var starting = false
 	private var loadedState = false
 	private var shuttingDown = false
+	private let shutdownTimeout: TimeInterval
+	private var shutdownTask: Task<Void, Never>?
+	private var shutdownResult: Bool?
+	private var shutdownExpired = false
 	private var activeOperations = 0
 	private var saving: Task<Bool, Never>?
 	private var notified = Set<String>()
@@ -59,7 +63,9 @@ struct AddRequest: Identifiable {
 	private var restoreFailures: [String: String] = [:]
 	private var removing = Set<String>()
 	private let logger = Logger(subsystem: "net.grimdork.Butter", category: "errors")
-	init(root: URL? = nil, engine: (any EngineOperations)? = nil, storage: (any StatePersisting)? = nil, automaticPolling: Bool = true, allowsSystemIntegration: Bool = true, now: @escaping () -> Date = Date.init) {
+	init(root: URL? = nil, engine: (any EngineOperations)? = nil, storage: (any StatePersisting)? = nil, automaticPolling: Bool = true, allowsSystemIntegration: Bool = true, now: @escaping () -> Date = Date.init, shutdownTimeout: TimeInterval = 20) {
+		precondition(shutdownTimeout.isFinite && shutdownTimeout > 0)
+		self.shutdownTimeout = shutdownTimeout
 		self.root = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("Butter", isDirectory: true)
 		self.storage = storage ?? StateStorage(root: self.root)
 		self.engine = engine ?? SwiftEngineClient(storage: self.root.appendingPathComponent("Engine", isDirectory: true))
@@ -95,7 +101,7 @@ struct AddRequest: Identifiable {
 		} catch { restoreFailures[record.id] = error.localizedDescription; report(error) }
 	}
 	private func startPolling() {
-		guard automaticPolling else { return }
+		guard automaticPolling && polling == nil else { return }
 		polling = Task { [weak self] in
 			while !Task.isCancelled {
 				await self?.refresh()
@@ -257,12 +263,14 @@ struct AddRequest: Identifiable {
 		} catch { report(error); return false }
 	}
 	func setRunning(_ ids: Set<String>, running: Bool, force: Bool = false) async {
+		guard !shuttingDown else { return }
 		for i in records.indices where ids.contains(records[i].id) { records[i].wanted = running; records[i].force = force; decisions[records[i].id] = nil }
 		if !running { for id in ids { await command("pause", id: id) } }
 		else { for id in ids { await command("retry", id: id) } }
 		await persist()
 	}
 	func setPriority(_ value: TransferPriority?, ids: Set<String>) async {
+		guard !shuttingDown else { return }
 		for i in records.indices where ids.contains(records[i].id) { records[i].priority = value }
 		decisions = [:]; await persist()
 	}
@@ -368,19 +376,40 @@ struct AddRequest: Identifiable {
 	}
 	func shutdown() async -> Bool {
 		guard !shuttingDown else { return false }
-		shuttingDown = true; defer { shuttingDown = false }
-		if creating { engine.cancelCreation() }
-		let finishing = polling; finishing?.cancel(); polling = nil
-		await finishing?.value
-		let deadline = ProcessInfo.processInfo.systemUptime + 20
-		while starting || refreshing || activeOperations > 0 {
-			if ProcessInfo.processInfo.systemUptime >= deadline {
-				report(NSError(domain: "Butter.Lifecycle", code: 1, userInfo: [NSLocalizedDescriptionKey: "An operation is still finishing. Wait for it to complete before quitting."]))
-				startPolling(); return false
+		shuttingDown = true; shutdownResult = nil; shutdownExpired = false
+		let deadline = ProcessInfo.processInfo.systemUptime + shutdownTimeout
+		shutdownTask = Task {
+			let result = await self.finishShutdown()
+			self.shutdownResult = result
+			self.shutdownTask = nil
+			if self.shutdownExpired {
+				self.shuttingDown = false; self.decisions = [:]; self.startPolling()
+			}
+		}
+		while shutdownResult == nil {
+			if Task.isCancelled || ProcessInfo.processInfo.systemUptime >= deadline {
+				shutdownExpired = true
+				report(NSError(domain: "Butter.Lifecycle", code: 1, userInfo: [NSLocalizedDescriptionKey: "An operation is still finishing. Butter will remain open. Wait for it to complete before quitting."]))
+				return false
 			}
 			try? await Task.sleep(for: .milliseconds(20))
 		}
-		guard await persist() else { startPolling(); return false }
-		do { _ = try await engine.perform("shutdown"); return true } catch { report(error); decisions = [:]; startPolling(); return false }
+		shuttingDown = false
+		let result = shutdownResult!
+		if !result { decisions = [:]; startPolling() }
+		return result
+	}
+	private func finishShutdown() async -> Bool {
+		if creating {
+			let engine = engine
+			await Task.detached { engine.cancelCreation() }.value
+		}
+		let finishing = polling; finishing?.cancel(); polling = nil
+		await finishing?.value
+		while starting || refreshing || activeOperations > 0 {
+			try? await Task.sleep(for: .milliseconds(20))
+		}
+		guard await persist() else { return false }
+		do { _ = try await engine.perform("shutdown"); return true } catch { report(error); return false }
 	}
 }
