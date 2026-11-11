@@ -35,11 +35,15 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
     durability: "Swift native payload fsync then atomic state fsync/rename/directory fsync; libtorrent flush_disk_cache fence plus explicit payload/directory fsync then resume fsync/rename/directory fsync",
     sampling: mode == "--profile" ? "one instrumented pair per selected case; no warm-ups; profile-only, excluded from timing acceptance" : "one warm-up per engine per case, six balanced shuffled pairs; extend inconclusive cases to twelve pairs; smoke uses one pair and 32 MiB",
     timing: "phase wall/user/system from each driver; CPU/GiB through durable completion; whole process wall/user/system/peak RSS from /usr/bin/time -l, including teardown"}
-  files = %w[Tests/TransferBenchmark.swift Tests/TransferBenchmarkReference.hpp Tests/TCPPeerReference.mm Tests/TransferBenchmarkHarness.rb Scripts/test-benchmark.sh]
+  files = %w[Tests/TransferBenchmark.swift Tests/TransferBenchmarkReference.hpp Tests/TCPPeerReference.mm Tests/TransferBenchmarkHarness.rb Tests/Reference/CMakeLists.txt Scripts/test-benchmark.sh Scripts/bootstrap-engine.sh]
   record[:harness_sha256] = files.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }
   record[:swift_source_sha256] = Dir.glob("Packages/ButterTorrent/Sources/**/*.swift").sort.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }
   record[:driver_sha256] = {swift: Digest::SHA256.file(swift_driver).hexdigest, reference: Digest::SHA256.file(reference).hexdigest}
   record[:reference_cmake] = File.readlines(".dependencies/reference-build/CMakeCache.txt").select { |line| line.match?(/\A(?:CMAKE_(?:BUILD_TYPE|OSX_ARCHITECTURES|(?:CXX|OBJCXX)(?:_COMPILER|_FLAGS(?:_RELEASE)?))|Boost_INCLUDE_DIR|OPENSSL_ROOT_DIR):/) }.map(&:strip)
+  record[:reference_target_flags] = File.read(".dependencies/reference-build/CMakeFiles/TCPPeerReference.dir/flags.make") if File.file?(".dependencies/reference-build/CMakeFiles/TCPPeerReference.dir/flags.make")
+  record[:libtorrent_flags] = File.read(".dependencies/engine-apple-build/CMakeFiles/torrent-rasterbar.dir/flags.make") if File.file?(".dependencies/engine-apple-build/CMakeFiles/torrent-rasterbar.dir/flags.make")
+  record[:dependency_archives_sha256] = %w[libtorrent-rasterbar libssl libcrypto].to_h { |name| [name, Digest::SHA256.file(".dependencies/install/lib/#{name}.a").hexdigest] }
+  record[:reference_linkage] = capture.call("otool", "-L", reference)
   record[:ruby] = capture.call(RbConfig.ruby, "--version")
   File.write(File.join(out, "environment.json"), JSON.pretty_generate(record))
 ' "$work" "$out" "$mode" "$reference" "$work/TransferBenchmark"

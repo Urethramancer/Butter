@@ -18,13 +18,15 @@ enum EngineContractCases {
 		catch { return }
 		throw Failure(description: "Accepted invalid \(command) payload")
 	}
-	static func wait(_ engine: any EngineOperations, until predicate: (EngineSnapshot) -> Bool) async throws -> EngineSnapshot {
+	static func wait(_ engine: any EngineOperations, file: StaticString = #fileID, line: UInt = #line, until predicate: (EngineSnapshot) -> Bool) async throws -> EngineSnapshot {
 		let deadline = ProcessInfo.processInfo.systemUptime + 6
+		var last: EngineSnapshot?
 		while ProcessInfo.processInfo.systemUptime < deadline {
-			let snapshot = try await engine.snapshot(); if predicate(snapshot) { return snapshot }
+			let snapshot = try await engine.snapshot(); last = snapshot; if predicate(snapshot) { return snapshot }
 			try await Task.sleep(for: .milliseconds(10))
 		}
-		throw Failure(description: "Engine contract deadline")
+		let state = try last.map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) } ?? "no snapshot"
+		throw Failure(description: "Engine contract deadline at \(file):\(line); last snapshot: \(state)")
 	}
 	static func runSystemTrash(makeEngine: (URL) -> any EngineOperations) async throws {
 		let fm = FileManager.default, identifier = UUID().uuidString
