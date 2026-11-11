@@ -3,7 +3,7 @@
 ## Swift cut-over audit findings
 
 - Extend journalled identity claims to repository discard and same-volume source
-  renames. Cross-volume cleanup now claims and verifies sources durably (A10).
+  renames (A10).
 - Reduce whole-payload flushes per verified piece and profile stamp/descriptor
   work with many-file torrents (A16).
 
