@@ -147,6 +147,7 @@ public actor TCPTransfer {
 	var stopped = false
 	var ticker: Task<Void, Never>?
 	var shutdownTask: (UUID, Task<Void, Error>)?
+	var completionWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
 	var webSeeds: [TransferWebSeed] = []
 	var webTask: Task<Void, Never>?
 	var webClient: WebSeedClient?
@@ -275,6 +276,33 @@ public actor TCPTransfer {
 				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded, v2: peer.features.v2, fast: peer.features.fast, encryption: peer.encryption, transport: peer.session.stream.kind) },
 			downloaded: downloaded, uploaded: uploaded, corruptBytes: corruptBytes, redundantBytes: redundantBytes, corruptPieces: corruptPieces, writingBlocks: picker.active.values.reduce(0) { $0 + $1.writing.count }, lastPeerError: lastPeerError, storageError: storageError, stopped: stopped)
 	}
+	/// Waits for verified wanted pieces without constructing a transfer snapshot.
+	/// Disconnecting a peer leaves the wait pending so another peer can finish it.
+	public func waitUntilComplete() async throws {
+		let id = UUID()
+		try await withTaskCancellationHandler {
+			try Task.checkCancellation()
+			if let storageError { throw PeerFailure.invalid(storageError) }
+			if picker.complete { return }
+			guard !stopping else { throw PeerFailure.closed }
+			guard completionWaiters.count < 1024 else { throw PeerFailure.limit("completion waiters") }
+			try await withCheckedThrowingContinuation { continuation in
+				completionWaiters[id] = continuation
+			}
+		} onCancel: {
+			Task { await self.cancelCompletionWaiter(id) }
+		}
+	}
+	private func cancelCompletionWaiter(_ id: UUID) {
+		completionWaiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
+	}
+	func settleCompletionWaiters(_ error: Error? = nil) {
+		guard error != nil || picker.complete else { return }
+		let pending = completionWaiters; completionWaiters.removeAll()
+		for waiter in pending.values {
+			if let error { waiter.resume(throwing: error) } else { waiter.resume() }
+		}
+	}
 	public func setLimits(download: Int, upload: Int) async throws {
 		guard !stopping, (0...Int(Int32.max)).contains(download), (0...Int(Int32.max)).contains(upload) else { throw PeerFailure.invalid("rate limits or closed transfer") }
 		configuration.downloadLimit = download; configuration.uploadLimit = upload
@@ -288,6 +316,7 @@ public actor TCPTransfer {
 	}
 	private func finishShutdown() async throws {
 		stopping = true; ticker?.cancel(); webTask?.cancel()
+		settleCompletionWaiters(PeerFailure.closed)
 		discovery.finish(); nodeDiscovery.finish()
 		let connecting = Array(openings.values), running = peers.values.compactMap(\.task), uploads = uploadJobs.values.map(\.1), retrying = Array(identityRetries.values)
 		for task in retrying { task.cancel() }
@@ -324,6 +353,7 @@ public actor TCPTransfer {
 	func diskFailed(_ error: Error) {
 		guard !stopping, !(error is CancellationError), storageError == nil else { return }
 		storageError = error.localizedDescription
+		settleCompletionWaiters(error)
 		webTask?.cancel()
 		for id in peers.keys { drop(id, error: error) }
 	}
