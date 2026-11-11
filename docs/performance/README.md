@@ -58,7 +58,7 @@ creates a fence job; `pread_storage::release_files` releases the file pool and
 flushes part-file metadata. The equivalent mmap path also releases its pool.
 Neither release operation establishes the complete payload/state fsync contract.
 Consequently `cache_flushed_alert` alone is insufficient. Native persistence
-formats and Swift's immediate per-piece checkpoints differ; setup, persistence
+formats and checkpoint schedules differ; setup, persistence
 and whole-process measurements expose these differences.
 
 In this revision, `torrent::save_resume_data(flush_disk_cache)` submits the
@@ -123,3 +123,33 @@ piece, the picker performs one bounded local check for that piece, lazily and
 under existing disk admission limits. Only fully verified data is advertised;
 missing or corrupt data falls back to normal requests. Recovery bookkeeping uses
 bounded bitsets and introduces no eager payload scan or legacy resume importer.
+
+## Recorded checkpoint experiment
+
+The [complete pre-batching baseline](raw/baseline-seeding-fixed/summary.json)
+contains 264 accepted trials and no failures. Its isolated commit `40e4347` has
+the same tree as public commit `3a4df88`; the environment addendum records the
+tree and build evidence. The [checkpoint-only comparison](raw/checkpoint-only/summary.json)
+uses six pairs per direction for the single-file v1 case. These focused results
+do not replace a final full-matrix comparison.
+
+| Single-file v1 | Baseline Swift CPU s/GiB | Batched checkpoint CPU s/GiB | Swift/reference throughput ratio | Swift/reference CPU ratio | Peak RSS median / baseline |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Download | 13.83 | 12.67 | 0.277 (0.270–0.288) | 7.81 (7.38–7.90) | 0.987 |
+| Seed | 10.24 | 10.49 | 0.276 (0.016–0.524) | 6.02 (5.87–6.27) | 0.989 |
+
+Intervals are paired 95% bootstrap intervals against libtorrent. Both memory
+checks pass, including the observed maxima. Both CPU/throughput targets fail.
+Seeding includes very slow samples; all samples remain in the raw records.
+
+Separate [Release profiles](raw/checkpoint-profiles/summary.json) cover both
+engines and all four prescribed profiling workloads. Swift download stacks
+show repeated piece-candidate sorting, disk-worker scheduling and file opens.
+In the many-file hybrid sample, 183 of 213 sampled write-job stacks were inside
+whole-layout stamp invalidation, largely `fstatat`. Seeding also shows per-wait
+task/timer creation. These are sampled stacks, including waits, rather than
+CPU percentages or allocation counts. Raw phase user/system accounting and
+counterpart samples accompany them. No instrumented result enters acceptance.
+
+The [raw directory](raw) also retains earlier harness failures and incomplete
+diagnostic runs. They are historical development evidence, not pooled samples.
