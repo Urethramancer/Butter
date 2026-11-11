@@ -138,9 +138,10 @@ final class StorageState: @unchecked Sendable {
 		record.spilled[index] ? (state, "unwanted/\(index)") : (payload, record.paths[index])
 	}
 	func stamps() throws -> [FileStamp?] {
-		try record.paths.indices.map { index in
+		let scan = StorageStampScan()
+		return try record.paths.indices.map { index in
 			if layout.files[index].pad { return nil }
-			let (directory, path) = location(index); return try directory.inspect(path)
+			let (directory, path) = location(index); return try scan.inspect(path, in: directory)
 		}
 	}
 	func invalidateChangedFiles() throws {

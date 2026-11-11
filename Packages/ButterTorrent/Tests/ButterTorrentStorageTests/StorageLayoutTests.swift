@@ -16,6 +16,28 @@ private func layoutMetadata(_ sizes: [Int], pieces: Data? = nil) throws -> Torre
 }
 
 @Suite struct StorageLayoutTests {
+	@Test func stampScanAnchorsItsParentAndFreshScansObserveReplacement() async throws {
+		try await storageFixture { root in
+			let directory = try StorageDirectory(root)
+			try directory.atomic(Data([1]), path: "parent/a"); try directory.atomic(Data([2]), path: "parent/b")
+			let original = try directory.inspect("parent/b"), scan = StorageStampScan()
+			#expect(try scan.inspect("parent/a", in: directory) != nil)
+			try FileManager.default.moveItem(at: root.appendingPathComponent("parent"), to: root.appendingPathComponent("retained"))
+			try directory.atomic(Data([3]), path: "parent/b")
+			#expect(try scan.inspect("parent/b", in: directory) == original)
+			#expect(try StorageStampScan().inspect("parent/b", in: directory) != original)
+			// The same relative parent in another root must never reuse this descriptor.
+			let other = try StorageDirectory(root.appendingPathComponent("other"))
+			try other.atomic(Data([4]), path: "parent/b")
+			#expect(try scan.inspect("parent/b", in: other) == other.inspect("parent/b"))
+			#expect(try scan.inspect("missing/a", in: directory) == nil)
+			try directory.atomic(Data([5]), path: "missing/a")
+			#expect(try StorageStampScan().inspect("missing/a", in: directory) != nil)
+			try FileManager.default.removeItem(at: root.appendingPathComponent("parent"))
+			try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("parent"), withDestinationURL: root.appendingPathComponent("retained"))
+			#expect(throws: (any Error).self) { try StorageStampScan().inspect("parent/b", in: directory) }
+		}
+	}
 	@Test(arguments: [[0, 7, 16377, 1, 16384, 0], [16384, 0, 16384], [1, 1, 1], [0, 0]])
 	func filePieceRangesIncludeSharedBoundariesAndIgnoreEmptyFiles(_ sizes: [Int]) throws {
 		let layout = try StorageLayout(metadata: layoutMetadata(sizes))

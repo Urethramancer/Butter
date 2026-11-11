@@ -2,6 +2,30 @@ import Foundation
 import Darwin
 import CryptoKit
 
+// Reuse only the last parent during one stamp scan. No descriptor survives into
+// the next scan, which must observe renamed/replaced directories afresh.
+final class StorageStampScan {
+	private var root: StorageDirectory?
+	private var parentPath: String?
+	private var descriptor: Int32 = -1
+	deinit { if descriptor >= 0 { close(descriptor) } }
+	func inspect(_ path: String, in directory: StorageDirectory) throws -> FileStamp? {
+		let parts = try StorageLayout.components(path), parent = parts.dropLast().joined(separator: "/")
+		if root !== directory || parentPath != parent {
+			if descriptor >= 0 { close(descriptor) }; descriptor = -1
+			root = directory; parentPath = parent
+			do {
+				descriptor = try directory.parent(path) { parent, _ in
+					let copy = dup(parent)
+					guard copy >= 0 else { throw diskError("Cannot retain inspection directory") }; return copy
+				}
+			} catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
+		}
+		guard descriptor >= 0 else { return nil }
+		return try directory.inspect(parts.last!, at: descriptor)
+	}
+}
+
 func diskError(_ context: String, code: Int32 = errno) -> NSError {
 	NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [NSLocalizedDescriptionKey: "\(context): \(String(cString: strerror(code)))"])
 }
@@ -104,13 +128,16 @@ final class StorageDirectory: @unchecked Sendable {
 	}
 	func inspect(_ path: String) throws -> FileStamp? {
 		do {
-			return try parent(path) { directory, name in
-				var value = stat()
-				guard fstatat(directory, name, &value, AT_SYMLINK_NOFOLLOW) == 0 else { throw diskError("Cannot inspect managed file") }
-				return try regularStamp(value)
-			}
+			return try parent(path) { directory, name in try inspect(name, at: directory) }
 		}
 		catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
+	}
+	fileprivate func inspect(_ name: String, at directory: Int32) throws -> FileStamp? {
+		var value = stat()
+		if fstatat(directory, name, &value, AT_SYMLINK_NOFOLLOW) != 0 {
+			if errno == ENOENT { return nil }; throw diskError("Cannot inspect managed file")
+		}
+		return try regularStamp(value)
 	}
 	func read(_ path: String, maximum: Int) throws -> Data {
 		let file = try openFile(path); defer { close(file) }
