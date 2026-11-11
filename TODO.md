@@ -1,9 +1,5 @@
 # Remaining audit and acceptance checks
 
-## Swift cut-over audit findings
-
-- Reduce stamp/descriptor work and profile many-file torrents (A16).
-
 ## Native interaction and appearance
 - Automate real drag/drop, blocklist import/export dialogs, destination-folder
   pickers and the remaining Settings controls.
