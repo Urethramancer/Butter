@@ -167,6 +167,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		for afterClaim in [false, true] {
 			try await sourceReplacement(root: root.appendingPathComponent("source-replacement-\(afterClaim)"), target: volume.appendingPathComponent("target-replacement-\(afterClaim)"), afterClaim: afterClaim)
 		}
+		try await claimReplacement(root: root.appendingPathComponent("claim-replacement"), target: volume.appendingPathComponent("target-claim-replacement"))
 		for iteration in 0..<4 {
 			let work = root.appendingPathComponent("atomic-\(iteration)"), metadata = try await prepare(work)
 			try await stopChild(work, operation: "atomic", boundary: "unused", target: work)
@@ -258,6 +259,23 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		}
 		try await storage.shutdown()
 		print("PASS: cross-volume source replacement \(afterClaim ? "after" : "before") claim is retained")
+	}
+	static func claimReplacement(root: URL, target: URL) async throws {
+		let metadata = try await prepare(root)
+		try await stopChild(root, operation: "move", boundary: "claimed-0", target: target)
+		let source = root.appendingPathComponent("data/bundle"), replacement = Data([87, 86, 85])
+		let claims = try fm.contentsOfDirectory(atPath: source.path).filter { $0.hasPrefix(".butter-source-") }
+		try require(claims.count == 1, "Interrupted cleanup retains exactly one source claim")
+		let claimed = source.appendingPathComponent(claims[0])
+		try replacement.write(to: claimed, options: .atomic)
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"))
+		var rejected = false
+		do { try await storage.recover() } catch StorageFailure.recoveryRequired { rejected = true }
+		try require(rejected && !fm.fileExists(atPath: source.appendingPathComponent(name(0)).path), "Recovery must not relocate an unrecognised claimed file")
+		try require(try Data(contentsOf: claimed) == replacement, "Recovery must retain a replaced claim")
+		try fm.moveItem(at: claimed, to: root.appendingPathComponent("retained-claim"))
+		try await storage.recover(); try await storage.shutdown()
+		print("PASS: replaced cleanup claim is retained for explicit recovery")
 	}
 	static func disk(root: URL, volume: URL) async throws {
 		try require(fm.fileExists(atPath: volume.appendingPathComponent(".butter-native-storage-test").path), "Missing disposable-volume marker")

@@ -138,14 +138,17 @@ extension StorageState {
 	}
 	private func removeCopiedSource(_ entry: StorageJournal.Entry, from source: StorageDirectory, check: () throws -> Void) throws {
 		let claimed = entry.claimedSource
+		var claimedNow = false
 		if try source.inspect(claimed) == nil {
 			guard let current = try source.inspect(entry.source) else { return }
 			guard current == entry.original, try source.digest(entry.source, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("source copy changed; it was retained") }
 			event(.sourceWillBeClaimed(entry.index))
 			try source.rename(entry.source, to: source, path: claimed)
+			claimedNow = true
 		}
 		let checked = try source.checkedDigest(claimed, check: check)
 		guard checked.stamp.sameFile(entry.original), checked.hash == entry.digest else {
+			guard claimedNow else { throw StorageFailure.recoveryRequired("unrecognised source claim retained at \(source.url.appendingPathComponent(claimed).path)") }
 			// Restore a claimed replacement exclusively, preserving any newer source entry.
 			do { try source.rename(claimed, to: source, path: entry.source) }
 			catch { throw StorageFailure.recoveryRequired("source replacement retained at \(source.url.appendingPathComponent(claimed).path)") }
