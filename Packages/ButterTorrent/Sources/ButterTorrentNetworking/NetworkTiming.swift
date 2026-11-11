@@ -37,6 +37,9 @@ final class NetworkWaiter<Value: Sendable>: @unchecked Sendable {
 			catch { self.resolve(.failure(error)) }
 		}
 		defer { timer.cancel() }
+		return try await value()
+	}
+	func value() async throws -> Value {
 		return try await withTaskCancellationHandler {
 			return try await withCheckedThrowingContinuation { continuation in
 				lock.withLock {

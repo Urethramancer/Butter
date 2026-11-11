@@ -7,7 +7,7 @@ public final class TCPStream: @unchecked Sendable {
 	private let connection: NWConnection
 	private let queue = DispatchQueue(label: "Butter.TCP")
 	private let lock = NSLock()
-	private let clock: any TransportClock
+	private let deadlines: ConnectionDeadlines
 	private let onClose: @Sendable () -> Void
 	private var closed: Error?
 	private var reading = false
@@ -22,7 +22,7 @@ public final class TCPStream: @unchecked Sendable {
 		return try? NetworkEndpoint(String(describing: host), port: port.rawValue)
 	}
 	private init(_ connection: NWConnection, clock: any TransportClock, onClose: @escaping @Sendable () -> Void = {}) {
-		self.connection = connection; self.clock = clock; self.onClose = onClose
+		self.connection = connection; deadlines = ConnectionDeadlines(clock: clock); self.onClose = onClose
 		connection.stateUpdateHandler = { [weak self] state in
 			guard let self else { return }
 			switch state {
@@ -60,8 +60,15 @@ public final class TCPStream: @unchecked Sendable {
 		return stream
 	}
 	private func start(timeout: TimeInterval) async throws {
-		connection.start(queue: queue)
-		do { try await opened.value(timeout: timeout, clock: clock) }
+		let id = UUID()
+		defer { deadlines.remove(id) }
+		do {
+			try deadlines.insert(id, timeout: timeout) { [weak self, opened] error in
+				if opened.resolve(.failure(error)) { self?.close(error) }
+			}
+			connection.start(queue: queue)
+			try await opened.value()
+		}
 		catch { close(error); throw error }
 	}
 	public func read(maximumBytes: Int = 65_536, timeout: TimeInterval = 30) async throws -> Data {
@@ -76,6 +83,12 @@ public final class TCPStream: @unchecked Sendable {
 			return false
 		}
 		if ended { return Data() }
+		defer { deadlines.remove(id) }
+		do {
+			try deadlines.insert(id, timeout: timeout) { [weak self] error in
+				if waiter.resolve(.failure(error)) { self?.close(error) }
+			}
+		} catch { close(error); throw error }
 		connection.receive(minimumIncompleteLength: 1, maximumLength: maximumBytes) { [weak self] data, _, complete, error in
 			guard let self else { return }
 			self.lock.withLock { self.reading = false; self.eof = complete; self.callbacks[id] = nil }
@@ -84,7 +97,7 @@ public final class TCPStream: @unchecked Sendable {
 			else if complete { waiter.resolve(.success(Data())) }
 			else { waiter.resolve(.failure(NetworkFailure.invalid("empty TCP receive"))); self.close() }
 		}
-		do { return try await waiter.value(timeout: timeout, clock: clock) }
+		do { return try await waiter.value() }
 		catch { close(error); throw error }
 	}
 	public func write(_ data: Data, timeout: TimeInterval = 30) async throws {
@@ -96,13 +109,19 @@ public final class TCPStream: @unchecked Sendable {
 			guard ready, !writing else { throw NetworkFailure.busy }
 			writing = true; callbacks[id] = { waiter.resolve(.failure($0)) }
 		}
+		defer { deadlines.remove(id) }
+		do {
+			try deadlines.insert(id, timeout: timeout) { [weak self] error in
+				if waiter.resolve(.failure(error)) { self?.close(error) }
+			}
+		} catch { close(error); throw error }
 		connection.send(content: data, completion: .contentProcessed { [weak self] error in
 			guard let self else { return }
 			self.lock.withLock { self.writing = false; self.callbacks[id] = nil }
 			if let error { waiter.resolve(.failure(error)); self.close(error) }
 			else { waiter.resolve(.success(())) }
 		})
-		do { try await waiter.value(timeout: timeout, clock: clock) }
+		do { try await waiter.value() }
 		catch { close(error); throw error }
 	}
 	public func close() { close(NetworkFailure.closed) }
@@ -114,9 +133,9 @@ public final class TCPStream: @unchecked Sendable {
 			return pending
 		}
 		guard let pending else { return }
-		opened.resolve(.failure(error)); connection.cancel()
+		opened.resolve(.failure(error)); deadlines.close(error); connection.cancel()
 		for callback in pending { callback(error) }
 		onClose()
 	}
-	deinit { connection.cancel() }
+	deinit { deadlines.close(NetworkFailure.closed); connection.cancel() }
 }

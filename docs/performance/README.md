@@ -195,3 +195,22 @@ encoded frame and message slot before disk work, within the existing 512 KiB /
 comparison](raw/output-credits/summary.json) passed all fourteen full-size
 trials. Its seven Swift transfers took 4.44–4.62 seconds without peer errors;
 there were no reconnect outliers in that run. CPU parity remains unmet.
+
+The [connection-deadline comparison](raw/connection-deadlines/summary.json)
+completed 28 accepted trials. One clock task per connection now serves bounded
+open/read/write entries; ordinary completions remove entries without creating
+and cancelling another task. Earlier deadlines supersede the current timer,
+with generation checks preventing a stale timer from failing new operations.
+Close/cancellation still settle each operation through its original waiter.
+Injected-clock tests exercise 1,000 completed operations under one timer,
+earlier deadlines, clock failures and completion/cancellation/close races.
+
+| Single-file v1 | Swift CPU s/GiB | Swift throughput MB/s | Peak RSS median / baseline |
+| --- | ---: | ---: | ---: |
+| Download | 7.93 | 192.5 | 0.190 |
+| Seed | 8.23 | 267.4 | 0.217 |
+
+Both memory checks pass; phase and independent whole-process RSS agree on the
+large reduction in transient task-related memory pressure. All 319 package
+tests pass, including encryption and µTP regressions. These focused experiments
+still fail the CPU/throughput target and require the final full matrix.
