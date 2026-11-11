@@ -52,21 +52,30 @@ struct PiecePicker {
 	mutating func allocate(_ peer: UUID, limit: Int, now: TimeInterval, eligible: Set<Int>? = nil, allowed: Set<Int>? = nil, suggestions: Set<Int> = [], excluding: Set<Int> = []) -> [PeerBlock] {
 		guard let bits = peers[peer], limit > 0 else { return [] }
 		let permitted: (Int) -> Bool = { !excluding.contains($0) && bits.contains($0) && (eligible?.contains($0) ?? true) && (allowed?.contains($0) ?? true) }
-		let order: (Int, Int) -> Bool = {
+		let order: (Int, Int) -> Bool = { [availability] in
 			if availability[$0] != availability[$1] { return availability[$0] < availability[$1] }
 			if suggestions.contains($0) != suggestions.contains($1) { return suggestions.contains($0) }; return $0 < $1
 		}
 		let candidates = active.keys.filter(permitted).sorted(by: order)
 		var result = reserve(peer, candidates: candidates, limit: limit, now: now)
 		if result.count == limit { return result }
-		let remaining = wanted.subtracting(completed).subtracting(staged)
 		if active.count < maximumActive {
-			let fresh = remaining.filter { active[$0] == nil && permitted($0) }.sorted(by: order)
+			// Only this bounded prefix can be admitted. Avoid sorting the whole torrent
+			// again for each received block while preserving rarest/suggested/index order.
+			let capacity = min(maximumActive - active.count, limit - result.count)
+			var fresh: [Int] = []; fresh.reserveCapacity(capacity)
+			for piece in wanted where !completed.contains(piece) && !staged.contains(piece) && active[piece] == nil && permitted(piece) {
+				if fresh.count == capacity, !order(piece, fresh.last!) { continue }
+				let position = fresh.firstIndex { order(piece, $0) } ?? fresh.endIndex
+				fresh.insert(piece, at: position)
+				if fresh.count > capacity { fresh.removeLast() }
+			}
 			result += reserve(peer, candidates: fresh, limit: limit - result.count, now: now)
 			if result.count == limit { return result }
 		}
 		// Duplicate the final bounded tail, or rescue a saturated active-piece budget
 		// when a stalled owner otherwise prevents a newly available peer making progress.
+		let remaining = wanted.subtracting(completed).subtracting(staged)
 		let tail = remaining.allSatisfy({ active[$0] != nil }) && remaining.reduce(0, { $0 + blocks($1).count - active[$1]!.received.count }) <= 32
 		if tail || (result.isEmpty && active.count >= maximumActive) {
 			for piece in candidates where active[piece]?.verifying == false {

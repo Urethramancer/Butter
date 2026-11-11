@@ -59,7 +59,10 @@ public enum PeerMessage: Equatable, Sendable {
 			for value in [block.piece, block.offset, block.length] { try PeerBytes.append(value, to: &body) }
 		case .piece(let index, let offset, let bytes):
 			guard (1...16384).contains(bytes.count) else { throw PeerFailure.invalid("piece block size") }
-			body.append(7); try PeerBytes.append(index, to: &body); try PeerBytes.append(offset, to: &body); body.append(bytes)
+			var result = Data(capacity: bytes.count + 13)
+			try PeerBytes.append(bytes.count + 9, to: &result); result.append(7)
+			try PeerBytes.append(index, to: &result); try PeerBytes.append(offset, to: &result)
+			result.append(bytes); return result
 		case .haveAll: body.append(14)
 		case .haveNone: body.append(15)
 		case .suggest(let index), .allowedFast(let index):

@@ -171,3 +171,19 @@ Parity remains unmet. A subsequent safeguard also validates the first opened
 descriptor against its anchored pathname and recorded stamp, covering a
 replacement between invalidation and open; final-candidate measurements must
 include that check.
+
+The [allocation experiment](raw/allocations/summary.json) completed six
+single-file v1 download pairs: Swift 184.1 MB/s and 10.01 CPU s/GiB, versus
+161.7 MB/s and 10.70 CPU s/GiB in the write-batching experiment. Peak memory
+passes (median baseline ratio 1.011, interval 1.006–1.037). Fresh candidates are
+kept in a bounded ordered prefix rather than sorting the entire remaining
+torrent; payload frames use one allocation and storage/upload paths retain Data
+slices instead of copying them. Selection order, restrictions, exact framing
+and sliced payloads have focused regression coverage.
+
+That development run was stopped during a seeding trial after reproducing
+disconnect/reconnect stalls. Its failed interrupted trial, successful warm-ups
+and complete download case remain in raw evidence. The seeding samples are
+incomplete and cannot support an acceptance claim. Cleanup also masked the
+original disconnect reason; correcting that diagnostic is required before the
+final matrix.

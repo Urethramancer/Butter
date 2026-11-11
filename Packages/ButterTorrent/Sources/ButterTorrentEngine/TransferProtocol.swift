@@ -132,7 +132,7 @@ extension TCPTransfer {
 	func stageBlock(_ id: UUID, block: PeerBlock, bytes: Data, payloadBytes: Int64? = nil) throws -> Bool {
 		let payload = payloadBytes ?? Int64(bytes.count)
 		guard !stopping, peers[id]?.closing == false || webSeeds.contains(where: { $0.id == id && !$0.banned }) else { recordUnusablePayload(payload); throw PeerFailure.closed }
-		var cursor = 0
+		var cursor = bytes.startIndex
 		for segment in try picker.layout.segments(piece: block.piece, offset: block.offset, count: block.length) {
 			if segment.padding, bytes[cursor..<(cursor + segment.count)].contains(where: { $0 != 0 }) { recordUnusablePayload(payload, corrupt: true); throw PeerFailure.corruptPiece(block.piece) }; cursor += segment.count
 		}

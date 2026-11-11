@@ -70,7 +70,7 @@ extension StorageState {
 				guard let current = try directory.inspect(path), current.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
 				if current != record.stamps[segment.file] { try invalidateChangedFiles() }
 				pendingFlush.insert(segment.file)
-				try StorageDirectory.write(write.data.subdata(in: cursor..<(cursor + segment.count)), to: file, offset: segment.offset, check: check)
+				try StorageDirectory.write(write.data[cursor..<(cursor + segment.count)], to: file, offset: segment.offset, check: check)
 				record.stamps[segment.file] = try directory.stamp(file)
 			}
 		}

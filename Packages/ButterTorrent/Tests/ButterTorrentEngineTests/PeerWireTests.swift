@@ -5,6 +5,12 @@ import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 @Suite struct PeerWireTests {
+	@Test(arguments: [1, 16384], [false, true]) func pieceEncodingPreservesExactHeaderAndSlicedPayload(_ count: Int, _ sliced: Bool) throws {
+		let payload = sliced ? Data(repeating: 91, count: count + 17).suffix(count) : Data(repeating: 91, count: count)
+		let wire = try PeerMessage.piece(0x01020304, 8192, payload).encoded(), size = count + 9
+		#expect(Array(wire.prefix(13)) == [0, 0, UInt8(size >> 8), UInt8(size & 255), 7, 1, 2, 3, 4, 0, 0, 32, 0])
+		#expect(wire.count == count + 13 && wire.suffix(count) == payload)
+	}
 	@Test func fragmentedHandshakeAndCoalescedFrames() throws {
 		let hello = try PeerHandshake(infoHash: Data(repeating: 42, count: 20), peerID: Data(repeating: 7, count: 20))
 		let block = PeerBlock(piece: 2, offset: 16384, length: 100)
@@ -38,6 +44,28 @@ func pickerLayout(pieces: Int = 3, pieceLength: Int64 = 32768) throws -> Storage
 }
 
 @Suite struct PiecePickerTests {
+	@Test(arguments: [1, 2, 8]) func boundedCandidatesPreserveGlobalOrderAcrossAvailabilityAndRestrictions(_ maximum: Int) throws {
+		let count = 96, layout = try pickerLayout(pieces: count, pieceLength: 16384), peer = UUID(), other = UUID()
+		let wanted = Set(0..<count), common = Set((0..<count).filter { $0 % 3 == 0 }), suggestions: Set<Int> = [19, 25, 31, 37, 55, 73, 85]
+		let eligible = Set((0..<count).filter { $0 % 2 == 1 }), allowed = Set((0..<count).filter { $0 % 5 != 0 }), excluded: Set<Int> = [7, 19]
+		var picker = PiecePicker(layout: layout, wanted: wanted, completed: [1], maximumActive: maximum)
+		picker.update(peer, bits: try PieceBitfield(count: count, pieces: wanted)); picker.update(other, bits: try PieceBitfield(count: count, pieces: common))
+		let expected = wanted.filter { $0 != 1 && eligible.contains($0) && allowed.contains($0) && !excluded.contains($0) }.sorted {
+			if common.contains($0) != common.contains($1) { return !common.contains($0) }
+			if suggestions.contains($0) != suggestions.contains($1) { return suggestions.contains($0) }; return $0 < $1
+		}
+		var received: [Int] = []
+		while !picker.complete {
+			let blocks = picker.allocate(peer, limit: 64, now: 0, eligible: eligible, allowed: allowed, suggestions: suggestions, excluding: excluded)
+			if blocks.isEmpty { break }
+			#expect(blocks.count <= maximum)
+			for block in blocks {
+				#expect(picker.begin(peer, block: block) != nil); let ready = picker.written(block); #expect(ready)
+				_ = picker.verified(block.piece, valid: true); received.append(block.piece)
+			}
+		}
+		#expect(received == expected)
+	}
 	@Test(arguments: [1, 2]) func activePipelinePreservesEligibilityAndFastRestrictions(_ maximum: Int) throws {
 		let layout = try pickerLayout(pieces: 4), peer = UUID()
 		var picker = PiecePicker(layout: layout, wanted: [0, 1, 2, 3], completed: [], maximumActive: maximum)
