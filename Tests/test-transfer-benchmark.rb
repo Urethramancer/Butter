@@ -14,7 +14,7 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 	end
 	def test_phase_cpu_and_payload_accounting
 		child = Object.new
-		phases = H::PHASES.each_with_index.to_h { |phase, i| [phase, { 'time' => 10.0 + i, 'user' => i * 0.25, 'system' => i * 0.1 }] }
+		phases = H::PHASES.each_with_index.to_h { |phase, i| [phase, { 'time' => 10.0 + i, 'user' => i * 0.25, 'system' => i * 0.1, 'payload_bytes' => 1_073_741_824 }] }
 		child.define_singleton_method(:phase) { |name| phases.fetch(name) }
 		child.define_singleton_method(:whole) { { peak_rss: 12345 } }
 		metrics = H.metrics(child, 1_073_741_824)
@@ -24,6 +24,7 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 		assert_equal 1.0, metrics[:persistence][:wall]
 		assert_equal 12345, metrics[:whole][:peak_rss]
 		assert_raises(RuntimeError) { H.metrics(child, 0) }
+		assert_raises(RuntimeError) { H.metrics(child, 1_073_741_823) }
 	end
 	def test_statistics_retain_failed_pairs_and_uncertainty
 		trials = 6.times.flat_map do |pair|
@@ -50,6 +51,32 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 		assert_equal 'target-unmet', H.memory_summary(candidate, baseline)[:status]
 		baseline[0][:accepted] = false
 		assert_equal 'failed', H.memory_summary(candidate, baseline)[:status]
+	end
+	def test_one_failed_target_cannot_be_hidden_by_another_uncertain_target
+		trials = [0.7, 0.8, 0.85, 0.95, 1.0, 1.1].each_with_index.flat_map do |ratio, pair|
+			%w[Swift libtorrent].map do |engine|
+				{ engine: engine, pair: pair, warmup: false, accepted: true, engine_metrics: {
+					verified_bytes_per_second: engine == 'Swift' ? 100 * ratio : 100,
+					durable_bytes_per_second: engine == 'Swift' ? 100 * ratio : 100,
+					cpu_seconds_per_gib: engine == 'Swift' ? 5 : 1 } }
+			end
+		end
+		summary = H.summary(trials)
+		assert_equal 'target-unmet', summary[:status]
+		assert summary[:requires_more_pairs]
+	end
+	def test_source_validation_failure_is_retained_as_a_failed_trial
+		Dir.mktmpdir('butter-source-failure') do |root|
+			out, work = File.join(root, 'output'), File.join(root, 'work')
+			FileUtils.mkdir_p(out); FileUtils.mkdir_p(File.join(work, 'fixtures/single/seed'))
+			File.write(File.join(work, 'fixtures/single/seed/payload.bin'), 'payload')
+			fixture = { 'case' => 'single', 'bytes' => 7, 'files' => [{ 'path' => 'payload.bin', 'size' => 7, 'sha256' => 'wrong' }], 'torrents' => { 'v1' => ['fixture.torrent'] } }
+			runner = H::Runner.new('/unused/Swift', '/unused/reference', out, work, smoke: true, baseline: nil)
+			capture_io { runner.trial(fixture, 'v1', 'download', 'Swift', 0, false) }
+			record = JSON.parse(File.read(File.join(out, 'trials.jsonl')))
+			assert_equal false, record['accepted']
+			assert_match(/Source digest changed/, record['error'])
+		end
 	end
 	def with_children(programs)
 		Dir.mktmpdir('butter-harness-tests') do |root|

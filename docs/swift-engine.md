@@ -1195,6 +1195,9 @@ loopback and resolved-address policy.
 
 ### Release transfer measurements
 
+These measurements are historical and methodologically different from the
+[phased comparison harness](performance/README.md); they are not its baseline.
+
 The subsequent [11 November audit](audit-2026-11-11.md#release-cpu-investigation)
 adds 256 MiB comparisons and Time Profiler recordings. Those larger fixtures
 expose substantial Swift CPU and throughput scaling costs in piece allocation

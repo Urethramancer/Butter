@@ -7,8 +7,10 @@
 #include <unistd.h>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 
 static NSDictionary* benchmarkWindows = @{};
+static std::int64_t benchmarkBytes = 0;
 static NSMutableArray* benchmarkPeerErrors = [NSMutableArray array];
 static void benchmarkEvent(char const* phase, std::vector<int> const& ports = {}) {
 	struct rusage usage{}; require(getrusage(RUSAGE_SELF, &usage) == 0, "Cannot read CPU accounting");
@@ -16,7 +18,7 @@ static void benchmarkEvent(char const* phase, std::vector<int> const& ports = {}
 	NSDictionary* event = @{@"phase":@(phase), @"pid":@(getpid()), @"time":@(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()),
 		@"user":@(usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6), @"system":@(usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1e6),
 		@"peak_rss":@(usage.ru_maxrss), @"ports":values, @"libtorrent":@(LIBTORRENT_VERSION),
-		@"request_window":benchmarkWindows, @"peer_errors":benchmarkPeerErrors};
+		@"request_window":benchmarkWindows, @"peer_errors":benchmarkPeerErrors, @"payload_bytes":@(benchmarkBytes)};
 	NSData* bytes = [NSJSONSerialization dataWithJSONObject:event options:0 error:nil];
 	require(bytes && fwrite(bytes.bytes, 1, bytes.length, stdout) == bytes.length && fputc('\n', stdout) != EOF && fflush(stdout) == 0, "Cannot send benchmark event");
 }
@@ -109,6 +111,10 @@ static void benchmark(NSDictionary* job, bool verify) {
 			params = lt::read_resume_data(bytes, error); require(!error && params.ti, "Invalid reference resume data");
 		} else params.ti = std::make_shared<lt::torrent_info>([item[@"torrent"] UTF8String], error);
 		require(!error, "Invalid benchmark metadata");
+		for (auto index : params.ti->files().file_range()) if (!params.ti->files().pad_file_at(index)) {
+			auto size = params.ti->files().file_size(index);
+			require(size >= 0 && size <= std::numeric_limits<std::int64_t>::max() - benchmarkBytes, "Payload byte count overflow"); benchmarkBytes += size;
+		}
 		params.save_path = [item[@"destination"] UTF8String];
 		params.flags &= ~(lt::torrent_flags::paused | lt::torrent_flags::auto_managed); params.flags |= lt::torrent_flags::disable_pex;
 		handles.push_back(session.add_torrent(params, error)); require(!error, "Cannot prepare benchmark transfer");

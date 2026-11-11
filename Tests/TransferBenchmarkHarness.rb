@@ -38,7 +38,7 @@ module TransferBenchmarkHarness
 	end
 
 	class Child
-		attr_reader :events, :pid, :log, :job_path, :whole, :failure
+		attr_reader :events, :pid, :log, :job_path, :whole
 		def initialize(command, job_path, log)
 			@job_path, @log, @events, @buffer = job_path, log, [], ''.b
 			input, @control = IO.pipe
@@ -126,6 +126,7 @@ module TransferBenchmarkHarness
 	end
 	def self.metrics(child, bytes)
 		raise 'Invalid payload byte count' unless bytes.is_a?(Integer) && bytes > 0
+		raise 'Metadata payload byte count mismatch' unless child.phase('ready').fetch('payload_bytes') == bytes
 		phases = { setup: %w[prepare ready], transfer: %w[start verified], persistence: %w[persistence durable], shutdown: %w[shutdown stopped], through_durable: %w[start durable] }
 		values = phases.transform_values { |a, b| delta(child.phase(a), child.phase(b)) }
 		transfer, durable = values.fetch(:transfer), values.fetch(:through_durable)
@@ -164,12 +165,13 @@ module TransferBenchmarkHarness
 		end
 		throughput, cpu = ratios[:verified_bytes_per_second], ratios[:cpu_seconds_per_gib]
 		crosses = (throughput[:lower] < 0.9 && throughput[:upper] >= 0.9) || (cpu[:lower] <= 1.25 && cpu[:upper] > 1.25)
-		status = crosses ? 'inconclusive' : throughput[:lower] >= 0.9 && cpu[:upper] <= 1.25 ? 'throughput-and-cpu-pass' : 'target-unmet'
+		failed_target = throughput[:upper] < 0.9 || cpu[:lower] > 1.25
+		status = failed_target ? 'target-unmet' : crosses ? 'inconclusive' : 'throughput-and-cpu-pass'
 		medians = %w[Swift libtorrent].to_h do |engine|
 			records = measured.select { |trial| trial[:engine] == engine }
 			[engine, %i[verified_bytes_per_second durable_bytes_per_second cpu_seconds_per_gib].to_h { |key| [key, median(records.map { |trial| trial[:engine_metrics][key] })] }]
 		end
-		{ status: status, pairs: pairs.length, ratios: ratios, medians: medians, memory: 'Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred.' }
+		{ status: status, requires_more_pairs: crosses, pairs: pairs.length, ratios: ratios, medians: medians, memory: 'Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred.' }
 	end
 	def self.memory_summary(trials, baseline)
 		sets = [trials, baseline].map { |set| set.select { |trial| !trial[:warmup] && trial[:engine] == 'Swift' } }
@@ -185,11 +187,11 @@ module TransferBenchmarkHarness
 	end
 
 	class Runner
-		def initialize(swift, reference, output, work, smoke: false, profile: false)
+		def initialize(swift, reference, output, work, smoke: false, profile: false, baseline: ENV['BUTTER_BENCHMARK_BASELINE'])
 			@commands = { 'Swift' => [swift], 'libtorrent' => [reference] }
 			@output, @work, @smoke, @profile = output, work, smoke, profile
 			@trials = []
-			if (baseline = ENV['BUTTER_BENCHMARK_BASELINE'])
+			if baseline
 				raise 'A representative full baseline is required' unless JSON.parse(File.read(File.join(baseline, 'environment.json')))['mode'] == '--full'
 				raise 'Baseline fixture hashes differ' unless JSON.parse(File.read(File.join(baseline, 'fixtures.json'))) == JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
 				@baseline = File.readlines(File.join(baseline, 'trials.jsonl')).map { |line| JSON.parse(line, symbolize_names: true) }
@@ -200,10 +202,6 @@ module TransferBenchmarkHarness
 			folder = File.join(@work, id); FileUtils.mkdir_p(folder)
 			log_dir = File.join(@output, id); FileUtils.mkdir_p(log_dir)
 			root = File.join(@work, 'fixtures', fixture['case'])
-			# Explicitly warm every source with an independent streaming digest, outside timing.
-			fixture['files'].each do |file|
-				raise 'Source digest changed' unless Digest::SHA256.file(File.join(root, 'seed', file['path'])).hexdigest == file['sha256']
-			end
 			items = fixture['torrents'][format].each_with_index.map do |torrent, index|
 				{ torrent: File.join(root, torrent), destination: File.join(folder, "download-#{index}"), state: File.join(folder, "download-state-#{index}") }
 			end
@@ -212,6 +210,14 @@ module TransferBenchmarkHarness
 			record = { id: id, case: fixture['case'], format: format, direction: direction, engine: engine, pair: pair, warmup: warmup, bytes: fixture['bytes'], accepted: false }
 			children = []; profilers = []
 			begin
+				# Explicitly warm every source with an independent streaming digest, outside timing.
+				raise 'Fixture payload byte count mismatch' unless fixture['files'].sum { |file| file.fetch('size') } == fixture['bytes']
+				raise 'Duplicate fixture payload path' unless fixture['files'].map { |file| file.fetch('path') }.uniq.size == fixture['files'].size
+				fixture['files'].each do |file|
+					path = File.join(root, 'seed', file['path'])
+					raise "Source size changed: #{file['path']}" unless File.size(path) == file['size']
+					raise "Source digest changed: #{file['path']}" unless Digest::SHA256.file(path).hexdigest == file['sha256']
+				end
 				roles = {}
 				jobs.each do |role, job|
 					job_path = File.join(folder, "#{role}.json"); File.write(job_path, JSON.generate(job))
@@ -221,6 +227,7 @@ module TransferBenchmarkHarness
 				seed, down = roles.values_at('seed', 'download')
 				timeout = @smoke ? 30 : 600
 				TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'ready'] }, timeout: timeout)
+				raise 'Metadata payload byte count mismatch' unless children.all? { |child| child.phase('ready').fetch('payload_bytes') == fixture['bytes'] }
 				seed.send_command('start'); down.send_command('start', ports: seed.phase('ready').fetch('ports'))
 				if @profile
 					TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'start'] }, timeout: timeout)
@@ -291,10 +298,18 @@ module TransferBenchmarkHarness
 						result = TransferBenchmarkHarness.summary(select.call)
 						baseline = @baseline&.select { |trial| trial[:case] == fixture['case'] && trial[:format] == format && trial[:direction] == direction }
 						result[:memory] = TransferBenchmarkHarness.memory_summary(select.call, baseline) if baseline
-						if !@smoke && !@profile && (result[:status] == 'inconclusive' || (baseline && result[:memory][:status] == 'inconclusive'))
+						if !@smoke && !@profile && (result[:requires_more_pairs] || (baseline && result[:memory][:status] == 'inconclusive'))
 							TransferBenchmarkHarness.orders(6, seed + 1000).each_with_index { |order, pair| order.each { |engine| trial(fixture, format, direction, engine, pair + 6, false) } }
 							result = TransferBenchmarkHarness.summary(select.call)
 							result[:memory] = TransferBenchmarkHarness.memory_summary(select.call, baseline) if baseline
+						end
+						if baseline
+							memory_status = result[:memory][:status]
+							if memory_status == 'failed' || memory_status == 'target-unmet' || result[:status] == 'target-unmet'
+								result[:status] = memory_status == 'failed' ? 'failed' : 'target-unmet'
+							elsif result[:status] == 'throughput-and-cpu-pass'
+								result[:status] = memory_status == 'pass' ? 'target-met' : 'inconclusive'
+							end
 						end
 						result[:status] = @profile ? 'profile-only' : 'smoke-only' if @profile || @smoke
 						results << key.merge(result).merge(smoke: @smoke, profiled: @profile)

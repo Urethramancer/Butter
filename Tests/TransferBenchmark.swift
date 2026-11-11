@@ -11,12 +11,12 @@ import ButterTorrentEngine
 	struct Item: Codable { let torrent: String; let destination: String; let state: String }
 	struct Job: Codable { let role: String; let items: [Item] }
 	struct Command: Decodable { let command: String; let ports: [UInt16]? }
-	static func emit(_ phase: String, ports: [UInt16] = []) throws {
+	static func emit(_ phase: String, ports: [UInt16] = [], bytes: Int64 = 0) throws {
 		var usage = rusage(); guard getrusage(RUSAGE_SELF, &usage) == 0 else { throw CocoaError(.fileReadUnknown) }
 		let record: [String: Any] = ["phase": phase, "pid": getpid(), "time": ProcessInfo.processInfo.systemUptime,
 			"user": Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6,
 			"system": Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6,
-			"peak_rss": usage.ru_maxrss, "ports": ports, "request_window": TCPTransferConfiguration().pipeline]
+			"peak_rss": usage.ru_maxrss, "ports": ports, "payload_bytes": bytes, "request_window": TCPTransferConfiguration().pipeline]
 		var bytes = try JSONSerialization.data(withJSONObject: record); bytes.append(10)
 		try FileHandle.standardOutput.write(contentsOf: bytes)
 	}
@@ -76,7 +76,8 @@ import ButterTorrentEngine
 				}
 			}
 			diagnosticSignal.resume(); defer { diagnosticSignal.cancel() }
-			try emit("ready", ports: listeners.map(\.port))
+			let payloadBytes = stores.reduce(Int64(0)) { total, store in total + store.layout.files.filter { !$0.pad }.reduce(Int64(0)) { $0 + $1.size } }
+			try emit("ready", ports: listeners.map(\.port), bytes: payloadBytes)
 			let start = try await command("start"); try emit("start")
 			if job.role == "seed" {
 				for (engine, listener) in zip(engines, listeners) {

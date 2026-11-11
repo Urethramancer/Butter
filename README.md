@@ -69,8 +69,10 @@ dependencies with CMake, then run `Scripts/verify.sh reference` for the referenc
 suite or `Scripts/verify.sh peer-reference` for transfer interoperability.
 The matrix covers 456 transfers and DHT protocol comparisons, including
 sparse hybrid magnets, discovery, web seeds and impaired TCP-disabled µTP.
-`Scripts/verify.sh benchmark` compares Release download throughput, CPU time
-and peak memory on a local reference seed.
+`Scripts/verify.sh benchmark` runs the paired Release TCP download/seeding matrix,
+with separate durable-completion, CPU and whole-process memory measurements.
+Use `benchmark --smoke` for a smaller correctness run; see the
+[comparison method and artifacts](docs/performance/README.md).
 `Scripts/verify.sh storage-benchmark` measures many-file storage costs with
 byte and restart checks; it requires no reference-engine installation.
 The [migration record](docs/swift-engine.md) and [audit](docs/audit.md) document
