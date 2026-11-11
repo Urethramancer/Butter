@@ -4,8 +4,8 @@
 
 - Extend journalled identity claims to repository discard and same-volume source
   renames. Cross-volume cleanup now claims and verifies sources durably (A10).
-- Reduce repeated piece-candidate sorting and unchanged verified-layout scans,
-  then rerun the 32/256 MiB CPU comparisons and recovery tests (A15–A16).
+- Reduce whole-payload flushes per verified piece and profile stamp/descriptor
+  work with many-file torrents (A16).
 
 ## Native interaction and appearance
 - Automate real drag/drop, blocklist import/export dialogs, destination-folder

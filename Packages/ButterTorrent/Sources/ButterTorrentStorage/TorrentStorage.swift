@@ -140,11 +140,13 @@ final class StorageState: @unchecked Sendable {
 	}
 	func invalidateChangedFiles() throws {
 		let current = try stamps()
+		let changed = Set(current.indices.filter { current[$0] != record.stamps[$0] })
+		guard !changed.isEmpty else { return }
 		for piece in 0..<layout.pieceCount where record.contains(piece) {
 			var offset = 0
 			while offset < (try layout.length(of: piece)) {
 				let length = min(65536, try layout.length(of: piece) - offset)
-				if try layout.segments(piece: piece, offset: offset, count: length).contains(where: { !$0.padding && (current[$0.file] == nil || current[$0.file] != record.stamps[$0.file]) }) { record.set(piece, false); break }
+				if try layout.segments(piece: piece, offset: offset, count: length).contains(where: { !$0.padding && changed.contains($0.file) }) { record.set(piece, false); break }
 				offset += length
 			}
 		}

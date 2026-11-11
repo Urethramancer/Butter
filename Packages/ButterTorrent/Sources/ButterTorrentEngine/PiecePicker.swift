@@ -40,7 +40,10 @@ struct PiecePicker {
 	mutating func release(_ peer: UUID) {
 		for piece in active.keys { for block in active[piece]!.owners.keys { active[piece]!.owners[block]![peer] = nil } }
 	}
-	func interested(_ peer: UUID) -> Bool { peers[peer]?.pieces.contains(where: { wanted.contains($0) && !completed.contains($0) && !staged.contains($0) }) == true }
+	func interested(_ peer: UUID) -> Bool {
+		guard let bits = peers[peer] else { return false }
+		return wanted.contains { !completed.contains($0) && !staged.contains($0) && bits.contains($0) }
+	}
 	func has(_ peer: UUID, piece: Int) -> Bool { peers[peer]?.contains(piece) == true }
 	func blocks(_ piece: Int) -> [PeerBlock] {
 		let length = lengths[piece] ?? ((try? layout.length(of: piece)) ?? 0)
@@ -48,25 +51,19 @@ struct PiecePicker {
 	}
 	mutating func allocate(_ peer: UUID, limit: Int, now: TimeInterval, eligible: Set<Int>? = nil, allowed: Set<Int>? = nil, suggestions: Set<Int> = []) -> [PeerBlock] {
 		guard let bits = peers[peer], limit > 0 else { return [] }
-		var result: [PeerBlock] = []
-		let remaining = wanted.subtracting(completed).subtracting(staged)
-		let candidates = remaining.filter { bits.contains($0) && (eligible?.contains($0) ?? true) && (allowed?.contains($0) ?? true) }.sorted {
-			let a = active[$0] != nil, b = active[$1] != nil
-			if a != b { return a }
+		let permitted: (Int) -> Bool = { bits.contains($0) && (eligible?.contains($0) ?? true) && (allowed?.contains($0) ?? true) }
+		let order: (Int, Int) -> Bool = {
 			if availability[$0] != availability[$1] { return availability[$0] < availability[$1] }
 			if suggestions.contains($0) != suggestions.contains($1) { return suggestions.contains($0) }; return $0 < $1
 		}
-		for piece in candidates {
-			if active[piece] == nil {
-				if active.count >= maximumActive { continue }; active[piece] = Active()
-			}
-			guard !active[piece]!.verifying else { continue }
-			for block in blocks(piece) where !active[piece]!.received.contains(block.offset) && !active[piece]!.writing.contains(block.offset) {
-				if active[piece]!.owners[block.offset, default: [:]].isEmpty {
-					active[piece]!.owners[block.offset] = [peer: now]; result.append(block)
-					if result.count == limit { return result }
-				}
-			}
+		let candidates = active.keys.filter(permitted).sorted(by: order)
+		var result = reserve(peer, candidates: candidates, limit: limit, now: now)
+		if result.count == limit { return result }
+		let remaining = wanted.subtracting(completed).subtracting(staged)
+		if active.count < maximumActive {
+			let fresh = remaining.filter { active[$0] == nil && permitted($0) }.sorted(by: order)
+			result += reserve(peer, candidates: fresh, limit: limit - result.count, now: now)
+			if result.count == limit { return result }
 		}
 		// Duplicate the final bounded tail, or rescue a saturated active-piece budget
 		// when a stalled owner otherwise prevents a newly available peer making progress.
@@ -79,6 +76,22 @@ struct PiecePicker {
 						active[piece]!.owners[block.offset]![peer] = now; result.append(block)
 						if result.count == limit { return result }
 					}
+				}
+			}
+		}
+		return result
+	}
+	private mutating func reserve(_ peer: UUID, candidates: [Int], limit: Int, now: TimeInterval) -> [PeerBlock] {
+		var result: [PeerBlock] = []
+		for piece in candidates {
+			if active[piece] == nil {
+				guard active.count < maximumActive else { break }; active[piece] = Active()
+			}
+			guard !active[piece]!.verifying else { continue }
+			for block in blocks(piece) where !active[piece]!.received.contains(block.offset) && !active[piece]!.writing.contains(block.offset) {
+				if active[piece]!.owners[block.offset, default: [:]].isEmpty {
+					active[piece]!.owners[block.offset] = [peer: now]; result.append(block)
+					if result.count == limit { return result }
 				}
 			}
 		}

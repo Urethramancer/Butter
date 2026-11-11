@@ -38,6 +38,18 @@ func pickerLayout(pieces: Int = 3, pieceLength: Int64 = 32768) throws -> Storage
 }
 
 @Suite struct PiecePickerTests {
+	@Test(arguments: [1, 2]) func activePipelinePreservesEligibilityAndFastRestrictions(_ maximum: Int) throws {
+		let layout = try pickerLayout(pieces: 4), peer = UUID()
+		var picker = PiecePicker(layout: layout, wanted: [0, 1, 2, 3], completed: [], maximumActive: maximum)
+		picker.update(peer, bits: try PieceBitfield(count: 4, pieces: [0, 1, 2, 3]))
+		let first = picker.allocate(peer, limit: 1, now: 0, eligible: [0, 1], allowed: [1])
+		#expect(first == [PeerBlock(piece: 1, offset: 0, length: 16384)])
+		let next = picker.allocate(peer, limit: 1, now: 1, suggestions: [2])
+		#expect(next == [PeerBlock(piece: 1, offset: 16384, length: 16384)])
+		let restricted = picker.allocate(peer, limit: 1, now: 2, eligible: [3], allowed: [3], suggestions: [2])
+		#expect(restricted.map(\.piece) == (maximum == 2 ? [3] : []))
+		#expect(picker.allocate(peer, limit: 1, now: 3, eligible: [2], allowed: [3]).isEmpty)
+	}
 	@Test func saturatedActiveBudgetLetsANewPeerRescueBlocksWithoutUnboundedDuplication() throws {
 		let layout = try pickerLayout(), a = UUID(), b = UUID(), c = UUID()
 		var picker = PiecePicker(layout: layout, wanted: [0, 1, 2], completed: [], maximumActive: 1)
