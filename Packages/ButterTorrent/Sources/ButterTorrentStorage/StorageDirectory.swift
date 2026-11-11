@@ -150,6 +150,25 @@ final class StorageDirectory: @unchecked Sendable {
 			guard unlinkat(directory, name, 0) == 0 else { throw diskError("Cannot remove managed file") }; try sync(directory)
 		}
 	}
+	func claimFile(_ path: String, as claimed: String, expected: FileStamp, digest: Data,
+		check: () throws -> Void, beforeClaim: () -> Void = {}) throws -> FileStamp? {
+		var claimedNow = false
+		if try inspect(claimed) == nil {
+			guard let current = try inspect(path) else { return nil }
+			guard current == expected, try self.digest(path, check: check) == digest else { throw StorageFailure.recoveryRequired("source changed before claiming; it was retained") }
+			beforeClaim()
+			try rename(path, to: self, path: claimed)
+			claimedNow = true
+		}
+		let checked = try checkedDigest(claimed, check: check)
+		guard checked.stamp.sameFile(expected), checked.hash == digest else {
+			guard claimedNow else { throw StorageFailure.recoveryRequired("unrecognised claim retained at \(url.appendingPathComponent(claimed).path)") }
+			do { try rename(claimed, to: self, path: path) }
+			catch { throw StorageFailure.recoveryRequired("replacement retained at \(url.appendingPathComponent(claimed).path)") }
+			throw StorageFailure.recoveryRequired("source changed during claiming; it was retained")
+		}
+		return checked.stamp
+	}
 	func rename(_ source: String, to target: StorageDirectory, path: String) throws {
 		try parent(source) { from, name in
 			try target.parent(path, create: true) { destination, final in

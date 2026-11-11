@@ -146,25 +146,10 @@ extension StorageState {
 		event(.sourceRemoved(entry.index))
 	}
 	private func claimSource(_ entry: StorageJournal.Entry, from source: StorageDirectory, check: () throws -> Void) throws -> FileStamp? {
-		let claimed = entry.claimedSource
-		var claimedNow = false
-		if try source.inspect(claimed) == nil {
-			guard let current = try source.inspect(entry.source) else { return nil }
-			guard current == entry.original, try source.digest(entry.source, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("source copy changed; it was retained") }
-			event(.sourceWillBeClaimed(entry.index))
-			try source.rename(entry.source, to: source, path: claimed)
-			claimedNow = true
-		}
-		let checked = try source.checkedDigest(claimed, check: check)
-		guard checked.stamp.sameFile(entry.original), checked.hash == entry.digest else {
-			guard claimedNow else { throw StorageFailure.recoveryRequired("unrecognised source claim retained at \(source.url.appendingPathComponent(claimed).path)") }
-			// Restore a claimed replacement exclusively, preserving any newer source entry.
-			do { try source.rename(claimed, to: source, path: entry.source) }
-			catch { throw StorageFailure.recoveryRequired("source replacement retained at \(source.url.appendingPathComponent(claimed).path)") }
-			throw StorageFailure.recoveryRequired("source changed during cleanup; it was retained")
-		}
+		guard let stamp = try source.claimFile(entry.source, as: entry.claimedSource, expected: entry.original, digest: entry.digest, check: check,
+			beforeClaim: { event(.sourceWillBeClaimed(entry.index)) }) else { return nil }
 		event(.sourceClaimed(entry.index))
-		return checked.stamp
+		return stamp
 	}
 	private func futurePaths(_ checkpoint: StorageCheckpoint) throws -> [URL] {
 		let destination = URL(fileURLWithPath: checkpoint.destination)

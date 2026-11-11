@@ -30,7 +30,7 @@ public struct PendingMagnetState: Sendable {
 
 public enum RepositoryEvent: Sendable, Equatable {
 	case stagingDurable, checkpointDirectoryDurable, torrentDurable, locatorDurable
-	case discardDurable, discardCheckpointRemoved, discardFilesRemoved
+	case discardDurable, discardCheckpointClaimed, discardFileClaimed, discardCheckpointRemoved, discardFilesRemoved
 }
 
 /// TransferRepository retains standard torrent files beside isolated native checkpoints.
@@ -42,6 +42,16 @@ public actor TransferRepository {
 		let directory: String?
 		let identity: FileStamp?
 		let files: [String: FileStamp]
+		let claims: [String: String]?
+		let digests: [String: Data]?
+		let claimedDirectory: String?
+		let checkpointFiles: [String: FileStamp]?
+		func encoded() throws -> Data {
+			let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
+			let bytes = try encoder.encode(self)
+			guard bytes.count <= 33_554_432 else { throw StorageFailure.limit("discard journal bytes") }
+			return bytes
+		}
 	}
 	private struct MagnetRecord: Codable { let version: Int; let uri: String; let destination: String }
 	private static let magnetRecordLimit = 2 * 1024 * 1024
@@ -198,7 +208,7 @@ public actor TransferRepository {
 	/// Discards only recognised native state and the standard torrent; legacy resume files remain intact.
 	public func discard(id: String, pending: PendingMagnetState? = nil) async throws {
 		try Self.validateID(id); let root = root, event = event
-		try await worker.run(bulk: true) { _ in
+		try await worker.run(bulk: true) { cancellation in
 			let directory = try StorageDirectory(root)
 			let lease = try StorageLease(directory: directory, path: ".native.lock"); defer { lease.release() }
 			let paths = [id + ".torrent", Self.magnetRecord(id), id + ".native.plist", Self.magnetLock(id)]
@@ -216,31 +226,60 @@ public actor TransferRepository {
 			let pendingLock = try pending?.lease ?? (directory.inspect(Self.magnetLock(id)) == nil ? nil : StorageLease(directory: directory, path: Self.magnetLock(id)))
 			defer { withExtendedLifetime(pendingLock) {} }
 			let transaction: DiscardRecord, child: StorageDirectory?
+			var childName: String?
 			if let saved {
 				guard files.allSatisfy({ saved.files[$0.0] == $0.1 }) else { throw StorageFailure.recoveryRequired("repository files changed during discard") }
-				child = try saved.directory.flatMap { try Self.checkpointDirectory($0, in: directory) }
+				let original = try saved.directory.flatMap { try Self.checkpointDirectory($0, in: directory) }
+				let claimed = try saved.claimedDirectory.flatMap { try Self.checkpointDirectory($0, in: directory) }
+				guard original == nil || claimed == nil else { throw StorageFailure.recoveryRequired("discard source directory was recreated") }
+				child = claimed ?? original; childName = claimed == nil ? saved.directory : saved.claimedDirectory
 				if let child {
 					guard try Self.readLocator(id, in: directory)?.directory == saved.directory,
 						try saved.identity?.sameFile(child.identity()) == true else { throw StorageFailure.recoveryRequired("discard checkpoint directory was replaced") }
 				}
-				transaction = saved
+				if saved.version == 2 { transaction = saved }
+				else { transaction = try Self.discardTransaction(directory: saved.directory, identity: saved.identity, files: saved.files, current: files, child: child, root: directory, check: cancellation.check) }
 			} else {
 				let published = try Self.record(id, in: directory)
 				try Self.recoverStaging(id, published: published, in: directory)
 				guard !files.isEmpty else { return }
 				child = try published.flatMap { try Self.checkpointDirectory($0.directory, in: directory) }
-				transaction = DiscardRecord(version: 1, directory: published?.directory, identity: try child?.identity(), files: Dictionary(uniqueKeysWithValues: files))
+				childName = published?.directory
+				transaction = try Self.discardTransaction(directory: published?.directory, identity: child?.identity(), files: Dictionary(uniqueKeysWithValues: files), current: files, child: child, root: directory, check: cancellation.check)
 			}
 			let begin = {
-				if saved == nil { try Self.write(transaction, to: journal, in: directory); event(.discardDurable) }
+				if saved?.version != 2 { try directory.atomic(transaction.encoded(), path: journal); event(.discardDurable) }
 			}
-			if let child, let name = transaction.directory { try Self.discardChild(name, in: directory, child: child, beforeRemoval: begin) }
+			if let child, let name = childName {
+				try Self.discardChild(name, in: directory, child: child, expectedFiles: transaction.checkpointFiles, claimedName: transaction.claimedDirectory,
+					beforeRemoval: begin, afterClaim: { event(.discardCheckpointClaimed) })
+			}
 			else { try begin() }
 			event(.discardCheckpointRemoved)
-			for (path, stamp) in files { try directory.remove(path, expected: stamp) }
+			for (path, stamp) in transaction.files.sorted(by: { $0.key < $1.key }) {
+				let claimed = transaction.claims![path]!
+				if try directory.inspect(path) == nil && directory.inspect(claimed) == nil { continue }
+				guard let digest = transaction.digests?[path] else { throw StorageFailure.recoveryRequired("discard source appeared after journalling") }
+				if let owned = try directory.claimFile(path, as: claimed, expected: stamp, digest: digest, check: cancellation.check) {
+					event(.discardFileClaimed); try cancellation.check()
+					try directory.remove(claimed, expected: owned)
+				}
+			}
 			event(.discardFilesRemoved)
 			if let stamp = try directory.inspect(journal) { try directory.remove(journal, expected: stamp) }
 		}
+	}
+	private static func discardTransaction(directory: String?, identity: FileStamp?, files: [String: FileStamp], current: [(String, FileStamp)],
+		child: StorageDirectory?, root: StorageDirectory, check: () throws -> Void) throws -> DiscardRecord {
+		var digests: [String: Data] = [:]
+		for (path, stamp) in current {
+			let checked = try root.checkedDigest(path, check: check)
+			guard checked.stamp == stamp else { throw StorageFailure.recoveryRequired("repository file changed before discard") }
+			digests[path] = checked.hash
+		}
+		return DiscardRecord(version: 2, directory: directory, identity: identity, files: files,
+			claims: files.mapValues { _ in ".butter-discard-" + UUID().uuidString }, digests: digests,
+			claimedDirectory: directory.map { _ in ".native-" + UUID().uuidString }, checkpointFiles: try child.map(checkpointFiles) ?? [:])
 	}
 	private static func magnetRecord(_ id: String) -> String { id + ".native-magnet.plist" }
 	private static func magnetLock(_ id: String) -> String { id + ".native-magnet.lock" }
@@ -251,9 +290,16 @@ public actor TransferRepository {
 	}
 	private static func discardRecord(_ journal: String, paths: [String], in directory: StorageDirectory) throws -> DiscardRecord? {
 		guard try directory.inspect(journal) != nil else { return nil }
-		let saved = try PropertyListDecoder().decode(DiscardRecord.self, from: directory.read(journal, maximum: 8192))
-		guard saved.version == 1, !saved.files.isEmpty, saved.files.keys.allSatisfy(paths.contains),
+		let saved = try PropertyListDecoder().decode(DiscardRecord.self, from: directory.read(journal, maximum: 33_554_432))
+		guard (1...2).contains(saved.version), !saved.files.isEmpty, saved.files.keys.allSatisfy(paths.contains),
 			saved.directory.map(validCheckpointName) ?? (saved.identity == nil) else { throw StorageFailure.invalid("native discard journal") }
+		if saved.version == 2 {
+			guard let claims = saved.claims, Set(claims.keys) == Set(saved.files.keys), Set(claims.values).count == claims.count,
+				claims.values.allSatisfy({ $0.hasPrefix(".butter-discard-") && UUID(uuidString: String($0.dropFirst(16))) != nil }),
+				let digests = saved.digests, Set(digests.keys).isSubset(of: Set(saved.files.keys)), digests.values.allSatisfy({ $0.count == 32 }),
+				(saved.directory == nil) == (saved.claimedDirectory == nil), saved.claimedDirectory.map(validCheckpointName) ?? true,
+				let manifest = saved.checkpointFiles, manifest.count <= 50_016, manifest.keys.allSatisfy(validCheckpointPath) else { throw StorageFailure.invalid("native discard claims") }
+		}
 		return saved
 	}
 	private static func write<T: Encodable>(_ record: T, to path: String, in directory: StorageDirectory) throws {
@@ -322,22 +368,57 @@ public actor TransferRepository {
 		do { return try directory.child(name) }
 		catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
 	}
-	private static func discardChild(_ name: String, in directory: StorageDirectory, child: StorageDirectory? = nil, beforeRemoval: () throws -> Void = {}) throws {
-		let child = try child ?? directory.child(name), lease = try StorageLease(directory: child); defer { lease.release() }
+	private static func validCheckpointPath(_ path: String) -> Bool {
+		if ["metadata.torrent", "checkpoint.plist", "hashes.plist", "storage.lock", "unwanted"].contains(path) { return true }
+		let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+		return parts.count == 2 && parts[0] == "unwanted" && !parts[1].isEmpty && parts[1].utf8.count <= 255 && parts[1].utf8.allSatisfy { (48...57).contains($0) }
+	}
+	private static func checkpointFiles(_ child: StorageDirectory) throws -> [String: FileStamp] {
 		let names = try child.names()
 		guard !names.contains("operation.plist") else { throw StorageFailure.recoveryRequired("recover the filesystem journal before forgetting state") }
-		let allowed: Set<String> = ["metadata.torrent", "checkpoint.plist", "hashes.plist", "storage.lock", "unwanted"]
-		guard names.allSatisfy(allowed.contains) else { throw StorageFailure.recoveryRequired("unrecognised files in native state were retained") }
+		guard names.allSatisfy({ !$0.contains("/") && validCheckpointPath($0) }) else { throw StorageFailure.recoveryRequired("unrecognised files in native state were retained") }
+		var files: [String: FileStamp] = [:]
+		for name in names where name != "unwanted" { files[name] = try child.inspect(name) }
 		let unwanted = names.contains("unwanted") ? try child.child("unwanted") : nil
-		let unwantedNames = try unwanted?.names() ?? []
-		guard unwantedNames.allSatisfy({ !$0.isEmpty && $0.utf8.allSatisfy({ (48...57).contains($0) }) }) else { throw StorageFailure.recoveryRequired("unrecognised unwanted files were retained") }
-		// Preflight every file before removing anything; inspect refuses links and nonregular files.
-		let files = try names.filter { $0 != "unwanted" }.map { ($0, try child.inspect($0)) }
-		let spill = try unwantedNames.map { ($0, try unwanted!.inspect($0)) }
+		if let unwanted {
+			files["unwanted"] = try unwanted.identity()
+			for name in try unwanted.names() {
+				let path = "unwanted/" + name
+				guard validCheckpointPath(path) else { throw StorageFailure.recoveryRequired("unrecognised unwanted files were retained") }
+				files[path] = try unwanted.inspect(name)
+			}
+		}
+		return files
+	}
+	private static func discardChild(_ name: String, in directory: StorageDirectory, child: StorageDirectory? = nil,
+		expectedFiles: [String: FileStamp]? = nil, claimedName: String? = nil, beforeRemoval: () throws -> Void = {}, afterClaim: () -> Void = {}) throws {
+		let child = try child ?? directory.child(name), ownedName = claimedName ?? name
+		// A recovered private claim is already protected by the repository lease.
+		// Recreating a deleted storage.lock would introduce an unrecorded file.
+		let lease = claimedName == name ? nil : try StorageLease(directory: child); defer { lease?.release() }
+		let files = try checkpointFiles(child)
+		if let expectedFiles {
+			guard files.allSatisfy({ path, stamp in path == "unwanted" ? expectedFiles[path]?.sameFile(stamp) == true : expectedFiles[path] == stamp }) else {
+				throw StorageFailure.recoveryRequired("checkpoint files changed during discard")
+			}
+		}
 		try beforeRemoval()
-		for (path, stamp) in spill { if let stamp { try unwanted!.remove(path, expected: stamp) } }
+		if ownedName != name {
+			try directory.rename(name, to: directory, path: ownedName)
+			guard try directory.child(ownedName).identity().sameFile(child.identity()) else {
+				do { try directory.rename(ownedName, to: directory, path: name) }
+				catch { throw StorageFailure.recoveryRequired("checkpoint replacement retained at \(directory.url.appendingPathComponent(ownedName).path)") }
+				throw StorageFailure.recoveryRequired("checkpoint changed during claiming")
+			}
+		}
+		afterClaim()
+		let unwanted = files["unwanted"] == nil ? nil : try child.child("unwanted")
+		if let unwanted {
+			guard try files["unwanted"]?.sameFile(unwanted.identity()) == true else { throw StorageFailure.recoveryRequired("unwanted directory was replaced") }
+		}
+		for (path, stamp) in files where path.hasPrefix("unwanted/") { try child.remove(path, expected: stamp) }
 		if let unwanted { try child.removeChild("unwanted", expected: unwanted) }
-		for (path, stamp) in files { if let stamp { try child.remove(path, expected: stamp) } }
-		try directory.removeChild(name, expected: child)
+		for (path, stamp) in files where path != "unwanted" && !path.contains("/") { try child.remove(path, expected: stamp) }
+		try directory.removeChild(ownedName, expected: child)
 	}
 }

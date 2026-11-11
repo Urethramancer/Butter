@@ -183,6 +183,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		print("PASS: four atomic-checkpoint child interruptions")
 		try await repositoryPublicationInterruptions(root: root)
 		try await repositoryDiscardInterruptions(root: root)
+		try await repositoryClaimReplacement(root: root.appendingPathComponent("repository-claim-replacement"))
 	}
 	static func repositoryPublicationInterruptions(root: URL) async throws {
 		for boundary in ["stagingDurable", "checkpointDirectoryDurable", "torrentDurable", "locatorDurable"] {
@@ -204,7 +205,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		}
 	}
 	static func repositoryDiscardInterruptions(root: URL) async throws {
-		for boundary in ["discardDurable", "discardCheckpointRemoved", "discardFilesRemoved"] {
+		for boundary in ["discardDurable", "discardCheckpointClaimed", "discardFileClaimed", "discardCheckpointRemoved", "discardFilesRemoved"] {
 			let work = root.appendingPathComponent("repository-\(boundary)")
 			let metadata = try await prepare(work), library = work.appendingPathComponent("library"), destination = work.appendingPathComponent("data")
 			let repository = TransferRepository(root: library)
@@ -212,6 +213,33 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			let legacy = library.appendingPathComponent("transfer.resume"), other = library.appendingPathComponent("other")
 			try Data([12]).write(to: legacy); try Data([34]).write(to: other)
 			try await stopChild(work, operation: "repository-discard", boundary: boundary, target: work)
+			let journalURL = library.appendingPathComponent("transfer.native-discard.plist")
+			var receipt = try PropertyListSerialization.propertyList(from: Data(contentsOf: journalURL), format: nil) as! [String: Any]
+			if boundary == "discardDurable" {
+				// Exercise migration of a durable version-one discard before ownership claims.
+				receipt["version"] = 1
+				for field in ["claims", "digests", "claimedDirectory", "checkpointFiles"] { receipt[field] = nil }
+				try PropertyListSerialization.data(fromPropertyList: receipt, format: .binary, options: 0).write(to: journalURL, options: .atomic)
+			}
+			if boundary == "discardCheckpointClaimed" || boundary == "discardFileClaimed" {
+				let replaced: URL
+				if boundary == "discardCheckpointClaimed" {
+					let claimed = library.appendingPathComponent(receipt["claimedDirectory"] as! String)
+					// Also model a crash after the checkpoint's lock file was removed.
+					try fm.removeItem(at: claimed.appendingPathComponent("storage.lock"))
+					replaced = claimed.appendingPathComponent("checkpoint.plist")
+				}
+				else {
+					let claims = receipt["claims"] as! [String: String]
+					guard let existing = claims.values.map({ library.appendingPathComponent($0) }).first(where: { fm.fileExists(atPath: $0.path) }) else { throw StorageFailure.invalid("missing claimed repository file") }
+					replaced = existing
+				}
+				try Data([67]).write(to: replaced, options: .atomic)
+				var refused = false
+				do { try await repository.discard(id: "transfer") } catch StorageFailure.recoveryRequired { refused = true }
+				try require(refused && (try Data(contentsOf: replaced)) == Data([67]), "Discard recovery deleted a replaced claimed file")
+				try fm.moveItem(at: replaced, to: work.appendingPathComponent("retained-replacement"))
+			}
 			var rejected = false
 			do { _ = try await repository.retainedMetadata(id: "transfer") } catch StorageFailure.recoveryRequired { rejected = true }
 			try require(rejected, "A partially discarded transfer remained restorable")
@@ -230,6 +258,28 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			for index in 0..<8 { try require(try Data(contentsOf: destination.appendingPathComponent("bundle/" + name(index))) == contents(index), "Discard changed payload bytes") }
 			print("PASS: killed repository discard at \(boundary); retry preserved payload, replacement and legacy files")
 		}
+	}
+	static func repositoryClaimReplacement(root: URL) async throws {
+		let metadata = try await prepare(root), library = root.appendingPathComponent("library")
+		let repository = TransferRepository(root: library)
+		let state = try await publishRepositoryStorage(repository, id: "transfer", metadata: metadata, destination: root.appendingPathComponent("data"))
+		let retained = root.appendingPathComponent("retained-original"), replacement = Data([77, 78])
+		let racing = TransferRepository(root: library, event: { event in
+			if event == .discardDurable {
+				try? fm.moveItem(at: state.directory, to: retained)
+				try? fm.createDirectory(at: state.directory, withIntermediateDirectories: false)
+				try? replacement.write(to: state.directory.appendingPathComponent("metadata.torrent"))
+			}
+		})
+		var refused = false
+		do { try await racing.discard(id: "transfer") } catch StorageFailure.recoveryRequired { refused = true }
+		try require(refused && (try Data(contentsOf: state.directory.appendingPathComponent("metadata.torrent"))) == replacement, "Discard must restore a directory replaced before claiming")
+		try require(try Data(contentsOf: retained.appendingPathComponent("metadata.torrent")) == metadata.document.original, "Discard touched the original checkpoint through its anchor")
+		let foreign = root.appendingPathComponent("retained-replacement")
+		try fm.moveItem(at: state.directory, to: foreign); try fm.moveItem(at: retained, to: state.directory)
+		try await repository.discard(id: "transfer")
+		try require(try Data(contentsOf: foreign.appendingPathComponent("metadata.torrent")) == replacement, "Discard retry removed the retained replacement")
+		print("PASS: checkpoint directory replaced before claim is restored and retained")
 	}
 	static func copyCorruption(root: URL, target: URL) async throws {
 		let metadata = try await prepare(root)
