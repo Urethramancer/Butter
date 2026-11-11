@@ -1195,6 +1195,11 @@ loopback and resolved-address policy.
 
 ### Release transfer measurements
 
+The subsequent [11 November audit](audit-2026-11-11.md#release-cpu-investigation)
+adds 256 MiB comparisons and Time Profiler recordings. Those larger fixtures
+expose substantial Swift CPU and throughput scaling costs in piece allocation
+and storage invalidation. The measurements below retain their original scope.
+
 `Scripts/verify.sh benchmark` ran three Release trials for each engine and
 format on an Apple M1 Max with 32 GiB RAM and macOS 26.7.3. Each trial downloaded
 the same 32 MiB file in 256 KiB pieces over plaintext loopback TCP from a fresh
