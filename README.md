@@ -71,6 +71,8 @@ The matrix covers 456 transfers and DHT protocol comparisons, including
 sparse hybrid magnets, discovery, web seeds and impaired TCP-disabled µTP.
 `Scripts/verify.sh benchmark` compares Release download throughput, CPU time
 and peak memory on a local reference seed.
+`Scripts/verify.sh storage-benchmark` measures many-file storage costs with
+byte and restart checks; it requires no reference-engine installation.
 The [migration record](docs/swift-engine.md) and [audit](docs/audit.md) document
 the measurements, acceptance checks and remaining manual coverage.
 

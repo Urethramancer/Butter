@@ -95,12 +95,21 @@ final class StorageDirectory: @unchecked Sendable {
 	func stamp(_ file: Int32, shared: Bool = false) throws -> FileStamp {
 		var value = stat()
 		guard fstat(file, &value) == 0 else { throw diskError("Cannot inspect managed file") }
+		return try regularStamp(value, shared: shared)
+	}
+	private func regularStamp(_ value: stat, shared: Bool = false) throws -> FileStamp {
 		guard value.st_mode & S_IFMT == S_IFREG else { throw StorageFailure.invalid("managed path is not a regular file") }
 		guard shared || value.st_nlink == 1 else { throw StorageFailure.shared("hard-linked file") }
 		return FileStamp(value)
 	}
 	func inspect(_ path: String) throws -> FileStamp? {
-		do { let file = try openFile(path); defer { close(file) }; return try stamp(file) }
+		do {
+			return try parent(path) { directory, name in
+				var value = stat()
+				guard fstatat(directory, name, &value, AT_SYMLINK_NOFOLLOW) == 0 else { throw diskError("Cannot inspect managed file") }
+				return try regularStamp(value)
+			}
+		}
 		catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
 	}
 	func read(_ path: String, maximum: Int) throws -> Data {

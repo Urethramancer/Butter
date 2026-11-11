@@ -8,7 +8,7 @@ if [ "${BUTTER_TEST_LOG_ACTIVE:-0}" != 1 ]; then
 fi
 case "$mode" in
 	network) shift; exec Scripts/test-http.sh "$@" ;;
-	client|engine|contract|metadata|metadata-reference|creation|http|native-storage|peer|peer-reference|benchmark|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
+	client|engine|contract|metadata|metadata-reference|creation|http|native-storage|peer|peer-reference|benchmark|storage-benchmark|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
 	version) exec sh Tests/git-version.sh ;;
 	all|final)
 		sh Tests/test-log.sh
@@ -56,5 +56,5 @@ case "$mode" in
 			done
 		fi
 		;;
-	*) echo 'Usage: Scripts/verify.sh [all|final|reference|benchmark|client|storage|native-storage|disk|interruption|engine|contract|metadata|metadata-reference|creation|http|network|peer|peer-reference|lifecycle|interface|ui|build|version|coverage|sanitizers|reference-sanitizers]' >&2; exit 2 ;;
+	*) echo 'Usage: Scripts/verify.sh [all|final|reference|benchmark|storage-benchmark|client|storage|native-storage|disk|interruption|engine|contract|metadata|metadata-reference|creation|http|network|peer|peer-reference|lifecycle|interface|ui|build|version|coverage|sanitizers|reference-sanitizers]' >&2; exit 2 ;;
 esac
