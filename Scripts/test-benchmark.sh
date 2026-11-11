@@ -41,6 +41,7 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
   record[:driver_sha256] = {swift: Digest::SHA256.file(swift_driver).hexdigest, reference: Digest::SHA256.file(reference).hexdigest}
   record[:reference_cmake] = File.readlines(".dependencies/reference-build/CMakeCache.txt").select { |line| line.match?(/\A(?:CMAKE_(?:BUILD_TYPE|OSX_ARCHITECTURES|(?:CXX|OBJCXX)(?:_COMPILER|_FLAGS(?:_RELEASE)?))|Boost_INCLUDE_DIR|OPENSSL_ROOT_DIR):/) }.map(&:strip)
   record[:reference_target_flags] = File.read(".dependencies/reference-build/CMakeFiles/TCPPeerReference.dir/flags.make") if File.file?(".dependencies/reference-build/CMakeFiles/TCPPeerReference.dir/flags.make")
+  record[:reference_link_command] = File.read(".dependencies/reference-build/CMakeFiles/TCPPeerReference.dir/link.txt") if File.file?(".dependencies/reference-build/CMakeFiles/TCPPeerReference.dir/link.txt")
   record[:libtorrent_flags] = File.read(".dependencies/engine-apple-build/CMakeFiles/torrent-rasterbar.dir/flags.make") if File.file?(".dependencies/engine-apple-build/CMakeFiles/torrent-rasterbar.dir/flags.make")
   record[:dependency_archives_sha256] = %w[libtorrent-rasterbar libssl libcrypto].to_h { |name| [name, Digest::SHA256.file(".dependencies/install/lib/#{name}.a").hexdigest] }
   record[:reference_linkage] = capture.call("otool", "-L", reference)

@@ -221,3 +221,31 @@ Both memory checks pass; phase and independent whole-process RSS agree on the
 large reduction in transient task-related memory pressure. All 319 package
 tests pass, including encryption and µTP regressions. These focused experiments
 still fail the CPU/throughput target and require the final full matrix.
+
+## Final candidate verification and profiles
+
+The [validation record](raw/validation/results.jsonl) retains all attempts,
+including the early combined-contract deadline failure. The subsequent serial
+run passed native/reference contracts, lifecycle, native process-crash and
+volume-failure tests, bidirectional libtorrent TCP/MSE/µTP tests, the reference
+engine suite, and unsigned Debug/Release builds with linkage checks. Separate
+[package/sanitizer results](raw/validation/package-and-sanitizers.json) record
+319 package tests and 47 focused tests under each sanitizer. Controller tests
+pass eight cases / 40 assertions. No contract deadline or assertion was relaxed.
+
+Final [Release samples](raw/final-profiles/summary.json) use the same native
+dependency archives as the baseline. They remain separate from timing trials.
+
+| Profile workload | Swift user / system CPU s | Reference user / system CPU s |
+| --- | ---: | ---: |
+| Single v1 download | 3.59 / 4.32 | 0.87 / 0.68 |
+| Single hybrid download | 5.24 / 4.03 | 1.45 / 0.82 |
+| Many-file hybrid download | 9.00 / 8.87 | 1.56 / 0.91 |
+| Single v1 seed | 4.01 / 3.79 | 0.35 / 1.13 |
+
+These single instrumented pairs attribute work, rather than estimate acceptance
+intervals. Whole-layout stamp invalidation and anchored path inspections remain
+prominent in the many-file stacks. Seeding retains per-block upload tasks,
+disk-admission actor crossings and Network.framework sends. Request-window
+defaults remain unchanged; Swift records its download pipeline and incoming
+upload quotas, and the reference records its native request-queue defaults.
