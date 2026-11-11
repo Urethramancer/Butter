@@ -203,7 +203,7 @@ actor SessionPeerNetwork {
 	}
 	func trackers(http: any TrackerAnnouncing) throws -> TrackerClient {
 		guard !closed else { throw NetworkFailure.closed }
-		return TrackerClient(http: http, udp: try UDPTrackerClient(dispatchers: [listener.udp4, listener.udp6], clock: clock, timeout: 10))
+		return TrackerClient(http: http, udp: try UDPTrackerClient(dispatchers: [listener.udp4, listener.udp6], clock: clock, timeout: 10, addressFilter: filter))
 	}
 	func snapshot() async -> SessionNetworkSnapshot {
 		let localError = await localDiscovery?.failure ?? localDiscoveryFailure

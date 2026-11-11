@@ -81,6 +81,7 @@ public actor TorrentSession {
 	private let clock: any TransportClock
 	private let loopbackOnly: Bool
 	private let httpTracker: any TrackerAnnouncing
+	private let nativeTrackerTransport: NetworkHTTPTransport?
 	private let webSeedTransport: (any HTTPTransport)?
 	private let dhtBootstrap: [NetworkEndpoint]?
 	private let localDiscoveryFactory: LocalDiscoveryFactory?
@@ -103,11 +104,13 @@ public actor TorrentSession {
 	private var peerHints: PeerCandidateQueue<SessionPeerHint>?
 	private var exports: [UUID: (id: String, signal: AsyncStream<Void>.Continuation)] = [:]
 	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
-		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: any TrackerAnnouncing = HTTPTrackerClient(), webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil, localDiscoveryFactory: LocalDiscoveryFactory? = nil,
+		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: (any TrackerAnnouncing)? = nil, webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil, localDiscoveryFactory: LocalDiscoveryFactory? = nil,
 		routerMappingRoutes: (@Sendable () async throws -> [RouterMappingRoute])? = nil, storageEvent: @escaping @Sendable (String, StorageEvent) -> Void = { _, _ in }) {
 		repository = TransferRepository(root: storage); self.configuration = configuration; self.resources = resources; budget = TCPPeerBudget(limit: maximumPeers)
 		self.loopbackOnly = loopbackOnly; self.clock = clock
-		self.httpTracker = httpTracker
+		let native = httpTracker == nil ? NetworkHTTPTransport(clock: clock, addressFilter: configuration.addressFilter) : nil
+		nativeTrackerTransport = native
+		self.httpTracker = httpTracker ?? HTTPTrackerClient(transport: native!)
 		self.webSeedTransport = webSeedTransport
 		self.dhtBootstrap = dhtBootstrap
 		self.localDiscoveryFactory = localDiscoveryFactory
@@ -465,6 +468,8 @@ public actor TorrentSession {
 			self.networkChanging = true; defer { self.networkChanging = false }
 			let running = try await self.pauseForSettings()
 			self.configuration.addressFilter = filter; await self.network?.setFilter(filter)
+			await self.nativeTrackerTransport?.setAddressFilter(filter)
+			self.trackerClient = nil
 			for entry in self.entries where !entry.closed {
 				try await entry.owner.configurePeers(maximum: self.configuration.maximumPeers, pex: self.configuration.enablePEX,
 					port: self.configuration.listenPort, allowSameIP: self.configuration.allowSameIP, addressFilter: filter, dhtPort: self.configuration.dhtPort)

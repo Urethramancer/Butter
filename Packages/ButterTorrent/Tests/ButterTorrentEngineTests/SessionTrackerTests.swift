@@ -6,6 +6,38 @@ import ButterTorrentMetadata
 
 // Each case owns several sessions; keep independent fixtures within the process-wide disk budget.
 extension NativeSessionTests { @Suite struct SessionTrackerTests {
+	@Test(arguments: [false, true], [false, true]) func nativeTrackerFiltersBeforeStartAndAfterRunning(_ udp: Bool, _ initiallyBlocked: Bool) async throws {
+		let fixture = try TrackerSessionFixture(), clock = EngineClock()
+		let http = udp ? nil : LocalHTTPTracker(listener: try await TCPListener.listen(loopbackOnly: true))
+		let datagrams = udp ? LocalUDPTracker(socket: try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0))) : nil
+		await http?.start(); await datagrams?.start()
+		let port = http?.listener.port ?? datagrams!.socket.localEndpoint.port
+		let url = "\(udp ? "udp" : "http")://127.0.0.1:\(port)/announce"
+		let session = TorrentSession(storage: fixture.source.root.appendingPathComponent("filtered-library"), configuration: plainTransferConfiguration(), loopbackOnly: true, clock: clock)
+		let blocked = [try PeerAddressRange(first: IPAddress("127.0.0.1"), last: IPAddress("127.0.0.1"))]
+		let count: @Sendable () async -> Int = { if let http { return await http.requests }; return await datagrams!.requests.count }
+		do {
+			if initiallyBlocked { try await session.setBlocklist(blocked) }
+			let input = fixture.source.root.appendingPathComponent("filtered.torrent")
+			try fixture.metadata.withTrackerTiers([[url]]).write(to: input)
+			_ = try await session.add(id: "filtered", source: input, destination: fixture.source.root.appendingPathComponent("filtered-data"))
+			try await session.run(id: "filtered", running: true)
+			if initiallyBlocked {
+				try await eventually { try await session.snapshot().transfers[0].trackers.first?.message.isEmpty == false }
+				#expect(await count() == 0)
+				try await session.setBlocklist([])
+			}
+			try await eventually { await count() > 0 }
+			try await session.setBlocklist(blocked)
+			let before = await count(); clock.advance(31)
+			try await eventually { try await session.snapshot().transfers[0].trackers.first?.message.isEmpty == false }
+			#expect(await count() == before)
+			try await session.setBlocklist([])
+			try await eventually { await count() > before }
+			try await session.close()
+		} catch { try? await session.close(); await http?.close(); await datagrams?.close(); await fixture.close(); throw error }
+		await http?.close(); await datagrams?.close(); await fixture.close()
+	}
 	@Test(arguments: [1, 2, 3], [false, true]) func trackerOnlyMagnetsAnnounceUnknownSizeThenTransfer(_ version: Int, _ udp: Bool) async throws {
 		let fixture = try TrackerSessionFixture(version: version, isPrivate: false), tracker = RecordingTracker()
 		let udpTracker = udp ? LocalUDPTracker(socket: try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0))) : nil
@@ -424,6 +456,33 @@ private func trackerIdentityFixture(version: Int, udp: Bool, isPrivate: Bool, re
 		}
 	} catch { await fixture.close(); await udpTracker?.close(); throw error }
 	await fixture.close(); await udpTracker?.close()
+}
+
+private actor LocalHTTPTracker {
+	let listener: TCPListener
+	private var pump: Task<Void, Never>?
+	private(set) var requests = 0
+	init(listener: TCPListener) { self.listener = listener }
+	func start() { pump = Task { await self.run() } }
+	private func run() async {
+		while !Task.isCancelled {
+			do {
+				let stream = try await listener.accept(timeout: 3)
+				defer { stream.close() }
+				var bytes = Data()
+				while bytes.range(of: Data("\r\n\r\n".utf8)) == nil {
+					let next = try await stream.read(timeout: 3)
+					guard !next.isEmpty, bytes.count + next.count <= 16384 else { throw NetworkFailure.invalid("tracker fixture request") }
+					bytes.append(next)
+				}
+				requests += 1
+				let body = try BencodeValue.dictionary([Data("interval".utf8): .integer(30), Data("peers".utf8): .bytes(Data())]).encoded()
+				try await stream.write(Data("HTTP/1.1 200 OK\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8) + body)
+			} catch NetworkFailure.timedOut { continue }
+			catch { if !Task.isCancelled { Issue.record(error) }; return }
+		}
+	}
+	func close() async { pump?.cancel(); try? await listener.shutdown(); await pump?.value; pump = nil }
 }
 
 private actor LocalUDPTracker {

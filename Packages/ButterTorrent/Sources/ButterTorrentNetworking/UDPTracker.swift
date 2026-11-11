@@ -9,21 +9,23 @@ public actor UDPTrackerClient: TrackerAnnouncing {
 	private let clock: any TransportClock
 	private let key: UInt32
 	private let timeout: TimeInterval
+	private let addressFilter: PeerAddressFilter
 	private var transaction: UInt32
 	private var connections: [NetworkEndpoint: Connection] = [:]
 	public init(dispatchers: [UDPDispatcher], resolver: any AddressResolving = SystemAddressResolver(), clock: any TransportClock = ContinuousTransportClock(),
-		key: UInt32 = .random(in: .min ... .max), transactionSeed: UInt32 = .random(in: .min ... .max), timeout: TimeInterval = 120) throws {
+		key: UInt32 = .random(in: .min ... .max), transactionSeed: UInt32 = .random(in: .min ... .max), timeout: TimeInterval = 120, addressFilter: PeerAddressFilter = .init()) throws {
 		guard (1...2).contains(dispatchers.count), Set(dispatchers.map { $0.localEndpoint.address.isIPv6 }).count == dispatchers.count,
 			timeout.isFinite, timeout > 0, timeout <= 86400 else { throw NetworkFailure.invalid("UDP tracker configuration") }
 		self.dispatchers = Dictionary(uniqueKeysWithValues: dispatchers.map { ($0.localEndpoint.address.isIPv6, $0) })
 		self.resolver = resolver; self.clock = clock; self.key = key; transaction = transactionSeed; self.timeout = timeout
+		self.addressFilter = addressFilter
 	}
 	public func announce(to tracker: URL, request: TrackerRequest) async throws -> TrackerResponse {
 		try Task.checkCancellation(); try request.validateFields()
 		let (host, port) = try Self.destination(tracker)
 		let deadline = clock.now() + timeout
 		let answers = try await resolver.resolve(host: host, port: port, timeout: min(10, timeout))
-		guard let endpoint = answers.first(where: { dispatchers[$0.address.isIPv6] != nil && $0.port == port && !$0.address.isUnspecified && !$0.address.isMulticast }),
+		guard let endpoint = answers.first(where: { dispatchers[$0.address.isIPv6] != nil && $0.port == port && !$0.address.isUnspecified && !$0.address.isMulticast && addressFilter.allows($0.address) }),
 			let dispatcher = dispatchers[endpoint.address.isIPv6] else { throw NetworkFailure.invalid("UDP tracker address family") }
 		let id = nextID()
 		for attempt in 0..<9 {
