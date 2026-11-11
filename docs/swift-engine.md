@@ -1218,3 +1218,19 @@ The ten local web-seed comparisons verified 300,003–310,022 bytes in
 half of them redirects. The transport opens a connection for each request, so
 redirects doubled connection count in those fixtures. All payloads subsequently
 transferred to libtorrent and matched the original bytes.
+
+### Phase 12 acceptance
+
+A full-history checkout without `.dependencies` passed the native command,
+lifecycle, interface and filesystem checks. The Debug and Release apps linked
+without the reference libraries or their symbols, included the adapted-code
+notice and rebuilt without unnecessary compilation. All 262 package tests
+passed with coverage, Address Sanitizer and Thread Sanitizer.
+
+The full native UI suite ran once. Five cases passed initially. Four reached the
+system Open panel while the Go to Folder sheet still held focus or before a
+fixture was selected. The test helper now enters the resolved directory in the
+focused field, waits for the sheet to dismiss and selects the fixture using its
+reported frame. The four targeted reruns passed, covering compositor captures,
+local folder and file rename, multiple selections and removal. App layouts and
+controls were untouched.

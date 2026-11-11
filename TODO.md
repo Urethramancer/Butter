@@ -1,11 +1,5 @@
 # Remaining audit and acceptance checks
 
-## Swift torrent engine replacement
-- Phase 12: finish the consolidated dependency-free acceptance run.
-  Preserve `v0.3.0`; commit, create an annotated minor tag and push after phase 12.
-  Details and gates are in
-  [the migration record](docs/swift-engine.md).
-
 ## Native interaction and appearance
 - Automate real drag/drop, blocklist import/export dialogs, destination-folder
   pickers and the remaining Settings controls.
