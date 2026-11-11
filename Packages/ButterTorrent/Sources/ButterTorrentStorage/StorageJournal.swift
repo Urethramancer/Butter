@@ -7,6 +7,8 @@ public enum StorageEvent: Sendable, Equatable {
 	case entryDurable(Int)
 	case checkpointDurable
 	case sourceRemoved(Int)
+	case sourceWillBeClaimed(Int)
+	case sourceClaimed(Int)
 	case pieceLayersChanged
 }
 
@@ -26,6 +28,12 @@ struct StorageJournal: Codable {
 		let temporary: String
 		var temporaryStamp: FileStamp?
 		var published: FileStamp?
+		// The existing durable temporary name also identifies interrupted source cleanup.
+		var claimedSource: String {
+			let parent = (source as NSString).deletingLastPathComponent
+			let name = ".butter-source-" + String((temporary as NSString).lastPathComponent.dropFirst(".butter-copy-".count))
+			return parent.isEmpty ? name : parent + "/" + name
+		}
 	}
 	var version = 1
 	let before: StorageCheckpoint
@@ -69,7 +77,11 @@ extension StorageState {
 		guard hasJournal else { return }
 		var journal = try PropertyListDecoder().decode(StorageJournal.self, from: state.read("operation.plist", maximum: 33_554_432))
 		try journal.validate(layout: layout, identity: record.metadataHash)
-		try claim(extra: futurePaths(journal.after) + journal.entries.flatMap { [URL(fileURLWithPath: $0.sourceRoot).appendingPathComponent($0.source), URL(fileURLWithPath: $0.destinationRoot).appendingPathComponent($0.destination)] })
+		try claim(extra: futurePaths(journal.after) + journal.entries.flatMap {
+			[URL(fileURLWithPath: $0.sourceRoot).appendingPathComponent($0.source),
+			 URL(fileURLWithPath: $0.sourceRoot).appendingPathComponent($0.claimedSource),
+			 URL(fileURLWithPath: $0.destinationRoot).appendingPathComponent($0.destination)]
+		})
 		for index in journal.entries.indices {
 			try check()
 			var entry = journal.entries[index]
@@ -117,14 +129,32 @@ extension StorageState {
 			guard let published = entry.published, try target.inspect(entry.destination) == published,
 				try target.digest(entry.destination, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("destination changed before source removal") }
 			let source = try StorageDirectory(URL(fileURLWithPath: entry.sourceRoot), create: false)
-			if let current = try source.inspect(entry.source) {
-				guard current == entry.original, try source.digest(entry.source, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("source copy changed; it was retained") }
-				try source.remove(entry.source, expected: entry.original); event(.sourceRemoved(entry.index))
-			}
+			guard try source.identity().sameFile(entry.sourceDirectory) else { throw StorageFailure.recoveryRequired("source directory was replaced before cleanup") }
+			try removeCopiedSource(entry, from: source, check: check)
 		}
 		guard let operation = try state.inspect("operation.plist") else { throw StorageFailure.invalid("missing operation journal") }
 		try state.remove("operation.plist", expected: operation)
 		hasJournal = false; try claim()
+	}
+	private func removeCopiedSource(_ entry: StorageJournal.Entry, from source: StorageDirectory, check: () throws -> Void) throws {
+		let claimed = entry.claimedSource
+		if try source.inspect(claimed) == nil {
+			guard let current = try source.inspect(entry.source) else { return }
+			guard current == entry.original, try source.digest(entry.source, check: check) == entry.digest else { throw StorageFailure.recoveryRequired("source copy changed; it was retained") }
+			event(.sourceWillBeClaimed(entry.index))
+			try source.rename(entry.source, to: source, path: claimed)
+		}
+		let checked = try source.checkedDigest(claimed, check: check)
+		guard checked.stamp.sameFile(entry.original), checked.hash == entry.digest else {
+			// Restore a claimed replacement exclusively, preserving any newer source entry.
+			do { try source.rename(claimed, to: source, path: entry.source) }
+			catch { throw StorageFailure.recoveryRequired("source replacement retained at \(source.url.appendingPathComponent(claimed).path)") }
+			throw StorageFailure.recoveryRequired("source changed during cleanup; it was retained")
+		}
+		event(.sourceClaimed(entry.index))
+		try check()
+		try source.remove(claimed, expected: checked.stamp)
+		event(.sourceRemoved(entry.index))
 	}
 	private func futurePaths(_ checkpoint: StorageCheckpoint) throws -> [URL] {
 		let destination = URL(fileURLWithPath: checkpoint.destination)

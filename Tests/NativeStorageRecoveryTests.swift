@@ -47,6 +47,8 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		case .entryDurable(let index): "entry-\(index)"
 		case .checkpointDurable: "checkpoint"
 		case .sourceRemoved(let index): "removed-\(index)"
+		case .sourceWillBeClaimed(let index): "claiming-\(index)"
+		case .sourceClaimed(let index): "claimed-\(index)"
 		case .pieceLayersChanged: "piece-layers"
 		}
 	}
@@ -119,7 +121,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		let cases: [(String, String, Bool)] = [
 			("rename", "journal", false), ("rename", "published-0", false), ("rename", "entry-0", false), ("rename", "checkpoint", false),
 			("move", "published-0", false), ("move", "entry-0", false),
-			("move", "published-0", true), ("move", "entry-0", true), ("move", "checkpoint", true), ("move", "removed-0", true),
+			("move", "published-0", true), ("move", "entry-0", true), ("move", "checkpoint", true), ("move", "claimed-0", true), ("move", "removed-0", true),
 			("trash", "published-0", false), ("trash", "entry-0", false),
 			("trash", "entry-0", true), ("trash", "removed-0", true),
 			("import", "published-0", false), ("import", "entry-0", false),
@@ -162,6 +164,9 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			print("PASS: killed \(operation)/\(boundary)\(cross ? " across volumes" : ""); recovered every managed byte")
 		}
 		try await copyCorruption(root: root.appendingPathComponent("copy-corruption"), target: volume.appendingPathComponent("target-corruption"))
+		for afterClaim in [false, true] {
+			try await sourceReplacement(root: root.appendingPathComponent("source-replacement-\(afterClaim)"), target: volume.appendingPathComponent("target-replacement-\(afterClaim)"), afterClaim: afterClaim)
+		}
 		for iteration in 0..<4 {
 			let work = root.appendingPathComponent("atomic-\(iteration)"), metadata = try await prepare(work)
 			try await stopChild(work, operation: "atomic", boundary: "unused", target: work)
@@ -235,6 +240,24 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		let pending = try await storage.snapshot()
 		try require(pending.needsRecovery && pending.verifiedPieces.isEmpty, "Changed destination advertised progress")
 		print("PASS: cross-volume destination corruption retains every original and blocks verified progress")
+	}
+	static func sourceReplacement(root: URL, target: URL, afterClaim: Bool) async throws {
+		let metadata = try await prepare(root), source = root.appendingPathComponent("data/bundle/" + name(0)), replacement = Data([99, 98, 97])
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), event: { event in
+			if event == (afterClaim ? .sourceClaimed(0) : .sourceWillBeClaimed(0)) { try? replacement.write(to: source, options: .atomic) }
+		})
+		var rejected = false
+		do { try await storage.move(to: target) } catch StorageFailure.recoveryRequired { rejected = true }
+		try require(rejected != afterClaim, "Source identity must be validated after claiming")
+		try require(try Data(contentsOf: source) == replacement, "Cross-volume cleanup deleted a replacement source")
+		for index in 0..<8 { try require(try Data(contentsOf: target.appendingPathComponent("bundle/" + name(index))) == contents(index), "Cross-volume cleanup changed the verified destination") }
+		if rejected {
+			// Explicitly retain the replacement elsewhere before completing the interrupted move.
+			try fm.moveItem(at: source, to: root.appendingPathComponent("retained-replacement"))
+			try await storage.recover()
+		}
+		try await storage.shutdown()
+		print("PASS: cross-volume source replacement \(afterClaim ? "after" : "before") claim is retained")
 	}
 	static func disk(root: URL, volume: URL) async throws {
 		try require(fm.fileExists(atPath: volume.appendingPathComponent(".butter-native-storage-test").path), "Missing disposable-volume marker")

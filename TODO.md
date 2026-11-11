@@ -2,8 +2,8 @@
 
 ## Swift cut-over audit findings
 
-- Close the file-identity race between storage preflight and destructive pathname
-  operations, including cross-volume source deletion and repository discard (A10).
+- Extend journalled identity claims to repository discard and same-volume source
+  renames. Cross-volume cleanup now claims and verifies sources durably (A10).
 - Reduce repeated piece-candidate sorting and unchanged verified-layout scans,
   then rerun the 32/256 MiB CPU comparisons and recovery tests (A15–A16).
 
