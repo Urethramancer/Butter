@@ -7,6 +7,7 @@ import ButterTorrentNetworking
 
 private extension TCPTransfer {
 	var pendingUploadWork: Int { uploadJobs.count }
+	var uploadWorkDrained: Bool { uploadJobs.isEmpty && uploadGroups.isEmpty && uploadGroupKeys.isEmpty }
 	func uploadAdmissionState() -> (queued: Int, controls: Int) {
 		guard let peer = peers.values.first else { return (0, 0) }
 		return (peer.uploads.count, peer.controls)
@@ -35,6 +36,51 @@ private func blockedUploadFixture(_ body: (TCPTransfer, WirePeer) async throws -
 }
 
 @Suite struct UploadAdmissionTests {
+	@Test(arguments: [false, true]) func blockedSharedUploadsDrainOnPeerDisconnectOrShutdown(_ shutdown: Bool) async throws {
+		try await transferFixture { fixture in
+			let resources = try TransferResources(maximumDiskOperations: 1)
+			let seed = try await fixture.transfer("seed", seed: true, clock: EngineClock(), resources: resources)
+			let first = try await fixture.scripted(seed, identity: 41); defer { first.stream.close() }
+			try await first.send(.interested)
+			while try await first.next() != .unchoke {}
+			let firstID = await seed.snapshot().peers[0].id
+			let second = try await fixture.scripted(seed, identity: 42); defer { second.stream.close() }
+			try await second.send(.interested)
+			while try await second.next() != .unchoke {}
+			let secondID = try #require(await seed.snapshot().peers.first { $0.id != firstID }?.id)
+			let blocker = TransferDiskScope(resources: resources); try await blocker.acquire()
+			var held = true
+			do {
+				let block = PeerBlock(piece: 0, offset: 0, length: 16384)
+				try await seed.received(firstID, message: .request(block))
+				try await seed.received(secondID, message: .request(block))
+				try await eventually { await resources.snapshot().waitingDiskOperations == 1 }
+				if shutdown { try await engineDeadline { try await seed.shutdown() } }
+				else {
+					first.stream.close()
+					try await eventually { await seed.snapshot().peers.count == 1 }
+					await blocker.release(); held = false
+					try await eventually { await seed.uploadWorkDrained }
+					try await seed.send(secondID, .keepAlive)
+					var delivered = 0
+					while true {
+						let message = try await second.next()
+						if message == .keepAlive { break }
+						if case .piece(let piece, let offset, let bytes) = message {
+							delivered += 1
+							#expect(piece == 0 && offset == 0 && bytes == fixture.bytes.prefix(16384))
+						}
+					}
+					#expect(delivered == 1)
+					try await seed.shutdown()
+				}
+				if held { await blocker.release(); held = false }
+				#expect(await seed.uploadWorkDrained)
+				let state = await resources.snapshot()
+				#expect(state.diskOperations == 0 && state.waitingDiskOperations == 0 && state.cachedBytes == 0 && state.loadingBytes == 0)
+			} catch { if held { await blocker.release() }; throw error }
+		}
+	}
 	@Test(arguments: [false, true]) func cancellingAndReplacingPendingUploadsKeepsIndependentRequests(_ choke: Bool) async throws {
 		try await transferFixture { fixture in
 			let resources = try TransferResources(maximumDiskOperations: 1)

@@ -15,10 +15,9 @@
   meets native throughput, but the full-run regression remains open.
 - Rerun the matrix/profiles for the final candidate and complete remaining release
   acceptance; the latest complete matrix and CPU profiles are `5b9ef12`.
-- Complete broader performance comparison for the immutable
-  upload-cache wrapper. Six controlled v1 seeding pairs show 0.8% lower CPU;
-  concurrent v2 pairs improve throughput but leave CPU inconclusive. Many-file
-  performance and full-matrix parity remain unproven.
+- Complete native and broader performance checks for grouped upload workers.
+  Six controlled v1 seeding pairs reduce CPU 16.5% and raise throughput 11.6%;
+  many-file/concurrent performance and full-matrix parity remain unproven.
 - Reduce repeated whole-layout stamp inspection and per-block upload,
   allocation and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.

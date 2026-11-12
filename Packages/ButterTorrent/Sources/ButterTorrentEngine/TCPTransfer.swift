@@ -136,7 +136,9 @@ public actor TCPTransfer {
 	var disconnectingPeers = false
 	var peerRevision = UUID()
 	var identityRetries: [UUID: Task<Void, Never>] = [:]
-	var uploadJobs: [UUID: (UUID, Task<Void, Never>)] = [:]
+	var uploadJobs: [UUID: UUID] = [:]
+	var uploadGroups: [UUID: UploadPayloadGroup] = [:]
+	var uploadGroupKeys: [UploadGroupKey: UUID] = [:]
 	var bannedIDs: Set<Data> = []
 	var downloaded: Int64
 	var uploaded: Int64
@@ -344,7 +346,7 @@ public actor TCPTransfer {
 		let completing = completionCheckpoint; completing?.cancel()
 		settleCompletionWaiters(PeerFailure.closed)
 		discovery.finish(); nodeDiscovery.finish()
-		let connecting = Array(openings.values), running = peers.values.compactMap(\.task), uploads = uploadJobs.values.map(\.1), retrying = Array(identityRetries.values), recovering = Array(localRecoveries.values)
+		let connecting = Array(openings.values), running = peers.values.compactMap(\.task), uploads = uploadGroups.values.map(\.task), retrying = Array(identityRetries.values), recovering = Array(localRecoveries.values)
 		for task in recovering { task.cancel() }
 		for task in retrying { task.cancel() }
 		for task in connecting { task.cancel() }
@@ -366,7 +368,7 @@ public actor TCPTransfer {
 		let revision = peerRevision
 		peer.session.close(); picker.remove(id); discardUnretainedPayload()
 		for request in peer.hashRequests.keys where hashOwners[request] == id { hashOwners[request] = nil }
-		let jobs = uploadJobs.values.filter { $0.0 == id }.map(\.1)
+		let jobs = uploadGroups.values.filter { $0.key.peer == id }.map(\.task)
 		for task in jobs { task.cancel() }; for task in jobs { await task.value }
 		if !stopping, !peer.closing, let error, !(error is CancellationError) { lastPeerError = "\(peer.session.stream.remoteEndpoint?.description ?? "peer"): \(error.localizedDescription)" }
 		if (!peer.closing && (error == nil || error.map { PeerStream.allowsIdentityRetry(after: $0) } == true)) || peer.retryIdentityAfterClose,

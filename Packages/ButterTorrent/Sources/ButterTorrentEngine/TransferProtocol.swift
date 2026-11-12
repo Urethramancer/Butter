@@ -91,7 +91,7 @@ extension TCPTransfer {
 		case .cancel(let block):
 			try validate(block)
 			if let token = peer.uploads.removeValue(forKey: block) {
-				uploadJobs[token]?.1.cancel()
+				cancelUpload(token)
 				if peer.session.cancel(token), peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }
 			}
 		case .extended(let number, let bytes): try await receivedExtension(id, number: number, bytes: bytes)
@@ -215,7 +215,7 @@ extension TCPTransfer {
 			if choke == peer.choking { continue }; peer.choking = choke
 			if choke {
 				for (block, token) in peer.uploads where !peer.allowedIncoming.contains(block.piece) {
-					uploadJobs[token]?.1.cancel()
+					cancelUpload(token)
 					if peer.session.cancel(token), peer.features.fast || peer.features.v2 { try? send(id, .reject(block)) }; peer.uploads[block] = nil
 				}
 			}

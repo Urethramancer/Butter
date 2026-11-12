@@ -1,5 +1,16 @@
 import Foundation
 
+struct UploadGroupKey: Hashable, Sendable {
+	let peer: UUID
+	let piece: Int
+}
+
+struct UploadPayloadGroup {
+	let key: UploadGroupKey
+	let task: Task<Void, Never>
+	var requests: [(token: UUID, block: PeerBlock)]
+}
+
 extension TCPTransfer {
 	func requestUpload(_ id: UUID, block: PeerBlock) throws -> Bool {
 		guard let peer = peers[id] else { return false }
@@ -20,24 +31,50 @@ extension TCPTransfer {
 			if peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }; return false
 		}
 		peer.uploads[block] = token
+		let key = UploadGroupKey(peer: id, piece: block.piece)
+		if let groupID = uploadGroupKeys[key] {
+			uploadGroups[groupID]!.requests.append((token, block))
+			uploadJobs[token] = groupID
+			return true
+		}
+		let groupID = UUID()
 		let task = Task { [weak self] in
 			guard let self else { return }
-			do { try await self.buildUpload(id, block: block, token: token) }
-			catch { await self.uploadFailed(id, error: error) }
-			await self.uploadJobFinished(token)
+			do {
+				let piece = try await self.cache.piece(block.piece)
+				try Task.checkCancellation()
+				await self.finishUploadGroup(groupID, result: .success(piece))
+			} catch { await self.finishUploadGroup(groupID, result: .failure(error)) }
 		}
-		uploadJobs[token] = (id, task)
+		uploadGroups[groupID] = UploadPayloadGroup(key: key, task: task, requests: [(token, block)])
+		uploadGroupKeys[key] = groupID
+		uploadJobs[token] = groupID
 		return true
 	}
-	func buildUpload(_ id: UUID, block: PeerBlock, token: UUID) async throws {
-		try Task.checkCancellation()
-		let piece = try await cache.piece(block.piece)
-		try Task.checkCancellation()
-		guard !stopping, let peer = peers[id], !peer.closing, !peer.choking || peer.allowedIncoming.contains(block.piece), peer.uploads[block] == token else { throw PeerFailure.closed }
-		let data = piece[block.offset..<(block.offset + block.length)]
-		try peer.session.send(.piece(block.piece, block.offset, data), token: token, block: block); peer.lastSent = clock.now()
+	func cancelUpload(_ token: UUID) {
+		guard let groupID = uploadJobs[token], let group = uploadGroups[groupID] else { return }
+		let peer = peers[group.key.peer]
+		// One cancelled block must not cancel another block's shared piece read.
+		guard !group.requests.contains(where: { $0.token != token && peer?.uploads[$0.block] == $0.token }) else { return }
+		group.task.cancel()
+		// Replacements must start fresh even while the cancelled worker drains.
+		if uploadGroupKeys[group.key] == groupID { uploadGroupKeys[group.key] = nil }
 	}
-	func uploadJobFinished(_ token: UUID) { uploadJobs[token] = nil }
+	func finishUploadGroup(_ groupID: UUID, result: Result<Data, Error>) {
+		guard let group = uploadGroups.removeValue(forKey: groupID) else { return }
+		if uploadGroupKeys[group.key] == groupID { uploadGroupKeys[group.key] = nil }
+		for request in group.requests { uploadJobs[request.token] = nil }
+		do {
+			let piece = try result.get()
+			guard !stopping, let peer = peers[group.key.peer], !peer.closing else { return }
+			// Flush available requests immediately; do not wait for a full group.
+			for (token, block) in group.requests {
+				guard (!peer.choking || peer.allowedIncoming.contains(block.piece)), peer.uploads[block] == token else { continue }
+				let data = piece[block.offset..<(block.offset + block.length)]
+				try peer.session.send(.piece(block.piece, block.offset, data), token: token, block: block); peer.lastSent = clock.now()
+			}
+		} catch { uploadFailed(group.key.peer, error: error) }
+	}
 	func uploadedBatch(_ id: UUID, items: [PeerSession.Outbound]) {
 		for item in items { if let block = item.block, let token = item.token { uploaded(id, block: block, token: token, count: item.payload) } }
 	}

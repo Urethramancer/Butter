@@ -50,6 +50,13 @@ four-transfer v2 seeding source comparison finds 0.8% higher throughput and
 inconclusive CPU, with memory passing. Final acceptance remains open and the
 latest full-matrix CPU gap is unchanged as an acceptance finding.
 
+[Grouped pending upload workers](upload-groups-results-2026-11-12.md) retain
+independent block tokens while sharing one verified piece-read worker. Six
+balanced single-file v1 seeding source pairs reduce CPU 16.5% and raise
+throughput 11.6%, with memory passing. All 344 package tests and 46 focused
+tests under each sanitizer pass. Native and broader performance acceptance
+remain open; this focused result does not establish CPU parity.
+
 The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
 reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
 (13.4%) and raises throughput from 182.4 to 213.1 MB/s. Fourteen trials and both
