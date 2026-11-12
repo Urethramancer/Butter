@@ -55,7 +55,10 @@ actor TransferRateLimiter {
 	}
 }
 
-actor VerifiedPieceCache {
+// Mutable cache state belongs to SharedPieceCache; owner closure is lock-protected.
+// Keep this immutable wrapper on its caller's executor instead of adding a hop
+// for every upload block, including cache hits.
+final class VerifiedPieceCache: Sendable {
 	private let storage: TorrentStorage
 	private let owner = PieceCacheOwner()
 	private let pool: SharedPieceCache
@@ -71,7 +74,7 @@ actor VerifiedPieceCache {
 			} catch { await disk.release(); throw error }
 		}
 	}
-	func piece(_ index: Int) async throws -> Data {
+	func piece(_ index: Int, isolation: isolated (any Actor)? = #isolation) async throws -> Data {
 		try await pool.piece(index, storage: storage, owner: owner, load: read)
 	}
 	func close() async { owner.close(); await pool.close(owner) }

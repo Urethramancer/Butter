@@ -15,6 +15,9 @@
   meets native throughput, but the full-run regression remains open.
 - Rerun the matrix/profiles for the final candidate and complete remaining release
   acceptance; the latest complete matrix and CPU profiles are `5b9ef12`.
+- Complete native interoperability and broader comparison for the immutable
+  upload-cache wrapper. Six controlled v1 seeding pairs show 0.8% lower CPU;
+  this small improvement does not establish full-matrix parity.
 - Reduce repeated whole-layout stamp inspection and per-block upload,
   allocation and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.
