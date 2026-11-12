@@ -49,6 +49,9 @@ public final class TCPStream: @unchecked Sendable {
 		let lease = budget?.acquire()
 		guard budget == nil || lease != nil else { throw NetworkFailure.limit("peer connections") }
 		let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
+		// Explicit port-zero binding avoids intermittent EADDRINUSE during
+		// connection churn while retaining automatic local address/port selection.
+		parameters.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(endpoint.address.isIPv6 ? "::" : "0.0.0.0"), port: .any)
 		let connection = NWConnection(host: NWEndpoint.Host(endpoint.address.description), port: NWEndpoint.Port(rawValue: endpoint.port)!, using: parameters)
 		let stream = TCPStream(connection, clock: clock) { lease?.release() }
 		try await stream.start(timeout: timeout)

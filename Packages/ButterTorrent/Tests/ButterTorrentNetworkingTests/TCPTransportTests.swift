@@ -33,6 +33,23 @@ import Testing
 			server.close(); try await listener.shutdown()
 		}
 	}
+	@Test(arguments: ["127.0.0.1", "::1"]) func repeatedEphemeralConnectionsReleaseTheirPortsAndBudget(_ host: String) async throws {
+		for _ in 0..<256 {
+			let budget = TCPPeerBudget(limit: 2)
+			let listener = try await TCPListener.listen(address: IPAddress(host), maximumPeers: 1, budget: budget)
+			do {
+				let client = try await TCPStream.connect(to: NetworkEndpoint(host, port: listener.port), timeout: 3, budget: budget)
+				defer { client.close() }
+				let peer = try await listener.accept(timeout: 3); defer { peer.close() }
+				#expect(budget.count == 2)
+				try await client.write(Data([42]), timeout: 3)
+				#expect(try await peer.read(maximumBytes: 1, timeout: 3) == Data([42]))
+				client.close(); peer.close()
+				#expect(budget.count == 0)
+				try await listener.shutdown()
+			} catch { try? await listener.shutdown(); throw error }
+		}
+	}
 	@Test func occupiedPortTimeoutAndPeerLimit() async throws {
 		let listener = try await TCPListener.listen(address: IPAddress("127.0.0.1"), maximumPeers: 1)
 		do { let other = try await TCPListener.listen(port: listener.port, address: IPAddress("127.0.0.1")); other.close(); Issue.record("Occupied port rebound") } catch { }
