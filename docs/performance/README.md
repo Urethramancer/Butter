@@ -17,12 +17,14 @@ six remain inconclusive; source-controlled comparisons provide causal evidence.
 The earlier full-run seeding regressions and their unknown sequence/runtime
 cause remain recorded in the [preceding matrix](window31-full-results-2026-11-12.md).
 
-[Preceding source-matched CPU profiles](upload-groups-profiles-2026-11-12.md)
-cover both engines in the four standard workloads plus many-file v1 seeding
-for production `61584b7`. All ten profile-only trials pass validation. Stamp
-inspection, stored-byte hashing and scheduling remain substantial. The
-[preceding profiles](window31-profiles-2026-11-12.md) retain both full-run seeding
-regressions; neither profile set establishes their sequence/environment cause.
+[Current source-matched CPU profiles](piece-buffer-profiles-2026-11-12.md)
+cover both engines in the four standard cases plus many-file v1 seeding for
+production `b328472`. All ten profile-only trials validate. Full-layout stamp
+inspection remains 34.1% inclusive in many-file hybrid download and 40.0% in
+many-file v1 seeding; opening, hashing, copying and scheduling also remain.
+These profiles are separate from timing. The [preceding profiles](upload-groups-profiles-2026-11-12.md)
+and original full-run seeding regressions remain recorded; their sequence/runtime
+cause and CPU parity remain open.
 
 A [balanced source comparison](seeding-source-comparison-2026-11-12.md) retains
 56 further diagnostic trials. Neither large seeding loss reproduces as a source
