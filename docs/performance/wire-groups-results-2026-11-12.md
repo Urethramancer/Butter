@@ -155,3 +155,8 @@ unexplained; its evidence and the earlier isolated/stress passes remain recorded
 retain the evidence. The wrapper removes successful temporary fixtures and
 binaries, and would retain failed fixtures. Full-matrix performance acceptance
 and CPU parity remain open.
+
+The [complete revised-candidate matrix](wire-raw-full-results-2026-11-13.md)
+subsequently validates all 252 trials: throughput passes 9/18, CPU 0/18 and
+memory 18/18. CPU parity remains unmet; the matrix is now current evidence,
+while the preceding full-matrix-pending notes describe the earlier stages.

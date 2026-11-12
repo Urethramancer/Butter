@@ -7,26 +7,21 @@
   many-file downloads (4.32–5.19× native CPU); preserve wide/inconclusive source
   throughput intervals and all rejected experiments.
 
-
-- Obtain quiet-host timings for the final candidate. All eight current-source
-  Running CPU captures now validate; earlier Instruments failures and loaded-host
-  fallback samples remain recorded and do not establish performance gains.
-
-- Retain performance improvements only without established regressions in CPU,
-  throughput, memory or correctness, including counterpart CPU. Re-measure the
-  candidate after removing owned-buffer returns, vector writes and request-window
-  tuning; the last
-  full matrix describes the preceding production source.
+- Resolve wide/inconclusive source throughput intervals and obtain quiet-host
+  timings for the final candidate. All eight pre-buffer baseline CPU captures
+  validate; refresh candidate profiles before further optimisation. Earlier
+  Instruments failures and loaded-host samples remain recorded.
 
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
-  10% of baseline. The [full results](docs/performance/piece-buffer-full-results-2026-11-12.md)
-  pass memory in all eighteen cases and throughput in eleven, but fail CPU throughout.
-- Investigate the many-file v1 seeding regression against the preceding full
+  10% of baseline. The [current full results](docs/performance/wire-raw-full-results-2026-11-13.md)
+  pass memory 18/18 and throughput 9/18, but fail CPU throughout. Retain gains only
+  without established costs in CPU, throughput, memory, correctness or counterpart CPU.
+- Investigate the historical many-file v1 seeding regression against its preceding full
   candidate: CPU rises 5.1% and throughput falls 23.5%. A balanced old/current
   source comparison does not reproduce the loss as a source effect; retain the
   original runs and isolate the sequence/runtime conditions.
-- Investigate the concurrent v2 seeding throughput loss of 20.0% despite lower
+- Investigate the historical concurrent v2 seeding throughput loss of 20.0% despite lower
   CPU. The source comparison is inconclusive around a ratio of one; it still
   meets native throughput, but the full-run regression remains open.
 - Reduce repeated whole-layout stamp inspection (40.0% inclusive in many-file
