@@ -6,15 +6,18 @@ and peak RSS within 10% of the fresh Swift baseline. Results are per workload;
 there is no combined performance score. Encryption and µTP remain correctness
 regressions, outside this throughput milestone.
 
-The [latest full comparison](snapshot-reuse-results-2026-11-12.md) retains 252
-accepted trials after reusing verification snapshots. All memory checks pass;
-four cases meet throughput, and every case still fails CPU. Many-file seeding
-CPU fell 9–12% against the [previous full candidate](results-2026-11-12.md).
-The reports retain regressions, intervals and all raw artifacts separately.
+The [latest full comparison](tcp-batching-results-2026-11-12.md) retains 276
+accepted trials after TCP batching, cached wanted completion and bounded
+verification-read groups. Memory passes all eighteen cases, seven meet
+throughput, and every case still fails CPU. Single-file v1 and hybrid seeding
+throughput remain inconclusive after twelve pairs. CPU fell 16–45% across case
+medians against the [preceding full candidate](snapshot-reuse-results-2026-11-12.md),
+with all eighteen independent CPU ratio intervals below one. The reports retain
+every case, uncertainty interval and raw artifact separately.
 
-A subsequent [focused TCP output-batching experiment](outbound-batching-results-2026-11-12.md)
-reduces single-file v1 seeding CPU by about 38%. Its single-case result is
-separate from the latest full matrix and still misses the CPU target.
+The [focused steps and validation](outbound-batching-results-2026-11-12.md)
+record the isolated experiments and exact source revisions for correctness
+checks. No combined workload average substitutes for per-case acceptance.
 
 Run `Scripts/test-benchmark.sh --full [OUTPUT]` on an otherwise idle Mac.
 `--smoke` checks the harness using 32 MiB and one pair per case; its intervals
