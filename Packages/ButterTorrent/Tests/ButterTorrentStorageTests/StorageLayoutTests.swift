@@ -84,7 +84,8 @@ private enum ParentProbeError: Error, Equatable { case stopped }
 	@Test func stampScanHandlesRootLeavesAndSwitchesBetweenParents() async throws {
 		try await storageFixture { root in
 			let directory = try StorageDirectory(root), scan = StorageStampScan()
-			let paths = ["first", "second", "parent/a", "parent/é", "other/b", "parent/a", "first"]
+			let paths = ["first", "second", "parent/a", "parent/é", "parent/\u{0301}leaf", "parent/\u{FE0F}leaf",
+				"parent/\u{0301}dir/a", "parent/\u{0301}dir/b", "other/b", "parent/a", "first"]
 			for path in Set(paths) { try directory.atomic(Data([1]), path: path) }
 			for path in paths { #expect(try scan.inspect(path, in: directory) == directory.inspect(path)) }
 			for path in ["parent/./a", "parent/../first", "parent//a", "/first"] {

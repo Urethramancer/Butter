@@ -13,6 +13,13 @@ and the latest full matrix below are historical results, not measurements of
 the restored candidate. The rollback passes 350 package tests and a Release
 build. Grouped upload workers remain supported by the measured comparisons.
 
+A subsequent [UTF-8 stamp-scan experiment](byte-stamp-results-2026-11-12.md)
+reduces many-file v1 seeding CPU 5.6% but increases peak RSS 11.0% and reduces
+throughput 0.9%, so it is reverted. All 28 trials validate. The unchanged
+production control measures 4.150 CPU s/GiB and 396.8 MB/s, with a paired
+CPU/native ratio of 2.136 [2.061–2.268]. This focused control is not a new full
+matrix. The separately verified Unicode path ownership fix remains.
+
 The [latest full comparison](piece-buffer-full-results-2026-11-12.md) retains
 276 accepted trials and no failures for production source `b328472`. Memory
 passes all eighteen cases, eleven meet throughput, and every case still fails
