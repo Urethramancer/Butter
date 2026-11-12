@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ButterTorrentMetadata
 @testable import ButterTorrentStorage
 
 private final class DiskGate: @unchecked Sendable {
@@ -27,9 +28,17 @@ private func storageDeadline<T: Sendable>(_ operation: @escaping @Sendable () as
 	}
 }
 
-private func blockedVerifiedStorage(selective: Bool = false, _ body: (TorrentStorage, Data, StorageWorker, DiskGate) async throws -> Void) async throws {
+private func blockedVerifiedStorage(selective: Bool = false, format: Int = 3, _ body: (TorrentStorage, Data, StorageWorker, DiskGate) async throws -> Void) async throws {
 	try await storageFixture { root in
-		let (metadata, bytes) = try storageMetadata(root)
+		let (original, bytes) = try storageMetadata(root)
+		var metadata = original
+		if format != 3 {
+			var info = metadata.document.root["info"]!.dictionary!
+			for key in format == 1 ? ["meta version", "file tree"] : ["pieces", "files", "length"] { info[Data(key.utf8)] = nil }
+			var root: [Data: BencodeValue] = [Data("info".utf8): .dictionary(info)]
+			if format == 2 { root[Data("piece layers".utf8)] = .dictionary(metadata.pieceLayers.mapValues(BencodeValue.bytes)) }
+			metadata = try TorrentMetadata(BencodeValue.dictionary(root).encoded())
+		}
 		let selection = metadata.inspection.files.map { !$0.pad && (!selective || $0.path.hasSuffix("/a")) }
 		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: selection)
 		try await storage.importFiles(from: root)
@@ -49,7 +58,77 @@ private func waitForCommands(_ worker: StorageWorker, _ count: Int) async throws
 
 private enum ReadCancellation: CaseIterable, Sendable { case none, first, second }
 
+private final class PieceReadProbe: @unchecked Sendable {
+	private let lock = NSLock()
+	private var calls = 0
+	private let action: @Sendable () throws -> Void
+	init(_ action: @escaping @Sendable () throws -> Void) { self.action = action }
+	func check() throws {
+		if lock.withLock({ calls += 1; return calls == 3 }) { try action() }
+	}
+}
+
 @Suite struct StorageConcurrencyTests {
+	@Test(arguments: [1, 2, 3], [false, true]) func explicitReadBatchKeepsPaddingSelectiveBytesAndLogicalAdmission(_ format: Int, selective: Bool) async throws {
+		try await blockedVerifiedStorage(selective: selective, format: format) { storage, bytes, worker, gate in
+			let reading = Task { try await storage.readVerifiedPieces([0, 1, 2]) }
+			try await waitForCommands(worker, 4); gate.release()
+			let results = try await reading.value
+			#expect(results.count == 3)
+			let expected = [Data(bytes.prefix(16384)), bytes.suffix(bytes.count - 16384) + Data(repeating: 0, count: 32768 - bytes.count), Data([1, 2, 3]) + Data(repeating: 0, count: try storage.layout.length(of: 2) - 3)]
+			for piece in 0..<3 { let actual = try #require(results[piece]).get(); #expect(actual == expected[piece], "piece \(piece)") }
+			#expect(try await storage.snapshot().verifiedPieces == [0, 1, 2])
+		}
+	}
+	@Test func explicitReadBatchRejectsInvalidShapesWithoutReservingCredits() async throws {
+		try await blockedVerifiedStorage { storage, _, worker, gate in
+			for pieces in [[], Array(repeating: 0, count: 9)] {
+				await #expect(throws: StorageFailure.limit("verified read batch pieces")) { try await storage.readVerifiedPieces(pieces) }
+			}
+			await #expect(throws: StorageFailure.invalid("duplicate verified read pieces")) { try await storage.readVerifiedPieces([0, 0]) }
+			await #expect(throws: StorageFailure.invalid("piece index")) { try await storage.readVerifiedPieces([-1]) }
+			#expect(worker.pendingCount == 1); gate.release()
+		}
+	}
+	@Test func explicitReadBatchRejectsMoreThanTheExistingSinglePieceByteLimit() async throws {
+		try await storageFixture { root in
+			let info: [Data: BencodeValue] = [Data("name".utf8): .bytes(Data("payload".utf8)), Data("length".utf8): .integer(16_777_217), Data("piece length".utf8): .integer(16_777_216), Data("pieces".utf8): .bytes(Data(count: 40))]
+			let metadata = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"))
+			await #expect(throws: StorageFailure.limit("verified read batch bytes")) { try await storage.readVerifiedPieces([0, 1]) }
+			#expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("data/payload").path))
+			try await storage.shutdown()
+		}
+	}
+	@Test(arguments: [false, true]) func explicitReadBatchRetainsFullLayoutChecksAndStoredByteHashes(_ corrupt: Bool) async throws {
+		try await blockedVerifiedStorage { storage, bytes, worker, gate in
+			let state = await storage.state; gate.release()
+			try await worker.run { _ in
+				if corrupt {
+					let file = state.payload.url.appendingPathComponent(try #require(state.record.paths.first { $0.hasSuffix("/a") }))
+					let handle = try FileHandle(forWritingTo: file); try handle.write(contentsOf: Data([255])); try handle.close()
+					// Coarse/untrusted stamps cannot replace a hash of the stored bytes.
+					state.record.stamps = try state.stamps()
+				}
+				let other = state.payload.url.appendingPathComponent(try #require(state.record.paths.first { $0.hasSuffix("/b") }))
+				let probe = PieceReadProbe {
+					if !corrupt {
+						try FileManager.default.moveItem(at: other, to: other.appendingPathExtension("retired"))
+						try Data([1, 2, 3]).write(to: other)
+					}
+				}
+				let results = state.verifiedPieces([0, 1], check: probe.check)
+				if corrupt {
+					#expect(throws: StorageFailure.invalid("verified payload failed its hash")) { try #require(results[0]).get() }
+					#expect(try #require(results[1]).get() == bytes.suffix(bytes.count - 16384) + Data(repeating: 0, count: 32768 - bytes.count))
+					#expect(!state.record.contains(0) && state.record.contains(1))
+				} else {
+					for piece in [0, 1] { #expect(throws: StorageFailure.invalid("payload changed during verification")) { try #require(results[piece]).get() } }
+					#expect(!state.record.contains(0) && !state.record.contains(1))
+				}
+			}
+		}
+	}
 	@Test(arguments: [false, true]) func multiReadWorkerAdmissionChargesEveryReadWithoutPartialReservation(_ cancel: Bool) async throws {
 		let worker = StorageWorker(), gate = DiskGate(); gate.arm()
 		let active = Task { try await worker.run(units: 5) { cancellation in gate.enter(); try cancellation.check() } }
