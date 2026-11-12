@@ -104,7 +104,8 @@ public struct PeerWireDecoder: Sendable {
 	public init() {}
 	public mutating func negotiate(_ features: PeerFeatures) { self.features = features }
 	public mutating func feed(_ data: Data) throws {
-		guard data.count <= 65_536, bytes.count - offset <= 131_072 - data.count else { throw PeerFailure.limit("wire buffer") }
+		// Retain one maximum frame, including its four-byte prefix, plus one read.
+		guard data.count <= 65_536, bytes.count - offset <= 131_076 - data.count else { throw PeerFailure.limit("wire buffer") }
 		if offset > 0 { bytes = Data(bytes.dropFirst(offset)); offset = 0 }; bytes.append(data)
 	}
 	public mutating func handshake() throws -> PeerHandshake? {

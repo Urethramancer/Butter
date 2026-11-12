@@ -12,8 +12,6 @@
 
 ## Validation diagnostics
 
-- Reproduce the maximum extension-frame buffering boundary before increasing
-  available TCP input batching; retain the decoder's message and buffer limits.
 
 - Reproduce the earlier combined-contract six-second deadline under controlled
   CPU load and identify its wait point using the new diagnostics. Serial checks

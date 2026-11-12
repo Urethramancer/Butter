@@ -5,6 +5,19 @@ import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 @Suite struct PeerWireTests {
+	@Test func maximumExtensionFrameCanFinishBesideAFullReadWithoutRelaxingTheBound() throws {
+		var parser = PeerWireDecoder(), features = PeerFeatures(); features.extended = true
+		try parser.feed(PeerHandshake(infoHash: Data(repeating: 0, count: 20), peerID: Data(repeating: 1, count: 20)).encoded)
+		_ = try parser.handshake(); parser.negotiate(features)
+		let message = PeerMessage.extended(1, Data(repeating: 42, count: 65534)), frame = try message.encoded()
+		try parser.feed(frame.prefix(65536)); #expect(try parser.next() == nil)
+		try parser.feed(frame[65536..<65539]); #expect(try parser.next() == nil)
+		try parser.feed(frame.suffix(1) + frame.prefix(65535))
+		#expect(throws: PeerFailure.limit("wire buffer")) { try parser.feed(Data([0, 0])) }
+		#expect(try parser.next() == message); #expect(try parser.next() == nil)
+		try parser.feed(frame.suffix(5)); #expect(try parser.next() == message); try parser.finish()
+		#expect(throws: PeerFailure.limit("wire buffer")) { try parser.feed(Data(count: 65537)) }
+	}
 	@Test(arguments: [1, 16384], [false, true]) func pieceEncodingPreservesExactHeaderAndSlicedPayload(_ count: Int, _ sliced: Bool) throws {
 		let payload = sliced ? Data(repeating: 91, count: count + 17).suffix(count) : Data(repeating: 91, count: count)
 		let wire = try PeerMessage.piece(0x01020304, 8192, payload).encoded(), size = count + 9
