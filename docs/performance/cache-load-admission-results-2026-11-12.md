@@ -30,8 +30,10 @@ scope's permit or retaining cache bytes.
 All 332 package tests passed serially. The 25 focused upload/resource/completion
 tests passed, and all 32 resource, upload, completion, encryption and µTP tests
 passed under each sanitizer. Address Sanitizer's encryption cases ran separately
-from its other 29 cases. Native integration and a new full matrix are still
-outstanding for this source.
+from its other 29 cases. Committed source `9c90973` subsequently passed all nine
+native contract, lifecycle, storage/failure, interruption, disk/peer/engine
+reference and Debug/Release application/linkage suites. A new full matrix is
+still outstanding.
 
 ## Separate profile
 
@@ -75,6 +77,7 @@ other workloads; the latest complete matrix remains the earlier
 - [Before/after intervals](raw/cache-load-admission-many-v2/before-after.json), [incremental memory and individual measurements](raw/cache-load-admission-many-v2/memory-versus-immediate-before.json), [preceding run](raw/available-input-seeding/summary.json).
 - [Original failing regression](raw/cache-load-admission-many-v2/test-before-failure.log).
 - [Package and sanitizer checks](raw/cache-load-admission-many-v2/checks.json).
+- [All nine native integration checks](raw/cache-load-admission-integration/results.jsonl).
 - [Separate profile trials](raw/cache-load-admission-profile/trials.jsonl), [Swift seeding sample](raw/cache-load-admission-profile/many-v2-seed-0-Swift-measured-seed.sample.txt), [native seeding sample](raw/cache-load-admission-profile/many-v2-seed-0-libtorrent-measured-seed.sample.txt), [profile environment](raw/cache-load-admission-profile/environment.json).
 
 Production and harness hashes were checked against the timed run before saving
