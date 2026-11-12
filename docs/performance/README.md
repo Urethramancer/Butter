@@ -12,6 +12,10 @@ four cases meet throughput, and every case still fails CPU. Many-file seeding
 CPU fell 9–12% against the [previous full candidate](results-2026-11-12.md).
 The reports retain regressions, intervals and all raw artifacts separately.
 
+A subsequent [focused TCP output-batching experiment](outbound-batching-results-2026-11-12.md)
+reduces single-file v1 seeding CPU by about 38%. Its single-case result is
+separate from the latest full matrix and still misses the CPU target.
+
 Run `Scripts/test-benchmark.sh --full [OUTPUT]` on an otherwise idle Mac.
 `--smoke` checks the harness using 32 MiB and one pair per case; its intervals
 are not acceptance evidence. The optional reference dependency stays pinned to
