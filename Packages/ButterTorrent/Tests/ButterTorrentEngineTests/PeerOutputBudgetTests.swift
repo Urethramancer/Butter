@@ -12,6 +12,63 @@ private final class BudgetPeerStream: PeerByteStream, Sendable {
 }
 
 @Suite struct PeerOutputBudgetTests {
+	@Test func availableOutputKeepsFrameOrderAndFlushesShortBatches() throws {
+		let session = PeerSession(stream: BudgetPeerStream())
+		defer { session.close() }
+		try session.send(.interested); try session.send(.keepAlive); try session.send(.choke)
+		let first = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
+		#expect(first.map(\.bytes) == [try PeerMessage.interested.encoded(), try PeerMessage.keepAlive.encoded(), try PeerMessage.choke.encoded()])
+		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).isEmpty)
+		try session.send(.unchoke)
+		let last = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
+		#expect(last.map(\.bytes) == [try PeerMessage.unchoke.encoded()])
+		session.close(); #expect(session.claimOutgoing(last).isEmpty)
+	}
+	@Test func smallFramesRespectTheBatchMessageBound() throws {
+		let session = PeerSession(stream: BudgetPeerStream())
+		defer { session.close() }
+		for _ in 0..<17 { try session.send(.keepAlive) }
+		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).count == 16)
+		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).count == 1)
+	}
+	@Test func batchedOutputBoundsBytesAndSkipsCancelledPayloadWithoutLosingControls() throws {
+		let session = PeerSession(stream: BudgetPeerStream()), tokens = (0..<31).map { _ in UUID() }
+		defer { session.close() }
+		for token in tokens {
+			#expect(session.register(token, bytes: 16397))
+			try session.send(.piece(0, 0, Data(count: 16384)), token: token)
+		}
+		try session.send(.choke)
+		#expect(!session.register(UUID(), bytes: 16397))
+		let first = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
+		#expect(first.count == 15); #expect(first.reduce(0) { $0 + $1.bytes.count } <= 262144)
+		#expect(session.cancel(tokens[0])); #expect(session.claimOutgoing(first).count == 14)
+		#expect(session.register(UUID(), bytes: 16397))
+		let second = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
+		#expect(second.count == 15)
+		let last = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
+		#expect(last.count == 2); #expect(last.last?.bytes == (try PeerMessage.choke.encoded()))
+		#expect(session.claimOutgoing(last).count == 2)
+	}
+	@Test(arguments: [false, true]) func outputWriterWakesAfterEveryEmptyQueue(_ encrypted: Bool) async throws {
+		try await transferFixture { fixture in
+			var config = plainTransferConfiguration()
+			if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
+			let seed = try await fixture.transfer("seed", seed: true, configuration: config)
+			let peer = try await fixture.scripted(seed, encryption: encrypted ? config.encryption : nil)
+			try await peer.send(.interested)
+			while try await peer.next() != .unchoke {}
+			for offset in 0..<32 {
+				try await peer.send(.request(PeerBlock(piece: 0, offset: offset, length: 1)))
+				while true {
+					if case .piece(let piece, let start, let bytes) = try await peer.next() {
+						#expect(piece == 0 && start == offset && bytes == fixture.bytes[offset..<(offset + 1)]); break
+					}
+				}
+			}
+			try await eventually { await seed.uploaded == 32 }
+		}
+	}
 	@Test func reservedFramingBytesPreventOverflowWhenEveryAdmittedUploadEnqueues() throws {
 		let session = PeerSession(stream: BudgetPeerStream()), tokens = (0..<31).map { _ in UUID() }
 		defer { session.close() }

@@ -42,6 +42,9 @@ extension TCPTransfer {
 		await disk.release()
 	}
 	func uploadJobFinished(_ token: UUID) { uploadJobs[token] = nil }
+	func uploadedBatch(_ id: UUID, items: [PeerSession.Outbound]) {
+		for item in items { if let block = item.block, let token = item.token { uploaded(id, block: block, token: token, count: item.payload) } }
+	}
 	func uploaded(_ id: UUID, block: PeerBlock, token: UUID, count: Int) {
 		uploaded = min(Int64.max - Int64(count), uploaded) + Int64(count)
 		if let peer = peers[id] {
