@@ -32,3 +32,7 @@ The controller received SIGINT after this case completed all six pairs, recordin
 - [Focused cache-admission benefit and all nine native checks](cache-load-admission-results-2026-11-12.md), [last completed full matrix](tcp-batching-results-2026-11-12.md).
 
 The remaining cases are incomplete. No parity claim, aggregate passing score or tag is made.
+
+The [corrected advertisement follow-up](advertised-window-results-2026-11-12.md)
+subsequently removes this stall across six fresh measured pairs. The original
+slow and interrupted records above remain unchanged.

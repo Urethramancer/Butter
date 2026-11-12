@@ -35,6 +35,12 @@ run for investigation. All 117 records, including the interrupted next trial,
 remain. Single-file seeding exceeds native throughput but CPU remains above
 the target. This partial run does not replace the latest completed full matrix.
 
+The [corrected upload advertisement](advertised-window-results-2026-11-12.md)
+fits full-sized framed payloads within the existing output budget. Six fresh
+many-file v1 seeding pairs remove the disconnect/reconnect stall, reduce CPU
+13.4% and reach 393.9 MB/s. Native-relative CPU remains 2.57× and throughput
+87.8%, outside both targets. Original and incremental memory checks pass.
+
 Run `Scripts/test-benchmark.sh --full [OUTPUT]` on an otherwise idle Mac.
 `--smoke` checks the harness using 32 MiB and one pair per case; its intervals
 are not acceptance evidence. The optional reference dependency stays pinned to
