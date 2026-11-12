@@ -88,6 +88,49 @@ func pickerLayout(pieces: Int = 3, pieceLength: Int64 = 32768) throws -> Storage
 }
 
 @Suite struct PiecePickerTests {
+	@Test(arguments: [false, true], [false, true]) func refillsPreserveLateRaritySuggestionsAndSelection(_ selective: Bool, _ suggested: Bool) throws {
+		let count = 64, layout = try pickerLayout(pieces: count, pieceLength: 16384), peer = UUID(), commonPeer = UUID()
+		let wanted = Set((0..<count).filter { !selective || $0 % 3 != 0 })
+		let completed: Set<Int> = [0, 1, 4, 5, 9, 12, 27], common = Set(0..<48)
+		let suggestions: Set<Int> = suggested ? [3, 61] : []
+		let eligible = Set((0..<count).filter { $0 % 5 != 0 }), excluded: Set<Int> = [17, 49]
+		var picker = PiecePicker(layout: layout, wanted: wanted, completed: completed, maximumActive: 4)
+		picker.update(peer, bits: try PieceBitfield(count: count, pieces: Set(0..<count)))
+		picker.update(commonPeer, bits: try PieceBitfield(count: count, pieces: common))
+		let expected = wanted.filter { !completed.contains($0) && eligible.contains($0) && !excluded.contains($0) }.sorted {
+			if common.contains($0) != common.contains($1) { return !common.contains($0) }
+			if suggestions.contains($0) != suggestions.contains($1) { return suggestions.contains($0) }; return $0 < $1
+		}
+		var received: [Int] = []
+		while true {
+			let blocks = picker.allocate(peer, limit: 4, now: 0, eligible: eligible, suggestions: suggestions, excluding: excluded)
+			if blocks.isEmpty { break }
+			#expect(blocks.count <= 4)
+			for block in blocks {
+				#expect(picker.begin(peer, block: block) != nil); let ready = picker.written(block); #expect(ready)
+				_ = picker.verified(block.piece, valid: true); received.append(block.piece)
+			}
+		}
+		#expect(received == expected)
+	}
+	@Test func refillRevisitsCorruptAndRejectedStagedPiecesBelowCompletedHoles() throws {
+		let layout = try pickerLayout(pieces: 12, pieceLength: 16384), peer = UUID()
+		var picker = PiecePicker(layout: layout, wanted: Set(0..<12), completed: [0, 1, 3, 4, 8])
+		picker.update(peer, bits: try PieceBitfield(count: 12, pieces: Set(0..<12)))
+		func receive(_ block: PeerBlock, into picker: inout PiecePicker) {
+			#expect(picker.begin(peer, block: block) != nil); let ready = picker.written(block); #expect(ready)
+		}
+		let first = try #require(picker.allocate(peer, limit: 1, now: 0).first); #expect(first.piece == 2)
+		receive(first, into: &picker); _ = picker.verified(2, valid: false)
+		#expect(picker.allocate(peer, limit: 1, now: 1) == [first])
+		receive(first, into: &picker); _ = picker.stage(2)
+		let next = try #require(picker.allocate(peer, limit: 1, now: 2).first); #expect(next.piece == 5)
+		receive(next, into: &picker); _ = picker.verified(5, valid: true)
+		let rejected = picker.settleStaged(2, valid: false); #expect(rejected)
+		#expect(picker.allocate(peer, limit: 1, now: 3) == [first])
+		receive(first, into: &picker); _ = picker.stage(2); let accepted = picker.settleStaged(2, valid: true); #expect(accepted)
+		#expect(picker.allocate(peer, limit: 1, now: 4).first?.piece == 6)
+	}
 	@Test func wantedCompletionTracksDuplicatesUnselectedPiecesAndStagedVerification() throws {
 		let layout = try pickerLayout(pieces: 4), peer = UUID()
 		var picker = PiecePicker(layout: layout, wanted: [0, 1, 2], completed: [0, 3])
