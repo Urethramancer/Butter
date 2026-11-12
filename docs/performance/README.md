@@ -67,6 +67,10 @@ admission and cancellation. It shows no reproducible benefit and is reverted.
 Public ordering/cancellation/admission regressions remain; all measurements and
 an unresolved initial network-bind test failure are retained.
 
+A separate [available request dispatch experiment](request-groups-results-2026-11-12.md)
+over the retained grouped workers also shows no reproducible benefit. Its 28
+trials and rejected patch remain; production dispatch is restored.
+
 The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
 reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
 (13.4%) and raises throughput from 182.4 to 213.1 MB/s. Fourteen trials and both

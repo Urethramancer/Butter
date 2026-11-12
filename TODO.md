@@ -23,6 +23,9 @@
   seeding), file opening, allocation and Network.framework scheduling costs in
   the profiles, preserving stored-byte hashing, ownership checks, cancellation
   and queue caps.
+- Evaluate explicit bounded multi-piece reads across upload/cache/storage with
+  independent cancellation and unchanged admission budgets. Opportunistic queued
+  reads and available request dispatch alone show no reproducible benefit.
 
 ## Validation diagnostics
 

@@ -8,7 +8,7 @@ throughput establishes reproducible benefit; original-baseline memory passes.
 
 The prototype coalesces consecutive reads already queued for one storage owner,
 freezing a batch before execution. Every request still consumes its own slot
-in the unchanged eight-owner/64-global command budget. Intervening commands
+in the unchanged budget of eight commands per owner and 64 globally. Intervening commands
 separate batches; duplicate piece requests do not join the same batch. Payload
 bytes are bounded by the existing 16 MiB single-piece maximum. Each piece is
 hashed from storage with its independent cancellation check, and full-layout
