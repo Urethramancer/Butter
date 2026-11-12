@@ -31,18 +31,23 @@ private final class BudgetPeerStream: PeerByteStream, Sendable {
 		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).count == 16)
 		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).count == 1)
 	}
-	@Test func batchedOutputBoundsBytesAndSkipsCancelledPayloadWithoutLosingControls() throws {
+	@Test(arguments: [0, 7, 14]) func batchedOutputBoundsBytesAndSkipsCancelledPayloadWithoutLosingControls(_ cancelled: Int) throws {
 		let session = PeerSession(stream: BudgetPeerStream()), tokens = (0..<31).map { _ in UUID() }
 		defer { session.close() }
-		for token in tokens {
+		for (index, token) in tokens.enumerated() {
 			#expect(session.register(token, bytes: 16397))
-			try session.send(.piece(0, 0, Data(count: 16384)), token: token)
+			try session.send(.piece(0, index * 16384, Data(repeating: UInt8(index), count: 16384)), token: token)
 		}
 		try session.send(.choke)
 		#expect(!session.register(UUID(), bytes: 16397))
 		let first = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
 		#expect(first.count == 15); #expect(first.reduce(0) { $0 + $1.bytes.count } <= 262144)
-		#expect(session.cancel(tokens[0])); #expect(session.claimOutgoing(first).count == 14)
+		#expect(session.cancel(tokens[cancelled]))
+		let claimed = session.claimOutgoing(first)
+		let expected = try (0..<15).filter { $0 != cancelled }.map {
+			try PeerMessage.piece(0, $0 * 16384, Data(repeating: UInt8($0), count: 16384)).encoded()
+		}
+		#expect(claimed.count == 14 && claimed.map(\.bytes) == expected)
 		#expect(session.register(UUID(), bytes: 16397))
 		let second = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
 		#expect(second.count == 15)
