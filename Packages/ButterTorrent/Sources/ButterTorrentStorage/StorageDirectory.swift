@@ -36,6 +36,78 @@ final class StorageStampScan {
 	}
 }
 
+// A write batch may retain one immediate parent. Revalidate its complete stamp
+// through the root before each leaf lookup, reopening after any directory change
+// and check effective access on every reuse. A failed access check falls back to
+// the same fresh open as an uncached traversal, including its permission errors.
+final class StorageWriteParent {
+	// Root-level/deeper paths keep their original traversal and allocate no cursor.
+	private static func cursor(for path: String, cache: inout StorageWriteParent?) -> StorageWriteParent? {
+		var slash = false
+		for byte in path.utf8 where byte == 47 {
+			if slash { cache = nil; return nil }; slash = true
+		}
+		guard slash else { cache = nil; return nil }
+		if cache == nil { cache = StorageWriteParent() }; return cache
+	}
+	static func inspect(_ path: String, in directory: StorageDirectory, cache: inout StorageWriteParent?) throws -> FileStamp? {
+		if let cursor = cursor(for: path, cache: &cache) { return try cursor.inspect(path, in: directory) }
+		return try directory.inspect(path)
+	}
+	static func openFile(_ path: String, in directory: StorageDirectory, cache: inout StorageWriteParent?) throws -> Int32 {
+		if let cursor = cursor(for: path, cache: &cache) { return try cursor.openFile(path, in: directory) }
+		return try directory.openFile(path, write: true)
+	}
+	private var root: StorageDirectory?
+	private var name: String?
+	private var descriptor: Int32 = -1
+	private var stamp: FileStamp?
+	deinit { if descriptor >= 0 { close(descriptor) } }
+	func reset() {
+		if descriptor >= 0 { close(descriptor) }
+		descriptor = -1; stamp = nil; name = nil; root = nil
+	}
+	private func inspect(_ path: String, in directory: StorageDirectory) throws -> FileStamp? {
+		let parts = try StorageLayout.components(path)
+		// Deeper paths retain the existing component-by-component traversal.
+		guard parts.count == 2 else { reset(); return try directory.inspect(path) }
+		guard let parent = try prepare(parts[0], in: directory) else { return nil }
+		return try directory.inspect(parts[1], at: parent)
+	}
+	private func openFile(_ path: String, in directory: StorageDirectory) throws -> Int32 {
+		let parts = try StorageLayout.components(path)
+		guard parts.count == 2 else { reset(); return try directory.openFile(path, write: true) }
+		guard let parent = try prepare(parts[0], in: directory) else {
+			// Keep the original creation path when the parent does not exist yet.
+			return try directory.openFile(path, write: true)
+		}
+		return try directory.openFile(parts[1], at: parent, write: true)
+	}
+	private func prepare(_ parent: String, in directory: StorageDirectory) throws -> Int32? {
+		if root !== directory || name?.utf8.elementsEqual(parent.utf8) != true { reset() }
+		if descriptor >= 0 {
+			var current = stat()
+			if fstatat(directory.fd, parent, &current, AT_SYMLINK_NOFOLLOW) != 0 {
+				let code = errno; reset()
+				if code == ENOENT { return nil }; throw diskError("Cannot inspect managed directory", code: code)
+			}
+			if current.st_mode & S_IFMT != S_IFDIR || FileStamp(current) != stamp || faccessat(descriptor, ".", R_OK, AT_EACCESS) != 0 { reset() }
+		}
+		if descriptor < 0 {
+			let file = openat(directory.fd, parent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+			guard file >= 0 else {
+				if errno == ENOENT { return nil }; throw diskError("Cannot open managed directory")
+			}
+			var value = stat()
+			guard fstat(file, &value) == 0 else {
+				let error = diskError("Cannot inspect managed directory"); close(file); throw error
+			}
+			descriptor = file; stamp = FileStamp(value); root = directory; name = parent
+		}
+		return descriptor
+	}
+}
+
 func diskError(_ context: String, code: Int32 = errno) -> NSError {
 	NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [NSLocalizedDescriptionKey: "\(context): \(String(cString: strerror(code)))"])
 }
@@ -120,11 +192,14 @@ final class StorageDirectory: @unchecked Sendable {
 	}
 	func openFile(_ path: String, write: Bool = false, exclusive: Bool = false) throws -> Int32 {
 		try parent(path, create: write) { directory, name in
-			let flags = (write ? O_RDWR | O_CREAT : O_RDONLY) | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK | (exclusive ? O_EXCL : 0)
-			let file = openat(directory, name, flags, 0o600)
-			guard file >= 0 else { throw diskError("Cannot open managed file") }
-			do { _ = try stamp(file, shared: !write); return file } catch { close(file); throw error }
+			try openFile(name, at: directory, write: write, exclusive: exclusive)
 		}
+	}
+	fileprivate func openFile(_ name: String, at directory: Int32, write: Bool, exclusive: Bool = false) throws -> Int32 {
+		let flags = (write ? O_RDWR | O_CREAT : O_RDONLY) | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK | (exclusive ? O_EXCL : 0)
+		let file = openat(directory, name, flags, 0o600)
+		guard file >= 0 else { throw diskError("Cannot open managed file") }
+		do { _ = try stamp(file, shared: !write); return file } catch { close(file); throw error }
 	}
 	func stamp(_ file: Int32, shared: Bool = false) throws -> FileStamp {
 		var value = stat()
