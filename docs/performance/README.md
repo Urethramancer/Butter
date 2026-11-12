@@ -15,6 +15,12 @@ fourteen independent CPU intervals improve, single-file hybrid download uses
 2.8% more CPU and three comparisons remain inconclusive. Per-case measured peak
 RSS spans 15–48 MiB. Every case, uncertainty interval and raw artifact is retained.
 
+A subsequent [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
+reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
+(13.4%) and raises throughput from 182.4 to 213.1 MB/s. Fourteen trials and both
+memory gates pass; native-relative CPU and throughput still miss their targets.
+This focused result does not replace the latest full matrix.
+
 The [focused steps and validation](outbound-batching-results-2026-11-12.md)
 record the isolated experiments and exact source revisions for correctness
 checks. No combined workload average substitutes for per-case acceptance.

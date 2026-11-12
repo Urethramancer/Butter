@@ -122,6 +122,7 @@ public actor TCPTransfer {
 	let cache: VerifiedPieceCache
 	var picker: PiecePicker
 	var hashReady: Set<Int>
+	var wantedHashesReady: Bool
 	var legacyRemaining: [Int: Int] = [:]
 	var reconstructingLegacyFiles: Set<Int> = []
 	var hashOwners: [MerkleHashRequest: UUID] = [:]
@@ -185,7 +186,7 @@ public actor TCPTransfer {
 		}
 		picker = PiecePicker(layout: storage.layout, wanted: wanted, completed: initial.verifiedPieces, lengths: storage.merkleIndex.pieces.mapValues(\.length))
 		hasExistingPayload = initial.hasExistingPayload; locallyChecked = try PieceBitfield(count: storage.layout.pieceCount)
-		hashReady = hashes
+		hashReady = hashes; wantedHashesReady = wanted.isSubset(of: hashes)
 		downloaded = initial.downloaded; uploaded = initial.uploaded; corruptBytes = initial.corruptBytes; redundantBytes = initial.redundantBytes; lastChoke = clock.now()
 	}
 	public static func open(metadata: TorrentMetadata, storage: TorrentStorage, configuration: TCPTransferConfiguration = .init(),

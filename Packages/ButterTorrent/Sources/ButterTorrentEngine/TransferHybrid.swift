@@ -41,6 +41,8 @@ extension TCPTransfer {
 	func refreshAuthenticatedPieces() async throws {
 		let available = try await storage.availableHashes()
 		hashReady.formUnion(available)
+		// Wanted pieces are fixed and authenticated hashes only accumulate.
+		if !wantedHashesReady { wantedHashesReady = picker.wanted.isSubset(of: hashReady) }
 		for piece in picker.staged.intersection(available).sorted() where picker.staged.contains(piece) {
 			guard let mapping = storage.merkleIndex.pieces[piece] else { continue }
 			let start = piece - mapping.local

@@ -68,7 +68,7 @@ extension TCPTransfer {
 		peer.pexSent.formUnion(added); peer.pexSent.subtract(dropped); peer.nextPEX = clock.now() + 60
 	}
 	func requestHashes(_ id: UUID) throws {
-		guard let peer = peers[id], peer.features.v2, peer.hashRequests.count < 4, hashOwners.count < 16 else { return }
+		guard !wantedHashesReady, let peer = peers[id], peer.features.v2, peer.hashRequests.count < 4, hashOwners.count < 16 else { return }
 		for piece in picker.wanted.subtracting(hashReady).sorted() where picker.has(id, piece: piece) {
 			guard let request = storage.merkleIndex.request(for: piece, maximum: peer.hashRequestSize), hashOwners[request] == nil else { continue }
 			peer.hashRequests[request] = clock.now(); hashOwners[request] = id; try send(id, .hashRequest(request))
