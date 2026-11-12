@@ -45,6 +45,13 @@ session DHT transfers and ten HTTP-to-native-to-libtorrent web-seed comparisons.
 Final acceptance remains open. Raw environment, source hashes, trials
 and checks are in [`raw/upload-groups`](raw/upload-groups).
 
+The shared engine contract subsequently passes against both Swift and the
+reference, and the application lifecycle suite passes quit deadlines, late
+completion ownership, state protection, startup and completion/file policies.
+Rebuilt Debug and Release arm64 package archives have no undefined reference
+libtorrent/OpenSSL symbols. These checks do not substitute for final app build,
+disk/interruption and full-matrix release acceptance.
+
 Committed production `61584b7` then completes 56 further trials against
 `1d414f9`, six source pairs per case with identical sampling and validation.
 All pass. CPU improves in both cases; many-file throughput remains inconclusive.
