@@ -27,6 +27,7 @@ final class StorageWorker: @unchecked Sendable {
 	private let owner = UUID()
 	private let lock = NSLock()
 	private var pending = 0
+	var pendingCount: Int { lock.withLock { pending } }
 	func run<T: Sendable>(bulk: Bool = false, _ operation: @escaping @Sendable (DiskCancellation) throws -> T) async throws -> T {
 		try Task.checkCancellation()
 		let admitted = lock.withLock { if pending >= 8 { return false }; pending += 1; return true }

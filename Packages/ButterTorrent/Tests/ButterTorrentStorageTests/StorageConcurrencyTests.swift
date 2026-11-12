@@ -27,7 +27,53 @@ private func storageDeadline<T: Sendable>(_ operation: @escaping @Sendable () as
 	}
 }
 
+private func blockedVerifiedStorage(_ body: (TorrentStorage, Data, StorageWorker, DiskGate) async throws -> Void) async throws {
+	try await storageFixture { root in
+		let (metadata, bytes) = try storageMetadata(root)
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"))
+		try await storage.importFiles(from: root)
+		for piece in 0..<storage.layout.pieceCount { #expect(try await storage.verify(piece: piece)) }
+		let worker = await storage.worker, gate = DiskGate(); gate.arm()
+		let blocker = Task { try await worker.run { _ in gate.enter() } }
+		try await gate.wait()
+		do { try await body(storage, bytes, worker, gate) }
+		catch { gate.release(); _ = try? await blocker.value; try? await storage.shutdown(); throw error }
+		gate.release(); try await blocker.value; try await storage.shutdown()
+	}
+}
+
+private func waitForCommands(_ worker: StorageWorker, _ count: Int) async throws {
+	try await storageDeadline { while worker.pendingCount != count { await Task.yield() } }
+}
+
 @Suite struct StorageConcurrencyTests {
+	@Test(arguments: [false, true]) func queuedVerifiedReadsCancelIndependently(_ cancelFirst: Bool) async throws {
+		try await blockedVerifiedStorage { storage, bytes, worker, gate in
+			let first = Task { try await storage.readVerifiedPiece(0) }
+			try await waitForCommands(worker, 2)
+			let second = Task { try await storage.readVerifiedPiece(2) }
+			try await waitForCommands(worker, 3)
+			(cancelFirst ? first : second).cancel(); gate.release()
+			await #expect(throws: CancellationError.self) { try await (cancelFirst ? first : second).value }
+			let tail = Data([1, 2, 3]) + Data(repeating: 0, count: try storage.layout.length(of: 2) - 3)
+			#expect(try await (cancelFirst ? second : first).value == (cancelFirst ? tail : bytes.prefix(16384)))
+			#expect(try await storage.readVerifiedPiece(cancelFirst ? 0 : 2) == (cancelFirst ? bytes.prefix(16384) : tail))
+			#expect(try await storage.snapshot().verifiedPieces == [0, 1, 2])
+		}
+	}
+	@Test func queuedWriteSeparatesVerifiedReads() async throws {
+		try await blockedVerifiedStorage { storage, bytes, worker, gate in
+			let first = Task { try await storage.readVerifiedPiece(0) }
+			try await waitForCommands(worker, 2)
+			let write = Task { try await storage.write(piece: 0, offset: 0, data: Data([255])) }
+			try await waitForCommands(worker, 3)
+			let second = Task { try await storage.readVerifiedPiece(0) }
+			try await waitForCommands(worker, 4); gate.release()
+			#expect(try await first.value == bytes.prefix(16384)); try await write.value
+			await #expect(throws: StorageFailure.invalid("piece has not been verified")) { try await second.value }
+			#expect(try await storage.snapshot().verifiedPieces == [1, 2])
+		}
+	}
 	@Test func bulkWorkReservesCapacityWithoutReorderingABlockedOwner() async throws {
 		let pool = DiskWorkPool(maximum: 2), probe = DiskPoolProbe(), first = UUID(), second = UUID(), control = UUID()
 		for (owner, bulk, label) in [(first, true, "a"), (second, true, "b1"), (second, false, "b2"), (control, false, "control")] {
