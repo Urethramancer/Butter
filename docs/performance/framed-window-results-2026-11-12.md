@@ -56,6 +56,7 @@ CPU values are Swift seconds/GiB through durable completion: original → TCP ba
 - [Independent before/after CPU intervals](framed-window-cpu-comparison-2026-11-12.json) and [comparison CSV](framed-window-comparison-2026-11-12.csv).
 - [Setup, transfer, persistence, shutdown and whole-process accounting for both engines and counterparts](raw/framed-window-full/phase-accounting.json), [driver diagnostics and their phase records](raw/framed-window-full/diagnostics.json).
 - [Preceding full matrix](tcp-batching-results-2026-11-12.md), [earlier full candidate](results-2026-11-12.md) and [focused steps/profiles](advertised-window-results-2026-11-12.md).
+- [Source-matched four-case Release profiles](raw/framed-window-profiles/summary.json), [all eight profile-only trials and counterpart measurements](raw/framed-window-profiles/trials.jsonl), [profile source/environment hashes](raw/framed-window-profiles/environment.json).
 
 CPU target remains unmet wherever the per-case interval exceeds the ceiling; crossing intervals remain inconclusive. Hashing, filesystem inspections, allocations, upload admission and scheduling remain measured costs. No combined workload average substitutes for these gates. No tag was created.
 
