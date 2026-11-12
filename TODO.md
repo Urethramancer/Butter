@@ -4,12 +4,15 @@
 
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
-  10% of baseline. The [full results](docs/performance/framed-window-results-2026-11-12.md)
+  10% of baseline. The [full results](docs/performance/window31-full-results-2026-11-12.md)
   pass memory in all eighteen cases and throughput in nine, but fail CPU throughout.
-- Rerun the full matrix and release acceptance for the final candidate. The
-  [focused 31-request change](docs/performance/window31-results-2026-11-12.md)
-  reduces single-file v1 download CPU another 9.0% to 3.274 s/GiB, but still
-  misses native parity.
+- Investigate the many-file v1 seeding regression against the preceding full
+  candidate: CPU rises 5.1% and throughput falls 23.5%. Retain both runs and
+  establish the cause with separate profiles and controlled comparisons.
+- Investigate the concurrent v2 seeding throughput loss of 20.0% despite lower
+  CPU; it still meets native throughput, but the regression remains open.
+- Rerun the matrix for the final candidate and complete source-matched profiles
+  and remaining release acceptance; the latest complete matrix is `5b9ef12`.
 - Reduce repeated whole-layout stamp inspection and per-block upload,
   allocation and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.

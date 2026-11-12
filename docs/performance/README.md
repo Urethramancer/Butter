@@ -6,26 +6,29 @@ and peak RSS within 10% of the fresh Swift baseline. Results are per workload;
 there is no combined performance score. Encryption and µTP remain correctness
 regressions, outside this throughput milestone.
 
-The [latest full comparison](framed-window-results-2026-11-12.md) retains 252
-accepted trials and no failures for production source `1931e70`. Memory passes
+The [latest full comparison](window31-full-results-2026-11-12.md) retains 252
+accepted trials and no failures for production source `5b9ef12`. Memory passes
 all eighteen cases, nine meet throughput, and every case still fails CPU. All
 cases finish six measured pairs without an acceptance interval crossing a
-threshold. Against the [preceding full candidate](tcp-batching-results-2026-11-12.md),
-fourteen independent CPU intervals improve, single-file hybrid download uses
-2.8% more CPU and three comparisons remain inconclusive. Per-case measured peak
-RSS spans 15–48 MiB. Every case, uncertainty interval and raw artifact is retained.
+threshold. Against the [preceding full candidate](framed-window-results-2026-11-12.md),
+twelve independent CPU intervals improve, many-file v1 seeding regresses and
+five comparisons remain inconclusive. All nine download cases use less CPU;
+individual reductions range from 18.7% to 49.8%. Many-file v1 seeding uses
+5.1% more CPU and loses 23.5% throughput; concurrent v2 seeding uses less CPU
+but loses 20.0% throughput. These regressions remain open. Per-case measured
+peak RSS spans 15.8–46.5 MiB. Every sample and diagnostic is retained.
 
-A subsequent [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
+The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
 reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
 (13.4%) and raises throughput from 182.4 to 213.1 MB/s. Fourteen trials and both
 memory gates pass; native-relative CPU and throughput still miss their targets.
-This focused result does not replace the latest full matrix.
+This step is included in the latest full matrix.
 
 Subsequent [request-window tuning](window-results-2026-11-12.md) raises the
 production Swift default from eight to sixteen within the existing caps. Against
 a fresh eight-request baseline, single-file v1 download CPU falls 18.9%
 (5.188 to 4.206 s/GiB), throughput rises 17.3% and both memory gates pass.
-Native parity and the final full matrix remain outstanding.
+The change is included in the latest full matrix; native parity remains unmet.
 
 A subsequent [picker refill change](picker-results-2026-11-12.md) reduces
 single-file v1 download CPU another 14.5%, from 4.206 to 3.597 s/GiB, and raises
