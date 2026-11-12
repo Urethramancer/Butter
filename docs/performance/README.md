@@ -20,6 +20,12 @@ production control measures 4.150 CPU s/GiB and 396.8 MB/s, with a paired
 CPU/native ratio of 2.136 [2.061–2.268]. This focused control is not a new full
 matrix. The separately verified Unicode path ownership fix remains.
 
+A [balanced request-window recheck](window31-results-2026-11-12.md) retains
+28 validated trials. Sixteen requests instead of 31 increases Swift CPU 5.5%
+and counterpart CPU 30.0%; memory and throughput differences are inconclusive.
+The 31-request default is restored. Equal memory is not established, and this
+focused diagnostic does not replace full-matrix acceptance.
+
 The [latest full comparison](piece-buffer-full-results-2026-11-12.md) retains
 276 accepted trials and no failures for production source `b328472`. Memory
 passes all eighteen cases, eleven meet throughput, and every case still fails

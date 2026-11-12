@@ -1,5 +1,34 @@
 # Thirty-one-request pipeline — 12 November 2026
 
+## Balanced recheck under the no-trade-offs requirement
+
+A fresh source comparison changes only the default from 31 to sixteen against
+`540005a`. All 28 trials validate: four warm-ups and six balanced source/engine
+pairs, single-file 1 GiB v1 download, warm sources and fresh destinations.
+
+| Sixteen / thirty-one | Median | 95% paired interval |
+| --- | ---: | ---: |
+| Swift CPU seconds/GiB | 1.055 | 1.034–1.091 |
+| Verified throughput | 0.983 | 0.939–1.011 |
+| Whole-process peak RSS | 0.981 | 0.958–1.003 |
+| Counterpart CPU seconds/GiB | 1.300 | 1.173–1.425 |
+
+Restore 31: sixteen increases engine and counterpart CPU without establishing
+a memory benefit. Memory and throughput differences remain inconclusive; this
+does not prove equal memory or erase the older independent comparison below.
+Native-control intervals cross one. Swift CPU medians are 3.290 s/GiB at 31
+and 3.488 at sixteen, with throughput 384.0 and 376.5 MB/s respectively.
+All 94 restored production source hashes match `540005a`. The experiment's
+24 focused tests pass. This fixed diagnostic does not establish full acceptance.
+The restored configuration passes all 351 package tests and both Release builds.
+
+[Ratios and artifact hashes](window16-recheck-comparison-2026-11-12.json)
+retain the compact evidence. Raw phases, fixture/build/source metadata and
+trials remain in `.build/benchmarks/window16-recheck-source-order`; the
+one-line experiment patch remains in `.build/diagnostics/piece-buffer`.
+
+## Historical independent comparison
+
 The production request default increases from sixteen to 31, within the existing
 maximum of 32 and the remote peer's advertised queue. This fits the current
 31-frame upload advertisement and can prefetch work beyond one 256 KiB disk
