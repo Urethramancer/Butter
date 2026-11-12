@@ -288,12 +288,13 @@ final class StorageState: @unchecked Sendable {
 		let length = try layout.length(of: piece)
 		let hashes = metadata.document.root["info"]?["pieces"]?.bytes
 		let mapping = merkle.index.pieces[piece]
-		var hash = Insecure.SHA1(), offset = 0, result = Data(), leaves: [Data] = []
+		var hash: Insecure.SHA1? = hashes == nil ? nil : Insecure.SHA1()
+		var offset = 0, result = Data(), leaves: [Data] = []
 		if let range { result.reserveCapacity(range.count) }
 		while offset < length {
 			try check(); let count = min(262144, length - offset)
 			let data = try read(piece: piece, offset: offset, count: count, verifiedOnly: false, check: check)
-			hash.update(data: data)
+			hash?.update(data: data)
 			if let mapping {
 				for block in stride(from: offset, to: min(offset + count, mapping.length), by: 16384) {
 					let end = min(block + 16384, mapping.length)
@@ -306,7 +307,9 @@ final class StorageState: @unchecked Sendable {
 			}
 			offset += count
 		}
-		let valid = hashes.map { Data(hash.finalize()) == $0.subdata(in: (piece * 20)..<(piece * 20 + 20)) } ?? true
+		let valid: Bool
+		if let hashes, let hash { valid = Data(hash.finalize()) == hashes.subdata(in: (piece * 20)..<(piece * 20 + 20)) }
+		else { valid = hashes == nil }
 		var root: Data?
 		if let mapping, let file = merkle.index.files[mapping.root] {
 			leaves += Array(repeating: Data(repeating: 0, count: 32), count: (1 << file.base) - leaves.count)

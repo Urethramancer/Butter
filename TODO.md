@@ -6,11 +6,14 @@
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
   10% of baseline. The [full results](docs/performance/tcp-batching-results-2026-11-12.md)
   pass memory throughout but fail CPU in all eighteen cases.
-- Reduce repeated whole-layout stamp/path inspection and per-block upload,
+- Reduce repeated whole-layout stamp inspection and per-block upload,
   admission and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.
 
 ## Validation diagnostics
+
+- Reproduce the maximum extension-frame buffering boundary before increasing
+  available TCP input batching; retain the decoder's message and buffer limits.
 
 - Reproduce the earlier combined-contract six-second deadline under controlled
   CPU load and identify its wait point using the new diagnostics. Serial checks

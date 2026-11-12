@@ -22,6 +22,10 @@ import ButterTorrentMetadata
 					#expect(try await storage.verify(piece: piece))
 					#expect(try await storage.readVerifiedPiece(piece) == expected)
 				}
+				try await storage.write(piece: 0, offset: 0, data: Data([255]))
+				#expect(try await storage.verify(piece: 0) == false)
+				try await storage.write(piece: 0, offset: 0, data: bytes.prefix(1))
+				#expect(try await storage.verify(piece: 0))
 				try await storage.shutdown()
 			}
 		}
