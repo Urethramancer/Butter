@@ -1,5 +1,40 @@
 # Bounded request-window tuning — 12 November 2026
 
+## Balanced recheck and restoration of the original default
+
+The user's no-trade-offs requirement supersedes the earlier ten-percent memory
+allowance for accepting optimisations. A fresh comparison changes only the
+default from 31 to eight against `1d34479`: single-file 1 GiB v1 download,
+warm sources, fresh processes/destinations, four warm-ups and six balanced
+source/engine pairs. All 28 trials validate independent digests and saved-state
+reopening; the eight-request candidate passes 24 focused tests.
+
+| Eight / thirty-one | Median | 95% paired interval |
+| --- | ---: | ---: |
+| Swift CPU seconds/GiB | 1.407 | 1.380–1.479 |
+| Verified throughput | 0.759 | 0.707–0.775 |
+| Whole-process peak RSS | 0.959 | 0.932–0.977 |
+| Counterpart CPU seconds/GiB | 1.567 | 1.447–1.736 |
+
+The larger window has a measured memory cost: 31/eight peak RSS is 1.043
+[1.024–1.073]. Restore the original eight-request default and explicitly give
+up the window-tuning CPU/throughput gains. This reversal moves CPU further from
+parity; it is not a performance improvement. Swift CPU medians are 3.412 →
+4.815 s/GiB and throughput 372.7 → 281.3 MB/s. Eight-request CPU/native is
+2.970 [2.893–3.125] and throughput/native 0.632 [0.590–0.656], both failing.
+Native-control CPU rises 2.3% [1.3–4.7%] and throughput falls 0.7% [0.4–1.9%];
+that smaller environmental difference remains in the record. No retries or
+uncertainty-driven extensions are used in this fixed source diagnostic.
+
+[Ratios and artifact hashes](window8-recheck-comparison-2026-11-12.json)
+retain compact evidence. Raw phases, fixtures and source/build metadata remain
+in `.build/benchmarks/window8-recheck-source-order`; the one-line experiment
+patch remains in `.build/diagnostics/piece-buffer`.
+The restored eight-request default passes all 351 package tests and both Release
+builds. Native interoperability and final full-matrix acceptance remain pending.
+
+## Historical independent comparison
+
 The production default request pipeline increases from eight to sixteen blocks.
 The existing maximum remains 32; the remote queue advertisement still bounds
 each peer's actual window. Disk jobs stay at sixteen blocks/256 KiB, with the

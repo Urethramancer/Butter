@@ -6,6 +6,14 @@ and peak RSS within 10% of the fresh Swift baseline. Results are per workload;
 there is no combined performance score. Encryption and µTP remain correctness
 regressions, outside this throughput milestone.
 
+The [eight/31 balanced recheck](window-results-2026-11-12.md) validates all 28
+trials and establishes a 4.3% peak-RSS cost for the larger window. The original
+eight-request default is restored under the user's no-trade-offs rule, giving
+up the window-tuning gains. This moves CPU further from parity: the focused
+single-file v1 download gives 4.815 CPU s/GiB and 281.3 MB/s, with CPU/native
+2.970 [2.893–3.125] and throughput/native 0.632 [0.590–0.656]. The earlier
+sixteen-request decision and complete matrices below are historical.
+
 The user's subsequent requirement excludes gains with measured drawbacks.
 Owned-piece-buffer returns and vector writes are therefore reverted: their
 incremental memory or counterpart CPU increases disqualify them. Their reports
@@ -23,7 +31,7 @@ matrix. The separately verified Unicode path ownership fix remains.
 A [balanced request-window recheck](window31-results-2026-11-12.md) retains
 28 validated trials. Sixteen requests instead of 31 increases Swift CPU 5.5%
 and counterpart CPU 30.0%; memory and throughput differences are inconclusive.
-The 31-request default is restored. Equal memory is not established, and this
+The 31-request default was restored at that point. Equal memory is not established, and this
 focused diagnostic does not replace full-matrix acceptance.
 
 The [latest full comparison](piece-buffer-full-results-2026-11-12.md) retains

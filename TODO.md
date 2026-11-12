@@ -4,12 +4,9 @@
 
 - Retain performance improvements only without established regressions in CPU,
   throughput, memory or correctness, including counterpart CPU. Re-measure the
-  candidate after removing owned-buffer returns and vector writes; the last
+  candidate after removing owned-buffer returns, vector writes and request-window
+  tuning; the last
   full matrix describes the preceding production source.
-- Recheck the original eight-request window with a balanced source comparison
-  under the no-trade-offs rule. The sixteen/31 recheck establishes higher CPU
-  at sixteen but leaves memory inconclusive; historical independent RSS
-  differences do not isolate a current source effect.
 
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within

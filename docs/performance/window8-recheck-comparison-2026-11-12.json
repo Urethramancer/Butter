@@ -1,0 +1,109 @@
+{
+  "case": "single",
+  "format": "v1",
+  "direction": "download",
+  "pairs": 6,
+  "valid_pairs": 6,
+  "source_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 1.4069988733269616,
+      "lower": 1.379832477642748,
+      "upper": 1.4793640261807937,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 0.758702010317455,
+      "lower": 0.7073532736270396,
+      "upper": 0.775098333053101,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "peak_rss": {
+      "median": 0.9586753476408649,
+      "lower": 0.931596992575642,
+      "upper": 0.9769219278766197,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "counterpart_cpu_seconds_per_gib": {
+      "median": 1.56744667011297,
+      "lower": 1.4465746426496016,
+      "upper": 1.7363037204427054,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "native_control_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 1.0226466837756534,
+      "lower": 1.0128034432551152,
+      "upper": 1.0473106259319727,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 0.992816117371945,
+      "lower": 0.9807908099267961,
+      "upper": 0.9957221098800222,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "method": "Current/previous within balanced source-order pairs; fixed six pairs; diagnostic only, no acceptance inference or uncertainty-driven retries",
+  "comparison": "eight-request candidate / 31-request production, source baseline 1d34479",
+  "accepted_trials": 28,
+  "decision": "Restore original eight-request default: 31 has a measured memory cost; explicitly relinquish its CPU and throughput gains under the user no-trade-offs requirement",
+  "artifacts": {
+    ".build/benchmarks/window8-recheck-source-order/environment.json": "66f5e20d2b35810df2612a41be8b414dcd73f751af2336d7b979ce90295765af",
+    ".build/benchmarks/window8-recheck-source-order/fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+    ".build/benchmarks/window8-recheck-source-order/summary.json": "87b82cfdec43c82085e40f28667beb8b88ed7ebda95a2fe21c412c475cce5e60",
+    ".build/benchmarks/window8-recheck-source-order/trials.jsonl": "6df96335c167826a53a46d0de05d89939c6b2878a0fd61a95040e6968606a607"
+  },
+  "medians": {
+    "previous": {
+      "Swift": {
+        "verified_bytes_per_second": 372663390.87026453,
+        "durable_bytes_per_second": 372570067.0209328,
+        "cpu_seconds_per_gib": 3.4123355
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 447348445.86537313,
+        "durable_bytes_per_second": 421101400.6522727,
+        "cpu_seconds_per_gib": 1.588305
+      }
+    },
+    "current": {
+      "Swift": {
+        "verified_bytes_per_second": 281265621.48292935,
+        "durable_bytes_per_second": 281197201.06339073,
+        "cpu_seconds_per_gib": 4.8150775
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 444838138.27926445,
+        "durable_bytes_per_second": 418303555.6500455,
+        "cpu_seconds_per_gib": 1.6210404999999999
+      }
+    }
+  },
+  "verification": [
+    {
+      "outcome": "24 focused tests pass",
+      "log": ".build/diagnostics/piece-buffer/window8-recheck-tests.log",
+      "sha256": "399382ea5d9296a613aab5d7ce191c0d71eead6eeb56b9c0eca11b124bf70e57",
+      "routine_log_removed": true
+    },
+    {
+      "outcome": "28 validated trials, no failures",
+      "log": ".build/diagnostics/piece-buffer/window8-recheck-comparison.log",
+      "sha256": "b7b021969ae3d1befd0fa3c85f135a23b6702f4292fa1668e02fc9fc246d756d",
+      "routine_log_removed": true
+    },
+    {
+      "outcome": "351 serial package tests pass",
+      "log": ".build/diagnostics/piece-buffer/window8-retained-package.log",
+      "sha256": "bfa796952b6993d09156bae53be3058780140f4bef4573e3326c817d4103c165",
+      "routine_log_removed": true
+    },
+    {
+      "outcome": "both Release builds pass",
+      "log": ".build/diagnostics/piece-buffer/window8-retained-release.log",
+      "sha256": "43dac2e0be50401de7e9422f840c56624b0f69eca4d558ad4a41b6ecb37c6f80",
+      "routine_log_removed": true
+    }
+  ]
+}

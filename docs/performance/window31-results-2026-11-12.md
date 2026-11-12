@@ -1,5 +1,10 @@
 # Thirty-one-request pipeline — 12 November 2026
 
+Superseded by the [eight-request recheck](window-results-2026-11-12.md): the
+larger window has a measured memory cost against the original default and is
+reverted under the user's no-trade-offs requirement. Its CPU/throughput gains
+are relinquished; the sixteen-request comparison below remains historical.
+
 ## Balanced recheck under the no-trade-offs requirement
 
 A fresh source comparison changes only the default from 31 to sixteen against
