@@ -13,19 +13,37 @@ final class PeerSession: @unchecked Sendable {
 	}
 	struct OutputReceipt: Sendable { let payload: Int; let token: UUID?; let block: PeerBlock? }
 	struct Outbound: Sendable {
-		let buffer: WireBuffer
-		let range: Range<Int>
+		enum Contents: Sendable {
+			case bytes(Data)
+			case shared(WireBuffer, Range<Int>)
+		}
+		let contents: Contents
 		let receipt: OutputReceipt
-		var bytes: Data { buffer.bytes[range] }
+		var buffer: WireBuffer? {
+			if case .shared(let buffer, _) = contents { return buffer }; return nil
+		}
+		var range: Range<Int> {
+			switch contents {
+			case .bytes(let bytes): return bytes.startIndex..<bytes.endIndex
+			case .shared(_, let range): return range
+			}
+		}
+		var bytes: Data {
+			switch contents {
+			case .bytes(let bytes): return bytes
+			case .shared(let buffer, let range): return buffer.bytes[range]
+			}
+		}
 		var payload: Int { receipt.payload }
 		var token: UUID? { receipt.token }
 		var block: PeerBlock? { receipt.block }
 		init(bytes: Data, payload: Int, token: UUID?, block: PeerBlock?) {
-			buffer = WireBuffer(bytes); range = bytes.startIndex..<bytes.endIndex
+			// Ordinary frames retain their original Data without another allocation.
+			contents = .bytes(bytes)
 			receipt = OutputReceipt(payload: payload, token: token, block: block)
 		}
 		init(buffer: WireBuffer, range: Range<Int>, token: UUID, block: PeerBlock) {
-			self.buffer = buffer; self.range = range
+			contents = .shared(buffer, range)
 			receipt = OutputReceipt(payload: block.length, token: token, block: block)
 		}
 	}
@@ -91,12 +109,15 @@ final class PeerSession: @unchecked Sendable {
 	}
 	static func outputBytes(_ items: [Outbound]) -> Data {
 		guard let first = items.first else { return Data() }
-		var end = first.range.upperBound
-		let contiguous = items.dropFirst().allSatisfy { item in
-			guard item.buffer === first.buffer, item.range.lowerBound == end else { return false }
-			end = item.range.upperBound; return true
+		if items.count == 1 { return first.bytes }
+		if let buffer = first.buffer {
+			var end = first.range.upperBound
+			let contiguous = items.dropFirst().allSatisfy { item in
+				guard item.buffer === buffer, item.range.lowerBound == end else { return false }
+				end = item.range.upperBound; return true
+			}
+			if contiguous { return buffer.bytes[first.range.lowerBound..<end] }
 		}
-		if contiguous { return first.buffer.bytes[first.range.lowerBound..<end] }
 		var joined = Data(capacity: items.reduce(0) { $0 + $1.range.count })
 		for item in items { joined.append(item.bytes) }; return joined
 	}

@@ -18,6 +18,7 @@ private final class BudgetPeerStream: PeerByteStream, Sendable {
 		try session.send(.interested); try session.send(.keepAlive); try session.send(.choke)
 		let first = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
 		#expect(first.map(\.bytes) == [try PeerMessage.interested.encoded(), try PeerMessage.keepAlive.encoded(), try PeerMessage.choke.encoded()])
+		#expect(first.allSatisfy { $0.buffer == nil })
 		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).isEmpty)
 		try session.send(.unchoke)
 		let last = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
@@ -70,7 +71,7 @@ private final class BudgetPeerStream: PeerByteStream, Sendable {
 		for request in requests { #expect(session.register(request.token, bytes: request.block.length + 13)) }
 		try session.sendPieces(requests, piece: piece)
 		let frames = session.claimOutgoing(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144))
-		#expect(frames.count == 2 && frames[0].buffer === frames[1].buffer)
+		#expect(frames.count == 2 && frames[0].buffer != nil && frames[0].buffer === frames[1].buffer)
 		var expected = Data()
 		for block in blocks {
 			expected.append(try PeerMessage.piece(2, block.offset, piece[(piece.startIndex + block.offset)..<(piece.startIndex + block.offset + block.length)]).encoded())
