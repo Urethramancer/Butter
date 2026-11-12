@@ -33,6 +33,9 @@ in all eighteen cases.
 
 All 342 serial package tests pass. All 42 focused transfer, resource,
 admission and protocol tests pass under each of Address and Thread Sanitizer,
-including encryption, µTP and owner-close/cancellation coverage. Native
-interoperability, broader comparisons and final release acceptance remain
-open at this step. Raw evidence is in [`raw/cache-wrapper`](raw/cache-wrapper).
+including encryption, µTP and owner-close/cancellation coverage. Committed
+production `1d414f9` subsequently passes all 466 pinned native interoperability
+checks, including bidirectional encrypted TCP/µTP, all 24 session DHT transfers
+and HTTP-to-native-to-libtorrent web seeds. Broader performance comparisons and
+final release acceptance remain open. Raw evidence is in
+[`raw/cache-wrapper`](raw/cache-wrapper).
