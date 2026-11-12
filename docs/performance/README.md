@@ -34,6 +34,10 @@ A [parent descriptor experiment](parent-anchor-results-2026-11-12.md) retains
 28 further trials. Borrowing the root descriptor produces no reproducible CPU
 benefit and is reverted; its callback lifetime/error tests remain.
 
+A [single-buffer read experiment](read-buffer-results-2026-11-12.md) retains
+28 further trials. CPU and throughput intervals cross one, so it is reverted.
+Its multi-chunk cancellation/truncation contracts remain.
+
 The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
 reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
 (13.4%) and raises throughput from 182.4 to 213.1 MB/s. Fourteen trials and both
