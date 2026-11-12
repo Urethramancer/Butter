@@ -26,6 +26,10 @@
 
 ## Validation diagnostics
 
+- Reproduce the initial full-package network bind errors/timeouts during the
+  queued-read experiment. Isolated network tests, the second full candidate
+  run and restored-source full run pass; the cause remains unknown in
+  `docs/performance/raw/verified-read-batches/package-first-failure.log`.
 
 - Reproduce the earlier combined-contract six-second deadline under controlled
   CPU load and identify its wait point using the new diagnostics. Serial checks

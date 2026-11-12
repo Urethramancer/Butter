@@ -27,10 +27,11 @@ private func storageDeadline<T: Sendable>(_ operation: @escaping @Sendable () as
 	}
 }
 
-private func blockedVerifiedStorage(_ body: (TorrentStorage, Data, StorageWorker, DiskGate) async throws -> Void) async throws {
+private func blockedVerifiedStorage(selective: Bool = false, _ body: (TorrentStorage, Data, StorageWorker, DiskGate) async throws -> Void) async throws {
 	try await storageFixture { root in
 		let (metadata, bytes) = try storageMetadata(root)
-		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"))
+		let selection = metadata.inspection.files.map { !$0.pad && (!selective || $0.path.hasSuffix("/a")) }
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: selection)
 		try await storage.importFiles(from: root)
 		for piece in 0..<storage.layout.pieceCount { #expect(try await storage.verify(piece: piece)) }
 		let worker = await storage.worker, gate = DiskGate(); gate.arm()
@@ -46,19 +47,36 @@ private func waitForCommands(_ worker: StorageWorker, _ count: Int) async throws
 	try await storageDeadline { while worker.pendingCount != count { await Task.yield() } }
 }
 
+private enum ReadCancellation: CaseIterable, Sendable { case none, first, second }
+
 @Suite struct StorageConcurrencyTests {
-	@Test(arguments: [false, true]) func queuedVerifiedReadsCancelIndependently(_ cancelFirst: Bool) async throws {
-		try await blockedVerifiedStorage { storage, bytes, worker, gate in
+	@Test(arguments: ReadCancellation.allCases, [false, true]) fileprivate func queuedVerifiedReadsCancelIndependently(_ cancellation: ReadCancellation, selective: Bool) async throws {
+		try await blockedVerifiedStorage(selective: selective) { storage, bytes, worker, gate in
 			let first = Task { try await storage.readVerifiedPiece(0) }
 			try await waitForCommands(worker, 2)
 			let second = Task { try await storage.readVerifiedPiece(2) }
 			try await waitForCommands(worker, 3)
-			(cancelFirst ? first : second).cancel(); gate.release()
-			await #expect(throws: CancellationError.self) { try await (cancelFirst ? first : second).value }
+			if cancellation != .none { (cancellation == .first ? first : second).cancel() }; gate.release()
 			let tail = Data([1, 2, 3]) + Data(repeating: 0, count: try storage.layout.length(of: 2) - 3)
-			#expect(try await (cancelFirst ? second : first).value == (cancelFirst ? tail : bytes.prefix(16384)))
-			#expect(try await storage.readVerifiedPiece(cancelFirst ? 0 : 2) == (cancelFirst ? bytes.prefix(16384) : tail))
+			for (kind, task, expected) in [(ReadCancellation.first, first, Data(bytes.prefix(16384))), (.second, second, tail)] {
+				if cancellation == kind { await #expect(throws: CancellationError.self) { try await task.value } }
+				else { #expect(try await task.value == expected) }
+			}
+			#expect(try await storage.readVerifiedPiece(0) == bytes.prefix(16384))
+			#expect(try await storage.readVerifiedPiece(2) == tail)
 			#expect(try await storage.snapshot().verifiedPieces == [0, 1, 2])
+		}
+	}
+	@Test func queuedVerifiedReadsConsumeIndividualAdmissionSlots() async throws {
+		try await blockedVerifiedStorage { storage, _, worker, gate in
+			var reads: [Task<Data, Error>] = []
+			for index in 0..<7 {
+				reads.append(Task { try await storage.readVerifiedPiece(index % 3) })
+				try await waitForCommands(worker, index + 2)
+			}
+			await #expect(throws: StorageFailure.limit("queued disk commands")) { try await storage.readVerifiedPiece(0) }
+			gate.release(); for read in reads { _ = try await read.value }
+			#expect(worker.pendingCount == 0)
 		}
 	}
 	@Test func queuedWriteSeparatesVerifiedReads() async throws {

@@ -61,6 +61,12 @@ seeding CPU 16.9% (throughput inconclusive) and concurrent seeding CPU 12.9%
 checks pass. Final acceptance remains open; these focused results do not
 establish CPU parity.
 
+A [queued verified-read experiment](verified-read-batches-results-2026-11-12.md)
+shares full-layout guards across bounded queued reads while retaining per-read
+admission and cancellation. It shows no reproducible benefit and is reverted.
+Public ordering/cancellation/admission regressions remain; all measurements and
+an unresolved initial network-bind test failure are retained.
+
 The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
 reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
 (13.4%) and raises throughput from 182.4 to 213.1 MB/s. Fourteen trials and both
