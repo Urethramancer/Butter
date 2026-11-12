@@ -54,10 +54,11 @@ final class PieceCacheOwner: @unchecked Sendable {
 }
 
 actor SharedPieceCache {
+	typealias Reader = @Sendable (TorrentStorage, Int) async throws -> Data
 	private struct Key: Hashable { let owner: UUID; let piece: Int }
 	private struct Load { let id: UUID; let bytes: Int; let task: Task<Data, Error> }
 	private let limit: Int
-	private let read: @Sendable (TorrentStorage, Int) async throws -> Data
+	private let read: Reader
 	private var values: [Key: (Data, UInt64)] = [:]
 	private var loading: [Key: Load] = [:]
 	private var waiting: [(UUID, CheckedContinuation<Void, Error>)] = []
@@ -66,8 +67,8 @@ actor SharedPieceCache {
 	private var order: UInt64 = 0
 	var usage: (Int, Int) { (bytes, reserved) }
 	var waitingCount: Int { waiting.count }
-	init(limit: Int, read: @escaping @Sendable (TorrentStorage, Int) async throws -> Data = { try await $0.readVerifiedPiece($1) }) { self.limit = limit; self.read = read }
-	func piece(_ index: Int, storage: TorrentStorage, owner: PieceCacheOwner) async throws -> Data {
+	init(limit: Int, read: @escaping Reader = { try await $0.readVerifiedPiece($1) }) { self.limit = limit; self.read = read }
+	func piece(_ index: Int, storage: TorrentStorage, owner: PieceCacheOwner, load reader: Reader? = nil) async throws -> Data {
 		let key = Key(owner: owner.id, piece: index), length = try storage.layout.length(of: index)
 		guard length <= limit else { throw PeerFailure.limit("session piece cache bytes") }
 		let load: Load
@@ -83,7 +84,7 @@ actor SharedPieceCache {
 				guard let oldest = candidates.min(by: { $0.value.1 < $1.value.1 }) else { break }
 				bytes -= oldest.value.0.count; values[oldest.key] = nil
 			}
-			let read = read
+			let read = reader ?? self.read
 			load = Load(id: UUID(), bytes: length, task: Task { try await read(storage, index) })
 			loading[key] = load; reserved += length; break
 		}

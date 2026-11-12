@@ -59,9 +59,20 @@ actor VerifiedPieceCache {
 	private let storage: TorrentStorage
 	private let owner = PieceCacheOwner()
 	private let pool: SharedPieceCache
-	init(storage: TorrentStorage, resources: TransferResources = .shared) { self.storage = storage; pool = resources.pieces }
+	private let read: SharedPieceCache.Reader
+	init(storage: TorrentStorage, resources: TransferResources = .shared, disk: TransferDiskScope? = nil) {
+		self.storage = storage; pool = resources.pieces
+		let disk = disk ?? TransferDiskScope(resources: resources)
+		read = { storage, index in
+			try await disk.acquire()
+			do {
+				let bytes = try await storage.readVerifiedPiece(index)
+				await disk.release(); return bytes
+			} catch { await disk.release(); throw error }
+		}
+	}
 	func piece(_ index: Int) async throws -> Data {
-		try await pool.piece(index, storage: storage, owner: owner)
+		try await pool.piece(index, storage: storage, owner: owner, load: read)
 	}
 	func close() async { owner.close(); await pool.close(owner) }
 }

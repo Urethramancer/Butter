@@ -30,16 +30,12 @@ extension TCPTransfer {
 		return true
 	}
 	func buildUpload(_ id: UUID, block: PeerBlock, token: UUID) async throws {
-		try await disk.acquire()
-		do {
-			try Task.checkCancellation()
-			let piece = try await cache.piece(block.piece)
-			try Task.checkCancellation()
-			guard !stopping, let peer = peers[id], !peer.closing, !peer.choking || peer.allowedIncoming.contains(block.piece), peer.uploads[block] == token else { throw PeerFailure.closed }
-			let data = piece[block.offset..<(block.offset + block.length)]
-			try peer.session.send(.piece(block.piece, block.offset, data), token: token, block: block); peer.lastSent = clock.now()
-		} catch { await disk.release(); throw error }
-		await disk.release()
+		try Task.checkCancellation()
+		let piece = try await cache.piece(block.piece)
+		try Task.checkCancellation()
+		guard !stopping, let peer = peers[id], !peer.closing, !peer.choking || peer.allowedIncoming.contains(block.piece), peer.uploads[block] == token else { throw PeerFailure.closed }
+		let data = piece[block.offset..<(block.offset + block.length)]
+		try peer.session.send(.piece(block.piece, block.offset, data), token: token, block: block); peer.lastSent = clock.now()
 	}
 	func uploadJobFinished(_ token: UUID) { uploadJobs[token] = nil }
 	func uploadedBatch(_ id: UUID, items: [PeerSession.Outbound]) {

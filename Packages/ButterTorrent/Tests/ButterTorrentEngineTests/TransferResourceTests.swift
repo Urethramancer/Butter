@@ -40,6 +40,46 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 }
 
 @Suite struct TransferResourceTests {
+	@Test func cachedUploadsAvoidDiskAdmissionWhileMissesRemainBounded() async throws {
+		try await transferFixture { fixture in
+			let resources = try TransferResources(maximumDiskOperations: 1)
+			let seed = try await fixture.transfer("seed", seed: true, resources: resources)
+			let cache = await seed.cache; _ = try await cache.piece(0)
+			let blocker = TransferDiskScope(resources: resources); try await blocker.acquire()
+			var held = true
+			do {
+				let peer = try await fixture.scripted(seed); defer { peer.stream.close() }
+				try await peer.send(.interested)
+				while try await peer.next() != .unchoke {}
+				try await peer.send(.request(PeerBlock(piece: 0, offset: 0, length: 1)))
+				while true {
+					if case .piece(let piece, let offset, let bytes) = try await peer.next() {
+						#expect(piece == 0 && offset == 0 && bytes == fixture.bytes.prefix(1)); break
+					}
+				}
+				try await peer.send(.request(PeerBlock(piece: 1, offset: 0, length: 1)))
+				try await eventually { await resources.snapshot().waitingDiskOperations == 1 }
+				#expect(await resources.snapshot().diskOperations == 1)
+				await blocker.release(); held = false
+				while true {
+					if case .piece(let piece, let offset, let bytes) = try await peer.next() {
+						#expect(piece == 1 && offset == 0 && bytes == fixture.bytes[32768..<32769]); break
+					}
+				}
+				try await eventually { let status = await resources.snapshot(); return status.diskOperations == 0 && status.waitingDiskOperations == 0 }
+				try await blocker.acquire(); held = true
+				let closing = Task { try await cache.piece(2) }
+				try await eventually { await resources.snapshot().waitingDiskOperations == 1 }
+				await cache.close()
+				await #expect(throws: CancellationError.self) { try await closing.value }
+				let status = await resources.snapshot()
+				#expect(status.diskOperations == 1 && status.waitingDiskOperations == 0)
+				let (cached, loading) = await resources.pieces.usage
+				#expect(cached == 0 && loading == 0)
+				await blocker.release(); held = false
+			} catch { if held { await blocker.release() }; throw error }
+		}
+	}
 	@Test func cacheCapacityWaitsAreCancellableAndOwnerCloseDoesNotCancelAnotherLoad() async throws {
 		try await transferFixture { fixture in
 			_ = try await fixture.transfer("seed", seed: true)

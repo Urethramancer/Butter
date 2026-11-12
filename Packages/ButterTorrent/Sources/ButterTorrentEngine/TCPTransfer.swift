@@ -171,7 +171,8 @@ public actor TCPTransfer {
 		let discoveries = AsyncStream<ExchangedPeer>.makeStream(bufferingPolicy: .bufferingNewest(256)); discoveredPeers = discoveries.stream; discovery = discoveries.continuation
 		let nodes = AsyncStream<NetworkEndpoint>.makeStream(bufferingPolicy: .bufferingNewest(64)); discoveredNodes = nodes.stream; nodeDiscovery = nodes.continuation
 		uploadRate = TransferRateLimiter(rate: configuration.uploadLimit, clock: clock); downloadRate = TransferRateLimiter(rate: configuration.downloadLimit, clock: clock)
-		disk = TransferDiskScope(resources: resources); cache = VerifiedPieceCache(storage: storage, resources: resources)
+		let disk = TransferDiskScope(resources: resources)
+		self.disk = disk; cache = VerifiedPieceCache(storage: storage, resources: resources, disk: disk)
 		var offset: Int64 = 0, wanted: Set<Int> = []
 		for file in storage.layout.files {
 			if !file.pad, initial.selected[file.index], file.size > 0 {
