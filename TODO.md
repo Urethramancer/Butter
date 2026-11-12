@@ -2,9 +2,9 @@
 
 ## TCP performance parity
 
-- Validate owned upload wire buffers on downloads and in the full matrix.
-  Four seeding source comparisons reduce CPU 2.2–4.3% without established measured
-  costs; concurrent hybrid RSS falls 4.5%. Full parity remains unmet.
+- Remove the upload wire-buffer prototype's concurrent download RSS regression
+  (1.5% [0.8–7.4%]) before retaining its 2.2–4.3% seeding CPU gains. Revalidate
+  the revised representation and full matrix; full parity remains unmet.
 
 - Obtain quiet-host timings for the final candidate. All eight current-source
   Running CPU captures now validate; earlier Instruments failures and loaded-host

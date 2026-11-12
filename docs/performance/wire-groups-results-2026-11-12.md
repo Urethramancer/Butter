@@ -66,3 +66,22 @@ no timed trial is discarded or retried.
 
 [Broader measurements and raw hashes](wire-groups-broader-comparison-2026-11-12.json)
 retain results. Download regression checks and full-matrix acceptance remain open.
+
+## Download regression checks: first version disqualified
+
+All 84 download trials validate, but the concurrent hybrid case establishes a
+peak-RSS increase. That disqualifies `268476b` in this form despite its seeding
+CPU gains. Revise the ordinary request/control representation before retention.
+No timed sample is retried or omitted.
+
+| Download workload | CPU ratio [95% interval] | Throughput ratio [95% interval] | RSS ratio [95% interval] |
+| --- | --- | --- | --- |
+| Single v1 | 1.008 [1.000–1.021] | 0.992 [0.964–1.007] | 0.992 [0.986–1.016] |
+| Many-file hybrid | 1.044 [0.960–1.079] | 0.952 [0.923–1.054] | 1.016 [0.970–1.074] |
+| Concurrent hybrid | 0.997 [0.993–1.042] | 1.007 [0.913–1.041] | 1.015 [1.008–1.074] |
+
+The single-file CPU lower bound is 0.999648 before rounding, so that CPU
+increase is inconclusive. Many-file changes are also inconclusive, rather than
+proof of unchanged performance. Counterpart CPU intervals cross one in all
+three download cases. [Complete download measurements and raw hashes](wire-groups-download-comparison-2026-11-12.json)
+retain the source/control results and raw paths.
