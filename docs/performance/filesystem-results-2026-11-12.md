@@ -31,3 +31,32 @@ preceding candidate; this one-case experiment does not establish other cases.
 The fresh profiles still place filesystem metadata calls among the largest
 costs. Reducing those calls while preserving every file-identity check remains
 open. No parity or release claim is made, and no tag was created.
+
+## Rejected directory attribute batching
+
+A subsequent production prototype queried one 32 KiB metadata batch after seeing
+eight managed children in a parent, retained at most 256 records for that scan,
+and fell back to individual inspection for absent/unsupported records. It used
+an independent anchored directory handle, exact filename bytes and every field
+required by the existing file-stamp and regular-file/link checks. Decoder bounds,
+unsupported attributes, native field equivalence, directory offsets, Unicode
+identities, link/type checks and checkpoint-time replacement passed 55 storage
+tests. The API packing contract was checked against [Apple's manual](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/man/man2/getattrlistbulk.2).
+
+All fourteen timing trials were accepted, but CPU regressed from 8.184 to 9.054
+s/GiB: independent ratio 1.106 [1.072–1.118]. Throughput changed from 202.3 to
+198.5 MB/s, ratio 0.981 [0.956–1.015], inconclusive. Memory passed. Median
+through-durable user CPU rose from 4.408 to 5.233 seconds, while system CPU
+remained 3.779 versus 3.805. Separate profiles still show expensive metadata
+calls alongside the added decoding/bookkeeping. Fewer individual `fstatat`
+observations did not produce a CPU benefit.
+
+The entire prototype and its dedicated decoder tests were removed. The restored
+production tree is the verified parent-validation candidate; all 51 storage
+tests passed after rebuilding it. The negative result remains reproducible from
+its [patch](raw/bulk-inspection-many-v2/experiment.patch) against `a5eaa9a`,
+[every trial](raw/bulk-inspection-many-v2/trials.jsonl),
+[summary](raw/bulk-inspection-many-v2/summary.json),
+[before/after intervals](raw/bulk-inspection-many-v2/before-after.json),
+[checks](raw/bulk-inspection-many-v2/checks.json) and
+[separate profile artifacts](raw/bulk-inspection-profile/summary.json).
