@@ -27,6 +27,11 @@ a fresh eight-request baseline, single-file v1 download CPU falls 18.9%
 (5.188 to 4.206 s/GiB), throughput rises 17.3% and both memory gates pass.
 Native parity and the final full matrix remain outstanding.
 
+A subsequent [picker refill change](picker-results-2026-11-12.md) reduces
+single-file v1 download CPU another 14.5%, from 4.206 to 3.597 s/GiB, and raises
+throughput from 297.3 to 363.0 MB/s. Both memory gates pass. This focused result
+still misses native-relative CPU and throughput targets.
+
 The [focused steps and validation](outbound-batching-results-2026-11-12.md)
 record the isolated experiments and exact source revisions for correctness
 checks. No combined workload average substitutes for per-case acceptance.

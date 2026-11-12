@@ -15,6 +15,8 @@ struct PiecePicker {
 	let lengths: [Int: Int]
 	private(set) var completed: Set<Int>
 	private var missingWanted: Int
+	private let allPiecesWanted: Bool
+	private var completedPrefix = 0
 	private(set) var staged: Set<Int> = []
 	private(set) var active: [Int: Active] = [:]
 	private var peers: [UUID: PieceBitfield] = [:]
@@ -24,6 +26,8 @@ struct PiecePicker {
 		missingWanted = wanted.reduce(0) { $0 + (completed.contains($1) ? 0 : 1) }
 		availability = Array(repeating: 0, count: layout.pieceCount)
 		self.lengths = lengths
+		allPiecesWanted = wanted.count == layout.pieceCount && wanted.allSatisfy { (0..<layout.pieceCount).contains($0) }
+		if allPiecesWanted { advanceCompletedPrefix() }
 	}
 	var complete: Bool { missingWanted == 0 }
 	mutating func update(_ peer: UUID, bits: PieceBitfield) {
@@ -65,13 +69,9 @@ struct PiecePicker {
 			// Only this bounded prefix can be admitted. Avoid sorting the whole torrent
 			// again for each received block while preserving rarest/suggested/index order.
 			let capacity = min(maximumActive - active.count, limit - result.count)
-			var fresh: [Int] = []; fresh.reserveCapacity(capacity)
-			for piece in wanted where !completed.contains(piece) && !staged.contains(piece) && active[piece] == nil && permitted(piece) {
-				if fresh.count == capacity, !order(piece, fresh.last!) { continue }
-				let position = fresh.firstIndex { order(piece, $0) } ?? fresh.endIndex
-				fresh.insert(piece, at: position)
-				if fresh.count > capacity { fresh.removeLast() }
-			}
+			let fresh = allPiecesWanted
+				? freshCandidates(completedPrefix..<layout.pieceCount, capacity: capacity, ascending: true, suggestions: suggestions, permitted: permitted, order: order)
+				: freshCandidates(wanted, capacity: capacity, ascending: false, suggestions: suggestions, permitted: permitted, order: order)
 			result += reserve(peer, candidates: fresh, limit: limit - result.count, now: now)
 			if result.count == limit { return result }
 		}
@@ -91,6 +91,19 @@ struct PiecePicker {
 			}
 		}
 		return result
+	}
+	private func freshCandidates<S: Sequence>(_ pieces: S, capacity: Int, ascending: Bool, suggestions: Set<Int>, permitted: (Int) -> Bool, order: (Int, Int) -> Bool) -> [Int] where S.Element == Int {
+		var fresh: [Int] = []; fresh.reserveCapacity(capacity)
+		for piece in pieces where !completed.contains(piece) && !staged.contains(piece) && active[piece] == nil && permitted(piece) {
+			if fresh.count == capacity, !order(piece, fresh.last!) { continue }
+			let position = fresh.firstIndex { order(piece, $0) } ?? fresh.endIndex
+			fresh.insert(piece, at: position)
+			if fresh.count > capacity { fresh.removeLast() }
+			// The requesting peer supplies availability >= 1. In ascending index order,
+			// no later unsuggested piece can beat a full prefix at that minimum rarity.
+			if ascending && suggestions.isEmpty && fresh.count == capacity && availability[fresh.last!] == 1 { break }
+		}
+		return fresh
 	}
 	private mutating func reserve(_ peer: UUID, candidates: [Int], limit: Int, now: TimeInterval) -> [PeerBlock] {
 		var result: [PeerBlock] = []
@@ -141,6 +154,10 @@ struct PiecePicker {
 	}
 	private mutating func recordCompletion(_ piece: Int) {
 		if completed.insert(piece).inserted && wanted.contains(piece) { missingWanted -= 1 }
+		if allPiecesWanted && piece == completedPrefix { advanceCompletedPrefix() }
+	}
+	private mutating func advanceCompletedPrefix() {
+		while completedPrefix < layout.pieceCount && completed.contains(completedPrefix) { completedPrefix += 1 }
 	}
 	mutating func expired(now: TimeInterval, timeout: TimeInterval) -> [(UUID, PeerBlock)] {
 		var expired: [(UUID, PeerBlock)] = []

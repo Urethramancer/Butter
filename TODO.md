@@ -12,9 +12,6 @@
 - Reduce repeated whole-layout stamp inspection and per-block upload,
   allocation and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.
-- Reduce whole-torrent scans during picker refill while preserving global
-  rarest/suggested/index order; the sixteen-request profile retains 15.7%
-  inclusive sample weight in single-file v1 allocation.
 
 ## Validation diagnostics
 
