@@ -16,8 +16,7 @@
 - Reduce repeated whole-layout stamp inspection (40.0% inclusive in many-file
   seeding), file opening, allocation and Network.framework scheduling costs in
   the profiles, preserving stored-byte hashing, ownership checks, cancellation
-  and queue caps. Test contiguous vector writes within the existing 256 KiB
-  write-job bound; filesystem events show individual 16 KiB payload syscalls.
+  and queue caps.
 
 ## Validation diagnostics
 

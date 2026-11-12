@@ -429,6 +429,12 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		let discard = try await publishRepositoryStorage(repository, id: "discard", metadata: metadata, destination: volume.appendingPathComponent("discard-data"))
 		let prepared = try await repository.prepare(id: "transfer", restore: false)
 		try await openRepositoryStorage(prepared, metadata: metadata, destination: repositoryDestination)
+		let vectorState = volume.appendingPathComponent("vector-state")
+		let vector = try await TorrentStorage.open(metadata: metadata, destination: volume.appendingPathComponent("vector-data"), stateDirectory: vectorState)
+		try await vector.write(piece: 0, offset: 0, data: Data([0])); try await vector.flush()
+		let vectorCheckpoint = vectorState.appendingPathComponent("checkpoint.plist"), vectorBefore = try Data(contentsOf: vectorCheckpoint)
+		let vectorBytes = contents(0).prefix(16384)
+		let vectorWrites = [StorageWrite(piece: 0, offset: 0, data: vectorBytes.prefix(8192)), StorageWrite(piece: 0, offset: 8192, data: vectorBytes.suffix(8192))]
 		let filler = volume.appendingPathComponent("filler")
 		try Data().write(to: filler)
 		let handle = try FileHandle(forWritingTo: filler)
@@ -451,7 +457,14 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		rejected = false
 		do { try await repository.discard(id: "discard") } catch { guard full(error) else { throw error }; rejected = true }
 		try require(rejected && fm.fileExists(atPath: discard.directory.appendingPathComponent("checkpoint.plist").path), "ENOSPC removed the checkpoint before journalling discard")
+		rejected = false
+		do { try await vector.writeBatch(vectorWrites) } catch { guard full(error) else { throw error }; rejected = true }
+		try require(rejected && (try Data(contentsOf: vectorCheckpoint)) == vectorBefore, "Vector ENOSPC changed the last durable checkpoint")
+		try require(try await vector.snapshot().verifiedPieces.isEmpty, "Failed vector write claimed verified payload")
 		try fm.removeItem(at: filler)
+		try await vector.writeBatch(vectorWrites)
+		let vectorValid = try await vector.verify(piece: 0); try require(vectorValid, "Vector write did not recover and verify after freeing space")
+		try await vector.shutdown()
 		try await repository.abandon(prepared)
 		try await repository.discard(id: "discard")
 		try require(!fm.fileExists(atPath: discard.directory.path), "Discard did not recover after freeing space")
@@ -461,6 +474,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		try await storage.checkpoint(downloaded: 9, uploaded: 8)
 		let valid = try await storage.verify(piece: 0); try require(valid, "Storage did not recover after freeing space")
 		try await storage.shutdown()
+		print("PASS: real ENOSPC preserves vector-write progress and checkpoint; retry verifies stored bytes")
 		print("PASS: real ENOSPC preserves checkpoint and verified bytes; writes recover after space is freed")
 		print("PASS: real ENOSPC prevents repository publication; the same transfer publishes after space is freed")
 		print("PASS: real ENOSPC preserves the checkpoint before discard; retry completes after space is freed")

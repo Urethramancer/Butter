@@ -78,6 +78,14 @@ avoids another full-piece copy. Six source pairs per case reduce seeding CPU
 validate; original-baseline memory passes, although incremental memory rises
 in the many-file and concurrent cases. CPU parity and final acceptance remain open.
 
+[Bounded vector writes](vector-write-results-2026-11-12.md) reduce focused
+many-file hybrid download CPU 1.9% and raise throughput 2.4%. Single-file v1
+CPU is inconclusive and throughput rises 1.2%; counterpart CPU and incremental
+RSS increases are retained explicitly. All 56 trials validate and original-baseline
+memory passes. The candidate passes 350 package tests, 113 focused tests under
+each sanitizer and 52 real-volume/recovery checks. Native interoperability and
+the final-candidate matrix remain pending; the latest complete matrix stays `b328472`.
+
 The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
 reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
 (13.4%) and raises throughput from 182.4 to 213.1 MB/s. Fourteen trials and both

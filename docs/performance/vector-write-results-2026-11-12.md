@@ -40,3 +40,21 @@ remain locally in `.build/benchmarks/vector-writes-source-order` and
 `.build/diagnostics/piece-buffer/vector-*`. The machine-readable summary is
 retained beside this report. Broader performance and native interoperability
 verification remain pending; CPU parity is not established.
+
+A further six single-file v1 download source pairs against the same baseline
+(28 validated trials) give CPU 0.995 [0.992–1.001] (inconclusive), throughput
+1.012 [1.003–1.015] and peak RSS 1.017 [1.008–1.020]. Swift medians are
+409.4 MB/s and 3.151 CPU s/GiB; native controls are 448.7 MB/s and 1.540 CPU
+s/GiB. Paired CPU/native remains 2.043 [2.029–2.086]. The counterpart uses
+4.3% more CPU [1.3–6.1%] in this source comparison; native-control CPU and
+throughput intervals cross one. This increase is retained, not hidden as an
+engine gain. Original-baseline memory passes, despite higher incremental RSS.
+All 56 trials across both source diagnostics validate; the single-file case
+does not establish a CPU benefit or full-matrix throughput acceptance.
+Its complete local records are `.build/benchmarks/vector-writes-single-source-order`.
+
+All 52 native storage checks pass, including a new actual-ENOSPC vector write:
+unverified payload exhausts its remaining allocation without publishing progress,
+the last durable checkpoint remains byte-for-byte intact, and retry after freeing
+space hashes successfully. Existing crash recovery and read-only checks also pass.
+Native interoperability and final-candidate matrix acceptance remain pending.
