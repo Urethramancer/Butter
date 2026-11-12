@@ -2,6 +2,11 @@
 
 ## TCP performance parity
 
+- Obtain reliable current-source Running CPU profiles and quiet-host timings.
+  Instruments records three readiness/finish failures; eight fallback stack
+  captures validate under high host load but include waits and cannot establish
+  gains. Raw failures and diagnostics remain in `.build/benchmarks/window8-*`.
+
 - Retain performance improvements only without established regressions in CPU,
   throughput, memory or correctness, including counterpart CPU. Re-measure the
   candidate after removing owned-buffer returns, vector writes and request-window

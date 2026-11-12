@@ -1,0 +1,134 @@
+{
+  "revision": "40bb54f733d7887db1f2db379c2a18d1457ba3b2",
+  "status": "eight validated diagnostic captures; not acceptance evidence",
+  "method": "existing two-second sample mode includes waiting stacks; no Running CPU percentages; sustained host load 11–18 with concurrent game/compiler activity observed",
+  "source_hashes_match": true,
+  "records": [
+    {
+      "case": [
+        "single",
+        "v1",
+        "download"
+      ],
+      "engine": "Swift",
+      "accepted": true,
+      "transfer_wall": 316.44362904166337,
+      "durable_user": 7.125697,
+      "durable_system": 9.32532,
+      "peak_rss": 14336000
+    },
+    {
+      "case": [
+        "single",
+        "v1",
+        "download"
+      ],
+      "engine": "libtorrent",
+      "accepted": true,
+      "transfer_wall": 44.899514249991626,
+      "durable_user": 1.582981,
+      "durable_system": 1.402004,
+      "peak_rss": 64274432
+    },
+    {
+      "case": [
+        "single",
+        "v1",
+        "seed"
+      ],
+      "engine": "Swift",
+      "accepted": true,
+      "transfer_wall": 50.50094883333077,
+      "durable_user": 3.829031,
+      "durable_system": 2.823071,
+      "peak_rss": 18432000
+    },
+    {
+      "case": [
+        "single",
+        "v1",
+        "seed"
+      ],
+      "engine": "libtorrent",
+      "accepted": true,
+      "transfer_wall": 23.872460999991745,
+      "durable_user": 0.39632299999999987,
+      "durable_system": 1.204209,
+      "peak_rss": 17498112
+    },
+    {
+      "case": [
+        "single",
+        "hybrid",
+        "download"
+      ],
+      "engine": "Swift",
+      "accepted": true,
+      "transfer_wall": 218.95224979167688,
+      "durable_user": 8.187659,
+      "durable_system": 9.507073,
+      "peak_rss": 16220160
+    },
+    {
+      "case": [
+        "single",
+        "hybrid",
+        "download"
+      ],
+      "engine": "libtorrent",
+      "accepted": true,
+      "transfer_wall": 19.117440916976193,
+      "durable_user": 2.313064,
+      "durable_system": 1.2010370000000001,
+      "peak_rss": 133775360
+    },
+    {
+      "case": [
+        "many",
+        "hybrid",
+        "download"
+      ],
+      "engine": "Swift",
+      "accepted": true,
+      "transfer_wall": 359.2323458333267,
+      "durable_user": 13.284266,
+      "durable_system": 22.296271,
+      "peak_rss": 16433152
+    },
+    {
+      "case": [
+        "many",
+        "hybrid",
+        "download"
+      ],
+      "engine": "libtorrent",
+      "accepted": true,
+      "transfer_wall": 20.520461000007344,
+      "durable_user": 2.5528560000000002,
+      "durable_system": 1.465341,
+      "peak_rss": 110526464
+    }
+  ],
+  "artifacts": {
+    ".build/benchmarks/window8-current-samples/many-hybrid-download-0-libtorrent-measured-download.sample.txt": "b8881311066f7b11ada88395825ebb5e5ec2d16336ef876e8c80a77d6355ead6",
+    ".build/benchmarks/window8-current-samples/single-v1-seed-0-Swift-measured-seed.sample.txt": "937954bafa76e9362bc836422c80f7a90e1d84ffe02186a279fcd7b33a118dc4",
+    ".build/benchmarks/window8-current-samples/many-hybrid-download-0-Swift-measured-seed.sample.txt": "a751b18caee7ff7423e6586ecaf306721e307da8e9bacb05c9ec49ede872e762",
+    ".build/benchmarks/window8-current-samples/many-hybrid-download-0-Swift-measured-download.sample.txt": "c8650a13e179fd6bfe18538d6de60352f373d6c30f2290a0e18ed2518d3dfd72",
+    ".build/benchmarks/window8-current-samples/many-hybrid-download-0-libtorrent-measured-seed.sample.txt": "43f56262840bf718c0550993264b8cd69683ece998d34edcf00d06e94ab73d05",
+    ".build/benchmarks/window8-current-samples/single-hybrid-download-0-libtorrent-measured-download.sample.txt": "95b49133ee45806707ca6995781b29bdead2a0d2e571f967bc850e861f9a3c8e",
+    ".build/benchmarks/window8-current-samples/single-v1-seed-0-libtorrent-measured-download.sample.txt": "775d833e83f94a960283654c3312569e102eac3c7d83e76f61a07f05aeaf2a0d",
+    ".build/benchmarks/window8-current-samples/single-v1-seed-0-Swift-measured-download.sample.txt": "d71ae1f9a32cf5203c8fc7bd0193d6bfd09c075a5346a3ae2f4f9b00eb0c3035",
+    ".build/benchmarks/window8-current-samples/single-v1-download-0-Swift-measured-download.sample.txt": "e60e69a3ca41ef939597249229e440e0a19b3338f6c12acc6e84455a69398716",
+    ".build/benchmarks/window8-current-samples/single-v1-seed-0-libtorrent-measured-seed.sample.txt": "3f8f8e293d0a35d6d75ad4965b3917cc39ebc9d9f29048d6b6ccd088140f870c",
+    ".build/benchmarks/window8-current-samples/single-hybrid-download-0-Swift-measured-download.sample.txt": "b0908ab44740bc3dc575363af78c4b17b8fbe941f17b75692445710dee0464d3",
+    ".build/benchmarks/window8-current-samples/single-hybrid-download-0-libtorrent-measured-seed.sample.txt": "216ce49a0a467ee71751462d518f3c4a8a3706733d43293abbb0e734c9947e10",
+    ".build/benchmarks/window8-current-samples/single-hybrid-download-0-Swift-measured-seed.sample.txt": "7182033d3d5d7c75ac070ac5536dab964f86f900782a79af4c2be3e6e81fdab2",
+    ".build/benchmarks/window8-current-samples/single-v1-download-0-libtorrent-measured-seed.sample.txt": "97ccb0fec9a68d822208a06a062fdd808102c3611733f3efc19afd76bb636d7a",
+    ".build/benchmarks/window8-current-samples/single-v1-download-0-libtorrent-measured-download.sample.txt": "c4d94db1e9c54a35d005356619ce65d328c581baf5151df1e84d1ce416bbbbb2",
+    ".build/benchmarks/window8-current-samples/single-v1-download-0-Swift-measured-seed.sample.txt": "92f51713338979c8fcbb41ab4e0180e51e0f76a8f133ea215e56225ba7defc02",
+    ".build/benchmarks/window8-current-samples/environment.json": "9264f22d4920832ff592f0ffb3117dac7368b501fb181c597a9923b6a0dc8bec",
+    ".build/benchmarks/window8-current-samples/fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+    ".build/benchmarks/window8-current-samples/trials.jsonl": "432846627faf425585b781b104c118f08faf8e7fa021f6e3940e1ad01d0b1bb6",
+    ".build/benchmarks/window8-current-samples/summary.json": "5046e3d81266dc4e78307553d65503c9d2c48e8109796d25375f5d00c4a93861"
+  }
+}
