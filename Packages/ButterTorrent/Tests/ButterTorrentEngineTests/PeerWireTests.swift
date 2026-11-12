@@ -5,6 +5,37 @@ import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 @Suite struct PeerWireTests {
+	@Test(arguments: [1, 16384], [false, true]) func decodedPieceOwnsItsPayloadAcrossCompaction(_ count: Int, _ fragmented: Bool) throws {
+		var parser = PeerWireDecoder()
+		try parser.feed(PeerHandshake(infoHash: Data(repeating: 0, count: 20), peerID: Data(repeating: 1, count: 20)).encoded)
+		_ = try parser.handshake()
+		let payload = Data((0..<count).map { UInt8($0 % 251) }), piece = 0x01020304, offset = 65536
+		let leading = try PeerMessage.keepAlive.encoded() + PeerMessage.have(3).encoded()
+		let frame = try PeerMessage.piece(piece, offset, payload).encoded(), trailing = try PeerMessage.choke.encoded()
+		try parser.feed(leading + (fragmented ? Data(frame.dropLast()) : frame + trailing))
+		#expect(try parser.next() == .keepAlive); #expect(try parser.next() == .have(3))
+		if fragmented {
+			#expect(try parser.next() == nil)
+			try parser.feed(frame.suffix(1) + trailing)
+		}
+		guard case .piece(let decodedPiece, let decodedOffset, let owned)? = try parser.next() else { Issue.record("Missing piece frame"); return }
+		#expect(decodedPiece == piece && decodedOffset == offset && owned == payload && owned.startIndex == 0)
+		#expect(try parser.next() == .choke); try parser.finish()
+		let replacement = Data(repeating: 255, count: count)
+		try parser.feed(PeerMessage.piece(2, 0, replacement).encoded())
+		#expect(try parser.next() == .piece(2, 0, replacement)); try parser.finish()
+		#expect(owned == payload)
+	}
+	@Test(arguments: [9, 16394, 65536]) func invalidPieceSizesRetainTheFollowingFrame(_ size: Int) throws {
+		var parser = PeerWireDecoder()
+		try parser.feed(PeerHandshake(infoHash: Data(repeating: 0, count: 20), peerID: Data(repeating: 1, count: 20)).encoded)
+		_ = try parser.handshake()
+		var wire = Data(); try PeerBytes.append(size, to: &wire)
+		var body = Data(count: size); body[0] = 7; wire.append(body); wire.append(try PeerMessage.choke.encoded())
+		for start in stride(from: 0, to: wire.count, by: 65536) { try parser.feed(wire[start..<min(start + 65536, wire.count)]) }
+		#expect(throws: PeerFailure.invalid("piece length")) { try parser.next() }
+		#expect(try parser.next() == .choke); try parser.finish()
+	}
 	@Test func maximumExtensionFrameCanFinishBesideAFullReadWithoutRelaxingTheBound() throws {
 		var parser = PeerWireDecoder(), features = PeerFeatures(); features.extended = true
 		try parser.feed(PeerHandshake(infoHash: Data(repeating: 0, count: 20), peerID: Data(repeating: 1, count: 20)).encoded)

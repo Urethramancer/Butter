@@ -68,3 +68,29 @@ completion. All payload/recovery checks pass; no diagnostic was removed or
 turned into a retry. Native roles retain 304 normal `torrent finished` notices.
 The original control-limit stall is absent from all twenty-one many-file Swift
 seeding trials, whose maximum transfer wall time is 5.24 seconds.
+
+## Rejected piece-decoder follow-up
+
+A focused experiment parsed piece headers directly from the bounded input
+buffer and copied the payload without first constructing a complete frame-body
+object. Fourteen trials were accepted, but single-file hybrid download CPU was
+6.988 versus 6.950 s/GiB: independent ratio 1.005 [0.933–1.105]. Throughput was
+178.1 versus 182.4 MB/s: 0.977 [0.829–1.074]. Neither establishes a benefit.
+Original and immediate-before memory gates pass; the latter is 0.998
+[0.974–1.031], with observed maximum ratio 1.004.
+
+The production experiment is fully reverted. Two added contract tests remain:
+owned payloads across fragmented/coalesced input and buffer compaction, and
+strict piece-size errors retaining the following frame. They pass on the
+original decoder. All 336 package tests pass both with the experiment and after
+restoring production. This experiment does not resolve the measured hybrid
+CPU regression; no retry or discarded sample is used to claim otherwise.
+
+[Every trial](raw/direct-piece-decode-hybrid/trials.jsonl),
+[summary](raw/direct-piece-decode-hybrid/summary.json),
+[independent before/after intervals](raw/direct-piece-decode-hybrid/before-after.json),
+[source/environment hashes](raw/direct-piece-decode-hybrid/environment.json),
+[incremental memory](raw/direct-piece-decode-hybrid/memory-versus-immediate-before.json),
+[checks](raw/direct-piece-decode-hybrid/checks.json) and
+[discarded patch](raw/direct-piece-decode-hybrid/experiment.patch) retain the
+negative result separately from the full matrix.
