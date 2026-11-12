@@ -2,6 +2,10 @@
 
 ## TCP performance parity
 
+- Validate owned upload wire buffers across broader workloads and the full matrix.
+  Single-file v1 seeding CPU falls 4.3% without an established cost in six balanced
+  source pairs; full parity remains unmet.
+
 - Obtain quiet-host timings for the final candidate. All eight current-source
   Running CPU captures now validate; earlier Instruments failures and loaded-host
   fallback samples remain recorded and do not establish performance gains.

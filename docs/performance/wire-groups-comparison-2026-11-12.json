@@ -1,0 +1,174 @@
+{
+  "case": "single",
+  "format": "v1",
+  "direction": "seed",
+  "order_seed": 11012,
+  "status": "source-comparison-only",
+  "pairs": 6,
+  "valid_pairs": 6,
+  "variants": {
+    "previous": {
+      "status": "target-unmet",
+      "requires_more_pairs": false,
+      "pairs": 6,
+      "ratios": {
+        "verified_bytes_per_second": {
+          "median": 1.3054120541892704,
+          "lower": 1.281525904477545,
+          "upper": 1.3144415143516315,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "durable_bytes_per_second": {
+          "median": 1.305040401819686,
+          "lower": 1.2811043213875446,
+          "upper": 1.3138954955217697,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "cpu_seconds_per_gib": {
+          "median": 1.6383306532794848,
+          "lower": 1.5641062155206111,
+          "upper": 1.6881274448559305,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "medians": {
+        "Swift": {
+          "verified_bytes_per_second": 583381990.3372456,
+          "durable_bytes_per_second": 582942801.4880731,
+          "cpu_seconds_per_gib": 2.779815
+        },
+        "libtorrent": {
+          "verified_bytes_per_second": 447292027.59741724,
+          "durable_bytes_per_second": 447076568.2859311,
+          "cpu_seconds_per_gib": 1.696745
+        }
+      },
+      "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+    },
+    "current": {
+      "status": "target-unmet",
+      "requires_more_pairs": false,
+      "pairs": 6,
+      "ratios": {
+        "verified_bytes_per_second": {
+          "median": 1.2984320282667798,
+          "lower": 1.280524686166622,
+          "upper": 1.303475639802897,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "durable_bytes_per_second": {
+          "median": 1.2984319557700235,
+          "lower": 1.2800457438871278,
+          "upper": 1.3029435877555327,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "cpu_seconds_per_gib": {
+          "median": 1.5688645336746503,
+          "lower": 1.5380430576925073,
+          "upper": 1.5973565125375466,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "medians": {
+        "Swift": {
+          "verified_bytes_per_second": 581430436.4595733,
+          "durable_bytes_per_second": 580995579.6228073,
+          "cpu_seconds_per_gib": 2.6680145
+        },
+        "libtorrent": {
+          "verified_bytes_per_second": 448506942.0414744,
+          "durable_bytes_per_second": 448264678.0385354,
+          "cpu_seconds_per_gib": 1.6981060000000001
+        }
+      },
+      "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+    }
+  },
+  "source_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 0.9570165272603546,
+      "lower": 0.9483252387320344,
+      "upper": 0.9704644609306274,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 1.0007495930277681,
+      "lower": 0.981914908212405,
+      "upper": 1.0078031778889296,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "peak_rss": {
+      "median": 0.9792815868381254,
+      "lower": 0.9442681188601258,
+      "upper": 1.0066793091793493,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "counterpart_cpu_seconds_per_gib": {
+      "median": 0.9734231117202762,
+      "lower": 0.9499596413168332,
+      "upper": 0.9842525677457896,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "native_control_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 0.9949493531791351,
+      "lower": 0.9570392716894986,
+      "upper": 1.0385760240016881,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 1.0028521903527359,
+      "lower": 0.9940323335014318,
+      "upper": 1.0079164571750807,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "method": "Current/previous within balanced source-order pairs; fixed six pairs; diagnostic only, no acceptance inference or uncertainty-driven retries",
+  "baseline_memory": {
+    "previous": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.2340706989049754,
+      "lower": 0.22738296465054753,
+      "upper": 0.23724056429573823,
+      "maximum_peak_rss_ratio": 0.23495911214953272,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "current": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.22606011611670462,
+      "lower": 0.2224981738495252,
+      "upper": 0.23229189748135018,
+      "maximum_peak_rss_ratio": 0.2336448598130841,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    }
+  },
+  "candidate_revision": "268476b",
+  "previous_revision": "e7eb79e",
+  "decision": "Promising focused CPU reduction without established costs; broader cases and full matrix pending.",
+  "raw": [
+    {
+      "path": ".build/benchmarks/wire-groups-single-seed-source-order/environment.json",
+      "sha256": "23889ef20c2dcb512746be8334e75d47c5c3a26a0eeb46a063714d425ac82f5a"
+    },
+    {
+      "path": ".build/benchmarks/wire-groups-single-seed-source-order/fixtures.json",
+      "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+    },
+    {
+      "path": ".build/benchmarks/wire-groups-single-seed-source-order/trials.jsonl",
+      "sha256": "66af2fac04031ec5c783cba738881a2faae53d02044f7bfef4ba7a34cf89ced3"
+    },
+    {
+      "path": ".build/benchmarks/wire-groups-single-seed-source-order/summary.json",
+      "sha256": "0e795b9299f04a545f92e9ddc42c2e346db5cd554dfcce5df26f493aeb741ad5"
+    }
+  ],
+  "validation": {
+    "package_tests": 354,
+    "address_sanitizer_focused_tests": 15,
+    "thread_sanitizer_focused_tests": 15,
+    "native_upload_fixtures": 156,
+    "release_build": "pass"
+  }
+}
