@@ -45,7 +45,9 @@ benefit and is reverted. Existing hash and filesystem protections remain.
 An [immutable upload-cache wrapper](cache-wrapper-results-2026-11-12.md)
 avoids an actor hop for each block. Six controlled single-file v1 seeding pairs
 show 0.8% lower CPU and 1.0% higher throughput, with both memory checks passing.
-This small step is retained; broader/native acceptance remains open and the
+This small step passes all 466 native interoperability checks. A separate
+four-transfer v2 seeding source comparison finds 0.8% higher throughput and
+inconclusive CPU, with memory passing. Final acceptance remains open and the
 latest full-matrix CPU gap is unchanged as an acceptance finding.
 
 The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)

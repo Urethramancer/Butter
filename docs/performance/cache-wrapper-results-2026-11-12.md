@@ -39,3 +39,14 @@ checks, including bidirectional encrypted TCP/µTP, all 24 session DHT transfers
 and HTTP-to-native-to-libtorrent web seeds. Broader performance comparisons and
 final release acceptance remain open. Raw evidence is in
 [`raw/cache-wrapper`](raw/cache-wrapper).
+
+A subsequent source comparison at evidence revision `7911a61` tests four
+simultaneous 256 MiB v2 seeds. All 28 trials pass. Paired current/previous CPU
+is 1.004 [0.991–1.024], inconclusive; throughput is 1.008 [1.003–1.031], and
+peak RSS 1.020 [0.976–1.067]. Swift medians are 3.602 → 3.618 CPU s/GiB and
+795.2 → 799.5 verified MB/s. Both original-baseline memory gates pass. Native
+control throughput is 0.999 [0.994–1.007], CPU 0.985 [0.922–1.103], and
+counterpart CPU crosses one. No concurrent CPU gain is claimed or combined
+with the single-file result. This also does not resolve the older full-run
+seeding regressions. Identical measurement/sampling rules apply; raw evidence
+is in [`raw/cache-wrapper-concurrent`](raw/cache-wrapper-concurrent).

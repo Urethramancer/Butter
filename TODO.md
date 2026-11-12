@@ -17,7 +17,8 @@
   acceptance; the latest complete matrix and CPU profiles are `5b9ef12`.
 - Complete broader performance comparison for the immutable
   upload-cache wrapper. Six controlled v1 seeding pairs show 0.8% lower CPU;
-  this small improvement does not establish full-matrix parity.
+  concurrent v2 pairs improve throughput but leave CPU inconclusive. Many-file
+  performance and full-matrix parity remain unproven.
 - Reduce repeated whole-layout stamp inspection and per-block upload,
   allocation and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.
