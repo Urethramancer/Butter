@@ -4,7 +4,62 @@ import ButterTorrentNetworking
 @testable import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
+// Collect a known fixture burst to deterministically exercise a multi-feed read.
+private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
+	let raw: TCPStream
+	private let lock = NSLock()
+	private var target: Int?
+	private var largest = 0
+	init(_ raw: TCPStream) { self.raw = raw }
+	var remoteEndpoint: NetworkEndpoint? { raw.remoteEndpoint }
+	var kind: PeerTransportKind { .tcp }
+	var largestRead: Int { lock.withLock { largest } }
+	func coalesce(_ count: Int) { lock.withLock { target = count } }
+	func read(maximumBytes: Int, timeout: TimeInterval) async throws -> Data {
+		var bytes = try await raw.read(maximumBytes: maximumBytes, timeout: timeout)
+		let goal = lock.withLock { let count = min(target ?? bytes.count, maximumBytes); target = nil; return count }
+		while bytes.count < goal {
+			let next = try await raw.read(maximumBytes: goal - bytes.count, timeout: timeout)
+			if next.isEmpty { break }; bytes.append(next)
+		}
+		lock.withLock { largest = max(largest, bytes.count) }; return bytes
+	}
+	func write(_ bytes: Data, timeout: TimeInterval) async throws { try await raw.write(bytes, timeout: timeout) }
+	func close() { raw.close() }
+}
+
 @Suite struct TransferWriteBatchTests {
+	@Test(arguments: [false, true], [false, true]) func availableReadSpansDecoderFeedsAndFlushesBeforeControl(_ encrypted: Bool, _ limited: Bool) async throws {
+		try await transferFixture { fixture in
+			var config = plainTransferConfiguration(); config.downloadLimit = limited ? 1048576 : 0
+			if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
+			let down = try await fixture.transfer("download", configuration: config), listener = try await fixture.listen()
+			let endpoint = try NetworkEndpoint("127.0.0.1", port: listener.port), hash = fixture.metadata.hashes.v1!, encryption = config.encryption
+			let connecting = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption) }
+			do {
+				let stream = CoalescingPeerStream(try await listener.accept(timeout: 3))
+				_ = try await down.attach(stream)
+				let channel = try await connecting.value; defer { channel.close() }
+				let peer = WirePeer(channel: channel)
+				try await peer.hello(hash: hash, identity: 42); try await peer.seed(pieceCount: 3)
+				let requests = try await peer.requests(6)
+				var frames = Data()
+				for block in requests {
+					let start = block.piece * 32768 + block.offset
+					frames.append(try PeerMessage.piece(block.piece, block.offset, fixture.bytes.subdata(in: start..<(start + block.length))).encoded())
+				}
+				frames.append(try PeerMessage.choke.encoded()); stream.coalesce(frames.count)
+				try await channel.write(frames)
+				try await eventually {
+					let status = await down.snapshot()
+					return status.verifiedPieces == [0, 1, 2] && status.peers.first?.remoteChoking == true && status.peers.first?.pendingRequests == 0
+				}
+				#expect((stream.largestRead > 65536) == !limited)
+				#expect(stream.largestRead <= (limited ? 65536 : 262144))
+				#expect(await down.snapshot().downloaded == Int64(fixture.bytes.count))
+			} catch { connecting.cancel(); if let channel = try? await connecting.value { channel.close() }; throw error }
+		}
+	}
 	@Test func flushesAvailablePiecesBeforeProcessingAChoke() async throws {
 		try await transferFixture { fixture in
 			let down = try await fixture.transfer("download"), peer = try await fixture.scripted(down)

@@ -242,12 +242,12 @@ public actor TCPTransfer {
 		peers[id] = peer
 		peer.outgoing = outgoing
 		peer.alternateHash = alternateHash; peer.retryTransport = utp
-		let hello = offeredHello ?? hello, rate = uploadRate, timeout = configuration.idleTimeout, encryption = configuration.encryption, clock = clock
+		let hello = offeredHello ?? hello, rate = uploadRate, download = downloadRate, timeout = configuration.idleTimeout, encryption = configuration.encryption, clock = clock
 		let hashes = [metadata.hashes.v1, metadata.hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }
 		peer.task = Task { [weak self] in
 			guard let self else { session.close(); return }
 			var failure: Error?
-			do { try await session.run(id: id, hello: hello, outgoing: outgoing, engine: self, upload: rate, idleTimeout: timeout, hashes: hashes, encryption: encryption, clock: clock) } catch { failure = error }
+			do { try await session.run(id: id, hello: hello, outgoing: outgoing, engine: self, upload: rate, download: download, idleTimeout: timeout, hashes: hashes, encryption: encryption, clock: clock) } catch { failure = error }
 			try? await stream.shutdown()
 			await self.ended(id, error: failure)
 		}

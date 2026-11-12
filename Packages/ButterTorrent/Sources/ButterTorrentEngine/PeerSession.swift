@@ -98,7 +98,52 @@ final class PeerSession: @unchecked Sendable {
 			}
 		}
 	}
-	func run(id: UUID, hello: PeerHandshake, outgoing: Bool, engine: TCPTransfer, upload: TransferRateLimiter, idleTimeout: TimeInterval,
+	private func readInput(_ channel: PeerStream, id: UUID, engine: TCPTransfer, download: TransferRateLimiter, idleTimeout: TimeInterval) async throws {
+		var decoder = PeerWireDecoder(), ready = false, frames = 0
+		while true {
+			var maximum = 65536
+			if stream.kind == .tcp, await download.consumeUnrestrictedBatch() { maximum = 262144 }
+			let bytes = try await channel.read(maximumBytes: maximum, timeout: ready ? idleTimeout : 10)
+			if bytes.isEmpty {
+				guard ready else { throw NetworkFailure.closed }
+				try decoder.finish(); return
+			}
+			var firstBlock: IncomingPieceBlock?, blocks: [IncomingPieceBlock] = [], blockBytes = 0
+			func flushBlocks() async throws {
+				guard let first = firstBlock else { return }
+				let batch = blocks; blocks = []; firstBlock = nil; blockBytes = 0
+				if batch.isEmpty { try await engine.received(id, message: .piece(first.piece, first.offset, first.bytes)) }
+				else { try await engine.receivedBlocks(id, blocks: batch) }
+			}
+			do {
+				// Consume already available bytes through bounded decoder feeds.
+				for offset in stride(from: bytes.startIndex, to: bytes.endIndex, by: 65536) {
+					try Task.checkCancellation()
+					try decoder.feed(bytes[offset..<min(offset + 65536, bytes.endIndex)])
+					if !ready {
+						guard let handshake = try decoder.handshake() else { continue }
+						let features = try await engine.handshaken(id, handshake: handshake); decoder.negotiate(features); ready = true
+					}
+					while let message = try decoder.next() {
+						try Task.checkCancellation()
+						if case .piece(let piece, let offset, let bytes) = message {
+							if bytes.count > 262144 - blockBytes || blocks.count == 16 { try await flushBlocks() }
+							let block = IncomingPieceBlock(piece: piece, offset: offset, bytes: bytes)
+							if let first = firstBlock {
+								if blocks.isEmpty { blocks = [first, block] } else { blocks.append(block) }
+							} else { firstBlock = block }
+							blockBytes += bytes.count
+						} else { try await flushBlocks(); try await engine.received(id, message: message) }
+						frames += 1
+						if frames % 128 == 0 { try await flushBlocks(); await Task.yield() }
+					}
+				}
+			} catch { let failure = error; try await flushBlocks(); throw failure }
+			// Flush a short batch before the next network wait; never wait to fill it.
+			try await flushBlocks()
+		}
+	}
+	func run(id: UUID, hello: PeerHandshake, outgoing: Bool, engine: TCPTransfer, upload: TransferRateLimiter, download: TransferRateLimiter, idleTimeout: TimeInterval,
 		hashes: [Data], encryption: PeerEncryptionConfiguration, clock: any TransportClock) async throws {
 		defer { close() }
 		let channel: PeerStream
@@ -107,45 +152,7 @@ final class PeerSession: @unchecked Sendable {
 		if outgoing { try handshake(hello) }
 		try await withThrowingTaskGroup(of: Void.self) { group in
 			group.addTask { try await self.writeOutput(channel, id: id, engine: engine, upload: upload) }
-			group.addTask {
-				var decoder = PeerWireDecoder(), ready = false, frames = 0
-				while true {
-					let bytes = try await channel.read(timeout: ready ? idleTimeout : 10)
-					if bytes.isEmpty {
-						guard ready else { throw NetworkFailure.closed }
-						try decoder.finish(); return
-					}
-					try decoder.feed(bytes)
-					if !ready {
-						guard let handshake = try decoder.handshake() else { continue }
-						let features = try await engine.handshaken(id, handshake: handshake); decoder.negotiate(features); ready = true
-					}
-					var firstBlock: IncomingPieceBlock?, blocks: [IncomingPieceBlock] = [], blockBytes = 0
-					func flushBlocks() async throws {
-						guard let first = firstBlock else { return }
-						let batch = blocks; blocks = []; firstBlock = nil; blockBytes = 0
-						if batch.isEmpty { try await engine.received(id, message: .piece(first.piece, first.offset, first.bytes)) }
-						else { try await engine.receivedBlocks(id, blocks: batch) }
-					}
-					do {
-						while let message = try decoder.next() {
-							try Task.checkCancellation()
-							if case .piece(let piece, let offset, let bytes) = message {
-								if bytes.count > 262144 - blockBytes || blocks.count == 16 { try await flushBlocks() }
-								let block = IncomingPieceBlock(piece: piece, offset: offset, bytes: bytes)
-								if let first = firstBlock {
-									if blocks.isEmpty { blocks = [first, block] } else { blocks.append(block) }
-								} else { firstBlock = block }
-								blockBytes += bytes.count
-							} else { try await flushBlocks(); try await engine.received(id, message: message) }
-							frames += 1
-							if frames % 128 == 0 { try await flushBlocks(); await Task.yield() }
-						}
-					} catch { let failure = error; try await flushBlocks(); throw failure }
-					// Flush all available frames before the next network wait, including a short batch.
-					try await flushBlocks()
-				}
-			}
+			group.addTask { try await self.readInput(channel, id: id, engine: engine, download: download, idleTimeout: idleTimeout) }
 			do { _ = try await group.next(); group.cancelAll(); close(); try await group.waitForAll() }
 			catch { group.cancelAll(); close(); throw error }
 		}

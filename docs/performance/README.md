@@ -25,6 +25,10 @@ validation reuse and computing only metadata-defined digests. A regressing bulk
 inspection prototype was reverted and retained as negative evidence. These are
 focused experiments, separate from the latest full matrix.
 
+The [available TCP input experiment](input-batching-results-2026-11-12.md)
+reduces focused many-file v2 download CPU by about 4%. Its incremental RSS
+uncertainty and seeding checks are reported explicitly.
+
 Run `Scripts/test-benchmark.sh --full [OUTPUT]` on an otherwise idle Mac.
 `--smoke` checks the harness using 32 MiB and one pair per case; its intervals
 are not acceptance evidence. The optional reference dependency stays pinned to
