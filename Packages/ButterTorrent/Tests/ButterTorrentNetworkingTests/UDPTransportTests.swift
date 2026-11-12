@@ -84,10 +84,16 @@ actor InjectedDatagrams: DatagramTransport {
 		try await dispatcher.shutdown()
 	}
 	@Test func ownsOnePortAndRollsBackFailedUDPBind() async throws {
-		let occupied = try DatagramSocket(bind: NetworkEndpoint("0.0.0.0", port: 0))
-		do { let owner = try await ListeningPort.bind(port: occupied.localEndpoint.port); try await owner.shutdown(); Issue.record("Occupied UDP port accepted") }
+		// Supply an already-bound TCP listener so a TCP collision cannot mask the
+		// intended UDP failure. The same owner keeps both UDP sockets occupied.
+		let occupied = try await ListeningPort.bind()
+		do {
+			let owner = try await ListeningPort.select(port: occupied.port, loopbackOnly: false,
+				clock: ContinuousTransportClock(), budget: occupied.peers, incomingTCP: true, listener: { occupied.tcp })
+			try await owner.shutdown(); Issue.record("Occupied UDP port accepted")
+		}
 		catch { #expect(error as? NetworkFailure == .system(EADDRINUSE)) }
-		let recovered = try await TCPListener.listen(port: occupied.localEndpoint.port)
+		let recovered = try await TCPListener.listen(port: occupied.port)
 		try await recovered.shutdown(); try await occupied.shutdown()
 		let owner = try await ListeningPort.bind(loopbackOnly: true)
 		let port = owner.port

@@ -24,3 +24,11 @@ parent/leaf parity cases remain useful independently of the rejected scanner.
 Raw trials, phase accounting, source/build hashes and fixtures remain in
 `.build/benchmarks/byte-stamp-source-order`; the rejected patch and checks
 remain in `.build/diagnostics/piece-buffer/byte-stamp-*`.
+
+Restoration passes all 351 package tests and both Release builds; all 94
+production source hashes match `7926668`. The first restored package run fails
+in an unchanged UDP rollback fixture: a TCP port collision masks the intended
+UDP bind failure. The fixture now supplies an already-bound listener, preserving
+the exact error and rollback assertions without production changes or retries.
+The failed log remains; [check outcomes and hashes](byte-stamp-validation-2026-11-12.json)
+retain verification evidence after successful routine logs are removed.
