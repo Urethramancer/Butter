@@ -276,16 +276,12 @@ final class StorageState: @unchecked Sendable {
 		} catch { record.set(piece, false); throw error }
 	}
 	private func checkedPiece(_ piece: Int, range: Range<Int>? = nil, before: [FileStamp?], check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
-		// The invalidation scan is also the verification baseline. Keep it across
-		// checkpoint work so replacements in that interval cannot escape detection.
-		let result = try checkedDigest(piece, range: range, check: check)
-		guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
-		return result
-	}
-	func checkedDigest(_ piece: Int, range: Range<Int>? = nil, check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
 		let expected = merkle.expected(piece)
 		if merkle.index.enabled && expected == nil { throw StorageFailure.missingHashes }
+		// The invalidation scan is also the verification baseline. Keep it across
+		// checkpoint work so replacements in that interval cannot escape detection.
 		let result = try digestPiece(piece, range: range, check: check)
+		guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
 		return (result.legacyValid && result.root == expected, result.bytes)
 	}
 	func digestPiece(_ piece: Int, range: Range<Int>? = nil, check: () throws -> Void) throws -> (legacyValid: Bool, root: Data?, bytes: Data) {

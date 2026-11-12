@@ -28,19 +28,18 @@ final class StorageWorker: @unchecked Sendable {
 	private let lock = NSLock()
 	private var pending = 0
 	var pendingCount: Int { lock.withLock { pending } }
-	func run<T: Sendable>(bulk: Bool = false, units: Int = 1, _ operation: @escaping @Sendable (DiskCancellation) throws -> T) async throws -> T {
+	func run<T: Sendable>(bulk: Bool = false, _ operation: @escaping @Sendable (DiskCancellation) throws -> T) async throws -> T {
 		try Task.checkCancellation()
-		guard (1...8).contains(units) else { throw StorageFailure.limit("disk command units") }
-		let admitted = lock.withLock { if units > 8 - pending { return false }; pending += units; return true }
+		let admitted = lock.withLock { if pending >= 8 { return false }; pending += 1; return true }
 		guard admitted else { throw StorageFailure.limit("queued disk commands") }
-		guard Self.budget.acquire(units) else { lock.withLock { pending -= units }; throw StorageFailure.limit("global disk commands") }
+		guard Self.budget.acquire() else { lock.withLock { pending -= 1 }; throw StorageFailure.limit("global disk commands") }
 		let cancellation = DiskCancellation()
 		return try await withTaskCancellationHandler {
 			try await withCheckedThrowingContinuation { continuation in
 				Self.pool.submit(owner: self.owner, bulk: bulk) {
 					let result = Result { try cancellation.check(); return try operation(cancellation) }
-					self.lock.withLock { self.pending -= units }
-					Self.budget.release(units)
+					self.lock.withLock { self.pending -= 1 }
+					Self.budget.release()
 					continuation.resume(with: result)
 				}
 			}
@@ -89,8 +88,8 @@ final class DiskWorkPool: @unchecked Sendable {
 private final class DiskWorkBudget: @unchecked Sendable {
 	private let lock = NSLock()
 	private var pending = 0
-	func acquire(_ units: Int) -> Bool { lock.withLock { guard units <= 64 - pending else { return false }; pending += units; return true } }
-	func release(_ units: Int) { lock.withLock { pending -= units } }
+	func acquire() -> Bool { lock.withLock { guard pending < 64 else { return false }; pending += 1; return true } }
+	func release() { lock.withLock { pending -= 1 } }
 }
 
 /// StorageCoordinator protects paths shared by live native transfers in one process.

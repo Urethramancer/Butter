@@ -49,3 +49,19 @@ getter supports those deterministic tests and does not change scheduling.
 Prototype-only tests are preserved with the rejected patch. Raw results, exact
 source hashes, all failed logs and checks are in
 [`raw/verified-read-batches`](raw/verified-read-batches).
+
+## Explicit upload/cache/storage batches
+
+Also rejected and reverted: six balanced source pairs against `e76027b` give
+CPU 0.999 [0.940–1.010], throughput 1.027 [0.996–1.201] and peak RSS 0.995
+[0.926–1.053]. The same 95% bootstrap method and workload apply. All 28 trials
+verify successfully; neither CPU nor throughput establishes a benefit.
+The prototype explicitly groups up to four requested pieces with shared layout
+checks, independent block cancellation and unchanged logical admission budgets.
+Swift/native medians are 392.2/447.2 MB/s and 4.178/1.923 CPU s/GiB;
+these experimental numbers do not describe retained production changes.
+The candidate passes 358 package tests, followed by 16 focused cache tests
+including an additional partial-failure test. Local raw results and source
+hashes remain in `.build/benchmarks/explicit-read-batches-source-order`, with
+the rejected patch and diagnostic logs in `.build/diagnostics/explicit-read-batches`.
+The restored production package passes all 347 tests. No batching API or weighted admission machinery is retained.

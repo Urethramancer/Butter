@@ -29,20 +29,19 @@ public final class TransferResources: Sendable {
 actor TransferDiskScope {
 	private let local = TransferPermits()
 	private let shared: TransferPermits
-	nonisolated let maximumBatch: Int
 	private var closed = false
-	init(resources: TransferResources) { shared = resources.disk; maximumBatch = min(4, resources.disk.capacity) }
-	func acquire(_ units: Int = 1) async throws {
-		try await local.acquire(units)
+	init(resources: TransferResources) { shared = resources.disk }
+	func acquire() async throws {
+		try await local.acquire()
 		do {
-			try await shared.acquire(units)
+			try await shared.acquire()
 			if closed || Task.isCancelled {
-				await shared.release(units)
+				await shared.release()
 				if Task.isCancelled { throw CancellationError() }; throw PeerFailure.closed
 			}
-		} catch { await local.release(units); throw error }
+		} catch { await local.release(); throw error }
 	}
-	func release(_ units: Int = 1) async { await shared.release(units); await local.release(units) }
+	func release() async { await shared.release(); await local.release() }
 	func close() async { closed = true; await local.close() }
 }
 
