@@ -55,22 +55,23 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 			try await storage.shutdown()
 		}
 	}
-	@Test func verificationSnapshotCoversCheckpointPublicationBeforeHashing() async throws {
+	@Test(arguments: [2, 16]) func verificationSnapshotCoversCheckpointPublicationBeforeHashing(_ fileCount: Int) async throws {
 		try await storageFixture { root in
-			let (metadata, bytes) = try batchMetadata(fileCount: 2, fileSize: 16384)
-			let file = root.appendingPathComponent("data/bundle/file-0"), armed = root.appendingPathComponent("armed")
-			let first = Data(bytes.prefix(16384))
+			let (metadata, bytes) = try batchMetadata(fileCount: fileCount, fileSize: 16384)
+			let firstPiece = fileCount - 1
+			let file = root.appendingPathComponent("data/bundle/file-\(firstPiece)"), armed = root.appendingPathComponent("armed")
+			let first = bytes.subdata(in: (firstPiece * 16384)..<((firstPiece + 1) * 16384))
 			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), checkpointPolicy: .batched(interval: 3600, bytes: 20000), event: { event in
 				if case .progressCheckpointDurable = event, FileManager.default.fileExists(atPath: armed.path) {
 					do { try FileManager.default.removeItem(at: armed); try FileManager.default.removeItem(at: file); try first.write(to: file) }
 					catch { Issue.record(error) }
 				}
 			}, check: {})
-			try state.writeOperations([StorageWrite(piece: 0, offset: 0, data: first), StorageWrite(piece: 1, offset: 0, data: bytes.suffix(16384))], maximumBytes: 262144, maximumCount: 16, check: {})
-			#expect(try state.verify(piece: 0, check: {})); #expect(state.pendingVerifiedBytes == 16384)
+			try state.writeOperations([StorageWrite(piece: firstPiece, offset: 0, data: first), StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384))], maximumBytes: 262144, maximumCount: 16, check: {})
+			#expect(try state.verify(piece: firstPiece, check: {})); #expect(state.pendingVerifiedBytes == 16384)
 			try Data([1]).write(to: armed)
-			#expect(throws: StorageFailure.invalid("payload changed during verification")) { try state.verify(piece: 1, check: {}) }
-			#expect(!state.record.contains(1)); #expect(try state.snapshot().verifiedPieces.isEmpty)
+			#expect(throws: StorageFailure.invalid("payload changed during verification")) { try state.verify(piece: 0, check: {}) }
+			#expect(!state.record.contains(0)); #expect(try state.snapshot().verifiedPieces.isEmpty)
 		}
 	}
 	@Test(arguments: [false, true]) func crossesManyFilesAndEvictsDescriptorsWithoutChangingSelectiveStorage(selective: Bool) async throws {

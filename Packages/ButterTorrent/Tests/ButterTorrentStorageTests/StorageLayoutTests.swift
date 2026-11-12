@@ -73,12 +73,16 @@ private enum ParentProbeError: Error, Equatable { case stopped }
 			}
 		}
 	}
-	@Test func stampScanAnchorsItsParentAndFreshScansObserveReplacement() async throws {
+	@Test(arguments: [false, true]) func stampScanAnchorsItsParentAndFreshScansObserveReplacement(_ warmBulk: Bool) async throws {
 		try await storageFixture { root in
 			let directory = try StorageDirectory(root)
 			try directory.atomic(Data([1]), path: "parent/a"); try directory.atomic(Data([2]), path: "parent/b")
 			let original = try directory.inspect("parent/b"), scan = StorageStampScan()
 			#expect(try scan.inspect("parent/a", in: directory) != nil)
+			if warmBulk {
+				for index in 0..<8 { try directory.atomic(Data([1]), path: "parent/warm-\(index)") }
+				for index in 0..<8 { _ = try scan.inspect("parent/warm-\(index)", in: directory) }
+			}
 			try FileManager.default.moveItem(at: root.appendingPathComponent("parent"), to: root.appendingPathComponent("retained"))
 			try directory.atomic(Data([3]), path: "parent/b")
 			#expect(try scan.inspect("parent/b", in: directory) == original)
