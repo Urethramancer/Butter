@@ -36,6 +36,11 @@ each sanitizer. The restored source also passes the complete 347-test package
 run. No production dispatch change survives. Raw source hashes, fixtures,
 measurements, checks and patch are in [`raw/request-groups`](raw/request-groups).
 
+After restoration, every package source hash matches the baseline manifest.
+The Release package is rebuilt, and current Debug/Release storage and engine
+archives contain no symbols from either rejected prototype. Archive hashes and
+the restoration checks are retained with the raw evidence.
+
 The earlier request-loop prototype predated grouped payload workers; this
 experiment tests the changed ownership context rather than substituting its
 old measurement. Both results remain. A future explicit multi-piece read API
