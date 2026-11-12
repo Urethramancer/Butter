@@ -15,6 +15,28 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 }
 
 @Suite struct StorageWriteBatchTests {
+	@Test(arguments: [false, true]) func interruptedMultiChunkReadDoesNotReturnPartialBytes(truncate: Bool) async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 262147, pieceLength: 524288)
+			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { _ in }, check: {})
+			try state.write(piece: 0, offset: 0, data: bytes, check: {})
+			let file = root.appendingPathComponent("data/bundle/file-0")
+			var checks = 0
+			#expect(throws: (any Error).self) {
+				_ = try state.read(piece: 0, offset: 0, count: bytes.count, verifiedOnly: false, check: {
+					checks += 1
+					if checks == 3 {
+						if truncate { try bytes.prefix(65536).write(to: file) }
+						else { throw CancellationError() }
+					}
+				})
+			}
+			#expect(checks == 3)
+			try bytes.write(to: file)
+			#expect(try state.read(piece: 0, offset: 0, count: bytes.count, verifiedOnly: false, check: {}) == bytes)
+			#expect(try state.verify(piece: 0, check: {}))
+		}
+	}
 	@Test(arguments: [262144, 524288], [false, true]) func verifiedReadGroupsSpanFilesAndKeepSelectiveBytes(pieceLength: Int, selective: Bool) async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: 5, fileSize: 131073, pieceLength: pieceLength)
