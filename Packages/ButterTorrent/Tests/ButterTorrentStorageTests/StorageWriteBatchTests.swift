@@ -119,19 +119,24 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 			#expect(try state.verify(piece: 0, check: {}))
 		}
 	}
-	@Test(arguments: [false, true]) func pathReplacementBetweenBlocksCannotRedirectACachedDescriptor(_ contiguous: Bool) async throws {
+	@Test(arguments: [false, true], [false, true]) func pathReplacementOrHardLinkBetweenBlocksPreservesDescriptorOwnership(_ contiguous: Bool, _ hardLinked: Bool) async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 65536, pieceLength: 32768)
 			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { _ in }, check: {})
 			let file = root.appendingPathComponent("data/bundle/file-0"), original = root.appendingPathComponent("original"), replacement = Data([4, 5, 6])
 			var checks = 0
-			#expect(throws: (any Error).self) {
+			let failure: StorageFailure = hardLinked ? .shared("hard-linked file") : .invalid("payload replaced during write batch")
+			#expect(throws: failure) {
 				try state.writeOperations([StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: contiguous ? 0 : 1, offset: contiguous ? 16384 : 0, data: bytes.subdata(in: contiguous ? 16384..<32768 : 32768..<49152))], maximumBytes: 262144, maximumCount: 16, check: {
 					checks += 1
-					if checks == 3 { try FileManager.default.moveItem(at: file, to: original); try replacement.write(to: file) }
+					if checks == 3 {
+						if hardLinked { try FileManager.default.linkItem(at: file, to: original) }
+						else { try FileManager.default.moveItem(at: file, to: original); try replacement.write(to: file) }
+					}
 				})
 			}
-			#expect(try Data(contentsOf: original) == bytes.prefix(16384)); #expect(try Data(contentsOf: file) == replacement)
+			#expect(try Data(contentsOf: original) == bytes.prefix(16384))
+			#expect(try Data(contentsOf: file) == (hardLinked ? bytes.prefix(16384) : replacement))
 		}
 	}
 	@Test func refreshedFileStampsCannotRedirectAnOpenBatchDescriptor() async throws {
