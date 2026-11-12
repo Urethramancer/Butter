@@ -50,6 +50,24 @@ private func waitForCommands(_ worker: StorageWorker, _ count: Int) async throws
 private enum ReadCancellation: CaseIterable, Sendable { case none, first, second }
 
 @Suite struct StorageConcurrencyTests {
+	@Test(arguments: [false, true]) func multiReadWorkerAdmissionChargesEveryReadWithoutPartialReservation(_ cancel: Bool) async throws {
+		let worker = StorageWorker(), gate = DiskGate(); gate.arm()
+		let active = Task { try await worker.run(units: 5) { cancellation in gate.enter(); try cancellation.check() } }
+		try await gate.wait()
+		do {
+			#expect(worker.pendingCount == 5)
+			await #expect(throws: StorageFailure.limit("queued disk commands")) { try await worker.run(units: 4) { _ in } }
+			#expect(worker.pendingCount == 5)
+			let queued = Task { try await worker.run(units: 3) { _ in } }
+			try await waitForCommands(worker, 8)
+			if cancel { active.cancel() }; gate.release()
+			if cancel { await #expect(throws: CancellationError.self) { try await active.value } }
+			else { try await active.value }
+			try await queued.value
+			#expect(worker.pendingCount == 0)
+			for invalid in [0, 9] { await #expect(throws: StorageFailure.limit("disk command units")) { try await worker.run(units: invalid) { _ in } } }
+		} catch { gate.release(); _ = try? await active.value; throw error }
+	}
 	@Test(arguments: ReadCancellation.allCases, [false, true]) fileprivate func queuedVerifiedReadsCancelIndependently(_ cancellation: ReadCancellation, selective: Bool) async throws {
 		try await blockedVerifiedStorage(selective: selective) { storage, bytes, worker, gate in
 			let first = Task { try await storage.readVerifiedPiece(0) }

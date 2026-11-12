@@ -40,6 +40,21 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 }
 
 @Suite struct TransferResourceTests {
+	@Test(arguments: [2, 3]) func multiReadPermitsAreAtomicAndCancellationUnblocksTheNextWaiter(_ units: Int) async throws {
+		let permits = TransferPermits(units + 1)
+		try await permits.acquire(units)
+		let head = Task { try await permits.acquire(units) }
+		try await eventually { await permits.waitingCount == 1 }
+		let tail = Task { try await permits.acquire() }
+		try await eventually { await permits.waitingCount == 2 }
+		#expect(await permits.activeCount == units)
+		head.cancel(); await #expect(throws: CancellationError.self) { try await head.value }
+		try await engineDeadline { try await tail.value }
+		#expect(await permits.activeCount == units + 1)
+		await permits.release(units); await permits.release()
+		#expect(await permits.activeCount == 0)
+		for invalid in [0, units + 2] { await #expect(throws: PeerFailure.limit("disk batch permits")) { try await permits.acquire(invalid) } }
+	}
 	@Test func cachedUploadsAvoidDiskAdmissionWhileMissesRemainBounded() async throws {
 		try await transferFixture { fixture in
 			let resources = try TransferResources(maximumDiskOperations: 1)

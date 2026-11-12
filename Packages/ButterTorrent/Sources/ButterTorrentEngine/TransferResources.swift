@@ -4,31 +4,38 @@ import ButterTorrentStorage
 
 actor TransferPermits {
 	private var available: Int
-	private let capacity: Int
-	private var waiting: [(UUID, CheckedContinuation<Void, Error>)] = []
+	nonisolated let capacity: Int
+	private var waiting: [(id: UUID, units: Int, continuation: CheckedContinuation<Void, Error>)] = []
 	private var closed = false
 	var waitingCount: Int { waiting.count }
 	var activeCount: Int { capacity - available }
 	init(_ count: Int = 4) { available = count; capacity = count }
-	func acquire() async throws {
+	func acquire(_ units: Int = 1) async throws {
 		try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }
-		if available > 0 { available -= 1; return }
+		guard units > 0, units <= capacity else { throw PeerFailure.limit("disk batch permits") }
+		if waiting.isEmpty, available >= units { available -= units; return }
 		guard waiting.count < 256 else { throw PeerFailure.limit("disk waiters") }
 		let id = UUID()
 		try await withTaskCancellationHandler {
 			try Task.checkCancellation()
-			try await withCheckedThrowingContinuation { continuation in waiting.append((id, continuation)) }
+			try await withCheckedThrowingContinuation { continuation in waiting.append((id, units, continuation)); drain() }
 		} onCancel: { Task { await self.cancel(id) } }
 	}
 	private func cancel(_ id: UUID) {
-		if let index = waiting.firstIndex(where: { $0.0 == id }) { waiting.remove(at: index).1.resume(throwing: CancellationError()) }
+		if let index = waiting.firstIndex(where: { $0.id == id }) { waiting.remove(at: index).continuation.resume(throwing: CancellationError()); drain() }
 	}
-	func release() {
-		if !waiting.isEmpty { waiting.removeFirst().1.resume() } else { available += 1 }
+	func release(_ units: Int = 1) {
+		precondition(units > 0 && units <= capacity - available)
+		available += units; drain()
+	}
+	private func drain() {
+		while let first = waiting.first, first.units <= available {
+			available -= first.units; waiting.removeFirst().continuation.resume()
+		}
 	}
 	func close() {
 		closed = true; let pending = waiting; waiting.removeAll()
-		for (_, continuation) in pending { continuation.resume(throwing: PeerFailure.closed) }
+		for entry in pending { entry.continuation.resume(throwing: PeerFailure.closed) }
 	}
 }
 
