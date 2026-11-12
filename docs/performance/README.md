@@ -19,6 +19,10 @@ The [focused steps and validation](outbound-batching-results-2026-11-12.md)
 record the isolated experiments and exact source revisions for correctness
 checks. No combined workload average substitutes for per-case acceptance.
 
+A subsequent [filesystem inspection experiment](filesystem-results-2026-11-12.md)
+reduces many-file v2 seeding CPU by about 9%, retaining every file inspection.
+It is focused evidence, separate from the latest full matrix.
+
 Run `Scripts/test-benchmark.sh --full [OUTPUT]` on an otherwise idle Mac.
 `--smoke` checks the harness using 32 MiB and one pair per case; its intervals
 are not acceptance evidence. The optional reference dependency stays pinned to

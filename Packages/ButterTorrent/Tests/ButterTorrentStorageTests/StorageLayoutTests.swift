@@ -16,6 +16,27 @@ private func layoutMetadata(_ sizes: [Int], pieces: Data? = nil) throws -> Torre
 }
 
 @Suite struct StorageLayoutTests {
+	@Test(arguments: ["", ".", "..", "a\0b", String(repeating: "a", count: 256), String(repeating: "é", count: 128)])
+	func stampScanValidatesEveryLeafUnderAnAlreadyOpenedParent(_ leaf: String) async throws {
+		try await storageFixture { root in
+			let directory = try StorageDirectory(root), scan = StorageStampScan()
+			try directory.atomic(Data([1]), path: "parent/first")
+			#expect(try scan.inspect("parent/first", in: directory) != nil)
+			#expect(throws: StorageFailure.invalid("relative file path")) { try scan.inspect("parent/" + leaf, in: directory) }
+			#expect(try scan.inspect("parent/first", in: directory) == directory.inspect("parent/first"))
+		}
+	}
+	@Test func stampScanHandlesRootLeavesAndSwitchesBetweenParents() async throws {
+		try await storageFixture { root in
+			let directory = try StorageDirectory(root), scan = StorageStampScan()
+			let paths = ["first", "second", "parent/a", "parent/é", "other/b", "parent/a", "first"]
+			for path in Set(paths) { try directory.atomic(Data([1]), path: path) }
+			for path in paths { #expect(try scan.inspect(path, in: directory) == directory.inspect(path)) }
+			for path in ["parent/./a", "parent/../first", "parent//a", "/first"] {
+				#expect(throws: StorageFailure.invalid("relative file path")) { try scan.inspect(path, in: directory) }
+			}
+		}
+	}
 	@Test func stampScanAnchorsItsParentAndFreshScansObserveReplacement() async throws {
 		try await storageFixture { root in
 			let directory = try StorageDirectory(root)

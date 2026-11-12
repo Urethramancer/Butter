@@ -10,6 +10,16 @@ final class StorageStampScan {
 	private var descriptor: Int32 = -1
 	deinit { if descriptor >= 0 { close(descriptor) } }
 	func inspect(_ path: String, in directory: StorageDirectory) throws -> FileStamp? {
+		// The parent was validated when this scan opened it. Compare exact UTF-8
+		// bytes before reusing that validation; every new leaf still needs validation.
+		let slash = path.lastIndex(of: "/")
+		let parentEnd = slash ?? path.startIndex
+		if !path.hasPrefix("/"), root === directory, let parentPath, path[..<parentEnd].utf8.elementsEqual(parentPath.utf8) {
+			let name = path[(slash.map { path.index(after: $0) } ?? path.startIndex)...]
+			guard path.utf8.count <= 4096, StorageLayout.validComponent(name) else { throw StorageFailure.invalid("relative file path") }
+			guard descriptor >= 0 else { return nil }
+			return try directory.inspect(String(name), at: descriptor)
+		}
 		let parts = try StorageLayout.components(path), parent = parts.dropLast().joined(separator: "/")
 		if root !== directory || parentPath != parent {
 			if descriptor >= 0 { close(descriptor) }; descriptor = -1
