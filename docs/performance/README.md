@@ -13,6 +13,11 @@ and inconclusive. Full native validation passes (466 PASS records). The full
 matrix is recorded above; CPU parity remains unmet.
 The first version's measured download memory cost remains disqualifying.
 
+[Write-parent retention experiment](write-parent-results-2026-11-13.md) is rejected
+and reverted: six balanced source pairs do not establish CPU or throughput
+benefit. New parent-replacement/access contracts remain; current production
+source matches the full matrix above.
+
 [Fresh revised-source many-file CPU profiles](wire-raw-many-hybrid-profile-2026-11-13.md)
 validate both engines after the full matrix. Swift stat/open/close account for
 46.5% of flat Running samples; stored-byte hash sample weights are comparable

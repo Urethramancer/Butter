@@ -48,7 +48,6 @@ extension StorageState {
 			try save()
 		}
 		for piece in pieces { try forgetPendingVerification(piece) }
-		var parent: StorageWriteParent?
 		var files: [Int: Int32] = [:], order: [Int] = []
 		defer { for file in files.values { close(file) } }
 		for index in writes.indices {
@@ -64,15 +63,12 @@ extension StorageState {
 					file = cached
 				} else {
 					if files.count == 8 { let oldest = order.removeFirst(); close(files.removeValue(forKey: oldest)!) }
-					file = try StorageWriteParent.openFile(path, in: directory, cache: &parent); files[segment.file] = file; order.append(segment.file)
+					file = try directory.openFile(path, write: true); files[segment.file] = file; order.append(segment.file)
 				}
 				// Re-check even the first open: replacement can occur after the initial scan.
 				let opened = try directory.stamp(file)
-				guard let current = try StorageWriteParent.inspect(path, in: directory, cache: &parent), current.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
-				if current != record.stamps[segment.file] {
-					// Release the traversal slot before the scan borrows its own parents.
-					parent?.reset(); try invalidateChangedFiles()
-				}
+				guard let current = try directory.inspect(path), current.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
+				if current != record.stamps[segment.file] { try invalidateChangedFiles() }
 				pendingFlush.insert(segment.file)
 				try StorageDirectory.write(write.data[cursor..<(cursor + segment.count)], to: file, offset: segment.offset, check: check)
 				record.stamps[segment.file] = try directory.stamp(file)
