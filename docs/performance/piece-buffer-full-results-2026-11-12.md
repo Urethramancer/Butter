@@ -82,3 +82,13 @@ case, paired intervals, historical independent comparisons, counterpart CPU medi
 and raw-artifact hashes. Full raw records remain locally in
 `.build/benchmarks/piece-buffer-full`; their roughly 2 MiB trial stream is not
 copied into repository documentation. No failed trial or retry is omitted.
+
+The candidate also passes both engine contracts, application lifecycle, 51 native
+storage checks (including real volume failures and killed-child recovery), five
+reference disk checks, nine reference interruption checks, unsigned Debug/Release
+app builds, linkage/licence checks and an unchanged repeat build. The harness
+passes 16 tests with 105 assertions. Temporary fixtures/module caches use workspace
+locations; native storage package tests are serial. Numeric EngineOperations and
+user Xcode edits are unchanged. [Validation results](piece-buffer-validation-2026-11-12.json)
+record outcomes and artefact hashes, including the earlier unsuccessful native
+run with missing temporary paths. Performance acceptance remains unmet.

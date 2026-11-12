@@ -13,8 +13,6 @@
 - Investigate the concurrent v2 seeding throughput loss of 20.0% despite lower
   CPU. The source comparison is inconclusive around a ratio of one; it still
   meets native throughput, but the full-run regression remains open.
-- Complete remaining release acceptance; the latest matrix and both-engine
-  profiles are `b328472` (276 timing and ten profile trials accepted).
 - Reduce repeated whole-layout stamp inspection (40.0% inclusive in many-file
   seeding), file opening, allocation and Network.framework scheduling costs in
   the profiles, preserving stored-byte hashing, ownership checks, cancellation
