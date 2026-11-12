@@ -1,0 +1,1026 @@
+{
+  "method": "whole transfer through durable completion; tested PID Running samples only; inclusive weights overlap; one diagnostic capture per engine/case, not timing acceptance",
+  "source_hashes_match": true,
+  "records": [
+    {
+      "case": [
+        "single",
+        "v1",
+        "download"
+      ],
+      "engine": "Swift",
+      "running": 6079,
+      "missing": 0,
+      "durable_user": 2.510229,
+      "durable_system": 3.717204,
+      "flat": [
+        {
+          "symbol": "start_wqthread",
+          "weight_ns": 632000000,
+          "percent": 10.396446784010529
+        },
+        {
+          "symbol": "pwrite",
+          "weight_ns": 614000000,
+          "percent": 10.100345451554531
+        },
+        {
+          "symbol": "__openat",
+          "weight_ns": 559000000,
+          "percent": 9.195591380161211
+        },
+        {
+          "symbol": "AccelerateCrypto_SHA1_compress",
+          "weight_ns": 507000000,
+          "percent": 8.340187530843888
+        },
+        {
+          "symbol": "close",
+          "weight_ns": 381000000,
+          "percent": 6.267478203651916
+        },
+        {
+          "symbol": "mach_msg2_trap",
+          "weight_ns": 213000000,
+          "percent": 3.5038657673959532
+        },
+        {
+          "symbol": "__workq_kernreturn",
+          "weight_ns": 209000000,
+          "percent": 3.438065471294621
+        },
+        {
+          "symbol": "fstatat",
+          "weight_ns": 207000000,
+          "percent": 3.4051653232439545
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 184000000,
+          "percent": 3.026813620661293
+        },
+        {
+          "symbol": "__recvmsg",
+          "weight_ns": 177000000,
+          "percent": 2.911663102483961
+        },
+        {
+          "symbol": "kevent_id",
+          "weight_ns": 159000000,
+          "percent": 2.615561770027965
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 131000000,
+          "percent": 2.154959697318638
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 89000000,
+          "percent": 1.4640565882546472
+        },
+        {
+          "symbol": "fstat",
+          "weight_ns": 71000000,
+          "percent": 1.167955255798651
+        },
+        {
+          "symbol": "mach_absolute_time",
+          "weight_ns": 63000000,
+          "percent": 1.0363546635959862
+        }
+      ],
+      "inclusive": [
+        {
+          "symbol": "closure #1 in DiskWorkPool.dispatch(_:)",
+          "weight_ns": 2867000000,
+          "percent": 47.16236223063004
+        },
+        {
+          "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 1917000000,
+          "percent": 31.53479190656358
+        },
+        {
+          "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+          "weight_ns": 1191000000,
+          "percent": 19.59203816417174
+        },
+        {
+          "symbol": "specialized StorageState.verify(piece:check:)",
+          "weight_ns": 873000000,
+          "percent": 14.360914624115809
+        },
+        {
+          "symbol": "StorageState.checkedPiece(_:range:before:check:)",
+          "weight_ns": 828000000,
+          "percent": 13.620661292975818
+        },
+        {
+          "symbol": "StorageState.digestPiece(_:range:check:)",
+          "weight_ns": 804000000,
+          "percent": 13.225859516367823
+        },
+        {
+          "symbol": "TCPTransfer.receivedBlocks(_:blocks:)",
+          "weight_ns": 564000000,
+          "percent": 9.277841750287877
+        },
+        {
+          "symbol": "$defer #1 () in StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 345000000,
+          "percent": 5.675275538739925
+        },
+        {
+          "symbol": "PeerSession.writeOutput(_:id:engine:upload:)",
+          "weight_ns": 344000000,
+          "percent": 5.6588254647145915
+        },
+        {
+          "symbol": "StorageState.read(piece:offset:count:verifiedOnly:check:)",
+          "weight_ns": 277000000,
+          "percent": 4.556670505017273
+        },
+        {
+          "symbol": "TCPTransfer.fillAll()",
+          "weight_ns": 253000000,
+          "percent": 4.161868728409278
+        },
+        {
+          "symbol": "TCPTransfer.fill(_:)",
+          "weight_ns": 247000000,
+          "percent": 4.063168284257279
+        }
+      ],
+      "raw_root": ".build/benchmarks/window8-profiler-recheck",
+      "artifacts": {
+        ".build/benchmarks/window8-profiler-recheck/single-v1-download-0-Swift-measured.cpu.json": "d29c8ce6bb1cbdd7fabc67cccf72279648f1d48245e1a4f78c6cbac3fdd33d9c",
+        ".build/benchmarks/window8-profiler-recheck/single-v1-download-0-Swift-measured.samples.xml": "a4b091babd4761bb7438995c73dc9078488a0746e56e7633953e0ea66e8eb73a",
+        ".build/benchmarks/window8-profiler-recheck/single-v1-download-0-Swift-measured.toc.xml": "3ec91dba65c7dce17374d6c567100b290d20bc162bc4fd7c710ef86c76dceffb"
+      }
+    },
+    {
+      "case": [
+        "single",
+        "v1",
+        "download"
+      ],
+      "engine": "libtorrent",
+      "running": 1653,
+      "missing": 72,
+      "durable_user": 0.961078,
+      "durable_system": 0.757647,
+      "flat": [
+        {
+          "symbol": "sha1_block_armv8",
+          "weight_ns": 476000000,
+          "percent": 28.796128251663642
+        },
+        {
+          "symbol": "__recvfrom",
+          "weight_ns": 206000000,
+          "percent": 12.462189957652752
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 171000000,
+          "percent": 10.344827586206897
+        },
+        {
+          "symbol": "pwritev",
+          "weight_ns": 135000000,
+          "percent": 8.166969147005444
+        },
+        {
+          "symbol": "kevent",
+          "weight_ns": 89000000,
+          "percent": 5.384150030248034
+        },
+        {
+          "symbol": "[unavailable backtrace]",
+          "weight_ns": 72000000,
+          "percent": 4.3557168784029034
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 52000000,
+          "percent": 3.145795523290986
+        },
+        {
+          "symbol": "libtorrent::aux::request_a_block(libtorrent::aux::torrent&, libtorrent::aux::peer_connection&)",
+          "weight_ns": 49000000,
+          "percent": 2.9643073200241985
+        },
+        {
+          "symbol": "__psynch_cvwait",
+          "weight_ns": 44000000,
+          "percent": 2.661826981246219
+        },
+        {
+          "symbol": "__psynch_cvsignal",
+          "weight_ns": 34000000,
+          "percent": 2.05686630369026
+        },
+        {
+          "symbol": "libtorrent::aux::peer_connection::on_send_data(boost::system::error_code const&, unsigned long)",
+          "weight_ns": 19000000,
+          "percent": 1.1494252873563218
+        },
+        {
+          "symbol": "mach_continuous_time",
+          "weight_ns": 19000000,
+          "percent": 1.1494252873563218
+        },
+        {
+          "symbol": "__psynch_mutexdrop",
+          "weight_ns": 16000000,
+          "percent": 0.9679370840895342
+        },
+        {
+          "symbol": "__gettimeofday",
+          "weight_ns": 15000000,
+          "percent": 0.9074410163339383
+        },
+        {
+          "symbol": "pthread_mutex_lock",
+          "weight_ns": 15000000,
+          "percent": 0.9074410163339383
+        }
+      ],
+      "inclusive": [
+
+      ],
+      "raw_root": ".build/benchmarks/window8-profiler-recheck",
+      "artifacts": {
+        ".build/benchmarks/window8-profiler-recheck/single-v1-download-0-libtorrent-measured.cpu.json": "5a389b3f48a8e1b6156a05f3e604905f2dfa2004ca0893f5d6e12758546ea51c",
+        ".build/benchmarks/window8-profiler-recheck/single-v1-download-0-libtorrent-measured.samples.xml": "d335fc78cbfe0756f2e2586346752cee26d5dec4671b11751b2a1ecc6e545848",
+        ".build/benchmarks/window8-profiler-recheck/single-v1-download-0-libtorrent-measured.toc.xml": "d120bc3a1f97953fb4236193ec7c154dd42a3ac16ae6d5e060238f1570b3527a"
+      }
+    },
+    {
+      "case": [
+        "single",
+        "v1",
+        "seed"
+      ],
+      "engine": "Swift",
+      "running": 2734,
+      "missing": 0,
+      "durable_user": 1.5798699999999997,
+      "durable_system": 1.2754429999999999,
+      "flat": [
+        {
+          "symbol": "AccelerateCrypto_SHA1_compress",
+          "weight_ns": 482000000,
+          "percent": 17.62984637893197
+        },
+        {
+          "symbol": "start_wqthread",
+          "weight_ns": 279000000,
+          "percent": 10.204828090709583
+        },
+        {
+          "symbol": "mach_msg2_trap",
+          "weight_ns": 240000000,
+          "percent": 8.778346744696416
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 152000000,
+          "percent": 5.5596196049743964
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 147000000,
+          "percent": 5.376737381126555
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 100000000,
+          "percent": 3.6576444769568397
+        },
+        {
+          "symbol": "kevent_id",
+          "weight_ns": 84000000,
+          "percent": 3.0724213606437454
+        },
+        {
+          "symbol": "__workq_kernreturn",
+          "weight_ns": 72000000,
+          "percent": 2.633504023408925
+        },
+        {
+          "symbol": "__openat",
+          "weight_ns": 69000000,
+          "percent": 2.5237746891002195
+        },
+        {
+          "symbol": "__recvmsg",
+          "weight_ns": 58000000,
+          "percent": 2.121433796634967
+        },
+        {
+          "symbol": "mach_absolute_time",
+          "weight_ns": 41000000,
+          "percent": 1.4996342355523042
+        },
+        {
+          "symbol": "__bzero",
+          "weight_ns": 37000000,
+          "percent": 1.3533284564740307
+        },
+        {
+          "symbol": "getsockopt",
+          "weight_ns": 32000000,
+          "percent": 1.1704462326261886
+        },
+        {
+          "symbol": "<deduplicated_symbol>",
+          "weight_ns": 28000000,
+          "percent": 1.024140453547915
+        },
+        {
+          "symbol": "__psynch_mutexwait",
+          "weight_ns": 28000000,
+          "percent": 1.024140453547915
+        }
+      ],
+      "inclusive": [
+        {
+          "symbol": "closure #1 in DiskWorkPool.dispatch(_:)",
+          "weight_ns": 1090000000,
+          "percent": 39.868324798829555
+        },
+        {
+          "symbol": "specialized StorageState.verifiedPiece(_:check:)",
+          "weight_ns": 1076000000,
+          "percent": 39.3562545720556
+        },
+        {
+          "symbol": "StorageState.checkedPiece(_:range:before:check:)",
+          "weight_ns": 1052000000,
+          "percent": 38.47841989758596
+        },
+        {
+          "symbol": "StorageState.digestPiece(_:range:check:)",
+          "weight_ns": 1028000000,
+          "percent": 37.60058522311631
+        },
+        {
+          "symbol": "StorageState.read(piece:offset:count:verifiedOnly:check:)",
+          "weight_ns": 329000000,
+          "percent": 12.033650329188003
+        },
+        {
+          "symbol": "PeerSession.writeOutput(_:id:engine:upload:)",
+          "weight_ns": 270000000,
+          "percent": 9.875640087783468
+        },
+        {
+          "symbol": "closure #1 in TCPTransfer.requestUpload(_:block:)",
+          "weight_ns": 244000000,
+          "percent": 8.92465252377469
+        },
+        {
+          "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+          "weight_ns": 239000000,
+          "percent": 8.741770299926847
+        },
+        {
+          "symbol": "TCPTransfer.finishUploadGroup(_:result:)",
+          "weight_ns": 198000000,
+          "percent": 7.2421360643745425
+        },
+        {
+          "symbol": "PeerSession.send(_:token:block:)",
+          "weight_ns": 176000000,
+          "percent": 6.437454279444038
+        },
+        {
+          "symbol": "PeerSession.enqueue(_:)",
+          "weight_ns": 127000000,
+          "percent": 4.6452084857351865
+        },
+        {
+          "symbol": "TCPTransfer.received(_:message:)",
+          "weight_ns": 120000000,
+          "percent": 4.389173372348208
+        }
+      ],
+      "raw_root": ".build/benchmarks/window8-seed-profiles",
+      "artifacts": {
+        ".build/benchmarks/window8-seed-profiles/single-v1-seed-0-Swift-measured.cpu.json": "68d2d0ab04fc2c450322a033c96bd1fac750493868cd3d290cb8e5846cec78d5",
+        ".build/benchmarks/window8-seed-profiles/single-v1-seed-0-Swift-measured.samples.xml": "906ea10642d0721b921c8818858881195d61a31eb4a96683f0ab46ad6f09eaee",
+        ".build/benchmarks/window8-seed-profiles/single-v1-seed-0-Swift-measured.toc.xml": "496cde798da281910daa8dc5568ea156dc983723d6988b04fa31774ddc7b14a1"
+      }
+    },
+    {
+      "case": [
+        "single",
+        "v1",
+        "seed"
+      ],
+      "engine": "libtorrent",
+      "running": 1677,
+      "missing": 0,
+      "durable_user": 0.39972500000000005,
+      "durable_system": 1.388033,
+      "flat": [
+        {
+          "symbol": "pread",
+          "weight_ns": 302000000,
+          "percent": 18.00834824090638
+        },
+        {
+          "symbol": "__psynch_mutexwait",
+          "weight_ns": 249000000,
+          "percent": 14.847942754919499
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 214000000,
+          "percent": 12.76088252832439
+        },
+        {
+          "symbol": "__psynch_cvwait",
+          "weight_ns": 148000000,
+          "percent": 8.825283243887895
+        },
+        {
+          "symbol": "__psynch_mutexdrop",
+          "weight_ns": 148000000,
+          "percent": 8.825283243887895
+        },
+        {
+          "symbol": "kevent",
+          "weight_ns": 106000000,
+          "percent": 6.320810971973763
+        },
+        {
+          "symbol": "__recvfrom",
+          "weight_ns": 59000000,
+          "percent": 3.5181872391174718
+        },
+        {
+          "symbol": "mach_continuous_time",
+          "weight_ns": 56000000,
+          "percent": 3.3392963625521763
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 41000000,
+          "percent": 2.444841979725701
+        },
+        {
+          "symbol": "__psynch_cvbroad",
+          "weight_ns": 39000000,
+          "percent": 2.3255813953488373
+        },
+        {
+          "symbol": "pthread_mutex_lock",
+          "weight_ns": 34000000,
+          "percent": 2.0274299344066784
+        },
+        {
+          "symbol": "__gettimeofday",
+          "weight_ns": 23000000,
+          "percent": 1.3714967203339297
+        },
+        {
+          "symbol": "pthread_mutex_unlock",
+          "weight_ns": 20000000,
+          "percent": 1.1926058437686344
+        },
+        {
+          "symbol": "libtorrent::counters::inc_stats_counter(int, long long)",
+          "weight_ns": 9000000,
+          "percent": 0.5366726296958855
+        },
+        {
+          "symbol": "write",
+          "weight_ns": 8000000,
+          "percent": 0.4770423375074538
+        }
+      ],
+      "inclusive": [
+
+      ],
+      "raw_root": ".build/benchmarks/window8-seed-profiles",
+      "artifacts": {
+        ".build/benchmarks/window8-seed-profiles/single-v1-seed-0-libtorrent-measured.cpu.json": "7686941b26a1a653cbe204db3cf592c26031fcb5dc9871fa5eef4dda2cf530de",
+        ".build/benchmarks/window8-seed-profiles/single-v1-seed-0-libtorrent-measured.samples.xml": "81ca0b1b490e135de98e5afe548432633ce386fada48112b6d814197bab0b0a8",
+        ".build/benchmarks/window8-seed-profiles/single-v1-seed-0-libtorrent-measured.toc.xml": "e1efd35e84648118c31bb06fe4ec4024e472910e42ede2ba2a08ae45f559b6f4"
+      }
+    },
+    {
+      "case": [
+        "single",
+        "hybrid",
+        "download"
+      ],
+      "engine": "Swift",
+      "running": 5558,
+      "missing": 8,
+      "durable_user": 2.788559,
+      "durable_system": 3.0869329999999997,
+      "flat": [
+        {
+          "symbol": "AccelerateCrypto_SHA1_compress",
+          "weight_ns": 479000000,
+          "percent": 8.618207988485066
+        },
+        {
+          "symbol": "AccelerateCrypto_SHA256_compress",
+          "weight_ns": 468000000,
+          "percent": 8.420295070169125
+        },
+        {
+          "symbol": "__openat",
+          "weight_ns": 461000000,
+          "percent": 8.294350485786254
+        },
+        {
+          "symbol": "pwrite",
+          "weight_ns": 456000000,
+          "percent": 8.204390068369918
+        },
+        {
+          "symbol": "close",
+          "weight_ns": 403000000,
+          "percent": 7.250809643756747
+        },
+        {
+          "symbol": "start_wqthread",
+          "weight_ns": 403000000,
+          "percent": 7.250809643756747
+        },
+        {
+          "symbol": "__workq_kernreturn",
+          "weight_ns": 187000000,
+          "percent": 3.364519611370997
+        },
+        {
+          "symbol": "mach_msg2_trap",
+          "weight_ns": 176000000,
+          "percent": 3.166606693055056
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 168000000,
+          "percent": 3.022670025188917
+        },
+        {
+          "symbol": "__recvmsg",
+          "weight_ns": 160000000,
+          "percent": 2.878733357322778
+        },
+        {
+          "symbol": "fstatat",
+          "weight_ns": 155000000,
+          "percent": 2.7887729399064414
+        },
+        {
+          "symbol": "kevent_id",
+          "weight_ns": 125000000,
+          "percent": 2.24901043540842
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 107000000,
+          "percent": 1.9251529327096077
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 96000000,
+          "percent": 1.7272400143936668
+        },
+        {
+          "symbol": "fstat",
+          "weight_ns": 74000000,
+          "percent": 1.3314141777617847
+        }
+      ],
+      "inclusive": [
+        {
+          "symbol": "closure #1 in DiskWorkPool.dispatch(_:)",
+          "weight_ns": 3139000000,
+          "percent": 56.47715005397625
+        },
+        {
+          "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 1610000000,
+          "percent": 28.96725440806045
+        },
+        {
+          "symbol": "specialized StorageState.verify(piece:check:)",
+          "weight_ns": 1457000000,
+          "percent": 26.214465635120547
+        },
+        {
+          "symbol": "StorageState.checkedPiece(_:range:before:check:)",
+          "weight_ns": 1412000000,
+          "percent": 25.404821878373514
+        },
+        {
+          "symbol": "StorageState.digestPiece(_:range:check:)",
+          "weight_ns": 1386000000,
+          "percent": 24.937027707808564
+        },
+        {
+          "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+          "weight_ns": 928000000,
+          "percent": 16.69665347247211
+        },
+        {
+          "symbol": "TCPTransfer.receivedBlocks(_:blocks:)",
+          "weight_ns": 460000000,
+          "percent": 8.276358402302987
+        },
+        {
+          "symbol": "$defer #1 () in StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 364000000,
+          "percent": 6.54911838790932
+        },
+        {
+          "symbol": "StorageState.read(piece:offset:count:verifiedOnly:check:)",
+          "weight_ns": 295000000,
+          "percent": 5.307664627563872
+        },
+        {
+          "symbol": "PeerSession.writeOutput(_:id:engine:upload:)",
+          "weight_ns": 260000000,
+          "percent": 4.6779417056495145
+        },
+        {
+          "symbol": "TCPTransfer.fillAll()",
+          "weight_ns": 229000000,
+          "percent": 4.120187117668226
+        },
+        {
+          "symbol": "TCPTransfer.fill(_:)",
+          "weight_ns": 225000000,
+          "percent": 4.048218783735156
+        }
+      ],
+      "raw_root": ".build/benchmarks/window8-hybrid-profiles",
+      "artifacts": {
+        ".build/benchmarks/window8-hybrid-profiles/single-hybrid-download-0-Swift-measured.cpu.json": "e1ecab4329e19175f6285d6efcc67068751317c282772f7742a0503a80a82892",
+        ".build/benchmarks/window8-hybrid-profiles/single-hybrid-download-0-Swift-measured.samples.xml": "8907fc891af8e213ed32424d7b77ed55b1e2e3b2c7f9c12a52f91d93fffd6fa8",
+        ".build/benchmarks/window8-hybrid-profiles/single-hybrid-download-0-Swift-measured.toc.xml": "dd192d536dcddf3cd0f99bbba15c075882e648f07e370207793200b6192c0b83"
+      }
+    },
+    {
+      "case": [
+        "single",
+        "hybrid",
+        "download"
+      ],
+      "engine": "libtorrent",
+      "running": 2250,
+      "missing": 133,
+      "durable_user": 1.470137,
+      "durable_system": 0.921235,
+      "flat": [
+        {
+          "symbol": "sha1_block_armv8",
+          "weight_ns": 509000000,
+          "percent": 22.622222222222224
+        },
+        {
+          "symbol": "sha256_block_armv8",
+          "weight_ns": 436000000,
+          "percent": 19.377777777777776
+        },
+        {
+          "symbol": "__recvfrom",
+          "weight_ns": 179000000,
+          "percent": 7.955555555555556
+        },
+        {
+          "symbol": "pwritev",
+          "weight_ns": 150000000,
+          "percent": 6.666666666666667
+        },
+        {
+          "symbol": "[unavailable backtrace]",
+          "weight_ns": 133000000,
+          "percent": 5.911111111111111
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 120000000,
+          "percent": 5.333333333333333
+        },
+        {
+          "symbol": "kevent",
+          "weight_ns": 99000000,
+          "percent": 4.4
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 66000000,
+          "percent": 2.933333333333333
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 55000000,
+          "percent": 2.4444444444444446
+        },
+        {
+          "symbol": "libtorrent::aux::request_a_block(libtorrent::aux::torrent&, libtorrent::aux::peer_connection&)",
+          "weight_ns": 44000000,
+          "percent": 1.9555555555555555
+        },
+        {
+          "symbol": "__psynch_cvwait",
+          "weight_ns": 31000000,
+          "percent": 1.3777777777777778
+        },
+        {
+          "symbol": "__psynch_cvsignal",
+          "weight_ns": 20000000,
+          "percent": 0.8888888888888888
+        },
+        {
+          "symbol": "libtorrent::aux::disk_cache::flush_to_disk(std::__1::function<int (libtorrent::bitfield&, libtorrent::span<libtorrent::aux::disk_job* const>)>, int, std::__1::function<void (libtorrent::aux::tailqueue<libtorrent::aux::disk_job>, libtorrent::aux::disk_job*)>, bool)",
+          "weight_ns": 19000000,
+          "percent": 0.8444444444444444
+        },
+        {
+          "symbol": "mach_continuous_time",
+          "weight_ns": 19000000,
+          "percent": 0.8444444444444444
+        },
+        {
+          "symbol": "__psynch_mutexdrop",
+          "weight_ns": 17000000,
+          "percent": 0.7555555555555555
+        }
+      ],
+      "inclusive": [
+
+      ],
+      "raw_root": ".build/benchmarks/window8-hybrid-profiles",
+      "artifacts": {
+        ".build/benchmarks/window8-hybrid-profiles/single-hybrid-download-0-libtorrent-measured.cpu.json": "a0eced4d5657cb24b95881abf029f3c3bc7b18945b40f53d56ee5a1270807d6f",
+        ".build/benchmarks/window8-hybrid-profiles/single-hybrid-download-0-libtorrent-measured.samples.xml": "0a9ad908e0896f25fd95c51616f6829832fcecd29b54a8e33bef140d5b4252b8",
+        ".build/benchmarks/window8-hybrid-profiles/single-hybrid-download-0-libtorrent-measured.toc.xml": "44c150e6253f4d8b0acba0c00f3cde493a1359cf500c508f3ea9c005b3c7def2"
+      }
+    },
+    {
+      "case": [
+        "many",
+        "hybrid",
+        "download"
+      ],
+      "engine": "Swift",
+      "running": 11080,
+      "missing": 0,
+      "durable_user": 4.364472,
+      "durable_system": 6.864408,
+      "flat": [
+        {
+          "symbol": "fstatat",
+          "weight_ns": 2694000000,
+          "percent": 24.314079422382672
+        },
+        {
+          "symbol": "__openat",
+          "weight_ns": 1782000000,
+          "percent": 16.08303249097473
+        },
+        {
+          "symbol": "close",
+          "weight_ns": 609000000,
+          "percent": 5.496389891696751
+        },
+        {
+          "symbol": "pwrite",
+          "weight_ns": 575000000,
+          "percent": 5.189530685920578
+        },
+        {
+          "symbol": "AccelerateCrypto_SHA256_compress",
+          "weight_ns": 461000000,
+          "percent": 4.1606498194945845
+        },
+        {
+          "symbol": "AccelerateCrypto_SHA1_compress",
+          "weight_ns": 429000000,
+          "percent": 3.871841155234657
+        },
+        {
+          "symbol": "start_wqthread",
+          "weight_ns": 353000000,
+          "percent": 3.1859205776173285
+        },
+        {
+          "symbol": "mach_msg2_trap",
+          "weight_ns": 261000000,
+          "percent": 2.3555956678700363
+        },
+        {
+          "symbol": "__workq_kernreturn",
+          "weight_ns": 173000000,
+          "percent": 1.5613718411552346
+        },
+        {
+          "symbol": "__recvmsg",
+          "weight_ns": 164000000,
+          "percent": 1.48014440433213
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 144000000,
+          "percent": 1.2996389891696751
+        },
+        {
+          "symbol": "String.subscript.getter",
+          "weight_ns": 101000000,
+          "percent": 0.9115523465703971
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 91000000,
+          "percent": 0.8212996389891697
+        },
+        {
+          "symbol": "kevent_id",
+          "weight_ns": 86000000,
+          "percent": 0.776173285198556
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 83000000,
+          "percent": 0.7490974729241877
+        }
+      ],
+      "inclusive": [
+        {
+          "symbol": "closure #1 in DiskWorkPool.dispatch(_:)",
+          "weight_ns": 8717000000,
+          "percent": 78.67328519855596
+        },
+        {
+          "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 5733000000,
+          "percent": 51.74187725631769
+        },
+        {
+          "symbol": "StorageState.stamps()",
+          "weight_ns": 4431000000,
+          "percent": 39.99097472924188
+        },
+        {
+          "symbol": "closure #1 in StorageState.stamps()",
+          "weight_ns": 4380000000,
+          "percent": 39.53068592057762
+        },
+        {
+          "symbol": "StorageState.invalidateChangedFiles()",
+          "weight_ns": 3716000000,
+          "percent": 33.537906137184116
+        },
+        {
+          "symbol": "specialized StorageState.verify(piece:check:)",
+          "weight_ns": 2896000000,
+          "percent": 26.137184115523464
+        },
+        {
+          "symbol": "StorageState.checkedPiece(_:range:before:check:)",
+          "weight_ns": 2054000000,
+          "percent": 18.537906137184116
+        },
+        {
+          "symbol": "StorageState.digestPiece(_:range:check:)",
+          "weight_ns": 1317000000,
+          "percent": 11.886281588447654
+        },
+        {
+          "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+          "weight_ns": 1031000000,
+          "percent": 9.30505415162455
+        },
+        {
+          "symbol": "$defer #1 () in StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 506000000,
+          "percent": 4.566787003610108
+        },
+        {
+          "symbol": "TCPTransfer.receivedBlocks(_:blocks:)",
+          "weight_ns": 504000000,
+          "percent": 4.548736462093863
+        },
+        {
+          "symbol": "StorageState.read(piece:offset:count:verifiedOnly:check:)",
+          "weight_ns": 287000000,
+          "percent": 2.5902527075812274
+        }
+      ],
+      "raw_root": ".build/benchmarks/window8-hybrid-profiles",
+      "artifacts": {
+        ".build/benchmarks/window8-hybrid-profiles/many-hybrid-download-0-Swift-measured.cpu.json": "cb1623e8319dafedc5e07dca89da73baf7b075150c8a710821f919aab1a3e78f",
+        ".build/benchmarks/window8-hybrid-profiles/many-hybrid-download-0-Swift-measured.samples.xml": "1c684702737962a01779a73572d9a576e654248dd4d408b20e888281ad24a0ad",
+        ".build/benchmarks/window8-hybrid-profiles/many-hybrid-download-0-Swift-measured.toc.xml": "ceec09ac4462e04c21085bd0ab10ad2f55eb98768a4cde8ef441adf9bbad3101"
+      }
+    },
+    {
+      "case": [
+        "many",
+        "hybrid",
+        "download"
+      ],
+      "engine": "libtorrent",
+      "running": 2469,
+      "missing": 8,
+      "durable_user": 1.562866,
+      "durable_system": 0.9364509999999999,
+      "flat": [
+        {
+          "symbol": "sha1_block_armv8",
+          "weight_ns": 483000000,
+          "percent": 19.56257594167679
+        },
+        {
+          "symbol": "sha256_block_armv8",
+          "weight_ns": 465000000,
+          "percent": 18.833535844471445
+        },
+        {
+          "symbol": "__recvfrom",
+          "weight_ns": 173000000,
+          "percent": 7.006885378695828
+        },
+        {
+          "symbol": "close",
+          "weight_ns": 164000000,
+          "percent": 6.642365330093155
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 156000000,
+          "percent": 6.318347509113001
+        },
+        {
+          "symbol": "pwritev",
+          "weight_ns": 154000000,
+          "percent": 6.237343053867963
+        },
+        {
+          "symbol": "kevent",
+          "weight_ns": 94000000,
+          "percent": 3.8072093965168086
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 66000000,
+          "percent": 2.67314702308627
+        },
+        {
+          "symbol": "libtorrent::aux::request_a_block(libtorrent::aux::torrent&, libtorrent::aux::peer_connection&)",
+          "weight_ns": 57000000,
+          "percent": 2.3086269744835968
+        },
+        {
+          "symbol": "__open",
+          "weight_ns": 51000000,
+          "percent": 2.0656136087484813
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 39000000,
+          "percent": 1.5795868772782502
+        },
+        {
+          "symbol": "libtorrent::merkle_num_leafs(int)",
+          "weight_ns": 35000000,
+          "percent": 1.4175779667881734
+        },
+        {
+          "symbol": "libtorrent::merkle_num_layers(int)",
+          "weight_ns": 31000000,
+          "percent": 1.2555690562980963
+        },
+        {
+          "symbol": "__psynch_cvsignal",
+          "weight_ns": 30000000,
+          "percent": 1.2150668286755772
+        },
+        {
+          "symbol": "libtorrent::aux::hash_picker::pick_hashes(libtorrent::typed_bitfield<libtorrent::aux::strong_typedef<int, libtorrent::aux::piece_index_tag, void>> const&)",
+          "weight_ns": 30000000,
+          "percent": 1.2150668286755772
+        }
+      ],
+      "inclusive": [
+
+      ],
+      "raw_root": ".build/benchmarks/window8-hybrid-profiles",
+      "artifacts": {
+        ".build/benchmarks/window8-hybrid-profiles/many-hybrid-download-0-libtorrent-measured.cpu.json": "b139aebbf5109a28d59b6d3c7047e45b45163eefec385d5eb71dd998811b88e7",
+        ".build/benchmarks/window8-hybrid-profiles/many-hybrid-download-0-libtorrent-measured.samples.xml": "afd34a9508de12eedbfdeb7134da34306608b545b32c19945f81763b58d38139",
+        ".build/benchmarks/window8-hybrid-profiles/many-hybrid-download-0-libtorrent-measured.toc.xml": "786fdc33843ebe18ff6c4c67963d0b87772fb18de7110a6a32ce5ee55b337425"
+      }
+    }
+  ]
+}

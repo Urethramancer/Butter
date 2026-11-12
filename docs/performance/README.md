@@ -1,5 +1,10 @@
 # Swift/libtorrent transfer comparison
 
+[Fresh current-source Running CPU profiles](window8-current-profiles-2026-11-12.md)
+validate all eight prescribed captures after the profiler recheck. They identify
+filesystem work in downloads and stored-byte verification/output work in seeding.
+These diagnostics do not establish performance acceptance.
+
 The [descriptor-identity experiment](fd-identity-results-2026-11-12.md) completes
 28 validated source trials but establishes no CPU or throughput benefit and is
 reverted. Its raw median is 290.3 MB/s and 4.650 CPU s/GiB; the paired CPU
