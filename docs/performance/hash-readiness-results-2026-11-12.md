@@ -27,8 +27,11 @@ Native-relative acceptance remains unmet: paired CPU ratio 2.624
 [2.372–2.689] exceeds 1.25 and throughput 0.474 [0.465–0.504] is below 0.90.
 This focused result does not replace the eighteen-case full matrix. All 337
 package tests pass, including sparse/poisoned hash proofs and hybrid staging;
-eighteen focused tests in three suites also pass. Broader native validation and
-the final full candidate matrix remain separate requirements.
+eighteen focused tests in three suites also pass. The pinned native reference
+suite passes all 466 checks for committed source `317c80d`, including encrypted
+TCP, µTP, sparse/hybrid authentication, discovery and web-seed transfers.
+The five ProtocolV2 tests also pass under each of Address and Thread Sanitizer.
+The final full candidate matrix and broader release checks remain outstanding.
 
 [All trials](raw/wanted-hash-readiness-single-hybrid/trials.jsonl),
 [native ratios](raw/wanted-hash-readiness-single-hybrid/summary.json),

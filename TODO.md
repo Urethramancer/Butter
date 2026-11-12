@@ -6,6 +6,9 @@
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
   10% of baseline. The [full results](docs/performance/framed-window-results-2026-11-12.md)
   pass memory in all eighteen cases and throughput in nine, but fail CPU throughout.
+- Rerun the full matrix and release acceptance for the final candidate. The
+  [focused hash-readiness change](docs/performance/hash-readiness-results-2026-11-12.md)
+  reduces hybrid single-file download CPU 13.4%, but still misses native parity.
 - Reduce repeated whole-layout stamp inspection and per-block upload,
   allocation and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.
