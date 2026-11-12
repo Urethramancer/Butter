@@ -4,10 +4,10 @@
 
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
-  10% of baseline. The [full results](docs/performance/tcp-batching-results-2026-11-12.md)
-  pass memory throughout but fail CPU in all eighteen cases. Refresh the full
-  matrix with the filesystem, input, cache-admission, upload-window and batch
-  cancellation improvements.
+  10% of baseline. The [full results](docs/performance/framed-window-results-2026-11-12.md)
+  pass memory in all eighteen cases and throughput in nine, but fail CPU throughout.
+- Investigate the 2.8% CPU increase in single-file hybrid download against the
+  preceding full candidate; its independent interval remains above one.
 - Reduce repeated whole-layout stamp inspection and per-block upload,
   allocation and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.

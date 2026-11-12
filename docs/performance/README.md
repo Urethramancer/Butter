@@ -6,34 +6,34 @@ and peak RSS within 10% of the fresh Swift baseline. Results are per workload;
 there is no combined performance score. Encryption and µTP remain correctness
 regressions, outside this throughput milestone.
 
-The [latest full comparison](tcp-batching-results-2026-11-12.md) retains 276
-accepted trials after TCP batching, cached wanted completion and bounded
-verification-read groups. Memory passes all eighteen cases, seven meet
-throughput, and every case still fails CPU. Single-file v1 and hybrid seeding
-throughput remain inconclusive after twelve pairs. CPU fell 16–45% across case
-medians against the [preceding full candidate](snapshot-reuse-results-2026-11-12.md),
-with all eighteen independent CPU ratio intervals below one. The reports retain
-every case, uncertainty interval and raw artifact separately.
+The [latest full comparison](framed-window-results-2026-11-12.md) retains 252
+accepted trials and no failures for production source `1931e70`. Memory passes
+all eighteen cases, nine meet throughput, and every case still fails CPU. All
+cases finish six measured pairs without an acceptance interval crossing a
+threshold. Against the [preceding full candidate](tcp-batching-results-2026-11-12.md),
+fourteen independent CPU intervals improve, single-file hybrid download uses
+2.8% more CPU and three comparisons remain inconclusive. Per-case measured peak
+RSS spans 15–48 MiB. Every case, uncertainty interval and raw artifact is retained.
 
 The [focused steps and validation](outbound-batching-results-2026-11-12.md)
 record the isolated experiments and exact source revisions for correctness
 checks. No combined workload average substitutes for per-case acceptance.
 
-A subsequent [filesystem inspection experiment](filesystem-results-2026-11-12.md)
+The earlier [filesystem inspection steps](filesystem-results-2026-11-12.md)
 reduces many-file v2 seeding CPU from 9.00 to 7.92 s/GiB through parent-path
 validation reuse and computing only metadata-defined digests. A regressing bulk
-inspection prototype was reverted and retained as negative evidence. These are
-focused experiments, separate from the latest full matrix.
+inspection prototype was reverted and retained as negative evidence. The
+retained parent-path and digest changes are included in the latest full matrix.
 
 The [available TCP input experiment](input-batching-results-2026-11-12.md)
 reduces focused many-file v2 download CPU by about 4%. Its incremental RSS
 uncertainty and seeding checks are reported explicitly.
 
-The subsequent [partial cache-admission matrix](cache-admission-partial-results-2026-11-12.md)
+The earlier [partial cache-admission matrix](cache-admission-partial-results-2026-11-12.md)
 completed eight cases before a repeated many-file v1 seeding stall stopped the
 run for investigation. All 117 records, including the interrupted next trial,
 remain. Single-file seeding exceeds native throughput but CPU remains above
-the target. This partial run does not replace the latest completed full matrix.
+the target. The interrupted and slow trials remain alongside the corrected run.
 
 The [corrected upload advertisement](advertised-window-results-2026-11-12.md)
 fits full-sized framed payloads within the existing output budget. Six fresh

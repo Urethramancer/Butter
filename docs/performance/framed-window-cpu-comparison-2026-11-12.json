@@ -1,0 +1,262 @@
+{
+  "method": "independent median percentile bootstrap, 10000 resamples, 95%; CPU through durable completion; new/previous; no cross-commit pairing",
+  "random_seed": 11011,
+  "input_sha256": [
+    "11536d26707e4d24b14eb46f4c19c09492a433b0913be0292434a9402fafbbba",
+    "f209af126ddfb50b52fb43adc52264e44954840578117519b2651ae1347879e8"
+  ],
+  "cases": [
+    {
+      "case": [
+        "single",
+        "v1",
+        "download"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 5.330819,
+      "new_cpu": 5.0679265000000004,
+      "ratio": 0.9506844070301393,
+      "lower": 0.9198574582525367,
+      "upper": 0.9804413566149188
+    },
+    {
+      "case": [
+        "single",
+        "v1",
+        "seed"
+      ],
+      "previous_samples": 12,
+      "new_samples": 6,
+      "previous_cpu": 4.434123,
+      "new_cpu": 3.2880735,
+      "ratio": 0.7415386312017055,
+      "lower": 0.7326942086846066,
+      "upper": 0.7458356210278184
+    },
+    {
+      "case": [
+        "single",
+        "v2",
+        "download"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 7.009919,
+      "new_cpu": 6.456293,
+      "ratio": 0.9210224825707686,
+      "lower": 0.9120243362405568,
+      "upper": 0.9573053697677896
+    },
+    {
+      "case": [
+        "single",
+        "v2",
+        "seed"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 5.0561375,
+      "new_cpu": 3.4128510000000003,
+      "ratio": 0.6749917303475232,
+      "lower": 0.669360838348321,
+      "upper": 0.682435105329723
+    },
+    {
+      "case": [
+        "single",
+        "hybrid",
+        "download"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 6.758903,
+      "new_cpu": 6.950067499999999,
+      "ratio": 1.0282833619597735,
+      "lower": 1.0006877595373094,
+      "upper": 1.073747515827999
+    },
+    {
+      "case": [
+        "single",
+        "hybrid",
+        "seed"
+      ],
+      "previous_samples": 12,
+      "new_samples": 6,
+      "previous_cpu": 5.3267945,
+      "new_cpu": 3.844486,
+      "ratio": 0.7217259836098426,
+      "lower": 0.715171797542097,
+      "upper": 0.7279017374695154
+    },
+    {
+      "case": [
+        "many",
+        "v1",
+        "download"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 11.789442000000001,
+      "new_cpu": 11.1916055,
+      "ratio": 0.9492905177361235,
+      "lower": 0.9156510951232637,
+      "upper": 0.9728377552131464
+    },
+    {
+      "case": [
+        "many",
+        "v1",
+        "seed"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 8.084948,
+      "new_cpu": 5.0467395,
+      "ratio": 0.6242142188174865,
+      "lower": 0.6190411889169495,
+      "upper": 0.6382773729441559
+    },
+    {
+      "case": [
+        "many",
+        "v2",
+        "download"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 13.954293,
+      "new_cpu": 12.07681,
+      "ratio": 0.8654548102150357,
+      "lower": 0.8518766041210065,
+      "upper": 0.9078179902908288
+    },
+    {
+      "case": [
+        "many",
+        "v2",
+        "seed"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 9.001181500000001,
+      "new_cpu": 5.1652815,
+      "ratio": 0.5738448335921233,
+      "lower": 0.5520433576978052,
+      "upper": 0.5856693444602554
+    },
+    {
+      "case": [
+        "many",
+        "hybrid",
+        "download"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 13.720541,
+      "new_cpu": 12.4130025,
+      "ratio": 0.9047021177955008,
+      "lower": 0.8823191092204191,
+      "upper": 0.9614439401478411
+    },
+    {
+      "case": [
+        "many",
+        "hybrid",
+        "seed"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 9.279393500000001,
+      "new_cpu": 5.5588145,
+      "ratio": 0.5990493344204014,
+      "lower": 0.5846792694778601,
+      "upper": 0.6313541435556305
+    },
+    {
+      "case": [
+        "concurrent",
+        "v1",
+        "download"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 7.5552905,
+      "new_cpu": 7.4184245,
+      "ratio": 0.9818847468538768,
+      "lower": 0.9604456078886768,
+      "upper": 1.005498467922978
+    },
+    {
+      "case": [
+        "concurrent",
+        "v1",
+        "seed"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 5.7296365,
+      "new_cpu": 3.5642945,
+      "ratio": 0.622080388520284,
+      "lower": 0.5931660760678273,
+      "upper": 0.6547551810176032
+    },
+    {
+      "case": [
+        "concurrent",
+        "v2",
+        "download"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 8.124479000000001,
+      "new_cpu": 8.255329,
+      "ratio": 1.016105648128329,
+      "lower": 0.9738068442064177,
+      "upper": 1.0419922070161993
+    },
+    {
+      "case": [
+        "concurrent",
+        "v2",
+        "seed"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 6.2235700000000005,
+      "new_cpu": 4.025112,
+      "ratio": 0.6467529087003119,
+      "lower": 0.5875210864340552,
+      "upper": 0.6672062056746145
+    },
+    {
+      "case": [
+        "concurrent",
+        "hybrid",
+        "download"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 7.864598,
+      "new_cpu": 7.9375125,
+      "ratio": 1.0092712303921956,
+      "lower": 0.9860585989986196,
+      "upper": 1.0204581743412253
+    },
+    {
+      "case": [
+        "concurrent",
+        "hybrid",
+        "seed"
+      ],
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 6.462937,
+      "new_cpu": 4.0961035,
+      "ratio": 0.6337836033369968,
+      "lower": 0.6096092086951288,
+      "upper": 0.6444593210403625
+    }
+  ]
+}
