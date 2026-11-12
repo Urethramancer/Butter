@@ -13,6 +13,11 @@ and inconclusive. Full native validation passes (466 PASS records). The full
 matrix is recorded above; CPU parity remains unmet.
 The first version's measured download memory cost remains disqualifying.
 
+[Fresh revised-source many-file CPU profiles](wire-raw-many-hybrid-profile-2026-11-13.md)
+validate both engines after the full matrix. Swift stat/open/close account for
+46.5% of flat Running samples; stored-byte hash sample weights are comparable
+to native. Filesystem work remains the next optimisation target.
+
 [Eight-request baseline Running CPU profiles](window8-current-profiles-2026-11-12.md)
 validate all eight prescribed captures before the upload-buffer changes. They identify
 filesystem work in downloads and stored-byte verification/output work in seeding.

@@ -8,9 +8,8 @@
   throughput intervals and all rejected experiments.
 
 - Resolve wide/inconclusive source throughput intervals and obtain quiet-host
-  timings for the final candidate. All eight pre-buffer baseline CPU captures
-  validate; refresh candidate profiles before further optimisation. Earlier
-  Instruments failures and loaded-host samples remain recorded.
+  timings for the final candidate. Keep earlier Instruments failures and
+  loaded-host samples labelled as diagnostics.
 
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
@@ -24,10 +23,10 @@
 - Investigate the historical concurrent v2 seeding throughput loss of 20.0% despite lower
   CPU. The source comparison is inconclusive around a ratio of one; it still
   meets native throughput, but the full-run regression remains open.
-- Reduce repeated whole-layout stamp inspection (40.0% inclusive in many-file
-  seeding), file opening, allocation and Network.framework scheduling costs in
-  the profiles, preserving stored-byte hashing, ownership checks, cancellation
-  and queue caps.
+- Reduce repeated whole-layout stamp inspection and write scheduling overhead.
+  Fresh many-file hybrid download profiles attribute 39.7% inclusive to stamps,
+  53.1% to write operations and 46.5% flat to stat/open/close (inclusive costs
+  overlap). Preserve hashing, ownership checks, cancellation and queue caps.
 
 ## Validation diagnostics
 
