@@ -58,3 +58,13 @@ unverified payload exhausts its remaining allocation without publishing progress
 the last durable checkpoint remains byte-for-byte intact, and retry after freeing
 space hashes successfully. Existing crash recovery and read-only checks also pass.
 Native interoperability and final-candidate matrix acceptance remain pending.
+
+The combined vector writer and explicit TCP binding fix (`b3c11fc`) passes all
+466 native interoperability checks. The first wrapper run fails before native
+trials with eleven bind/timeout issues; TCP-only controls reproduce EADDRINUSE
+without storage. Those failures and the rejected reuse experiment remain in the
+[binding result](tcp-ephemeral-bind-results-2026-11-12.md). Current package tests
+pass 351 cases. The vector's 113-per-sanitizer checks and binding's 30-per-sanitizer
+checks cover their respective changes. [Validation results](vector-native-validation-2026-11-12.json)
+retain the initial failed-run hash and successful native-rerun outcome. These
+correctness checks do not establish final-candidate performance acceptance.

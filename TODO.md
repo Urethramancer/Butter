@@ -24,9 +24,6 @@
   with its log, fixture and module cache missing; a workspace-directory rerun
   passes all 466 checks. Evidence remains in `.build/diagnostics/piece-buffer`.
 
-- Verify native interoperability after [explicit ephemeral binding](docs/performance/tcp-ephemeral-bind-results-2026-11-12.md).
-  TCP-only controls reproduce EADDRINUSE without storage; explicit binding passes
-  5,000 probe connections and all package/sanitizer checks. Keep earlier failures.
 
 - Reproduce the earlier combined-contract six-second deadline under controlled
   CPU load and identify its wait point using the new diagnostics. Serial checks

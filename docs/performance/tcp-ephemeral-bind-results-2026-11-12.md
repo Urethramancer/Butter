@@ -31,7 +31,7 @@ Thirty focused tests under each of Address and Thread Sanitizer pass, covering
 TCP/TLS, deadlines, peer admission and transfers. The raw probe outputs, failed
 engine-suite log and source/binary diagnostics remain locally under
 `.build/diagnostics/piece-buffer/tcp-*`, `vector-native-peer-first-failure.log`
-and `explicit-bind-*`. Native interoperability rerun remains pending.
+and `explicit-bind-*`. The native rerun passes all 466 checks, including encrypted TCP, µTP, session discovery and web seeds.
 
 The earlier [vector-write comparisons](vector-write-results-2026-11-12.md) predate
 this connection fix. No CPU/throughput improvement is claimed for explicit binding;
