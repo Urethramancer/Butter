@@ -11,8 +11,8 @@
   establish the cause with separate profiles and controlled comparisons.
 - Investigate the concurrent v2 seeding throughput loss of 20.0% despite lower
   CPU; it still meets native throughput, but the regression remains open.
-- Rerun the matrix for the final candidate and complete source-matched profiles
-  and remaining release acceptance; the latest complete matrix is `5b9ef12`.
+- Rerun the matrix/profiles for the final candidate and complete remaining release
+  acceptance; the latest complete matrix and CPU profiles are `5b9ef12`.
 - Reduce repeated whole-layout stamp inspection and per-block upload,
   allocation and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.

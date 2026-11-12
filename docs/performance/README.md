@@ -18,6 +18,12 @@ individual reductions range from 18.7% to 49.8%. Many-file v1 seeding uses
 but loses 20.0% throughput. These regressions remain open. Per-case measured
 peak RSS spans 15.8–46.5 MiB. Every sample and diagnostic is retained.
 
+[Current source-matched CPU profiles](window31-profiles-2026-11-12.md) cover
+both engines in the four standard workloads and both seeding regressions. All
+twelve profile-only trials pass validation. Stamp inspection, stored-byte hashing
+and scheduling remain substantial; the profiles do not establish either
+throughput regression's cause.
+
 The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
 reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
 (13.4%) and raises throughput from 182.4 to 213.1 MB/s. Fourteen trials and both

@@ -22,8 +22,10 @@ No combined workload average substitutes for the per-case gates.
 
 All 339 package tests, 466 native reference checks and 52 focused tests under each
 of Address and Thread Sanitizer pass for this production source. The native suite
-includes encrypted TCP, µTP and all 24 session DHT transfers. Remaining release
-acceptance and final source-matched four-case profiling remain open.
+includes encrypted TCP, µTP and all 24 session DHT transfers. The subsequent
+[source-matched profiles](window31-profiles-2026-11-12.md) cover all four standard
+workloads and both seeding regressions: twelve accepted profile-only trials.
+Remaining release acceptance and the performance target remain open.
 
 ## Per-case results
 
