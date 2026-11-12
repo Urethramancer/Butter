@@ -60,9 +60,7 @@ public enum PeerMessage: Equatable, Sendable {
 		case .piece(let index, let offset, let bytes):
 			guard (1...16384).contains(bytes.count) else { throw PeerFailure.invalid("piece block size") }
 			var result = Data(capacity: bytes.count + 13)
-			try PeerBytes.append(bytes.count + 9, to: &result); result.append(7)
-			try PeerBytes.append(index, to: &result); try PeerBytes.append(offset, to: &result)
-			result.append(bytes); return result
+			try Self.appendPiece(index, offset, bytes, to: &result); return result
 		case .haveAll: body.append(14)
 		case .haveNone: body.append(15)
 		case .suggest(let index), .allowedFast(let index):
@@ -81,6 +79,12 @@ public enum PeerMessage: Equatable, Sendable {
 			}
 		}
 		var result = Data(); try PeerBytes.append(body.count, to: &result); result.append(body); return result
+	}
+	static func appendPiece(_ index: Int, _ offset: Int, _ bytes: Data, to result: inout Data) throws {
+		guard (1...16384).contains(bytes.count) else { throw PeerFailure.invalid("piece block size") }
+		try PeerBytes.append(bytes.count + 9, to: &result); result.append(7)
+		try PeerBytes.append(index, to: &result); try PeerBytes.append(offset, to: &result)
+		result.append(bytes)
 	}
 }
 

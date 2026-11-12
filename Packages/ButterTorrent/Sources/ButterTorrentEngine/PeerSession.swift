@@ -7,7 +7,28 @@ final class PeerSession: @unchecked Sendable {
 	static let uploadRequestLimit = 32
 	// Advertise a window that fits maximum payloads including their wire framing.
 	static let advertisedUploadRequestLimit = min(uploadRequestLimit, outputByteLimit / (16384 + 13))
-	struct Outbound: Sendable { let bytes: Data; let payload: Int; let token: UUID?; let block: PeerBlock? }
+	final class WireBuffer: Sendable {
+		let bytes: Data
+		init(_ bytes: Data) { self.bytes = bytes }
+	}
+	struct OutputReceipt: Sendable { let payload: Int; let token: UUID?; let block: PeerBlock? }
+	struct Outbound: Sendable {
+		let buffer: WireBuffer
+		let range: Range<Int>
+		let receipt: OutputReceipt
+		var bytes: Data { buffer.bytes[range] }
+		var payload: Int { receipt.payload }
+		var token: UUID? { receipt.token }
+		var block: PeerBlock? { receipt.block }
+		init(bytes: Data, payload: Int, token: UUID?, block: PeerBlock?) {
+			buffer = WireBuffer(bytes); range = bytes.startIndex..<bytes.endIndex
+			receipt = OutputReceipt(payload: payload, token: token, block: block)
+		}
+		init(buffer: WireBuffer, range: Range<Int>, token: UUID, block: PeerBlock) {
+			self.buffer = buffer; self.range = range
+			receipt = OutputReceipt(payload: block.length, token: token, block: block)
+		}
+	}
 	let stream: any PeerByteStream
 	private let transport: PeerStream?
 	private let lock = NSLock()
@@ -33,18 +54,64 @@ final class PeerSession: @unchecked Sendable {
 		if case .piece(_, _, let bytes) = message { payload = bytes.count } else { payload = 0 }
 		try enqueue(Outbound(bytes: message.encoded(), payload: payload, token: token, block: block))
 	}
+	func sendPieces(_ requests: [(token: UUID, block: PeerBlock)], piece: Data) throws {
+		// A µTP write is retained independently by transport admission. Do not make
+		// a single admitted frame retain the other frames in a shared wire buffer.
+		if stream.kind != .tcp {
+			for (token, block) in requests {
+				guard (1...16384).contains(block.length), block.offset >= 0,
+					block.offset <= piece.count - block.length else { throw PeerFailure.invalid("upload piece range") }
+				let offset = piece.startIndex + block.offset
+				try send(.piece(block.piece, block.offset, piece[offset..<(offset + block.length)]), token: token, block: block)
+			}
+			return
+		}
+		var start = 0
+		while start < requests.count {
+			var end = start, size = 0
+			while end < requests.count, end - start < 16 {
+				let block = requests[end].block
+				guard (1...16384).contains(block.length), block.offset >= 0,
+					block.offset <= piece.count - block.length else { throw PeerFailure.invalid("upload piece range") }
+				guard block.length + 13 <= 262144 - size else { break }
+				size += block.length + 13; end += 1
+			}
+			var bytes = Data(capacity: size), ranges: [Range<Int>] = []
+			for request in requests[start..<end] {
+				let block = request.block, lower = bytes.count, offset = piece.startIndex + block.offset
+				try PeerMessage.appendPiece(block.piece, block.offset, piece[offset..<(offset + block.length)], to: &bytes)
+				ranges.append(lower..<bytes.count)
+			}
+			let buffer = WireBuffer(bytes)
+			for (index, request) in requests[start..<end].enumerated() {
+				try enqueue(Outbound(buffer: buffer, range: ranges[index], token: request.token, block: request.block))
+			}
+			start = end
+		}
+	}
+	static func outputBytes(_ items: [Outbound]) -> Data {
+		guard let first = items.first else { return Data() }
+		var end = first.range.upperBound
+		let contiguous = items.dropFirst().allSatisfy { item in
+			guard item.buffer === first.buffer, item.range.lowerBound == end else { return false }
+			end = item.range.upperBound; return true
+		}
+		if contiguous { return first.buffer.bytes[first.range.lowerBound..<end] }
+		var joined = Data(capacity: items.reduce(0) { $0 + $1.range.count })
+		for item in items { joined.append(item.bytes) }; return joined
+	}
 	private func enqueue(_ item: Outbound) throws {
 		try lock.withLock {
 			guard !closed else { throw PeerFailure.closed }
 			let credit: Int
 			if let token = item.token {
 				guard tokens.contains(token), let reserved = reservations[token] else { throw PeerFailure.closed }
-				guard reserved == item.bytes.count else { throw PeerFailure.invalid("upload output reservation") }; credit = reserved
+				guard reserved == item.range.count else { throw PeerFailure.invalid("upload output reservation") }; credit = reserved
 			} else { credit = 0 }
-			guard queuedBytes + reservedBytes - credit + item.bytes.count <= Self.outputByteLimit else { throw PeerFailure.limit("peer output bytes") }
+			guard queuedBytes + reservedBytes - credit + item.range.count <= Self.outputByteLimit else { throw PeerFailure.limit("peer output bytes") }
 			guard queuedMessages + reservations.count - (item.token == nil ? 0 : 1) < 128 else { throw PeerFailure.limit("peer output messages") }
 			if let token = item.token { reservations[token] = nil; reservedBytes -= credit }
-			outgoing.append(item); queuedBytes += item.bytes.count; queuedMessages += 1
+			outgoing.append(item); queuedBytes += item.range.count; queuedMessages += 1
 			outputReady.continuation.yield(())
 		}
 	}
@@ -62,8 +129,8 @@ final class PeerSession: @unchecked Sendable {
 		lock.withLock {
 			var count = 0, bytes = 0
 			for item in outgoing.prefix(maximumCount) {
-				guard item.bytes.count <= maximumBytes - bytes else { break }
-				count += 1; bytes += item.bytes.count
+				guard item.range.count <= maximumBytes - bytes else { break }
+				count += 1; bytes += item.range.count
 			}
 			let result = Array(outgoing.prefix(count)); outgoing.removeFirst(count)
 			queuedBytes -= bytes; queuedMessages -= count; return result
@@ -75,30 +142,34 @@ final class PeerSession: @unchecked Sendable {
 			return items.filter { item in item.token.map { tokens.remove($0) != nil } ?? true }
 		}
 	}
-	private func writeOutput(_ channel: PeerStream, id: UUID, engine: TCPTransfer, upload: TransferRateLimiter) async throws {
-		for await _ in self.outputReady.stream {
-			while true {
-				try Task.checkCancellation()
-				let unrestricted = await upload.consumeUnrestrictedBatch()
-				// µTP retains each write against a shared transport budget; keep its frame-sized admission.
-				let items = self.takeOutgoing(maximumCount: unrestricted && stream.kind == .tcp ? 16 : 1, maximumBytes: 262144)
-				if items.isEmpty { break }
-				if !unrestricted, let item = items.first {
-					if let token = item.token, !self.lock.withLock({ self.tokens.contains(token) }) { continue }
-					do { try await upload.consume(item.payload) { item.token.map { token in !self.lock.withLock({ self.tokens.contains(token) }) } ?? false } }
-					catch is CancellationError {
-						if !Task.isCancelled, let token = item.token, !self.lock.withLock({ self.tokens.contains(token) }) { continue }; throw CancellationError()
-					}
+	// Return receipts rather than queued frames so a fallback joined write does not
+	// retain its source buffers while the network is suspended.
+	private func nextOutput(upload: TransferRateLimiter) async throws -> (bytes: Data, receipts: [OutputReceipt])? {
+		while true {
+			try Task.checkCancellation()
+			let unrestricted = await upload.consumeUnrestrictedBatch()
+			// µTP retains each write against a shared transport budget; keep its frame-sized admission.
+			let items = takeOutgoing(maximumCount: unrestricted && stream.kind == .tcp ? 16 : 1, maximumBytes: 262144)
+			if items.isEmpty { return nil }
+			if !unrestricted, let item = items.first {
+				if let token = item.token, !lock.withLock({ tokens.contains(token) }) { continue }
+				do { try await upload.consume(item.payload) { item.token.map { token in !self.lock.withLock({ self.tokens.contains(token) }) } ?? false } }
+				catch is CancellationError {
+					if !Task.isCancelled, let token = item.token, !lock.withLock({ tokens.contains(token) }) { continue }; throw CancellationError()
 				}
-				try Task.checkCancellation()
-				let ready = self.claimOutgoing(items)
-				if ready.isEmpty { continue }
-				let bytes: Data
-				if ready.count == 1 { bytes = ready[0].bytes }
-				else { var joined = Data(capacity: ready.reduce(0) { $0 + $1.bytes.count }); for item in ready { joined.append(item.bytes) }; bytes = joined }
+			}
+			try Task.checkCancellation()
+			let ready = claimOutgoing(items)
+			if ready.isEmpty { continue }
+			return (Self.outputBytes(ready), ready.filter { $0.token != nil }.map(\.receipt))
+		}
+	}
+	private func writeOutput(_ channel: PeerStream, id: UUID, engine: TCPTransfer, upload: TransferRateLimiter) async throws {
+		for await _ in outputReady.stream {
+			while let output = try await nextOutput(upload: upload) {
 				// Drain only work already available; never wait to fill a network batch.
-				try await channel.write(bytes)
-				if ready.contains(where: { $0.token != nil }) { await engine.uploadedBatch(id, items: ready) }
+				try await channel.write(output.bytes)
+				if !output.receipts.isEmpty { await engine.uploadedBatch(id, items: output.receipts) }
 			}
 		}
 	}

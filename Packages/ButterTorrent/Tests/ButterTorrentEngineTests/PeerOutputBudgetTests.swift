@@ -31,13 +31,18 @@ private final class BudgetPeerStream: PeerByteStream, Sendable {
 		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).count == 16)
 		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).count == 1)
 	}
-	@Test(arguments: [0, 7, 14]) func batchedOutputBoundsBytesAndSkipsCancelledPayloadWithoutLosingControls(_ cancelled: Int) throws {
+	@Test(arguments: [0, 7, 14], [false, true]) func batchedOutputBoundsBytesAndSkipsCancelledPayloadWithoutLosingControls(_ cancelled: Int, _ grouped: Bool) throws {
 		let session = PeerSession(stream: BudgetPeerStream()), tokens = (0..<31).map { _ in UUID() }
 		defer { session.close() }
+		var piece = Data(), requests: [(token: UUID, block: PeerBlock)] = []
 		for (index, token) in tokens.enumerated() {
 			#expect(session.register(token, bytes: 16397))
-			try session.send(.piece(0, index * 16384, Data(repeating: UInt8(index), count: 16384)), token: token)
+			let bytes = Data(repeating: UInt8(index), count: 16384)
+			piece.append(bytes)
+			requests.append((token, PeerBlock(piece: 0, offset: index * 16384, length: 16384)))
+			if !grouped { try session.send(.piece(0, index * 16384, bytes), token: token) }
 		}
+		if grouped { try session.sendPieces(requests, piece: piece) }
 		try session.send(.choke)
 		#expect(!session.register(UUID(), bytes: 16397))
 		let first = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
@@ -48,12 +53,45 @@ private final class BudgetPeerStream: PeerByteStream, Sendable {
 			try PeerMessage.piece(0, $0 * 16384, Data(repeating: UInt8($0), count: 16384)).encoded()
 		}
 		#expect(claimed.count == 14 && claimed.map(\.bytes) == expected)
+		#expect(PeerSession.outputBytes(claimed) == expected.reduce(into: Data()) { $0.append($1) })
 		#expect(session.register(UUID(), bytes: 16397))
 		let second = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
 		#expect(second.count == 15)
 		let last = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
 		#expect(last.count == 2); #expect(last.last?.bytes == (try PeerMessage.choke.encoded()))
 		#expect(session.claimOutgoing(last).count == 2)
+	}
+	@Test func groupedOutputHandlesSlicesShortGroupsAndMixedControls() throws {
+		let session = PeerSession(stream: BudgetPeerStream())
+		defer { session.close() }
+		let original = Data((0..<80).map(UInt8.init)), piece = original[16..<64]
+		let blocks = [PeerBlock(piece: 2, offset: 0, length: 1), PeerBlock(piece: 2, offset: 1, length: 7)]
+		let requests = blocks.map { (token: UUID(), block: $0) }
+		for request in requests { #expect(session.register(request.token, bytes: request.block.length + 13)) }
+		try session.sendPieces(requests, piece: piece)
+		let frames = session.claimOutgoing(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144))
+		#expect(frames.count == 2 && frames[0].buffer === frames[1].buffer)
+		var expected = Data()
+		for block in blocks {
+			expected.append(try PeerMessage.piece(2, block.offset, piece[(piece.startIndex + block.offset)..<(piece.startIndex + block.offset + block.length)]).encoded())
+		}
+		#expect(PeerSession.outputBytes(frames) == expected)
+		try session.send(.choke)
+		let control = session.claimOutgoing(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144))
+		expected.append(try PeerMessage.choke.encoded())
+		#expect(PeerSession.outputBytes(frames + control) == expected)
+		#expect(PeerSession.outputBytes([]).isEmpty)
+	}
+	@Test(arguments: [PeerBlock(piece: 0, offset: -1, length: 1), PeerBlock(piece: 0, offset: Int.max, length: 1),
+		PeerBlock(piece: 0, offset: 0, length: 0), PeerBlock(piece: 0, offset: 0, length: 16385),
+		PeerBlock(piece: 0, offset: 16, length: 1), PeerBlock(piece: -1, offset: 0, length: 1)])
+	func groupedOutputRejectsInvalidRangesWithoutPublishingFrames(_ block: PeerBlock) throws {
+		let session = PeerSession(stream: BudgetPeerStream()), token = UUID()
+		defer { session.close() }
+		#expect(session.register(token, bytes: max(1, block.length + 13)))
+		#expect(throws: PeerFailure.self) { try session.sendPieces([(token, block)], piece: Data(count: 16)) }
+		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).isEmpty)
+		#expect(session.cancel(token))
 	}
 	@Test(arguments: [false, true]) func outputWriterWakesAfterEveryEmptyQueue(_ encrypted: Bool) async throws {
 		try await transferFixture { fixture in

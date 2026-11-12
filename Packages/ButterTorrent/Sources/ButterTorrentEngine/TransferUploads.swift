@@ -68,14 +68,14 @@ extension TCPTransfer {
 			let piece = try result.get()
 			guard !stopping, let peer = peers[group.key.peer], !peer.closing else { return }
 			// Flush available requests immediately; do not wait for a full group.
-			for (token, block) in group.requests {
-				guard (!peer.choking || peer.allowedIncoming.contains(block.piece)), peer.uploads[block] == token else { continue }
-				let data = piece[block.offset..<(block.offset + block.length)]
-				try peer.session.send(.piece(block.piece, block.offset, data), token: token, block: block); peer.lastSent = clock.now()
+			let requests = group.requests.filter { token, block in
+				(!peer.choking || peer.allowedIncoming.contains(block.piece)) && peer.uploads[block] == token
 			}
+			try peer.session.sendPieces(requests, piece: piece)
+			if !requests.isEmpty { peer.lastSent = clock.now() }
 		} catch { uploadFailed(group.key.peer, error: error) }
 	}
-	func uploadedBatch(_ id: UUID, items: [PeerSession.Outbound]) {
+	func uploadedBatch(_ id: UUID, items: [PeerSession.OutputReceipt]) {
 		for item in items { if let block = item.block, let token = item.token { uploaded(id, block: block, token: token, count: item.payload) } }
 	}
 	func uploaded(_ id: UUID, block: PeerBlock, token: UUID, count: Int) {
