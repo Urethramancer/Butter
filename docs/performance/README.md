@@ -21,6 +21,12 @@ reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
 memory gates pass; native-relative CPU and throughput still miss their targets.
 This focused result does not replace the latest full matrix.
 
+Subsequent [request-window tuning](window-results-2026-11-12.md) raises the
+production Swift default from eight to sixteen within the existing caps. Against
+a fresh eight-request baseline, single-file v1 download CPU falls 18.9%
+(5.188 to 4.206 s/GiB), throughput rises 17.3% and both memory gates pass.
+Native parity and the final full matrix remain outstanding.
+
 The [focused steps and validation](outbound-batching-results-2026-11-12.md)
 record the isolated experiments and exact source revisions for correctness
 checks. No combined workload average substitutes for per-case acceptance.
