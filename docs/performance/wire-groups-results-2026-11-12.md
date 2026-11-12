@@ -112,3 +112,32 @@ not substitute for final native validation of the revised representation.
 [Revised comparisons and raw hashes](wire-raw-comparison-2026-11-12.json) retain
 results. Broader source checks, native validation and full-matrix acceptance
 remain pending.
+
+## Revised broader source checks
+
+The remaining five revised cases validate all 140 trials, bringing revision
+`4806204` to 196 accepted source trials across seven cases. Each case retains
+its own fixed six balanced source/engine pairs and four warm-ups. No combined
+workload score or source-null extension is used.
+
+| Revised workload | CPU ratio [95% interval] | Throughput ratio [95% interval] | RSS ratio [95% interval] | Counterpart CPU ratio [95% interval] |
+| --- | --- | --- | --- | --- |
+| Many-file hybrid download | 0.992 [0.956–1.031] | 1.021 [0.971–1.076] | 0.986 [0.908–1.028] | 0.986 [0.962–1.042] |
+| Single v1 download | 1.022 [0.942–1.112] | 0.981 [0.887–1.050] | 1.004 [0.980–1.010] | 1.038 [0.873–1.129] |
+| Single hybrid seed | 0.961 [0.939–0.989] | 1.028 [0.796–1.323] | 0.957 [0.906–0.986] | 0.977 [0.941–1.005] |
+| Many-file hybrid seed | 0.977 [0.952–0.993] | 1.019 [0.996–1.087] | 0.959 [0.934–1.015] | 0.971 [0.941–0.986] |
+| Concurrent hybrid seed | 0.969 [0.948–0.984] | 0.952 [0.695–1.037] | 0.923 [0.897–0.953] | 1.006 [0.859–1.039] |
+
+CPU reductions are supported in all four revised seeding cases. Single and
+concurrent hybrid seeding also establish RSS reductions. No checked metric
+establishes a cost, but this does not prove unchanged performance: several
+throughput and download intervals remain wide. In particular, concurrent
+seeding throughput trends 4.8% lower with an interval reaching 30.5% lower;
+that cost question is inconclusive and must remain explicit. Native-control
+CPU and throughput intervals cross one in all five cases.
+
+[Broader revised measurements and raw hashes](wire-raw-broader-comparison-2026-11-12.json)
+retain all source/control intervals and absolute medians. The full native suite
+is running after the timed comparisons, with failed fixtures retained. Full-matrix
+acceptance and CPU parity remain unmet; these focused comparisons do not replace
+the complete matrix or erase the first version's measured memory regression.

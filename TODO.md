@@ -2,10 +2,10 @@
 
 ## TCP performance parity
 
-- Finish broader source checks, native validation and the full matrix for revised
-  upload wire buffers. V1 seeding CPU falls 4.3%; concurrent download no longer
-  establishes the first version's RSS regression, with wide uncertainty. Full
-  parity remains unmet.
+- Finish native validation and the full matrix for revised upload wire buffers.
+  Seven source comparisons validate 196 trials; seeding CPU falls 2.3–4.3%, with
+  no established measured cost. Keep wide/inconclusive throughput and download
+  intervals explicit; full parity remains unmet.
 
 - Obtain quiet-host timings for the final candidate. All eight current-source
   Running CPU captures now validate; earlier Instruments failures and loaded-host
