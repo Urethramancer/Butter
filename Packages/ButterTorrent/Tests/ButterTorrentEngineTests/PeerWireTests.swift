@@ -44,6 +44,24 @@ func pickerLayout(pieces: Int = 3, pieceLength: Int64 = 32768) throws -> Storage
 }
 
 @Suite struct PiecePickerTests {
+	@Test func wantedCompletionTracksDuplicatesUnselectedPiecesAndStagedVerification() throws {
+		let layout = try pickerLayout(pieces: 4), peer = UUID()
+		var picker = PiecePicker(layout: layout, wanted: [0, 1, 2], completed: [0, 3])
+		picker.update(peer, bits: try PieceBitfield(count: 4, pieces: [0, 1, 2, 3]))
+		#expect(!picker.complete && picker.interested(peer))
+		for piece in [1, 1, 3] { _ = picker.verified(piece, valid: true) }
+		#expect(!picker.complete && picker.interested(peer))
+		_ = picker.stage(2); #expect(!picker.complete && !picker.interested(peer))
+		let rejected = picker.settleStaged(2, valid: false); #expect(rejected)
+		#expect(!picker.complete && picker.interested(peer))
+		_ = picker.verified(2, valid: false); #expect(!picker.complete)
+		_ = picker.stage(2); let accepted = picker.settleStaged(2, valid: true); #expect(accepted)
+		#expect(picker.complete && !picker.interested(peer))
+		_ = picker.verified(2, valid: true); #expect(picker.complete)
+		let repeated = picker.settleStaged(2, valid: true); #expect(!repeated); #expect(picker.complete)
+		let empty = PiecePicker(layout: layout, wanted: [], completed: [3])
+		#expect(empty.complete && !empty.interested(peer))
+	}
 	@Test(arguments: [1, 2, 8]) func boundedCandidatesPreserveGlobalOrderAcrossAvailabilityAndRestrictions(_ maximum: Int) throws {
 		let count = 96, layout = try pickerLayout(pieces: count, pieceLength: 16384), peer = UUID(), other = UUID()
 		let wanted = Set(0..<count), common = Set((0..<count).filter { $0 % 3 == 0 }), suggestions: Set<Int> = [19, 25, 31, 37, 55, 73, 85]

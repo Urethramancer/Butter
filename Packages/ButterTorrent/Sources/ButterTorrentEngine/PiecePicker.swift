@@ -14,16 +14,18 @@ struct PiecePicker {
 	let maximumActive: Int
 	let lengths: [Int: Int]
 	private(set) var completed: Set<Int>
+	private var missingWanted: Int
 	private(set) var staged: Set<Int> = []
 	private(set) var active: [Int: Active] = [:]
 	private var peers: [UUID: PieceBitfield] = [:]
 	private(set) var availability: [Int]
 	init(layout: StorageLayout, wanted: Set<Int>, completed: Set<Int>, maximumActive: Int = 8, lengths: [Int: Int] = [:]) {
 		self.layout = layout; self.wanted = wanted; self.completed = completed; self.maximumActive = maximumActive
+		missingWanted = wanted.reduce(0) { $0 + (completed.contains($1) ? 0 : 1) }
 		availability = Array(repeating: 0, count: layout.pieceCount)
 		self.lengths = lengths
 	}
-	var complete: Bool { wanted.isSubset(of: completed) }
+	var complete: Bool { missingWanted == 0 }
 	mutating func update(_ peer: UUID, bits: PieceBitfield) {
 		if let previous = peers[peer] { for piece in previous.pieces { availability[piece] -= 1 } }
 		peers[peer] = bits; for piece in bits.pieces { availability[piece] += 1 }
@@ -41,7 +43,7 @@ struct PiecePicker {
 		for piece in active.keys { for block in active[piece]!.owners.keys { active[piece]!.owners[block]![peer] = nil } }
 	}
 	func interested(_ peer: UUID) -> Bool {
-		guard let bits = peers[peer] else { return false }
+		guard missingWanted > 0, let bits = peers[peer] else { return false }
 		return wanted.contains { !completed.contains($0) && !staged.contains($0) && bits.contains($0) }
 	}
 	func has(_ peer: UUID, piece: Int) -> Bool { peers[peer]?.contains(piece) == true }
@@ -126,7 +128,7 @@ struct PiecePicker {
 	mutating func rejected(_ peer: UUID, block: PeerBlock) { active[block.piece]?.owners[block.offset]?[peer] = nil }
 	mutating func verified(_ piece: Int, valid: Bool) -> Set<UUID> {
 		let contributors = active.removeValue(forKey: piece)?.contributors ?? []
-		if valid { completed.insert(piece) }; return contributors
+		if valid { recordCompletion(piece) }; return contributors
 	}
 	mutating func stage(_ piece: Int) -> Set<UUID> {
 		staged.insert(piece)
@@ -134,8 +136,11 @@ struct PiecePicker {
 	}
 	mutating func settleStaged(_ piece: Int, valid: Bool) -> Bool {
 		guard staged.remove(piece) != nil else { return false }
-		if valid { completed.insert(piece) }
+		if valid { recordCompletion(piece) }
 		return true
+	}
+	private mutating func recordCompletion(_ piece: Int) {
+		if completed.insert(piece).inserted && wanted.contains(piece) { missingWanted -= 1 }
 	}
 	mutating func expired(now: TimeInterval, timeout: TimeInterval) -> [(UUID, PeerBlock)] {
 		var expired: [(UUID, PeerBlock)] = []

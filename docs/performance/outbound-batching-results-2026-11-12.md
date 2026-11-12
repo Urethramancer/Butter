@@ -53,3 +53,21 @@ Network.framework work, per-block admission and a repeated wanted-set scan in
 `PiecePicker.interested` while seeding. Sampling includes idle waits and is not
 a CPU-percentage accounting method. Full-matrix candidate measurements remain outstanding.
 No parity or release claim is made, and no tag was created.
+
+## Completion-count follow-up
+
+The subsequent picker experiment maintains the number of wanted pieces still
+missing, updating it only when a newly completed wanted piece is inserted.
+Complete seeds can answer interest immediately without scanning the wanted set;
+staged hybrid pieces remain incomplete until authenticated. One integer replaces
+repeated scans, with no increase in cache or request limits.
+
+All fourteen trials were accepted. CPU fell from 4.978 to 4.862 s/GiB, an
+independent ratio of 0.977 [0.966–0.991]. Throughput also fell, from 393.4 to
+384.4 MB/s: ratio 0.977 [0.973–0.993]. This CPU/throughput trade-off remains
+visible and needs broader candidate measurement. The paired native CPU ratio
+is 2.986 [2.876–3.126]; throughput is 85.3% [84.9–86.7%]. Memory passes the
+original baseline gate. The full 325-test package run passed serially, including
+new duplicate/selective/staged completion checks. [Raw follow-up evidence](raw/picker-completion-single-v1/summary.json)
+and [before/after intervals](raw/picker-completion-single-v1/before-after.json)
+retain the result separately from batching and full-matrix records.
