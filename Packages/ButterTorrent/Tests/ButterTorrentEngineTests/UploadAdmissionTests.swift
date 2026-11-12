@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ButterTorrentMetadata
 import ButterTorrentNetworking
 @testable import ButterTorrentStorage
 @testable import ButterTorrentEngine
@@ -33,6 +34,31 @@ private func blockedUploadFixture(_ body: (TCPTransfer, WirePeer) async throws -
 }
 
 @Suite struct UploadAdmissionTests {
+	@Test func advertisedWindowFitsMaximumSizedPayloadsWithoutBusyRejections() async throws {
+		try await transferFixture { fixture in
+			let resources = try TransferResources(maximumDiskOperations: 1)
+			let seed = try await fixture.transfer("seed", seed: true, resources: resources)
+			let blocker = TransferDiskScope(resources: resources); try await blocker.acquire()
+			do {
+				var reserved = Data(repeating: 0, count: 8); reserved[5] = 16; reserved[7] = 4
+				let peer = try await fixture.scripted(seed, reserved: reserved); defer { peer.stream.close() }
+				try await peer.send(.haveNone); try await peer.send(.interested)
+				var advertised: Int?, unchoked = false
+				while advertised == nil || !unchoked {
+					let message = try await peer.next()
+					if case .extended(0, let bytes) = message { advertised = Int(try #require(BencodeDocument(bytes).root["reqq"]?.integer)) }
+					if case .unchoke = message { unchoked = true }
+				}
+				let count = try #require(advertised), id = await seed.snapshot().peers[0].id
+				let before = await seed.uploadAdmissionState()
+				for offset in 0..<count { try await seed.received(id, message: .request(PeerBlock(piece: 0, offset: offset, length: 16384))) }
+				let after = await seed.uploadAdmissionState()
+				#expect(after.queued == count, "The advertised queue must fit full-sized framed payloads")
+				#expect(after.controls == before.controls, "Advertised payload requests must not be rejected as excess controls")
+				await blocker.release()
+			} catch { await blocker.release(); throw error }
+		}
+	}
 	@Test func fullSizedUploadsReserveFramingBeforeDiskWorkWithoutGrowingTheQueue() async throws {
 		try await blockedUploadFixture { seed, peer in
 			for offset in 0..<32 { try await peer.send(.request(PeerBlock(piece: 0, offset: offset, length: 16384))) }

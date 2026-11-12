@@ -8,7 +8,7 @@ extension TCPTransfer {
 		if !metadata.inspection.private { mapping["ut_metadata"] = .integer(1) }
 		if configuration.enablePEX && !metadata.inspection.private { mapping["ut_pex"] = .integer(2) }
 		var fields: [String: BencodeValue] = ["m": extensionDictionary(mapping),
-			"v": .bytes(Data("Butter Swift".utf8)), "reqq": .integer(32), "p": .integer(Int64(configuration.listenPort))]
+			"v": .bytes(Data("Butter Swift".utf8)), "reqq": .integer(Int64(TCPTransferConfiguration.advertisedUploadRequestLimit)), "p": .integer(Int64(configuration.listenPort))]
 		if !metadata.inspection.private { fields["metadata_size"] = .integer(Int64(metadata.originalInfo.count)) }
 		try send(id, .extended(0, extensionDictionary(fields).encoded()))
 	}

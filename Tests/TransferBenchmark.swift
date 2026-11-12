@@ -17,7 +17,7 @@ import ButterTorrentEngine
 			"user": Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6,
 			"system": Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6,
 			"peak_rss": usage.ru_maxrss, "ports": ports, "payload_bytes": bytes, "request_window": TCPTransferConfiguration().pipeline,
-			"upload_admission": ["advertised_reqq": 32, "requests_per_peer": 32, "jobs_per_transfer": 64, "output_bytes": 524288, "output_messages": 128], "peer_errors": errors]
+			"upload_admission": ["advertised_reqq": TCPTransferConfiguration.advertisedUploadRequestLimit, "requests_per_peer": 32, "jobs_per_transfer": 64, "output_bytes": 524288, "output_messages": 128], "peer_errors": errors]
 		var bytes = try JSONSerialization.data(withJSONObject: record); bytes.append(10)
 		try FileHandle.standardOutput.write(contentsOf: bytes)
 	}

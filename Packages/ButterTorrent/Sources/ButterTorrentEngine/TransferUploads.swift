@@ -12,7 +12,7 @@ extension TCPTransfer {
 		if peer.uploads[block] != nil { throw PeerFailure.invalid("duplicate upload request") }
 		// A replacement request can arrive before the writer's completion callback.
 		// Reject excess work without dropping the connection or enlarging either queue.
-		guard peer.uploads.count < 32, uploadJobs.count < 64 else {
+		guard peer.uploads.count < PeerSession.uploadRequestLimit, uploadJobs.count < 64 else {
 			if peer.features.fast || peer.features.v2 { try send(id, .reject(block)) }; return false
 		}
 		let token = UUID()

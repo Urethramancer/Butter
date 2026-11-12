@@ -3,6 +3,10 @@ import ButterTorrentNetworking
 
 // One reader and one writer own the TCP stream; the controller owns protocol state.
 final class PeerSession: @unchecked Sendable {
+	static let outputByteLimit = 524_288
+	static let uploadRequestLimit = 32
+	// Advertise a window that fits maximum payloads including their wire framing.
+	static let advertisedUploadRequestLimit = min(uploadRequestLimit, outputByteLimit / (16384 + 13))
 	struct Outbound: Sendable { let bytes: Data; let payload: Int; let token: UUID?; let block: PeerBlock? }
 	let stream: any PeerByteStream
 	private let transport: PeerStream?
@@ -19,7 +23,7 @@ final class PeerSession: @unchecked Sendable {
 	func handshake(_ hello: PeerHandshake) throws { try enqueue(Outbound(bytes: hello.encoded, payload: 0, token: nil, block: nil)) }
 	func register(_ token: UUID, bytes: Int) -> Bool {
 		lock.withLock {
-			guard !closed, bytes > 0, bytes <= 524_288 - queuedBytes - reservedBytes,
+			guard !closed, bytes > 0, bytes <= Self.outputByteLimit - queuedBytes - reservedBytes,
 				queuedMessages + reservations.count < 128, !tokens.contains(token) else { return false }
 			tokens.insert(token); reservations[token] = bytes; reservedBytes += bytes; return true
 		}
@@ -37,7 +41,7 @@ final class PeerSession: @unchecked Sendable {
 				guard tokens.contains(token), let reserved = reservations[token] else { throw PeerFailure.closed }
 				guard reserved == item.bytes.count else { throw PeerFailure.invalid("upload output reservation") }; credit = reserved
 			} else { credit = 0 }
-			guard queuedBytes + reservedBytes - credit + item.bytes.count <= 524_288 else { throw PeerFailure.limit("peer output bytes") }
+			guard queuedBytes + reservedBytes - credit + item.bytes.count <= Self.outputByteLimit else { throw PeerFailure.limit("peer output bytes") }
 			guard queuedMessages + reservations.count - (item.token == nil ? 0 : 1) < 128 else { throw PeerFailure.limit("peer output messages") }
 			if let token = item.token { reservations[token] = nil; reservedBytes -= credit }
 			outgoing.append(item); queuedBytes += item.bytes.count; queuedMessages += 1

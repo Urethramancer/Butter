@@ -4,6 +4,8 @@ import ButterTorrentNetworking
 import ButterTorrentStorage
 
 public struct TCPTransferConfiguration: Sendable {
+	/// The advertised upload queue fits maximum payloads and their wire framing.
+	public static var advertisedUploadRequestLimit: Int { PeerSession.advertisedUploadRequestLimit }
 	public var maximumPeers = 50
 	public var allowSameIP = true
 	public var addressFilter = PeerAddressFilter()
