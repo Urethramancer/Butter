@@ -7,8 +7,9 @@
   10% of baseline. The [full results](docs/performance/framed-window-results-2026-11-12.md)
   pass memory in all eighteen cases and throughput in nine, but fail CPU throughout.
 - Rerun the full matrix and release acceptance for the final candidate. The
-  [focused hash-readiness change](docs/performance/hash-readiness-results-2026-11-12.md)
-  reduces hybrid single-file download CPU 13.4%, but still misses native parity.
+  [focused picker change](docs/performance/picker-results-2026-11-12.md)
+  reduces single-file v1 download CPU another 14.5% to 3.597 s/GiB, but still
+  misses native parity.
 - Reduce repeated whole-layout stamp inspection and per-block upload,
   allocation and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.

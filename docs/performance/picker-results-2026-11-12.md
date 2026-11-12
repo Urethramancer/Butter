@@ -33,6 +33,13 @@ Native-relative CPU is still 2.322 [2.279–2.367], above 1.25, and verified
 throughput is 0.809 [0.801–0.813], below 0.90. Parity remains unmet. This focused
 case does not replace the final eighteen-case matrix or native release checks.
 
+Committed production source `9a2803a` subsequently passes all 466 pinned native
+reference checks, including encrypted TCP, µTP, all 24 session DHT transfers,
+sparse/hybrid authentication and web-seed comparisons.
+All 52 focused picker/transfer/resource tests pass under each of Address and
+Thread Sanitizer for the same source. The final full matrix and remaining
+release acceptance checks are still open.
+
 [All trials](raw/picker-refill-single-v1/trials.jsonl),
 [native ratios](raw/picker-refill-single-v1/summary.json),
 [before/after](raw/picker-refill-single-v1/before-after.json),
