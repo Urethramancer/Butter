@@ -21,9 +21,31 @@ All 28 trials pass independent payload digests and saved-state reopening.
 Sources use the same driver and pinned native counterpart, production request
 windows, warm sources, fresh processes/destinations, one warm-up per source and
 engine, and paired median percentile bootstrap intervals (10,000 resamples).
-All 57 existing storage tests and 15 focused resource/upload tests pass.
+All 347 package tests pass, with 110 focused tests under each of Address and Thread Sanitizers.
 
 Raw results, exact source/build hashes and phase/counterpart measurements remain
 locally in `.build/benchmarks/piece-buffer-handoff-source-order`. The
-machine-readable summary is retained beside this report; broader correctness
-and performance verification are pending.
+machine-readable summaries are retained beside this report. Native interoperability and final-matrix acceptance remain pending.
+
+Six further source pairs per case (56 validated trials) compare the same change
+with `545fbff`. All 84 trials across the three cases pass; no failures are retried.
+
+| Seeding case | CPU current/previous | Throughput current/previous | Peak RSS current/previous |
+| --- | ---: | ---: | ---: |
+| 128 files, v1 | 0.945 [0.923–0.977] | 1.003 [0.985–1.085] | 1.055 [1.007–1.092] |
+| Four transfers, v2 | 0.878 [0.860–0.905] | 1.044 [1.008–1.092] | 1.090 [1.066–1.108] |
+
+Memory increases against the preceding source in both cases; the concurrent
+interval exceeds 1.10 at its upper end. The acceptance requirement is against
+the original fresh Swift baseline, which both cases pass: current median peak
+RSS is 0.205 and 0.385 of that baseline, with observed maxima 0.210 and 0.400.
+No cache limit is enlarged. Many-file Swift/native medians are 396.9/447.5 MB/s
+and 4.013/1.985 CPU s/GiB. Concurrent medians are 930.9/480.1 MB/s and
+2.809/1.804 CPU s/GiB. Paired native-relative CPU remains 2.004 [1.910–2.363]
+and 1.570 [1.416–1.586]; neither establishes parity. Native control and
+counterpart CPU intervals cross one in each case.
+
+Broader raw phases, source hashes and counterpart results remain locally in
+`.build/benchmarks/piece-buffer-handoff-broader`. These focused source diagnostics
+do not replace the eighteen-case final matrix or resolve earlier full-run
+sequence/runtime regressions.

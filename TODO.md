@@ -15,8 +15,8 @@
   meets native throughput, but the full-run regression remains open.
 - Rerun the matrix/profiles for the final candidate and complete remaining release
   acceptance; the latest complete matrix is `5b9ef12`, latest profiles `61584b7`.
-- Complete final performance acceptance for grouped
-  upload workers. Controlled source comparisons reduce seeding CPU 16.5%
+- Complete final performance acceptance for grouped upload workers and
+  direct verified-buffer returns (focused seeding CPU reductions of 5.5–12.2%). Controlled source comparisons reduce seeding CPU 16.5%
   (single v1), 16.9% (many v1) and 12.9% (concurrent v2); full-matrix parity
   remains unproven.
 - Reduce repeated whole-layout stamp inspection (38.6% inclusive in many-file

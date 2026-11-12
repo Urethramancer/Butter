@@ -71,6 +71,12 @@ A separate [available request dispatch experiment](request-groups-results-2026-1
 over the retained grouped workers also shows no reproducible benefit. Its 28
 trials and rejected patch remain; production dispatch is restored.
 
+[Returning an owned verified-piece buffer](piece-buffer-results-2026-11-12.md)
+avoids another full-piece copy. Six source pairs per case reduce seeding CPU
+6.2% (single v1), 5.5% (many v1) and 12.2% (concurrent v2). All 84 trials
+validate; original-baseline memory passes, although incremental memory rises
+in the many-file and concurrent cases. CPU parity and final acceptance remain open.
+
 The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
 reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
 (13.4%) and raises throughput from 182.4 to 213.1 MB/s. Fourteen trials and both
