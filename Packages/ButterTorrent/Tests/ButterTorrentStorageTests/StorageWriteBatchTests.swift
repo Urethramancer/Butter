@@ -134,6 +134,29 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 			#expect(try Data(contentsOf: original) == bytes.prefix(16384)); #expect(try Data(contentsOf: file) == replacement)
 		}
 	}
+	@Test func refreshedFileStampsCannotRedirectAnOpenBatchDescriptor() async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try batchMetadata(fileCount: 2, fileSize: 16384)
+			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { _ in }, check: {})
+			let file = root.appendingPathComponent("data/bundle/file-0"), original = root.appendingPathComponent("original"), replacement = Data([94, 95])
+			let writes = [StorageWrite(piece: 0, offset: 0, data: bytes.prefix(4)),
+				StorageWrite(piece: 1, offset: 0, data: bytes[16384..<16388]), StorageWrite(piece: 0, offset: 4, data: bytes[4..<8])]
+			var checks = 0, refreshed = false
+			#expect(throws: StorageFailure.invalid("payload replaced during write batch")) {
+				try state.writeOperations(writes, maximumBytes: 262144, maximumCount: 16, check: {
+					checks += 1
+					if checks == 3 { try FileManager.default.moveItem(at: file, to: original); try replacement.write(to: file) }
+					// Opening the second file forces a scan that records the replacement.
+					if checks == 5 { refreshed = try state.payload.inspect("bundle/file-0") == state.record.stamps[0] }
+				})
+			}
+			#expect(refreshed)
+			#expect(try Data(contentsOf: original) == bytes.prefix(4))
+			#expect(try Data(contentsOf: file) == replacement)
+			#expect(try Data(contentsOf: root.appendingPathComponent("data/bundle/file-1")) == bytes[16384..<16388])
+			#expect(state.pendingFlush == [0, 1])
+		}
+	}
 	@Test func invalidatesBothCommittedAndPendingTargetsBeforeAMixedOverwrite() async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 65536)
