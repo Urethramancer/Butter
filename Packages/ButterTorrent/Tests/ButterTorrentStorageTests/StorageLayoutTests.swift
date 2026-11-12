@@ -18,6 +18,25 @@ private func layoutMetadata(_ sizes: [Int], pieces: Data? = nil) throws -> Torre
 private enum ParentProbeError: Error, Equatable { case stopped }
 
 @Suite struct StorageLayoutTests {
+	@Test(arguments: ["\u{0301}folder", "\u{FE0F}folder"], [false, true])
+	func byteSeparatorsKeepUnicodePathsAnchored(_ child: String, _ linked: Bool) async throws {
+		try await storageFixture { root in
+			let managed = root.appendingPathComponent("managed"), outside = root.appendingPathComponent("outside")
+			try FileManager.default.createDirectory(at: outside.appendingPathComponent(child), withIntermediateDirectories: true)
+			let retained = outside.appendingPathComponent(child).appendingPathComponent("payload"), original = Data([7])
+			try original.write(to: retained)
+			let directory = try StorageDirectory(managed), path = "parent/" + child + "/payload"
+			#expect(try StorageLayout.components(path) == ["parent", child, "payload"])
+			if linked {
+				try FileManager.default.createSymbolicLink(at: managed.appendingPathComponent("parent"), withDestinationURL: outside)
+				#expect(throws: (any Error).self) { try directory.atomic(Data([9]), path: path) }
+			} else {
+				try directory.atomic(Data([9]), path: path)
+				#expect(try directory.read(path, maximum: 1) == Data([9]))
+			}
+			#expect(try Data(contentsOf: retained) == original)
+		}
+	}
 	@Test(arguments: ["payload", "nested/deeper/payload"], [false, true])
 	func parentAnchorSurvivesLastExternalOwnerRelease(_ path: String, _ fail: Bool) async throws {
 		try await storageFixture { root in

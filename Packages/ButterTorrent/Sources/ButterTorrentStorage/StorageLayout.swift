@@ -73,13 +73,14 @@ public struct StorageLayout: Sendable {
 		return result
 	}
 	static func components(_ path: String) throws -> [String] {
-		let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+		// POSIX separates bytes, even when a combining mark joins '/' in a grapheme.
+		let parts = path.utf8.split(separator: 47, omittingEmptySubsequences: false).map { String(decoding: $0, as: UTF8.self) }
 		guard !parts.isEmpty, parts.count <= 100, path.utf8.count <= 4096,
 			parts.allSatisfy({ validComponent($0) }) else { throw StorageFailure.invalid("relative file path") }
 		return parts
 	}
 	static func validComponent(_ component: some StringProtocol) -> Bool {
-		!component.isEmpty && component != "." && component != ".." && !component.utf8.contains(0) && component.utf8.count <= 255
+		!component.isEmpty && component != "." && component != ".." && !component.utf8.contains(where: { $0 == 0 || $0 == 47 }) && component.utf8.count <= 255
 	}
 	static func pathKey(_ path: String) -> String {
 		path.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX")).precomposedStringWithCanonicalMapping
