@@ -4,7 +4,8 @@
 frames as Data. Seven revised source comparisons validate 196 trials: seeding
 CPU falls 2.3–4.3%; single/concurrent hybrid RSS falls 4.3%/7.7%. No measured
 cost is established, but several throughput/download intervals remain wide
-and inconclusive. Full native validation and full-matrix acceptance remain pending.
+and inconclusive. Full native validation passes (466 PASS records); full-matrix
+acceptance remains pending.
 The first version's measured download memory cost remains disqualifying.
 
 [Fresh current-source Running CPU profiles](window8-current-profiles-2026-11-12.md)

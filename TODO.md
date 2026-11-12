@@ -2,10 +2,10 @@
 
 ## TCP performance parity
 
-- Finish native validation and the full matrix for revised upload wire buffers.
-  Seven source comparisons validate 196 trials; seeding CPU falls 2.3–4.3%, with
-  no established measured cost. Keep wide/inconclusive throughput and download
-  intervals explicit; full parity remains unmet.
+- Complete the full matrix for revised upload wire buffers. Seven source
+  comparisons validate 196 trials and the full native suite passes (466 PASS
+  records). Seeding CPU falls 2.3–4.3%; keep wide/inconclusive throughput and
+  download intervals explicit. Full parity remains unmet.
 
 - Obtain quiet-host timings for the final candidate. All eight current-source
   Running CPU captures now validate; earlier Instruments failures and loaded-host
@@ -38,8 +38,9 @@
 - Resolve the native run's IPv6 v2 negotiated-encryption µTP upload timeout
   under deliberate SYN-ACK loss. The eight-request candidate records 273 native
   passes before failing, with zero payload traffic and no disk error. Preserve
-  the full failed run. The isolated fixture and a declared twelve-case stress
-  run pass with unchanged deadlines; reproduce the full-suite condition.
+  the full failed run. The isolated fixture, a declared twelve-case stress run
+  and the revised representation's full native suite pass with unchanged
+  deadlines. The original full-sequence failure's cause remains unexplained.
 
 - Identify the native run's temporary-path disappearance: the first run exits 1
   with its log, fixture and module cache missing; a workspace-directory rerun

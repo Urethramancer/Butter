@@ -1,0 +1,20 @@
+{
+  "candidate_revision": "4806204",
+  "status": "pass",
+  "exit_code": 0,
+  "pass_records": 466,
+  "earlier_failed_fixture": {
+    "case": "single-65536-v2-up-all-fragmented-ipv6-negotiated-utp",
+    "current_full_run": "pass",
+    "original_failure": "unresolved; retained with the original run and isolated/stress results"
+  },
+  "command": "env -u BUTTER_REFERENCE_FILTER sh .build/diagnostics/piece-buffer/native-wire-raw-workspace.sh",
+  "log": ".build/diagnostics/piece-buffer/wire-raw-native-full.log",
+  "log_sha256": "53571ac8bf4d356dc7d18df0860920e81caa78e3554d76ea993fbdbed824389d",
+  "wrapper_sha256": "c2e4083655b7ad6d81daf75e75eee9199f16a979bd713b7ca77568e80f4774f6",
+  "source_manifest": ".build/diagnostics/piece-buffer/wire-raw-native-source-hashes.json",
+  "source_manifest_sha256": "665cf4d11b189e8042336789eeb69a34cfe82dbbd4e6ad7ee7c077047431258a",
+  "production_source_files": 94,
+  "cleanup": "Successful fixture directory and temporary executable removed by wrapper; failed fixtures would be retained.",
+  "remaining": "Full18-case performance matrix and CPU parity remain open."
+}

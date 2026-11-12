@@ -141,3 +141,17 @@ retain all source/control intervals and absolute medians. The full native suite
 is running after the timed comparisons, with failed fixtures retained. Full-matrix
 acceptance and CPU parity remain unmet; these focused comparisons do not replace
 the complete matrix or erase the first version's measured memory regression.
+
+## Revised full native validation
+
+The unfiltered full native suite exits successfully with 466 PASS records.
+Coverage includes bidirectional TCP/µTP, encryption, selective storage,
+fragmentation, identity, discovery, tracker and web-seed integrations. The
+previously failing IPv6 v2 negotiated-µTP upload fixture passes in this full
+sequence with unchanged deadlines. The cause of the original failure remains
+unexplained; its evidence and the earlier isolated/stress passes remain recorded.
+
+[Native outcome, log hash and source manifest](wire-raw-native-validation-2026-11-12.json)
+retain the evidence. The wrapper removes successful temporary fixtures and
+binaries, and would retain failed fixtures. Full-matrix performance acceptance
+and CPU parity remain open.
