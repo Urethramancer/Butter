@@ -1,11 +1,16 @@
 # Swift/libtorrent transfer comparison
 
+[Current revised-buffer full matrix](wire-raw-full-results-2026-11-13.md) validates
+252/252 trials: throughput passes 9/18, CPU 0/18 and memory 18/18. CPU/native
+ranges from 1.53× to 5.19×. Many-file downloads remain the largest gap; parity
+is unmet. Historical matrices below describe different candidates.
+
 [Owned upload wire buffers](wire-groups-results-2026-11-12.md) now retain ordinary
 frames as Data. Seven revised source comparisons validate 196 trials: seeding
 CPU falls 2.3–4.3%; single/concurrent hybrid RSS falls 4.3%/7.7%. No measured
 cost is established, but several throughput/download intervals remain wide
 and inconclusive. Full native validation passes (466 PASS records); full-matrix
-acceptance remains pending.
+matrix is now recorded separately above; CPU parity remains unmet.
 The first version's measured download memory cost remains disqualifying.
 
 [Fresh current-source Running CPU profiles](window8-current-profiles-2026-11-12.md)

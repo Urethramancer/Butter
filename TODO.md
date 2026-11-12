@@ -2,10 +2,11 @@
 
 ## TCP performance parity
 
-- Complete the full matrix for revised upload wire buffers. Seven source
-  comparisons validate 196 trials and the full native suite passes (466 PASS
-  records). Seeding CPU falls 2.3–4.3%; keep wide/inconclusive throughput and
-  download intervals explicit. Full parity remains unmet.
+- Reduce the revised candidate's remaining CPU gap: its full matrix validates
+  all 252 trials, passing throughput 9/18, CPU 0/18 and memory 18/18. Prioritise
+  many-file downloads (4.32–5.19× native CPU); preserve wide/inconclusive source
+  throughput intervals and all rejected experiments.
+
 
 - Obtain quiet-host timings for the final candidate. All eight current-source
   Running CPU captures now validate; earlier Instruments failures and loaded-host
