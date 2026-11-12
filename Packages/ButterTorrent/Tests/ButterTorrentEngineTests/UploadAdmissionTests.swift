@@ -6,6 +6,7 @@ import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
 private extension TCPTransfer {
+	var pendingUploadWork: Int { uploadJobs.count }
 	func uploadAdmissionState() -> (queued: Int, controls: Int) {
 		guard let peer = peers.values.first else { return (0, 0) }
 		return (peer.uploads.count, peer.controls)
@@ -34,6 +35,47 @@ private func blockedUploadFixture(_ body: (TCPTransfer, WirePeer) async throws -
 }
 
 @Suite struct UploadAdmissionTests {
+	@Test(arguments: [false, true]) func cancellingAndReplacingPendingUploadsKeepsIndependentRequests(_ choke: Bool) async throws {
+		try await transferFixture { fixture in
+			let resources = try TransferResources(maximumDiskOperations: 1)
+			let seed = try await fixture.transfer("seed", seed: true, clock: EngineClock(), resources: resources)
+			let peer = try await fixture.scripted(seed); defer { peer.stream.close() }
+			try await peer.send(.interested)
+			while try await peer.next() != .unchoke {}
+			let id = await seed.snapshot().peers[0].id
+			let blocker = TransferDiskScope(resources: resources); try await blocker.acquire()
+			var held = true
+			do {
+				let first = PeerBlock(piece: 0, offset: 0, length: 16384), second = PeerBlock(piece: 0, offset: 16384, length: 16384)
+				try await seed.received(id, message: .request(first))
+				try await seed.received(id, message: .request(second))
+				try await eventually { await resources.snapshot().waitingDiskOperations == 1 }
+				try await seed.received(id, message: .cancel(first))
+				if choke {
+					try await seed.received(id, message: .notInterested)
+					try await seed.received(id, message: .interested)
+					try await seed.received(id, message: .request(second))
+				}
+				try await seed.received(id, message: .request(first))
+				await blocker.release(); held = false
+				try await eventually { await seed.pendingUploadWork == 0 }
+				// The marker follows all queued payloads, exposing stale or duplicate replies.
+				try await seed.send(id, .keepAlive)
+				var delivered: [PeerBlock] = []
+				while true {
+					let message = try await peer.next()
+					if message == .keepAlive { break }
+					if case .piece(let piece, let offset, let bytes) = message {
+						delivered.append(PeerBlock(piece: piece, offset: offset, length: bytes.count))
+						#expect(bytes == fixture.bytes[offset..<(offset + bytes.count)])
+					}
+				}
+				#expect(delivered.count == 2 && Set(delivered) == [first, second])
+				try await eventually { await seed.uploadAdmissionState().queued == 0 }
+				#expect(await seed.snapshot().storageError == nil)
+			} catch { if held { await blocker.release() }; throw error }
+		}
+	}
 	@Test func advertisedWindowFitsMaximumSizedPayloadsWithoutBusyRejections() async throws {
 		try await transferFixture { fixture in
 			let resources = try TransferResources(maximumDiskOperations: 1)
