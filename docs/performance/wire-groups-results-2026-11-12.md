@@ -16,7 +16,8 @@ metrics. Raw Swift medians are 2.780 → 2.668 CPU seconds/GiB and
 583.4 → 581.4 MB/s; paired ratios account for trial order. Native control
 intervals cross one. Current CPU/native remains 1.569 [1.538–1.597], above
 the 1.25 target; throughput/native is 1.298 [1.281–1.303]. These are focused
-source diagnostics, not full-matrix acceptance. Broader cases remain pending.
+source diagnostics, not full-matrix acceptance. Broader seeding results follow;
+download checks and full-matrix acceptance remain pending.
 
 The change encodes available upload requests into owned buffers bounded by
 256 KiB and sixteen frames. Contiguous frames share their wire storage;
