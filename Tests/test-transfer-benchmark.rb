@@ -3,6 +3,74 @@ require_relative 'TransferBenchmarkHarness'
 
 class TransferBenchmarkHarnessTests < Minitest::Test
 	H = TransferBenchmarkHarness
+	def with_profiler(mode)
+		Dir.mktmpdir('butter-profiler-test') do |root|
+			flag = File.join(root, 'ready')
+			notification = Object.new
+			notification.define_singleton_method(:ready?) { File.exist?(flag) }
+			notification.define_singleton_method(:close) { @closed = true }
+			notification.define_singleton_method(:closed?) { @closed }
+			program = "trap('INT') { exit 0 unless ARGV[0] == 'ignore' }; abort 'profiler failure' if ARGV[0] == 'fail'; File.write(ARGV[1], 'ready') if %w[ready ignore].include?(ARGV[0]); loop { sleep 0.01 }"
+			profiler = H::TimeProfiler.new(0, File.join(root, 'profile'), command: [RbConfig.ruby, '-e', program, mode, flag], notification: notification)
+			begin; yield profiler
+			ensure; profiler.cleanup
+			end
+			assert notification.closed?
+			assert_raises(Errno::ESRCH) { Process.kill(0, profiler.pid) }
+		end
+	end
+	def test_profiler_ready_and_orderly_finish
+		with_profiler('ready') do |profiler|
+			profiler.wait_ready([], timeout: 2)
+			profiler.finish(timeout: 2)
+		end
+	end
+	def test_cpu_profile_resolves_references_and_excludes_waits_and_other_processes
+		Dir.mktmpdir('butter-profile-xml') do |root|
+			path = File.join(root, 'profile.xml')
+			File.write(path, <<~XML)
+				<trace-query-result><node>
+				<row><process id="1"><pid>42</pid></process><thread-state id="2">Running</thread-state><weight id="3">1000000</weight><tagged-backtrace id="4"><frame id="5" name="leaf"/><frame name="parent"/><frame name="parent"/></tagged-backtrace></row>
+				<row><process ref="1"/><thread-state ref="2"/><weight ref="3"/><tagged-backtrace ref="4"/></row>
+				<row><process ref="1"/><thread-state>Waiting</thread-state></row>
+				<row><process><pid>43</pid></process><thread-state ref="2"/></row>
+				</node></trace-query-result>
+			XML
+			summary = H.profile_summary(path, 42)
+			assert_equal 2, summary[:running_samples]
+			assert_equal 2000000, summary[:weight_ns]
+			assert_equal [{ symbol: 'leaf', weight_ns: 2000000, percent: 100.0 }], summary[:flat]
+			assert_equal [100.0, 100.0], summary[:inclusive].map { |row| row[:percent] }
+			File.write(path, File.read(path).sub('</node>', '<row><process ref="1"/><thread-state ref="2"/><weight ref="3"/></row></node>'))
+			incomplete = H.profile_summary(path, 42)
+			assert_equal 3, incomplete[:running_samples]
+			assert_equal 1, incomplete[:unavailable_backtrace_samples]
+			assert_equal 3000000, incomplete[:weight_ns]
+			assert_in_delta 100.0, incomplete[:flat].sum { |row| row[:percent] }, 1e-9
+			assert_raises(RuntimeError) { H.profile_summary(path, 44) }
+		end
+	end
+	def test_profiler_failure_deadline_and_counterpart_cleanup
+		with_profiler('ignore') do |profiler|
+			profiler.wait_ready([], timeout: 2)
+			error = assert_raises(RuntimeError) { profiler.finish(timeout: 0.05) }
+			assert_match(/finish deadline/, error.message)
+		end
+		with_profiler('fail') do |profiler|
+			error = assert_raises(RuntimeError) { profiler.wait_ready([], timeout: 2) }
+			assert_match(/exited before ready/, error.message)
+		end
+		with_profiler('stall') do |profiler|
+			error = assert_raises(RuntimeError) { profiler.wait_ready([], timeout: 0.05) }
+			assert_match(/readiness deadline/, error.message)
+		end
+		with_children(['failed']) do |children|
+			with_profiler('stall') do |profiler|
+				error = assert_raises(RuntimeError) { profiler.wait_ready(children, timeout: 2) }
+				assert_match(/exited before stopped/, error.message)
+			end
+		end
+	end
 	def test_profile_defaults_and_explicit_workload_selection
 		assert H.profile_case?('single', 'v1', 'seed', {})
 		refute H.profile_case?('many', 'v2', 'seed', {})

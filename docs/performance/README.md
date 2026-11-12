@@ -143,6 +143,23 @@ retained; these instrumented results are labelled profile-only and never used
 as timing acceptance evidence. Sampling attributes stacks and waits; allocation
 counts require additional Instruments Allocations recordings when indicated.
 
+Set `BUTTER_BENCHMARK_PROFILER=time-profiler` with `--profile` to capture
+Instruments Time Profiler instead. Each engine is attached separately while
+both drivers wait at ready; an Instruments start notification gates transfer
+start. Recording stops after durable completion. The counterpart retains phase
+CPU accounting but is not instrumented. Bounded startup, finish and export
+deadlines retain failures and clean up children. Text TOC/sample XML exports
+and `.cpu.json` summaries resolve references and include only Running samples
+from the tested process. Sample weights are statistical attribution, not exact
+CPU durations; inclusive percentages overlap. Binary `.trace` bundles stay
+in the disposable build output and are not committed. Profile-only measurements
+never replace the separate full timing matrix.
+
+The [source-matched CPU profiles](cpu-profiles-2026-11-12.md) retain all eight
+four-case trials and a preceding two-trial capability run. They identify
+whole-layout stamp scans and repeated hash-request set subtraction as separate
+costs; CPU parity remains open.
+
 Setting all three case/format/direction filters with `--profile` selects that
 exact workload, including cases outside the default four-profile set.
 

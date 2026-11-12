@@ -42,6 +42,117 @@ module TransferBenchmarkHarness
 		terminate(pid) if pid
 	end
 
+	# Register before starting Instruments, so its start notification cannot be lost.
+	class TraceNotification
+		def initialize(name)
+			require 'fiddle'
+			library = Fiddle.dlopen(nil)
+			register = Fiddle::Function.new(library['notify_register_check'], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
+			@check = Fiddle::Function.new(library['notify_check'], [Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
+			@cancel = Fiddle::Function.new(library['notify_cancel'], [Fiddle::TYPE_INT], Fiddle::TYPE_INT)
+			value = Fiddle::Pointer.malloc(4)
+			raise 'Profiler notification registration failed' unless register.call(name, value) == 0
+			@token = value[0, 4].unpack('i').first
+			ready? # Discard the initial registration state.
+		end
+		def ready?
+			value = Fiddle::Pointer.malloc(4)
+			raise 'Profiler notification check failed' unless @check.call(@token, value) == 0
+			value[0, 4].unpack('i').first != 0
+		end
+		def close
+			@cancel.call(@token) if @token
+			@token = nil
+		end
+	end
+
+	class TimeProfiler
+		attr_reader :pid
+		def initialize(target, prefix, command: nil, notification: nil)
+			@prefix = prefix
+			name = "org.butter.profile.#{Process.pid}.#{target}"
+			@notification = notification || TraceNotification.new(name)
+			command ||= ['xcrun', 'xctrace', 'record', '--template', 'Time Profiler', '--attach', target.to_s,
+				'--notify-tracing-started', name, '--time-limit', '600s', '--output', "#{prefix}.trace"]
+			@pid = Process.spawn(*command, out: "#{prefix}.profiler.log", err: [:child, :out], pgroup: true)
+		rescue Exception
+			@notification.close if @notification
+			raise
+		end
+		def wait_ready(children, timeout: 30)
+			deadline = TransferBenchmarkHarness.now + timeout
+			loop do
+				if (result = Process.waitpid2(@pid, Process::WNOHANG))
+					@reaped = true
+					raise "Profiler exited before ready: #{result[1]}"
+				end
+				readers = children.map(&:output).compact
+				ready = IO.select(readers, nil, nil, 0.01)
+				children.each { |child| child.read_available if ready && ready[0].include?(child.output) }
+				return if @notification.ready?
+				raise 'Profiler readiness deadline' if TransferBenchmarkHarness.now >= deadline
+			end
+		end
+		def finish(timeout: 60)
+			raise 'Profiler already exited' if @reaped
+			Process.kill('INT', -@pid)
+			deadline = TransferBenchmarkHarness.now + timeout
+			loop do
+				if (result = Process.waitpid2(@pid, Process::WNOHANG))
+					@reaped = true
+					raise "Profiler failed: #{result[1]}" unless result[1].success?
+					return
+				end
+				raise 'Profiler finish deadline' if TransferBenchmarkHarness.now >= deadline
+				sleep 0.02
+			end
+		end
+		def export
+			[['toc', ['--toc']], ['samples', ['--xpath', '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]']]].each do |suffix, query|
+				command = ['xcrun', 'xctrace', 'export', '--input', "#{@prefix}.trace", *query, '--output', "#{@prefix}.#{suffix}.xml"]
+				raise 'Profiler export failed' unless TransferBenchmarkHarness.run_bounded(command, "#{@prefix}.export.log", timeout: 60)
+			end
+		end
+		def cleanup
+			TransferBenchmarkHarness.terminate(@pid) if @pid && !@reaped
+			@notification.close
+		end
+	end
+
+	def self.profile_summary(path, target)
+		require 'rexml/document'
+		document = REXML::Document.new(File.read(path))
+		refs, rows = {}, []
+		document.root.each_recursive do |element|
+			refs[element.attributes['id']] = element if element.attributes['id']
+			rows << element if element.name == 'row'
+		end
+		resolve = ->(element) { element && (element.attributes['ref'] ? refs.fetch(element.attributes['ref']) : element) }
+		flat, inclusive = Hash.new(0), Hash.new(0)
+		count = 0; unavailable = 0
+		rows.each do |row|
+			process = resolve.call(row.elements['process'])
+			next unless process && resolve.call(process.elements['pid']).text.to_i == target
+			next unless resolve.call(row.elements['thread-state']).text == 'Running'
+			weight = Integer(resolve.call(row.elements['weight']).text)
+			raise 'Invalid profiler sample weight' unless weight > 0
+			stack = resolve.call(row.elements['tagged-backtrace'])
+			frames = stack ? stack.get_elements('frame').map { |frame| resolve.call(frame).attributes['name'] || '[unnamed frame]' } : []
+			if frames.empty?
+				unavailable += 1; frames = ['[unavailable backtrace]']
+			end
+			flat[frames.first] += weight
+			frames.uniq.each { |frame| inclusive[frame] += weight }
+			count += 1
+		end
+		raise 'No running samples for profiler target' if count == 0
+		total = flat.values.sum
+		rank = ->(values) { values.sort_by { |name, weight| [-weight, name] }.first(100).map { |name, weight| { symbol: name, weight_ns: weight, percent: 100.0 * weight / total } } }
+		{ target_pid: target, running_samples: count, unavailable_backtrace_samples: unavailable, weight_ns: total,
+			method: 'Running samples for the tested process only; statistical sample weights, not measured CPU durations; inclusive symbols overlap',
+			flat: rank.call(flat), inclusive: rank.call(inclusive) }
+	end
+
 	class Child
 		attr_reader :events, :pid, :log, :job_path, :whole
 		def initialize(command, job_path, log)
@@ -196,6 +307,9 @@ module TransferBenchmarkHarness
 		def initialize(swift, reference, output, work, smoke: false, profile: false, baseline: ENV['BUTTER_BENCHMARK_BASELINE'])
 			@commands = { 'Swift' => [swift], 'libtorrent' => [reference] }
 			@output, @work, @smoke, @profile = output, work, smoke, profile
+			@profiler = ENV.fetch('BUTTER_BENCHMARK_PROFILER', 'sample')
+			raise 'Unknown benchmark profiler' unless %w[sample time-profiler].include?(@profiler)
+			raise 'Time Profiler requires --profile' if !profile && @profiler != 'sample'
 			@trials = []
 			if baseline
 				raise 'A representative full baseline is required' unless JSON.parse(File.read(File.join(baseline, 'environment.json')))['mode'] == '--full'
@@ -214,7 +328,7 @@ module TransferBenchmarkHarness
 			seed_items = items.each_with_index.map { |item, index| item.merge(destination: File.join(root, 'seed'), state: File.join(folder, "seed-state-#{index}")) }
 			jobs = { 'seed' => { role: 'seed', items: seed_items }, 'download' => { role: 'download', items: items } }
 			record = { id: id, case: fixture['case'], format: format, direction: direction, engine: engine, pair: pair, warmup: warmup, bytes: fixture['bytes'], accepted: false }
-			children = []; profilers = []
+			children = []; profilers = []; trace = nil
 			begin
 				# Explicitly warm every source with an independent streaming digest, outside timing.
 				raise 'Fixture payload byte count mismatch' unless fixture['files'].sum { |file| file.fetch('size') } == fixture['bytes']
@@ -234,8 +348,14 @@ module TransferBenchmarkHarness
 				timeout = @smoke ? 30 : 600
 				TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'ready'] }, timeout: timeout)
 				raise 'Metadata payload byte count mismatch' unless children.all? { |child| child.phase('ready').fetch('payload_bytes') == fixture['bytes'] }
+				if @profile && @profiler == 'time-profiler'
+					tested = direction == 'download' ? down : seed
+					trace = TimeProfiler.new(tested.phase('ready').fetch('pid'), File.join(@output, id))
+					trace.wait_ready(children)
+					record[:profiler] = { name: 'Time Profiler', target: engine, attached_before_start: true, counterpart_instrumented: false }
+				end
 				seed.send_command('start'); down.send_command('start', ports: seed.phase('ready').fetch('ports'))
-				if @profile
+				if @profile && @profiler == 'sample'
 					TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'start'] }, timeout: timeout)
 					roles.each do |role, child|
 						path = File.join(@output, "#{id}-#{role}.sample.txt")
@@ -247,9 +367,16 @@ module TransferBenchmarkHarness
 				TransferBenchmarkHarness.wait(children, [[seed, 'verified']], timeout: timeout)
 				children.each { |child| child.send_command('persist') }
 				TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'durable'] }, timeout: timeout)
+				trace.finish if trace
 				children.each { |child| child.send_command('stop') }
 				TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'stopped'] }, timeout: timeout)
 				children.each(&:finish)
+				if trace
+					trace.export
+					prefix = File.join(@output, id)
+					summary = TransferBenchmarkHarness.profile_summary("#{prefix}.samples.xml", tested.phase('ready').fetch('pid'))
+					File.write("#{prefix}.cpu.json", JSON.pretty_generate(summary))
+				end
 				# Measurements have ended. Check each file independently, then reopen native recovery state.
 				fixture['files'].each do |file|
 					index = fixture['case'] == 'concurrent' ? file['path'][/payload-(\d+)/, 1].to_i : 0
@@ -274,6 +401,7 @@ module TransferBenchmarkHarness
 				record[:failure_files] = Dir.glob(File.join(folder, '**', '*')).select { |path| File.file?(path) }.map { |path| { path: path.delete_prefix(folder + '/'), bytes: File.size(path) } }
 			ensure
 				children.each(&:cleanup)
+				trace.cleanup if trace
 				profilers.each { |pid| TransferBenchmarkHarness.terminate(pid) }
 				record[:events] = jobs.keys.zip(children.map(&:events)).to_h
 				File.open(File.join(@output, 'trials.jsonl'), 'a') { |file| file.puts(JSON.generate(record)) }

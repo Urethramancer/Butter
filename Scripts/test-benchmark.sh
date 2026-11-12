@@ -4,6 +4,10 @@ set -eu
 cd "$(dirname "$0")/.."
 mode=${1:---full}
 case "$mode" in --full|--smoke|--profile) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--profile] [OUTPUT]' >&2; exit 2 ;; esac
+case "${BUTTER_BENCHMARK_PROFILER:-sample}:$mode" in
+	sample:*|time-profiler:--profile) ;;
+	*) echo 'Use BUTTER_BENCHMARK_PROFILER=sample, or time-profiler with --profile.' >&2; exit 2 ;;
+esac
 out=${2:-$PWD/.build/benchmarks/$(date -u +%Y%m%dT%H%M%SZ)}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
@@ -34,6 +38,7 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
     cache: "fresh processes and destinations; sources streamed and SHA256 checked before every trial; explicitly warm, no cold-cache claim",
     durability: "Swift native payload fsync then atomic state fsync/rename/directory fsync; its forced completion checkpoint is inside the verified interval. Libtorrent finished precedes pause/flush_cache fence plus explicit payload/directory fsync then resume fsync/rename/directory fsync. Through-durable metrics include both placements.",
     sampling: mode == "--profile" ? "one instrumented pair per selected case; no warm-ups; profile-only, excluded from timing acceptance" : "one warm-up per engine per case, six balanced shuffled pairs; extend inconclusive cases to twelve pairs; smoke uses one pair and 32 MiB",
+    profiler: mode == "--profile" ? {name: ENV.fetch("BUTTER_BENCHMARK_PROFILER", "sample"), time_profiler_method: "attach tested process before start using Instruments notification; Running samples only; stop after durable; counterpart phase CPU retained, not instrumented"} : nil,
     timing: "phase wall/user/system from each driver; CPU/GiB through durable completion; whole process wall/user/system/peak RSS from /usr/bin/time -l, including teardown"}
   files = %w[Tests/TransferBenchmark.swift Tests/TransferBenchmarkReference.hpp Tests/TCPPeerReference.mm Tests/TransferBenchmarkHarness.rb Tests/Reference/CMakeLists.txt Scripts/test-benchmark.sh Scripts/bootstrap-engine.sh]
   record[:harness_sha256] = files.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }
