@@ -63,8 +63,14 @@ extension TCPTransfer {
 			if !staged.isEmpty { try await storage.writeBatch(staged.map { StorageWrite(piece: $0.piece, offset: $0.offset, data: $0.bytes) }) }
 		} catch { abortBatch(staged); diskFailed(error); await disk.release(); throw error }
 		let ready = staged.compactMap { picker.written($0.block) ? $0.piece : nil }
-		do { for piece in ready { try await verifyReceivedPiece(piece) } }
-		catch { await disk.release(); throw error }
+		var pending = ready[...]
+		do { while let piece = pending.popFirst() { try await verifyReceivedPiece(piece) } }
+		catch {
+			// The attempted piece owns its cleanup. Later pieces were marked ready
+			// together, but have no verification task to release them after an error.
+			for piece in pending { _ = picker.verified(piece, valid: false) }
+			discardUnretainedPayload(); await disk.release(); throw error
+		}
 		await disk.release(); fillAll()
 	}
 }

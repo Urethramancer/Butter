@@ -30,7 +30,11 @@ and submits the advertised number of full-sized requests. Before the fix, only
 31 of 32 are admitted and one is charged against controls; after the fix, the
 entire advertised window fits without a busy rejection. All 333 package tests
 and 33 focused upload/output/resource/completion/encryption/µTP cases passed.
-Native integration for this corrected revision remains outstanding.
+Its native peer preflight subsequently exposed a separate batch-cancellation
+liveness failure. The error path now releases later ready pieces after an
+earlier verification is interrupted. A deterministic regression, all 334 package
+tests and 41 focused cases under each sanitizer pass. The initial failure remains
+recorded; corrected-source native integration and new full timing are outstanding.
 
 This is the same 1 GiB, 128-file v1 workload with 256 KiB pieces, warm sources,
 fresh processes/destinations and production windows. Swift's download pipeline
@@ -72,3 +76,4 @@ Per-phase user/system CPU remains available separately in the trial records.
 - [Before/after intervals](raw/advertised-window-many-v1/before-after.json), [all preceding and corrected Swift diagnostics](raw/advertised-window-many-v1/diagnostics.json), [incremental memory](raw/advertised-window-many-v1/memory-versus-immediate-before.json).
 - [Regression failure before the fix](raw/advertised-window-regression/before-failure.log), [package and focused checks](raw/advertised-window-regression/checks.json).
 - [Four-case profile records](raw/advertised-window-profiles/summary.json), [all profile trials and counterpart CPU](raw/advertised-window-profiles/trials.jsonl), [many-file Swift download sample](raw/advertised-window-profiles/many-hybrid-download-0-Swift-measured-download.sample.txt), [profile environment/source hashes](raw/advertised-window-profiles/environment.json).
+- [Initial native failure](raw/ready-batch-cancellation/initial-native-results.jsonl), [reproduced peer state](raw/ready-batch-cancellation/discovery-diagnostic-failure.log), [deterministic cancellation failure](raw/ready-batch-cancellation/deterministic-before-failure.log), [corrected package/sanitizer checks](raw/ready-batch-cancellation/checks.json).

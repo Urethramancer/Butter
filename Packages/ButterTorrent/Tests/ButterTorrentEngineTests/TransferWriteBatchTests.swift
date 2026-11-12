@@ -4,6 +4,24 @@ import ButterTorrentNetworking
 @testable import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
+private final class BatchVerificationGate: @unchecked Sendable {
+	private let lock = NSLock()
+	private var armed = false
+	let entered = AsyncStream<Void>.makeStream()
+	let release = DispatchSemaphore(value: 0)
+	func arm() { lock.withLock { armed = true } }
+	func observe(_ event: StorageEvent) {
+		guard event == .progressCheckpointDurable,
+			lock.withLock({ if !armed { return false }; armed = false; return true }) else { return }
+		entered.continuation.yield(())
+		if release.wait(timeout: .now() + 6) != .success { Issue.record("Verification checkpoint gate expired") }
+	}
+}
+
+private extension TCPTransfer {
+	func verifyingPiecesForTesting() -> Set<Int> { Set(picker.active.filter { $0.value.verifying }.map(\.key)) }
+}
+
 // Collect a known fixture burst to deterministically exercise a multi-feed read.
 private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 	let raw: TCPStream
@@ -29,6 +47,34 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 }
 
 @Suite struct TransferWriteBatchTests {
+	@Test func cancellationDuringVerificationReleasesEveryRemainingReadyPiece() async throws {
+		try await transferFixture { fixture in
+			let gate = BatchVerificationGate(), resources = try TransferResources(maximumDiskOperations: 1)
+			let down = try await fixture.transfer("download", resources: resources, event: { gate.observe($0) }), peer = try await fixture.scripted(down)
+			defer { gate.release.signal(); peer.stream.close() }
+			try await peer.seed(pieceCount: 3); let requests = try await peer.requests(6)
+			let blocks = requests.map { block in
+				let start = block.piece * 32768 + block.offset
+				return IncomingPieceBlock(piece: block.piece, offset: block.offset, bytes: fixture.bytes.subdata(in: start..<(start + block.length)))
+			}
+			let id = await down.snapshot().peers[0].id
+			gate.arm(); let writing = Task { try await down.receivedBlocks(id, blocks: blocks) }
+			try await engineDeadline { for await _ in gate.entered.stream { return }; throw PeerFailure.closed }
+			writing.cancel(); gate.release.signal()
+			await #expect(throws: CancellationError.self) { try await writing.value }
+			let pending = await down.verifyingPiecesForTesting()
+			try #require(pending.isEmpty, "Cancelled verification must release the rest of the ready batch")
+			#expect(await down.snapshot().writingBlocks == 0)
+			let disk = await resources.snapshot()
+			#expect(disk.diskOperations == 0 && disk.waitingDiskOperations == 0)
+			peer.stream.close()
+			let seed = try await fixture.transfer("seed", seed: true); try await fixture.join(down, seed)
+			try await engineDeadline { try await down.waitUntilComplete() }
+			let status = await down.snapshot()
+			#expect(status.verifiedPieces == [0, 1, 2] && status.corruptBytes == 0)
+			#expect(status.downloaded - status.redundantBytes == Int64(fixture.bytes.count))
+		}
+	}
 	@Test(arguments: [false, true], [false, true]) func availableReadSpansDecoderFeedsAndFlushesBeforeControl(_ encrypted: Bool, _ limited: Bool) async throws {
 		try await transferFixture { fixture in
 			var config = plainTransferConfiguration(); config.downloadLimit = limited ? 1048576 : 0

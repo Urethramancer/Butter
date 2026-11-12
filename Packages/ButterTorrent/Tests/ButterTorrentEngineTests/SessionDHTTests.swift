@@ -96,25 +96,36 @@ extension NativeSessionTests { @Suite struct SessionDHTTests {
 		let router = try await SessionDHTRouter.open(host: host, metadata: fixture.metadata)
 		let seed = TorrentSession(storage: fixture.root.appendingPathComponent("seed-library"), configuration: plainTransferConfiguration(), loopbackOnly: true, dhtBootstrap: [router.endpoint])
 		let down = TorrentSession(storage: fixture.root.appendingPathComponent("down-library"), configuration: plainTransferConfiguration(), loopbackOnly: true, dhtBootstrap: [router.endpoint])
+		var phase = "seed setup"
 		do {
 			var settings = SessionPeerSettings(); settings.dht = true; settings.pex = false; settings.utp = utp; settings.tcp = !utp
 			let source = fixture.root.appendingPathComponent("input.torrent"); try fixture.metadata.document.original.write(to: source)
 			let seedPort = try await seed.configurePeers(settings)
 			_ = try await seed.add(id: "transfer", source: source, destination: fixture.root.appendingPathComponent("source")); try await seed.run(id: "transfer", running: true)
+			phase = "seed announcement"
 			try await eventually { await router.announces.contains { $0.port == seedPort && $0.source.port == seedPort } }
 			let downPort = try await down.configurePeers(settings)
 			_ = try await down.add(id: "transfer", source: source, destination: fixture.root.appendingPathComponent("download")); try await down.run(id: "transfer", running: true)
+			phase = "download completion"
 			try await eventually { try await down.snapshot().transfers[0].state.transfer?.complete == true }
 			let snapshot = try await down.snapshot()
 			#expect(snapshot.network.discovery.enabled && snapshot.network.discovery.contacts > 0 && snapshot.network.discovery.error.isEmpty)
 			#expect(snapshot.transfers[0].state.transfer?.peers.contains { $0.peerID != nil && $0.transport == (utp ? .utp : .tcp) } == true)
+			phase = "download announcement"
 			try await eventually { await router.announces.contains { $0.port == downPort && $0.source.port == downPort } }
 			try await down.shutdown(); #expect(try await down.snapshot().network.discovery.searches == 0)
 			try await down.close(); try await seed.close()
 			for file in fixture.metadata.inspection.files where !file.pad {
 				#expect(try Data(contentsOf: fixture.root.appendingPathComponent("download/" + file.path)) == Data(contentsOf: fixture.root.appendingPathComponent("source/" + file.path)))
 			}
-		} catch { try? await down.close(); try? await seed.close(); await router.close(); await fixture.close(); throw error }
+		} catch {
+			let seedState = try? await seed.snapshot(), downState = try? await down.snapshot()
+			let packets = await router.packets
+			let queries = packets.compactMap { try? BencodeDocument($0.payload).root["q"]?.text }
+			let detail = "DHT v\(version) utp=\(utp) phase=\(phase): \(error); queries=\(queries); seed discovery=\(String(describing: seedState?.network.discovery)) transfer=\(String(describing: seedState?.transfers.first?.state.transfer)); down discovery=\(String(describing: downState?.network.discovery)) transfer=\(String(describing: downState?.transfers.first?.state.transfer))"
+			try? await down.close(); try? await seed.close(); await router.close(); await fixture.close()
+			throw PeerFailure.invalid(detail)
+		}
 		await router.close(); await fixture.close()
 	}
 	@Test func privateMetadataAndEmptySessionsNeverSendDiscoveryTraffic() async throws {
