@@ -55,8 +55,20 @@ The [partial matrix](cache-admission-partial-results-2026-11-12.md) retains all
 correction does not establish the remaining workloads; a new full matrix is
 required. No aggregate passing score, parity claim or tag is made.
 
+## Separate profiles
+
+Fresh Release profiles capture both engines and their counterparts for v1
+download, hybrid download, many-file hybrid download and v1 seeding. All eight
+profile trials pass independent validation and are labelled `profile-only`,
+excluded from timing acceptance. Many-file download still shows whole-layout
+file inspection and repeated directory opens; single-file downloads show opens,
+writes and hashing. Seeding shows stored-byte SHA-1, copying and reads alongside
+network work. Samples include idle waits and do not establish CPU percentages.
+Per-phase user/system CPU remains available separately in the trial records.
+
 ## Evidence
 
 - [Every corrected trial](raw/advertised-window-many-v1/trials.jsonl), [summary](raw/advertised-window-many-v1/summary.json), [environment/source hashes](raw/advertised-window-many-v1/environment.json), [fixtures](raw/advertised-window-many-v1/fixtures.json).
 - [Before/after intervals](raw/advertised-window-many-v1/before-after.json), [all preceding and corrected Swift diagnostics](raw/advertised-window-many-v1/diagnostics.json), [incremental memory](raw/advertised-window-many-v1/memory-versus-immediate-before.json).
 - [Regression failure before the fix](raw/advertised-window-regression/before-failure.log), [package and focused checks](raw/advertised-window-regression/checks.json).
+- [Four-case profile records](raw/advertised-window-profiles/summary.json), [all profile trials and counterpart CPU](raw/advertised-window-profiles/trials.jsonl), [many-file Swift download sample](raw/advertised-window-profiles/many-hybrid-download-0-Swift-measured-download.sample.txt), [profile environment/source hashes](raw/advertised-window-profiles/environment.json).
