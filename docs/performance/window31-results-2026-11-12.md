@@ -31,6 +31,12 @@ No acceptance interval crosses a threshold, so the case remains at six pairs.
 Parity and the full eighteen-case candidate matrix remain open. Native
 regression and sanitizer checks for this default are separate requirements.
 
+Committed production source `5b9ef12` subsequently passes all 466 pinned native
+reference checks, including encrypted TCP, µTP, all 24 session DHT transfers,
+sparse/hybrid proofs and web-seed comparisons. All 52 focused picker, transfer,
+resource and output-budget tests pass under each of Address and Thread
+Sanitizer. The full matrix and remaining release acceptance are still open.
+
 [All trials](raw/window31-single-v1/trials.jsonl),
 [native ratios](raw/window31-single-v1/summary.json),
 [before/after](raw/window31-single-v1/before-after.json),
