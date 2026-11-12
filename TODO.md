@@ -4,8 +4,8 @@
 
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
-  10% of baseline. The [full results](docs/performance/window31-full-results-2026-11-12.md)
-  pass memory in all eighteen cases and throughput in nine, but fail CPU throughout.
+  10% of baseline. The [full results](docs/performance/piece-buffer-full-results-2026-11-12.md)
+  pass memory in all eighteen cases and throughput in eleven, but fail CPU throughout.
 - Investigate the many-file v1 seeding regression against the preceding full
   candidate: CPU rises 5.1% and throughput falls 23.5%. A balanced old/current
   source comparison does not reproduce the loss as a source effect; retain the
@@ -13,13 +13,8 @@
 - Investigate the concurrent v2 seeding throughput loss of 20.0% despite lower
   CPU. The source comparison is inconclusive around a ratio of one; it still
   meets native throughput, but the full-run regression remains open.
-- Rerun the matrix/profiles for the final candidate and complete remaining release
-  acceptance; the latest complete matrix is `5b9ef12`, latest profiles `61584b7`.
-- Complete final performance acceptance for grouped upload workers and
-  direct verified-buffer returns (focused seeding CPU reductions of 5.5–12.2%).
-  Controlled source comparisons reduce seeding CPU 16.5%
-  (single v1), 16.9% (many v1) and 12.9% (concurrent v2); full-matrix parity
-  remains unproven.
+- Refresh profiles and complete remaining release acceptance; the latest complete
+  matrix is `b328472` (276 accepted trials), latest profiles `61584b7`.
 - Reduce repeated whole-layout stamp inspection (38.6% inclusive in many-file
   seeding), file opening, allocation and Network.framework scheduling costs in
   the profiles, preserving stored-byte hashing, ownership checks, cancellation

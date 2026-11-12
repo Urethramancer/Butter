@@ -25,7 +25,7 @@ All 347 package tests pass, with 110 focused tests under each of Address and Thr
 
 Raw results, exact source/build hashes and phase/counterpart measurements remain
 locally in `.build/benchmarks/piece-buffer-handoff-source-order`. The
-machine-readable summaries are retained beside this report. The full native rerun passes all 466 interoperability checks. Final-matrix acceptance remains pending.
+machine-readable summaries are retained beside this report. The full native rerun passes all 466 interoperability checks. The [full matrix](piece-buffer-full-results-2026-11-12.md) validates 276 trials; CPU parity remains unmet.
 
 Six further source pairs per case (56 validated trials) compare the same change
 with `545fbff`. All 84 trials across the three cases pass; no failures are retried.

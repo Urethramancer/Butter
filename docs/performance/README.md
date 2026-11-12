@@ -6,19 +6,18 @@ and peak RSS within 10% of the fresh Swift baseline. Results are per workload;
 there is no combined performance score. Encryption and µTP remain correctness
 regressions, outside this throughput milestone.
 
-The [latest full comparison](window31-full-results-2026-11-12.md) retains 252
-accepted trials and no failures for production source `5b9ef12`. Memory passes
-all eighteen cases, nine meet throughput, and every case still fails CPU. All
-cases finish six measured pairs without an acceptance interval crossing a
-threshold. Against the [preceding full candidate](framed-window-results-2026-11-12.md),
-twelve independent CPU intervals improve, many-file v1 seeding regresses and
-five comparisons remain inconclusive. All nine download cases use less CPU;
-individual reductions range from 18.7% to 49.8%. Many-file v1 seeding uses
-5.1% more CPU and loses 23.5% throughput; concurrent v2 seeding uses less CPU
-but loses 20.0% throughput. These regressions remain open. Per-case measured
-peak RSS spans 15.8–46.5 MiB. Every sample and diagnostic is retained.
+The [latest full comparison](piece-buffer-full-results-2026-11-12.md) retains
+276 accepted trials and no failures for production source `b328472`. Memory
+passes all eighteen cases, eleven meet throughput, and every case still fails
+CPU. Many-file v1/v2 seeding extend to twelve pairs and establish throughput
+passes; all other cases finish six pairs. Peak RSS spans 15.1–46.1 MiB.
+CPU ratios range from 1.381 to 3.673× native. Twelve historical independent
+CPU comparisons improve over the preceding complete `5b9ef12` matrix, while
+six remain inconclusive; source-controlled comparisons provide causal evidence.
+The earlier full-run seeding regressions and their unknown sequence/runtime
+cause remain recorded in the [preceding matrix](window31-full-results-2026-11-12.md).
 
-[Current source-matched CPU profiles](upload-groups-profiles-2026-11-12.md)
+[Preceding source-matched CPU profiles](upload-groups-profiles-2026-11-12.md)
 cover both engines in the four standard workloads plus many-file v1 seeding
 for production `61584b7`. All ten profile-only trials pass validation. Stamp
 inspection, stored-byte hashing and scheduling remain substantial. The
