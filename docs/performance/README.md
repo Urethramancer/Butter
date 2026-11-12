@@ -1,9 +1,10 @@
 # Swift/libtorrent transfer comparison
 
 [Owned upload wire buffers](wire-groups-results-2026-11-12.md) reduce single-file
-v1 seeding CPU 4.3% in six balanced source pairs, without an established cost
-in throughput, peak RSS or counterpart CPU. Broader validation is pending; this
-is a focused source comparison, not full-matrix acceptance.
+v1 seeding CPU 4.3% and hybrid seeding CPU 2.2–3.6% across all three workloads.
+Concurrent hybrid peak RSS falls 4.5%, with no established cost in throughput
+or counterpart CPU. Download regression checks and full-matrix acceptance remain
+pending; these are balanced source comparisons.
 
 [Fresh current-source Running CPU profiles](window8-current-profiles-2026-11-12.md)
 validate all eight prescribed captures after the profiler recheck. They identify

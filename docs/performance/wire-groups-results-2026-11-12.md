@@ -35,3 +35,33 @@ full-run µTP timeout remains unresolved; this pass does not erase that failure.
 retain the evidence. Raw trials remain under
 `.build/benchmarks/wire-groups-single-seed-source-order`; validation logs remain
 under `.build/diagnostics/piece-buffer/wire-groups-*`.
+
+## Broader seeding checks
+
+Each hybrid case uses its own six balanced source pairs and four warm-ups;
+all 84 trials validate. These remain separate workloads, with no combined score.
+
+| Hybrid workload | CPU ratio [95% interval] | Throughput ratio [95% interval] | RSS ratio [95% interval] | Counterpart CPU ratio [95% interval] |
+| --- | --- | --- | --- | --- |
+| Single | 0.964 [0.951–0.973] | 1.000 [0.980–1.020] | 0.971 [0.938–1.034] | 0.970 [0.963–0.978] |
+| Many files | 0.978 [0.956–0.983] | 1.001 [0.985–1.018] | 0.984 [0.946–1.023] | 0.969 [0.953–0.991] |
+| Concurrent | 0.978 [0.955–0.989] | 1.016 [0.996–1.026] | 0.955 [0.923–0.984] | 0.999 [0.961–1.012] |
+
+CPU improves in all three cases. Concurrent RSS also improves reproducibly;
+none establishes a cost in the measured metrics. Current raw medians are
+631.1 MB/s and 3.122 CPU s/GiB (single), 284.7 MB/s and 4.741 s/GiB (many),
+and 855.5 MB/s and 3.533 s/GiB (concurrent). Current CPU/native remains
+1.768, 2.376 and 1.852 respectively, so parity is still unmet. Native throughput
+controls shift slightly in the many-file case (ratio 1.005 [1.0002–1.009]);
+source effects and control results are retained separately.
+
+An initial command supplied only format/direction filters. The harness selected
+no source cases and exited before any trial. That setup failure, environment,
+fixture manifest and log are retained under
+`.build/benchmarks/wire-groups-hybrid-seed-source-order` and
+`.build/diagnostics/piece-buffer/wire-groups-hybrid-seed-source-order.log`.
+The corrected commands supply all three filters and use fresh output directories;
+no timed trial is discarded or retried.
+
+[Broader measurements and raw hashes](wire-groups-broader-comparison-2026-11-12.json)
+retain results. Download regression checks and full-matrix acceptance remain open.
