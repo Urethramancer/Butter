@@ -16,18 +16,22 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 }
 
 @Suite struct StorageWriteBatchTests {
-	enum ParentChange: CaseIterable, Sendable { case replacement, symlink, originalFile }
+	enum ParentChange: CaseIterable, Sendable { case replacement, symlink, originalFile, permissions }
 	@Test(arguments: ParentChange.allCases) func parentReplacementBetweenBlocksKeepsPathAndFileOwnership(_ change: ParentChange) async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 32768, pieceLength: 32768)
 			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { _ in }, check: {})
 			let parent = root.appendingPathComponent("data/bundle"), original = root.appendingPathComponent("original-parent")
 			let file = parent.appendingPathComponent("file-0"), oldFile = original.appendingPathComponent("file-0"), replacement = Data([4, 5, 6])
+			defer { if change == .permissions { _ = chmod(parent.path, 0o700) } }
 			var checks = 0
 			let write = {
 				try state.writeOperations([StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: 0, offset: 16384, data: bytes.suffix(16384))], maximumBytes: 262144, maximumCount: 16, check: {
 					checks += 1
 					if checks == 3 {
+						if change == .permissions {
+							guard chmod(parent.path, 0o300) == 0 else { throw diskError("Cannot change parent access") }; return
+						}
 						try FileManager.default.moveItem(at: parent, to: original)
 						if change == .symlink { try FileManager.default.createSymbolicLink(at: parent, withDestinationURL: original) }
 						else {
@@ -43,7 +47,7 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 				#expect(try state.verify(piece: 0, check: {}))
 			} else {
 				#expect(throws: (any Error).self) { try write() }
-				#expect(try Data(contentsOf: oldFile) == bytes.prefix(16384))
+				#expect(try Data(contentsOf: change == .permissions ? file : oldFile) == bytes.prefix(16384))
 				if change == .replacement { #expect(try Data(contentsOf: file) == replacement) }
 			}
 		}
