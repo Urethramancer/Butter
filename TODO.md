@@ -2,6 +2,8 @@
 
 ## TCP performance parity
 
+- Align the advertised upload request window with framed output capacity and
+  verify the repeated many-file v1 control-limit disconnect/reconnect stall.
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
   10% of baseline. The [full results](docs/performance/tcp-batching-results-2026-11-12.md)
