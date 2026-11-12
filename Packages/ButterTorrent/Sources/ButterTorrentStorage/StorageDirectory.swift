@@ -119,14 +119,11 @@ final class StorageDirectory: @unchecked Sendable {
 		return try body(directory, parts.last!)
 	}
 	func openFile(_ path: String, write: Bool = false, exclusive: Bool = false) throws -> Int32 {
-		try openStampedFile(path, write: write, exclusive: exclusive).file
-	}
-	func openStampedFile(_ path: String, write: Bool = false, exclusive: Bool = false) throws -> (file: Int32, stamp: FileStamp) {
 		try parent(path, create: write) { directory, name in
 			let flags = (write ? O_RDWR | O_CREAT : O_RDONLY) | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK | (exclusive ? O_EXCL : 0)
 			let file = openat(directory, name, flags, 0o600)
 			guard file >= 0 else { throw diskError("Cannot open managed file") }
-			do { return (file, try stamp(file, shared: !write)) } catch { close(file); throw error }
+			do { _ = try stamp(file, shared: !write); return file } catch { close(file); throw error }
 		}
 	}
 	func stamp(_ file: Int32, shared: Bool = false) throws -> FileStamp {

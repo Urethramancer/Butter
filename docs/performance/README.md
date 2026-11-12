@@ -1,5 +1,10 @@
 # Swift/libtorrent transfer comparison
 
+The [descriptor-identity experiment](fd-identity-results-2026-11-12.md) completes
+28 validated source trials but establishes no CPU or throughput benefit and is
+reverted. Its raw median is 290.3 MB/s and 4.650 CPU s/GiB; the paired CPU
+interval is 0.941–1.144 of the preceding source, so no improvement is claimed.
+
 Acceptance requires Swift to reach at least 90% of libtorrent's verified TCP
 throughput, at most 1.25 times its CPU seconds per GiB through durable completion,
 and peak RSS within 10% of the fresh Swift baseline. Results are per workload;

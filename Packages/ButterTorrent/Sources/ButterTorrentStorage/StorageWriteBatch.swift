@@ -19,13 +19,6 @@ extension TorrentStorage {
 	}
 }
 
-private struct BatchDescriptor {
-	let index: Int
-	let descriptor: Int32
-	let device: Int32
-	let inode: UInt64
-}
-
 extension StorageState {
 	static func validateWrites(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int) throws {
 		guard !writes.isEmpty, writes.count <= maximumCount else { throw StorageFailure.limit("write batch blocks") }
@@ -55,8 +48,8 @@ extension StorageState {
 			try save()
 		}
 		for piece in pieces { try forgetPendingVerification(piece) }
-		var files: [BatchDescriptor] = []
-		defer { for file in files { close(file.descriptor) } }
+		var files: [Int: Int32] = [:], order: [Int] = []
+		defer { for file in files.values { close(file) } }
 		for index in writes.indices {
 			if index > 0 { try check() }
 			let write = writes[index], parts = segments[index]
@@ -65,19 +58,16 @@ extension StorageState {
 				defer { cursor += segment.count }
 				if segment.padding { continue }
 				let (directory, path) = location(segment.file)
-				let entry: BatchDescriptor
-				if let cached = files.first(where: { $0.index == segment.file }) {
-					entry = cached
+				let file: Int32
+				if let cached = files[segment.file] {
+					file = cached
 				} else {
-					if files.count == 8 { close(files.removeFirst().descriptor) }
-					let opened = try directory.openStampedFile(path, write: true)
-					entry = BatchDescriptor(index: segment.file, descriptor: opened.file, device: opened.stamp.device, inode: opened.stamp.inode)
-					files.append(entry)
+					if files.count == 8 { let oldest = order.removeFirst(); close(files.removeValue(forKey: oldest)!) }
+					file = try directory.openFile(path, write: true); files[segment.file] = file; order.append(segment.file)
 				}
-				let file = entry.descriptor
-				// Descriptor identity is stable until close. Inspect the pathname before
-				// every block, including its regular-file and hard-link checks.
-				guard let current = try directory.inspect(path), current.device == entry.device, current.inode == entry.inode else { throw StorageFailure.invalid("payload replaced during write batch") }
+				// Re-check even the first open: replacement can occur after the initial scan.
+				let opened = try directory.stamp(file)
+				guard let current = try directory.inspect(path), current.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
 				if current != record.stamps[segment.file] { try invalidateChangedFiles() }
 				pendingFlush.insert(segment.file)
 				try StorageDirectory.write(write.data[cursor..<(cursor + segment.count)], to: file, offset: segment.offset, check: check)
