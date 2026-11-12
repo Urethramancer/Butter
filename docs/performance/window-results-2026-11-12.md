@@ -32,6 +32,14 @@ in `.build/benchmarks/window8-recheck-source-order`; the one-line experiment
 patch remains in `.build/diagnostics/piece-buffer`.
 The restored eight-request default passes all 351 package tests and both Release
 builds. Native interoperability and final full-matrix acceptance remain pending.
+The native run then exits 1 after 273 observed passes: the IPv6 v2 upload with
+negotiated encryption and deliberate SYN-ACK loss times out before payload
+traffic; no disk error is recorded. Cleanup also reports a reference flush
+timeout. This failure remains unresolved and is not attributed to the window
+change without evidence. The full log and its hash remain in
+`.build/diagnostics/piece-buffer/window8-native-peer.log` and
+`window8-native-failure.json`. A focused diagnostic preserves its fixture and
+uses the original deadlines; the full suite is not retried to hide the failure.
 
 ## Historical independent comparison
 

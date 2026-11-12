@@ -26,6 +26,11 @@
 
 ## Validation diagnostics
 
+- Resolve the native run's IPv6 v2 negotiated-encryption µTP upload timeout
+  under deliberate SYN-ACK loss. The eight-request candidate records 273 native
+  passes before failing, with zero payload traffic and no disk error. Preserve
+  the full failed run; a focused fixture with unchanged deadlines is being run.
+
 - Identify the native run's temporary-path disappearance: the first run exits 1
   with its log, fixture and module cache missing; a workspace-directory rerun
   passes all 466 checks. Evidence remains in `.build/diagnostics/piece-buffer`.
