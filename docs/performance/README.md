@@ -18,11 +18,12 @@ individual reductions range from 18.7% to 49.8%. Many-file v1 seeding uses
 but loses 20.0% throughput. These regressions remain open. Per-case measured
 peak RSS spans 15.8–46.5 MiB. Every sample and diagnostic is retained.
 
-[Current source-matched CPU profiles](window31-profiles-2026-11-12.md) cover
-both engines in the four standard workloads and both seeding regressions. All
-twelve profile-only trials pass validation. Stamp inspection, stored-byte hashing
-and scheduling remain substantial; the profiles do not establish either
-throughput regression's cause.
+[Current source-matched CPU profiles](upload-groups-profiles-2026-11-12.md)
+cover both engines in the four standard workloads plus many-file v1 seeding
+for production `61584b7`. All ten profile-only trials pass validation. Stamp
+inspection, stored-byte hashing and scheduling remain substantial. The
+[preceding profiles](window31-profiles-2026-11-12.md) retain both full-run seeding
+regressions; neither profile set establishes their sequence/environment cause.
 
 A [balanced source comparison](seeding-source-comparison-2026-11-12.md) retains
 56 further diagnostic trials. Neither large seeding loss reproduces as a source

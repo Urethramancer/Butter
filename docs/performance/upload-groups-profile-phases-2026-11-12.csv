@@ -1,0 +1,11 @@
+artifact,trial,tested_engine,running_samples,unavailable_samples,tested_durable_user_s,tested_durable_system_s,tested_durable_wall_s,native_counterpart_durable_user_s,native_counterpart_durable_system_s,native_counterpart_durable_wall_s
+upload-groups-standard-profiles,single-v1-download-0-Swift-measured,Swift,2908,0,1.475595,1.502056,2.607768625020981,0.353491,1.9626430000000001,2.6081334160116967
+upload-groups-standard-profiles,single-v1-download-0-libtorrent-measured,libtorrent,1547,96,0.856714,0.726093,2.8208009999943897,0.363454,1.28703,2.1134170409932267
+upload-groups-standard-profiles,single-v1-seed-0-Swift-measured,Swift,2739,0,1.55353,1.223596,1.5163515000022016,0.7204459999999999,0.687445,1.6798496659903321
+upload-groups-standard-profiles,single-v1-seed-0-libtorrent-measured,libtorrent,1565,0,0.354373,1.286066,2.123127583996393,0.8529030000000001,0.719627,2.439329375018133
+upload-groups-standard-profiles,single-hybrid-download-0-Swift-measured,Swift,3503,0,2.076158,1.512088,3.298663249996025,0.36268200000000006,2.0469310000000003,3.3054835420043673
+upload-groups-standard-profiles,single-hybrid-download-0-libtorrent-measured,libtorrent,2319,105,1.539056,0.8576429999999999,2.378440375003265,0.35462099999999996,1.271695,2.216933166986564
+upload-groups-standard-profiles,many-hybrid-download-0-Swift-measured,Swift,6806,0,3.0687469999999997,3.808044,6.556880625023041,0.4107019999999999,2.253223,6.566083875019103
+upload-groups-standard-profiles,many-hybrid-download-0-libtorrent-measured,libtorrent,2339,8,1.529121,0.901167,2.1005974159925245,0.3914270000000001,1.400504,2.098832790972665
+upload-groups-many-seed-profile,many-v1-seed-0-Swift-measured,Swift,4134,0,2.0137780000000003,2.270176,4.063683999993373,0.714124,0.833798,4.068799833999947
+upload-groups-many-seed-profile,many-v1-seed-0-libtorrent-measured,libtorrent,1915,0,0.39813400000000004,1.611654,2.117130291997455,0.899803,0.8316939999999999,2.126066875003744

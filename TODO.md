@@ -14,14 +14,15 @@
   CPU. The source comparison is inconclusive around a ratio of one; it still
   meets native throughput, but the full-run regression remains open.
 - Rerun the matrix/profiles for the final candidate and complete remaining release
-  acceptance; the latest complete matrix and CPU profiles are `5b9ef12`.
+  acceptance; the latest complete matrix is `5b9ef12`, latest profiles `61584b7`.
 - Complete final performance acceptance for grouped
   upload workers. Controlled source comparisons reduce seeding CPU 16.5%
   (single v1), 16.9% (many v1) and 12.9% (concurrent v2); full-matrix parity
   remains unproven.
-- Reduce repeated whole-layout stamp inspection and per-block upload,
-  allocation and Network.framework scheduling costs identified in the profiles,
-  preserving stored-byte hashing, ownership checks, cancellation and queue caps.
+- Reduce repeated whole-layout stamp inspection (38.6% inclusive in many-file
+  seeding), file opening, allocation and Network.framework scheduling costs in
+  the profiles, preserving stored-byte hashing, ownership checks, cancellation
+  and queue caps.
 
 ## Validation diagnostics
 
