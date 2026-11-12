@@ -290,7 +290,9 @@ final class StorageState: @unchecked Sendable {
 		let mapping = merkle.index.pieces[piece]
 		var hash: Insecure.SHA1? = hashes == nil ? nil : Insecure.SHA1()
 		var offset = 0, result = Data(), leaves: [Data] = []
-		if let range { result.reserveCapacity(range.count) }
+		// A complete piece that fits one read already has an owned immutable buffer.
+		let returnsWholeChunk = length <= 262144 && range == (0..<length)
+		if let range, !returnsWholeChunk { result.reserveCapacity(range.count) }
 		while offset < length {
 			try check(); let count = min(262144, length - offset)
 			let data = try read(piece: piece, offset: offset, count: count, verifiedOnly: false, check: check)
@@ -301,7 +303,8 @@ final class StorageState: @unchecked Sendable {
 					leaves.append(Data(SHA256.hash(data: data.subdata(in: (block - offset)..<(end - offset)))))
 				}
 			}
-			if let range {
+			if returnsWholeChunk { result = data }
+			else if let range {
 				let lower = max(offset, range.lowerBound), upper = min(offset + count, range.upperBound)
 				if lower < upper { result.append(data.subdata(in: (lower - offset)..<(upper - offset))) }
 			}
