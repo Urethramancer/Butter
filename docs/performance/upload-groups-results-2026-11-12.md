@@ -42,3 +42,21 @@ drain. The cancellation/replacement contract was proved first on unchanged
 production. Native interoperability, many-file/concurrent performance and final
 acceptance remain open at this step. Raw environment, source hashes, trials
 and checks are in [`raw/upload-groups`](raw/upload-groups).
+
+Committed production `61584b7` then completes 56 further trials against
+`1d414f9`, six source pairs per case with identical sampling and validation.
+All pass. CPU improves in both cases; many-file throughput remains inconclusive.
+
+| Seeding case | Swift CPU s/GiB before → after | Verified MB/s before → after | Paired CPU ratio [95%] | Paired throughput ratio [95%] | Paired peak RSS [95%] |
+| --- | ---: | ---: | --- | --- | --- |
+| 128 files / v1 | 5.072 → 4.158 | 388.2 → 388.0 | 0.831 [0.813–0.838] | 0.999 [0.990–1.008] | 0.949 [0.926–0.997] |
+| Four concurrent / v2 | 3.617 → 3.182 | 798.5 → 874.2 | 0.871 [0.863–0.895] | 1.096 [1.073–1.108] | 0.996 [0.951–1.008] |
+
+Both original-baseline memory gates pass. Native control CPU/throughput
+intervals cross one in each case. Many-file counterpart CPU is 1.018
+[0.997–1.034], concurrent 0.980 [0.958–1.004]; neither excludes one. Every
+phase measurement and diagnostic remains in
+[`raw/upload-groups-broader`](raw/upload-groups-broader). These source comparisons
+do not replace original full-run samples, resolve their sequence/environment
+regressions, or establish full-matrix/native CPU parity. Native interoperability
+and final acceptance remain open.

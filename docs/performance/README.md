@@ -54,8 +54,10 @@ latest full-matrix CPU gap is unchanged as an acceptance finding.
 independent block tokens while sharing one verified piece-read worker. Six
 balanced single-file v1 seeding source pairs reduce CPU 16.5% and raise
 throughput 11.6%, with memory passing. All 344 package tests and 46 focused
-tests under each sanitizer pass. Native and broader performance acceptance
-remain open; this focused result does not establish CPU parity.
+tests under each sanitizer pass. Separate source comparisons reduce many-file
+seeding CPU 16.9% (throughput inconclusive) and concurrent seeding CPU 12.9%
+(throughput up 9.6%), with memory passing. Native and final acceptance remain
+open; these focused results do not establish CPU parity.
 
 The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
 reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB

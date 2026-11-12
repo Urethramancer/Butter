@@ -15,9 +15,10 @@
   meets native throughput, but the full-run regression remains open.
 - Rerun the matrix/profiles for the final candidate and complete remaining release
   acceptance; the latest complete matrix and CPU profiles are `5b9ef12`.
-- Complete native and broader performance checks for grouped upload workers.
-  Six controlled v1 seeding pairs reduce CPU 16.5% and raise throughput 11.6%;
-  many-file/concurrent performance and full-matrix parity remain unproven.
+- Complete native interoperability and final performance acceptance for grouped
+  upload workers. Controlled source comparisons reduce seeding CPU 16.5%
+  (single v1), 16.9% (many v1) and 12.9% (concurrent v2); full-matrix parity
+  remains unproven.
 - Reduce repeated whole-layout stamp inspection and per-block upload,
   allocation and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.
