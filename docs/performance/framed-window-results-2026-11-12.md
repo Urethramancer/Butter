@@ -94,3 +94,24 @@ CPU regression; no retry or discarded sample is used to claim otherwise.
 [checks](raw/direct-piece-decode-hybrid/checks.json) and
 [discarded patch](raw/direct-piece-decode-hybrid/experiment.patch) retain the
 negative result separately from the full matrix.
+
+## Rejected available-request batching follow-up
+
+Batching available upload requests reduced actor crossings without changing
+request windows or budgets. Fourteen trials were accepted. Single-file v1 seed
+CPU was 3.250 versus 3.288 s/GiB, ratio 0.989 [0.983–1.001], so a CPU benefit
+is inconclusive. Throughput fell from 515.2 to 505.0 MB/s, ratio 0.980
+[0.972–0.984]. Original-baseline memory passes; incremental memory is
+inconclusive, ratio 1.085 [1.011–1.124], observed maximum ratio 1.031.
+
+The production change is fully reverted. A burst-ordering test remains: cancel
+and choke are handled while payload disk work is blocked, with exact remaining
+payloads and accounting across plaintext/RC4 and limited/unlimited input. All
+337 package tests pass with the experiment and after restoration; the bridge
+was rebuilt after restoration. No CPU improvement is claimed.
+
+[Trials](raw/available-requests-single-v1/trials.jsonl),
+[comparison](raw/available-requests-single-v1/before-after.json),
+[checks](raw/available-requests-single-v1/checks.json) and
+[discarded patch](raw/available-requests-single-v1/experiment.patch) preserve
+the result.

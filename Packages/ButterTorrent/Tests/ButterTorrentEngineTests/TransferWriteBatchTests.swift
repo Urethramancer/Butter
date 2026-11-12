@@ -47,6 +47,55 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 }
 
 @Suite struct TransferWriteBatchTests {
+	@Test(arguments: [false, true], [false, true]) func availableRequestBurstProcessesCancelBeforeBlockedPayloads(_ encrypted: Bool, _ limited: Bool) async throws {
+		try await transferFixture { fixture in
+			let resources = try TransferResources(maximumDiskOperations: 1)
+			var config = plainTransferConfiguration(); config.downloadLimit = limited ? 1048576 : 0
+			if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
+			let seed = try await fixture.transfer("seed", seed: true, configuration: config, resources: resources), listener = try await fixture.listen()
+			let blocker = TransferDiskScope(resources: resources); try await blocker.acquire()
+			let endpoint = try NetworkEndpoint("127.0.0.1", port: listener.port), hash = fixture.metadata.hashes.v1!, encryption = config.encryption
+			let connecting = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption) }
+			var held = true
+			do {
+				let stream = CoalescingPeerStream(try await listener.accept(timeout: 3)); _ = try await seed.attach(stream)
+				let channel = try await connecting.value; defer { channel.close() }
+				let peer = WirePeer(channel: channel); var reserved = Data(repeating: 0, count: 8); reserved[7] = 4
+				try await peer.hello(hash: hash, identity: 42, reserved: reserved)
+				try await peer.send(.haveNone); try await peer.send(.interested); try await peer.send(.unchoke)
+				while try await peer.next() != .unchoke {}
+				try await eventually { await seed.snapshot().peers.first?.remoteChoking == false }
+				let requests = (0..<TCPTransferConfiguration.advertisedUploadRequestLimit).map { PeerBlock(piece: $0 % 2, offset: $0 / 2, length: 16384) }
+				let cancelled = requests[requests.count / 2]
+				var frames = Data()
+				for block in requests { frames.append(try PeerMessage.request(block).encoded()) }
+				frames.append(try PeerMessage.cancel(cancelled).encoded()); frames.append(try PeerMessage.choke.encoded())
+				stream.coalesce(frames.count); try await channel.write(frames)
+				var rejected = false
+				while !rejected {
+					let message = try await peer.next()
+					if case .reject(let block) = message { #expect(block == cancelled); rejected = true }
+					if case .piece = message { Issue.record("Blocked payload preceded the cancellation reply") }
+				}
+				try await eventually { await seed.snapshot().peers.first?.remoteChoking == true }
+				await blocker.release(); held = false
+				var remaining = Set(requests); remaining.remove(cancelled)
+				while !remaining.isEmpty {
+					if case .piece(let piece, let offset, let bytes) = try await peer.next() {
+						let block = PeerBlock(piece: piece, offset: offset, length: bytes.count)
+						try #require(remaining.remove(block) != nil, "Unexpected, duplicate or cancelled payload")
+						let start = piece * 32768 + offset
+						#expect(bytes == fixture.bytes.subdata(in: start..<(start + bytes.count)))
+					}
+				}
+				try await eventually { await seed.uploaded == Int64((requests.count - 1) * 16384) }
+				#expect(await seed.lastPeerError == nil)
+			} catch {
+				if held { await blocker.release() }; connecting.cancel()
+				if let channel = try? await connecting.value { channel.close() }; throw error
+			}
+		}
+	}
 	@Test func cancellationDuringVerificationReleasesEveryRemainingReadyPiece() async throws {
 		try await transferFixture { fixture in
 			let gate = BatchVerificationGate(), resources = try TransferResources(maximumDiskOperations: 1)
