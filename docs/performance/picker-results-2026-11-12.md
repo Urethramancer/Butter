@@ -40,6 +40,23 @@ All 52 focused picker/transfer/resource tests pass under each of Address and
 Thread Sanitizer for the same source. The final full matrix and remaining
 release acceptance checks are still open.
 
+## Focused CPU-profile check
+
+After timing and correctness checks, both engines completed a separate
+single-file v1 download Time Profiler trial for source `9a2803a`; both roles
+pass digest and state-reopen validation. Swift has 3,378 Running samples and
+no unavailable backtraces. Picker allocation is no longer among the top 100
+inclusive symbols, versus 15.7% in the preceding source's profile. Flat sample
+weight now includes SHA1 compression 13.9%, `pwrite` 11.2%, `openat` 6.4% and
+`close` 5.9%. Scheduling and network calls remain visible.
+
+These are statistical sample weights from one instrumented pair, not timing
+acceptance or an exact CPU-duration breakdown. The focused profiles do not
+replace final four-workload profiling or the full timing matrix.
+[Profile trials](raw/picker-refill-v1-profile/trials.jsonl),
+[environment/source hashes](raw/picker-refill-v1-profile/environment.json) and
+[checks/XML hashes](raw/picker-refill-v1-profile/checks.json) retain the evidence.
+
 [All trials](raw/picker-refill-single-v1/trials.jsonl),
 [native ratios](raw/picker-refill-single-v1/summary.json),
 [before/after](raw/picker-refill-single-v1/before-after.json),
