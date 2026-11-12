@@ -37,8 +37,9 @@ retains all twelve preceding measured samples and all six new samples.
 
 Download CPU remains 6.714 [6.665–6.796] times native, so the goal is unmet.
 The latest [full matrix](tcp-batching-results-2026-11-12.md) remains the earlier
-candidate. Current focused checks do not establish other workloads or a full
-final-source native integration pass.
+candidate. Focused timing does not establish other workloads. All nine contract, lifecycle,
+storage/interruption, native reference and application/linkage suites subsequently
+passed for committed source `38499ec`: [integration records](raw/available-input-integration/results.jsonl).
 
 ## Raw evidence
 
