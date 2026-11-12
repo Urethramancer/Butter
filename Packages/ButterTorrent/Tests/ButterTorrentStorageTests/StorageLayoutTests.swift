@@ -15,7 +15,43 @@ private func layoutMetadata(_ sizes: [Int], pieces: Data? = nil) throws -> Torre
 	return try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
 }
 
+private enum ParentProbeError: Error, Equatable { case stopped }
+
 @Suite struct StorageLayoutTests {
+	@Test(arguments: ["payload", "nested/deeper/payload"], [false, true])
+	func parentAnchorSurvivesLastExternalOwnerRelease(_ path: String, _ fail: Bool) async throws {
+		try await storageFixture { root in
+			var directory: StorageDirectory? = try StorageDirectory(root)
+			let bytes = Data([1, 7, 31])
+			let result: Result<String, Error> = Result {
+				try directory!.parent(path, create: true) { parent, name in
+					directory = nil
+					var value = stat()
+					guard fstat(parent, &value) == 0 else { throw diskError("Lost parent anchor") }
+					#expect(value.st_mode & S_IFMT == S_IFDIR)
+					let file = openat(parent, name, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+					guard file >= 0 else { throw diskError("Cannot use retained parent anchor") }; defer { close(file) }
+					try StorageDirectory.write(bytes, to: file, offset: 0, check: {})
+					if fail { throw ParentProbeError.stopped }; return name
+				}
+			}
+			if fail {
+				if case .failure(let error) = result { #expect(error as? ParentProbeError == .stopped) }
+				else { Issue.record("Parent callback unexpectedly succeeded") }
+			} else { #expect(try result.get() == "payload") }
+			#expect(directory == nil)
+			#expect(try Data(contentsOf: root.appendingPathComponent(path)) == bytes)
+		}
+	}
+	@Test(arguments: ["payload", "nested/deeper/payload"])
+	func throwingParentCallbackLeavesTheRootUsable(_ path: String) async throws {
+		try await storageFixture { root in
+			let directory = try StorageDirectory(root)
+			#expect(throws: ParentProbeError.stopped) { try directory.parent(path, create: true) { _, _ in throw ParentProbeError.stopped } }
+			try directory.atomic(Data([9]), path: path)
+			#expect(try directory.read(path, maximum: 1) == Data([9]))
+		}
+	}
 	@Test(arguments: ["", ".", "..", "a\0b", String(repeating: "a", count: 256), String(repeating: "é", count: 128)])
 	func stampScanValidatesEveryLeafUnderAnAlreadyOpenedParent(_ leaf: String) async throws {
 		try await storageFixture { root in
