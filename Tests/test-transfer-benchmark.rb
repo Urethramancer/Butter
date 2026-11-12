@@ -3,6 +3,14 @@ require_relative 'TransferBenchmarkHarness'
 
 class TransferBenchmarkHarnessTests < Minitest::Test
 	H = TransferBenchmarkHarness
+	def test_profile_defaults_and_explicit_workload_selection
+		assert H.profile_case?('single', 'v1', 'seed', {})
+		refute H.profile_case?('many', 'v2', 'seed', {})
+		filters = { 'BUTTER_BENCHMARK_CASE' => 'many', 'BUTTER_BENCHMARK_FORMAT' => 'v2', 'BUTTER_BENCHMARK_DIRECTION' => 'seed' }
+		assert H.profile_case?('many', 'v2', 'seed', filters)
+		refute H.profile_case?('single', 'v1', 'seed', filters)
+		refute H.profile_case?('many', 'v2', 'seed', { 'BUTTER_BENCHMARK_CASE' => 'many' })
+	end
 	def test_balanced_reproducible_orders
 		[6, 12].each do |count|
 			orders = H.orders(count, 42)

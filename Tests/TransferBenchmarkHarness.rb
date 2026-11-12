@@ -8,6 +8,11 @@ require 'time'
 
 module TransferBenchmarkHarness
 	PHASES = %w[prepare ready start verified persistence durable shutdown stopped].freeze
+	PROFILE_CASES = [['single', 'v1', 'download'], ['single', 'hybrid', 'download'], ['many', 'hybrid', 'download'], ['single', 'v1', 'seed']].freeze
+	def self.profile_case?(workload, format, direction, filters = ENV)
+		requested = %w[BUTTER_BENCHMARK_CASE BUTTER_BENCHMARK_FORMAT BUTTER_BENCHMARK_DIRECTION].map { |key| filters[key] }
+		requested.all? ? requested == [workload, format, direction] : PROFILE_CASES.include?([workload, format, direction])
+	end
 	def self.now
 		Process.clock_gettime(Process::CLOCK_MONOTONIC)
 	end
@@ -288,7 +293,7 @@ module TransferBenchmarkHarness
 					%w[download seed].each_with_index do |direction, direction_index|
 						next if ENV['BUTTER_BENCHMARK_DIRECTION'] && ENV['BUTTER_BENCHMARK_DIRECTION'] != direction
 						if @profile
-							next unless [["single", "v1", "download"], ["single", "hybrid", "download"], ["many", "hybrid", "download"], ["single", "v1", "seed"]].include?([fixture['case'], format, direction])
+							next unless TransferBenchmarkHarness.profile_case?(fixture['case'], format, direction)
 						end
 						seed = 11011 + index * 100 + format_index * 10 + direction_index
 						key = { case: fixture['case'], format: format, direction: direction, order_seed: seed }

@@ -113,6 +113,9 @@ retained; these instrumented results are labelled profile-only and never used
 as timing acceptance evidence. Sampling attributes stacks and waits; allocation
 counts require additional Instruments Allocations recordings when indicated.
 
+Setting all three case/format/direction filters with `--profile` selects that
+exact workload, including cases outside the default four-profile set.
+
 ## Checkpoint policy
 
 Direct `TorrentStorage` callers retain `.immediate`. Managed transfers use a
