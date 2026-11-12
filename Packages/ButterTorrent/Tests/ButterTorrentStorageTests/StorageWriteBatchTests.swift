@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Testing
 import ButterTorrentMetadata
 @testable import ButterTorrentStorage
@@ -103,31 +104,31 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 			try await storage.shutdown()
 		}
 	}
-	@Test func cancellationRetainsPartialWritesForFlushingAndLaterVerification() async throws {
+	@Test(arguments: [false, true]) func cancellationRetainsPartialWritesForFlushingAndLaterVerification(_ contiguous: Bool) async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 65536, pieceLength: 32768)
 			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { _ in }, check: {})
-			let writes = [StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: 0, offset: 16384, data: bytes.subdata(in: 16384..<32768))]
+			let writes = [StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: contiguous ? 0 : 1, offset: contiguous ? 16384 : 0, data: bytes.subdata(in: contiguous ? 16384..<32768 : 32768..<49152))]
 			var checks = 0
-			#expect(throws: CancellationError.self) { try state.writeOperations(writes, maximumBytes: 262144, maximumCount: 16, check: { checks += 1; if checks == 3 { throw CancellationError() } }) }
+			#expect(throws: CancellationError.self) { try state.writeOperations(writes, maximumBytes: 262144, maximumCount: 16, check: { checks += 1; if checks == 3 { throw CancellationError() } }, vectorWrite: { pwritev($0, $1, 1, $3) }) }
 			#expect(state.pendingFlush == [0] && !state.record.contains(0))
 			#expect(try Data(contentsOf: root.appendingPathComponent("data/bundle/file-0")) == bytes.prefix(16384))
 			try state.save(); #expect(state.pendingFlush.isEmpty)
-			try state.writeOperations([writes[1]], maximumBytes: 262144, maximumCount: 16, check: {})
+			try state.writeOperations([StorageWrite(piece: 0, offset: 16384, data: bytes.subdata(in: 16384..<32768))], maximumBytes: 262144, maximumCount: 16, check: {})
 			#expect(try state.verify(piece: 0, check: {}))
 		}
 	}
-	@Test func pathReplacementBetweenBlocksCannotRedirectACachedDescriptor() async throws {
+	@Test(arguments: [false, true]) func pathReplacementBetweenBlocksCannotRedirectACachedDescriptor(_ contiguous: Bool) async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 65536, pieceLength: 32768)
 			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { _ in }, check: {})
 			let file = root.appendingPathComponent("data/bundle/file-0"), original = root.appendingPathComponent("original"), replacement = Data([4, 5, 6])
 			var checks = 0
 			#expect(throws: (any Error).self) {
-				try state.writeOperations([StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: 0, offset: 16384, data: bytes.subdata(in: 16384..<32768))], maximumBytes: 262144, maximumCount: 16, check: {
+				try state.writeOperations([StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: contiguous ? 0 : 1, offset: contiguous ? 16384 : 0, data: bytes.subdata(in: contiguous ? 16384..<32768 : 32768..<49152))], maximumBytes: 262144, maximumCount: 16, check: {
 					checks += 1
 					if checks == 3 { try FileManager.default.moveItem(at: file, to: original); try replacement.write(to: file) }
-				})
+				}, vectorWrite: { pwritev($0, $1, 1, $3) })
 			}
 			#expect(try Data(contentsOf: original) == bytes.prefix(16384)); #expect(try Data(contentsOf: file) == replacement)
 		}
@@ -177,4 +178,39 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 			try await storage.shutdown()
 		}
 	}
+	@Test(arguments: [false, true]) func vectorRunsStopAtFileBoundariesAndKeepSelectiveStorage(_ selective: Bool) async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try batchMetadata(fileCount: 2, fileSize: 32768)
+			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: selective ? [true, false] : nil, coordinator: StorageCoordinator(), event: { _ in }, check: {})
+			let writes = stride(from: 0, to: bytes.count, by: 8192).map { offset in
+				StorageWrite(piece: offset / 16384, offset: offset % 16384, data: bytes[offset..<(offset + 8192)])
+			}
+			var vectors: [Int] = [], offsets: [Int64] = []
+			try state.writeOperations(writes, maximumBytes: 262144, maximumCount: 16, check: {}, vectorWrite: { file, buffers, count, offset in
+				vectors.append(Int(count)); offsets.append(offset); return pwritev(file, buffers, count, offset)
+			})
+			#expect(vectors == [4, 4] && offsets == [0, 0])
+			for piece in 0..<4 { #expect(try state.verify(piece: piece, check: {})) }
+			#expect(try Data(contentsOf: root.appendingPathComponent("data/bundle/file-0")) == bytes.prefix(32768))
+			let second = root.appendingPathComponent(selective ? "state/unwanted/1" : "data/bundle/file-1")
+			#expect(try Data(contentsOf: second) == bytes.suffix(32768))
+			if selective { #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("data/bundle/file-1").path)) }
+		}
+	}
+	@Test func vectorRunsPreserveOverlappingWriteOrder() async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 16384)
+			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { _ in }, check: {})
+			let writes = [StorageWrite(piece: 0, offset: 0, data: Data(count: 4096)), StorageWrite(piece: 0, offset: 4096, data: Data(count: 4096)),
+				StorageWrite(piece: 0, offset: 0, data: bytes.prefix(4096)), StorageWrite(piece: 0, offset: 4096, data: bytes[4096..<8192]), StorageWrite(piece: 0, offset: 8192, data: bytes.suffix(8192))]
+			var vectors: [Int] = [], offsets: [Int64] = []
+			try state.writeOperations(writes, maximumBytes: 262144, maximumCount: 16, check: {}, vectorWrite: { file, buffers, count, offset in
+				vectors.append(Int(count)); offsets.append(offset); return pwritev(file, buffers, count, offset)
+			})
+			#expect(vectors == [2, 3] && offsets == [0, 0])
+			#expect(try state.verify(piece: 0, check: {}))
+			#expect(try Data(contentsOf: root.appendingPathComponent("data/bundle/file-0")) == bytes)
+		}
+	}
+
 }
