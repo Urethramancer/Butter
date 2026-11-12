@@ -289,8 +289,9 @@ final class StorageState: @unchecked Sendable {
 		let hashes = metadata.document.root["info"]?["pieces"]?.bytes
 		let mapping = merkle.index.pieces[piece]
 		var hash = Insecure.SHA1(), offset = 0, result = Data(), leaves: [Data] = []
+		if let range { result.reserveCapacity(range.count) }
 		while offset < length {
-			try check(); let count = min(65536, length - offset)
+			try check(); let count = min(262144, length - offset)
 			let data = try read(piece: piece, offset: offset, count: count, verifiedOnly: false, check: check)
 			hash.update(data: data)
 			if let mapping {

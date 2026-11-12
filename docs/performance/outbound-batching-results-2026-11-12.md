@@ -71,3 +71,28 @@ original baseline gate. The full 325-test package run passed serially, including
 new duplicate/selective/staged completion checks. [Raw follow-up evidence](raw/picker-completion-single-v1/summary.json)
 and [before/after intervals](raw/picker-completion-single-v1/before-after.json)
 retain the result separately from batching and full-matrix records.
+
+## Bounded verification-read follow-up
+
+The latest focused candidate groups verification reads into 256 KiB instead of
+64 KiB and reserves the requested verified-result buffer once. The inner reads
+and cancellation checks remain at most 64 KiB. File descriptors still open via
+the anchored path checks and close at the end of each group. Complete stored-byte
+SHA-1/Merkle authentication and both file-stamp scans remain unchanged. Larger
+pieces still stream through bounded groups; upload-cache limits are unchanged.
+
+All fourteen trials were accepted. CPU fell from 4.862 to 4.408 s/GiB:
+independent ratio 0.907 [0.897–0.917]. Throughput rose from 384.4 to 398.2 MB/s:
+ratio 1.036 [1.019–1.048]. Against native, paired CPU is 2.731 [2.637–2.762]
+and throughput 88.5% [88.2–89.6%]; both targets remain unmet. Memory passes the
+original baseline gate. Relative to the preceding full candidate, focused Swift
+seeding CPU is now about 45% lower; these separate runs are not paired.
+
+All 327 package tests passed serially, including reads across 256 KiB groups,
+multiple files, selective storage and larger hybrid/v2 Merkle pieces. The native
+crash, ENOSPC, read-only and replacement suite passed again.
+[Every read-group trial and summary](raw/read-groups-single-v1/summary.json),
+[environment/source hashes](raw/read-groups-single-v1/environment.json),
+[before/after intervals](raw/read-groups-single-v1/before-after.json) and
+[correctness evidence](raw/read-groups-single-v1/checks.json) remain separate.
+The full candidate matrix is the next acceptance check.

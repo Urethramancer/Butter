@@ -15,6 +15,23 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 }
 
 @Suite struct StorageWriteBatchTests {
+	@Test(arguments: [262144, 524288], [false, true]) func verifiedReadGroupsSpanFilesAndKeepSelectiveBytes(pieceLength: Int, selective: Bool) async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try batchMetadata(fileCount: 5, fileSize: 131073, pieceLength: pieceLength)
+			let selected = (0..<5).map { !selective || $0 % 2 == 0 }
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: selected)
+			for piece in 0..<storage.layout.pieceCount {
+				let start = piece * pieceLength, end = min(start + pieceLength, bytes.count)
+				let expected = bytes.subdata(in: start..<end)
+				try await storage.write(piece: piece, offset: 0, data: expected)
+				#expect(try await storage.verify(piece: piece))
+				#expect(try await storage.readVerifiedPiece(piece) == expected)
+				let offset = min(262140, expected.count - 1), count = min(32, expected.count - offset)
+				#expect(try await storage.read(piece: piece, offset: offset, count: count) == expected.subdata(in: offset..<(offset + count)))
+			}
+			try await storage.shutdown()
+		}
+	}
 	@Test func verificationSnapshotCoversCheckpointPublicationBeforeHashing() async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: 2, fileSize: 16384)

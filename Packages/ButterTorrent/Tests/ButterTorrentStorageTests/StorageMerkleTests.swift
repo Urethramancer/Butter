@@ -4,6 +4,28 @@ import ButterTorrentMetadata
 @testable import ButterTorrentStorage
 
 @Suite struct StorageMerkleTests {
+	@Test func largeVerifiedReadsKeepHybridAndV2MerkleAuthentication() async throws {
+		try await storageFixture { root in
+			let source = root.appendingPathComponent("payload"), bytes = Data((0..<700003).map { UInt8($0 % 251) })
+			try bytes.write(to: source)
+			let hybrid = try TorrentMetadata(TorrentCreator.create(source: source, trackers: [], isPrivate: false, pieceLength: 524288))
+			var info = hybrid.document.root["info"]!.dictionary!
+			for key in ["pieces", "files", "length"] { info[Data(key.utf8)] = nil }
+			let v2 = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info), Data("piece layers".utf8): .dictionary(hybrid.pieceLayers.mapValues(BencodeValue.bytes))]).encoded())
+			for (index, metadata) in [hybrid, v2].enumerated() {
+				let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data-\(index)"), stateDirectory: root.appendingPathComponent("state-\(index)"))
+				try await storage.importFiles(from: root)
+				for piece in 0..<storage.layout.pieceCount {
+					let start = piece * 524288, count = try storage.layout.length(of: piece)
+					var expected = bytes.subdata(in: start..<min(start + count, bytes.count))
+					expected.append(Data(repeating: 0, count: count - expected.count))
+					#expect(try await storage.verify(piece: piece))
+					#expect(try await storage.readVerifiedPiece(piece) == expected)
+				}
+				try await storage.shutdown()
+			}
+		}
+	}
 	@Test func legacyCandidatesNeedTheV2RootBeforePublishingProgress() async throws {
 		try await storageFixture { root in
 			let source = root.appendingPathComponent("payload"), bytes = Data((0..<115027).map { UInt8($0 % 251) })

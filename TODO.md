@@ -6,6 +6,9 @@
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
   10% of baseline. The [full results](docs/performance/snapshot-reuse-results-2026-11-12.md)
   pass memory throughout but fail CPU in all eighteen cases.
+- Complete the full matrix for TCP output batching, cached wanted completion
+  and bounded verification-read groups. Focused single-file v1 seeding reaches
+  4.41 CPU s/GiB and 398 MB/s; this does not establish other cases.
 - Recover the remaining many-file v2 seeding CPU regression: the latest full
   median is 14.50 s/GiB against the original 13.90. Snapshot reuse lowered all
   three seeding medians; v1 and hybrid are now below their original medians.
