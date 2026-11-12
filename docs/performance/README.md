@@ -32,6 +32,11 @@ single-file v1 download CPU another 14.5%, from 4.206 to 3.597 s/GiB, and raises
 throughput from 297.3 to 363.0 MB/s. Both memory gates pass. This focused result
 still misses native-relative CPU and throughput targets.
 
+The [31-request follow-up](window31-results-2026-11-12.md) sets the production
+default within the existing maximum of 32. Focused single-file v1 CPU falls
+another 9.0% to 3.274 s/GiB and throughput rises 4.6% to 379.8 MB/s. Incremental
+RSS rises 3.2%; both memory gates pass. Native parity remains unmet.
+
 The [focused steps and validation](outbound-batching-results-2026-11-12.md)
 record the isolated experiments and exact source revisions for correctness
 checks. No combined workload average substitutes for per-case acceptance.
