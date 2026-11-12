@@ -73,6 +73,8 @@ sparse hybrid magnets, discovery, web seeds and impaired TCP-disabled µTP.
 with separate durable-completion, CPU and whole-process memory measurements.
 Use `benchmark --smoke` for a smaller correctness run; see the
 [comparison method and artifacts](docs/performance/README.md).
+The [12 November results](docs/performance/results-2026-11-12.md) record the full
+matrix, CPU regressions and remaining parity gap.
 `Scripts/verify.sh storage-benchmark` measures many-file storage costs with
 byte and restart checks; it requires no reference-engine installation.
 The [migration record](docs/swift-engine.md) and [audit](docs/audit.md) document

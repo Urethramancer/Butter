@@ -1,5 +1,23 @@
 # Remaining audit and acceptance checks
 
+## TCP performance parity
+
+- Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
+  at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
+  10% of baseline. The [full results](docs/performance/results-2026-11-12.md)
+  pass memory throughout but fail CPU in all eighteen cases.
+- Isolate and recover the many-file seeding CPU regressions: candidate/baseline
+  medians are 1.025× for v1, 1.151× for v2 and 1.099× for hybrid.
+- Reduce repeated whole-layout stamp/path inspection and per-block upload,
+  admission and Network.framework scheduling costs identified in the profiles,
+  preserving stored-byte hashing, ownership checks, cancellation and queue caps.
+
+## Validation diagnostics
+
+- Reproduce the earlier combined-contract six-second deadline under controlled
+  CPU load and identify its wait point using the new diagnostics. Serial checks
+  pass; the original stalled condition remains unknown in the retained log.
+
 ## Native interaction and appearance
 - Automate real drag/drop, blocklist import/export dialogs, destination-folder
   pickers and the remaining Settings controls.

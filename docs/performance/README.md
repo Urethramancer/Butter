@@ -6,6 +6,11 @@ and peak RSS within 10% of the fresh Swift baseline. Results are per workload;
 there is no combined performance score. Encryption and µTP remain correctness
 regressions, outside this throughput milestone.
 
+The [12 November final results](results-2026-11-12.md) retain 264 accepted trials:
+all memory checks pass, four cases meet throughput, and every case fails CPU.
+Many-file seeding has higher CPU than the baseline. The report includes those
+regressions, intervals, raw artifacts and remaining measured bottlenecks.
+
 Run `Scripts/test-benchmark.sh --full [OUTPUT]` on an otherwise idle Mac.
 `--smoke` checks the harness using 32 MiB and one pair per case; its intervals
 are not acceptance evidence. The optional reference dependency stays pinned to
