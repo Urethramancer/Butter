@@ -29,7 +29,8 @@
 - Resolve the native run's IPv6 v2 negotiated-encryption µTP upload timeout
   under deliberate SYN-ACK loss. The eight-request candidate records 273 native
   passes before failing, with zero payload traffic and no disk error. Preserve
-  the full failed run; a focused fixture with unchanged deadlines is being run.
+  the full failed run. The isolated fixture and a declared twelve-case stress
+  run pass with unchanged deadlines; reproduce the full-suite condition.
 
 - Identify the native run's temporary-path disappearance: the first run exits 1
   with its log, fixture and module cache missing; a workspace-directory rerun

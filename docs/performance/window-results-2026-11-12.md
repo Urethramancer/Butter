@@ -40,6 +40,11 @@ change without evidence. The full log and its hash remain in
 `.build/diagnostics/piece-buffer/window8-native-peer.log` and
 `window8-native-failure.json`. A focused diagnostic preserves its fixture and
 uses the original deadlines; the full suite is not retried to hide the failure.
+That isolated case passes, followed by all twelve declared stress cases in one
+process with fresh storage/connections, original deadlines and verified payloads.
+The full-suite cause remains unresolved. [Native diagnostic results](window8-native-validation-2026-11-12.json)
+retain the original failure and both focused outcomes. These passes do not
+establish full native acceptance or explain the original timeout.
 
 ## Historical independent comparison
 
