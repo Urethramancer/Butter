@@ -240,6 +240,17 @@ CPU durations; inclusive percentages overlap. Binary `.trace` bundles stay
 in the disposable build output and are not committed. Profile-only measurements
 never replace the separate full timing matrix.
 
+Set `BUTTER_BENCHMARK_PROFILER=file-activity` with `--profile` for filesystem
+syscall events plus CPU sampling. It requests a trailing one-second recording
+window to keep traces bounded; tables may include overlapping event spans. TOC,
+sample and `FsSyscall` XML exports are saved automatically. This mode is only
+for operation-size/frequency diagnostics, not whole-transfer CPU or syscall
+counts. The installed File Activity model omits some operations visible in CPU
+samples, including vector writes and `openat`; do not infer absent operations.
+The [first observations](filesystem-write-observations-2026-11-12.json) retain
+both validated bounded trials and the failed unbounded recording. Swift's
+observed payload writes remain 16 KiB even inside admitted write batches.
+
 The [source-matched CPU profiles](cpu-profiles-2026-11-12.md) retain all eight
 four-case trials and a preceding two-trial capability run. They identify
 whole-layout stamp scans and repeated hash-request set subtraction as separate

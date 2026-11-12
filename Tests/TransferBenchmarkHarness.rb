@@ -72,12 +72,15 @@ module TransferBenchmarkHarness
 
 	class TimeProfiler
 		attr_reader :pid
-		def initialize(target, prefix, command: nil, notification: nil)
-			@prefix = prefix
+		def initialize(target, prefix, command: nil, notification: nil, filesystem: false)
+			@prefix = prefix; @filesystem = filesystem
 			name = "org.butter.profile.#{Process.pid}.#{target}"
 			@notification = notification || TraceNotification.new(name)
-			command ||= ['xcrun', 'xctrace', 'record', '--template', 'Time Profiler', '--attach', target.to_s,
-				'--notify-tracing-started', name, '--time-limit', '600s', '--output', "#{prefix}.trace"]
+			unless command
+				command = ['xcrun', 'xctrace', 'record', '--template', filesystem ? 'File Activity' : 'Time Profiler']
+				command += ['--instrument', 'Time Profiler', '--window', '1s'] if filesystem
+				command += ['--attach', target.to_s, '--notify-tracing-started', name, '--time-limit', '600s', '--output', "#{prefix}.trace"]
+			end
 			@pid = Process.spawn(*command, out: "#{prefix}.profiler.log", err: [:child, :out], pgroup: true)
 		rescue Exception
 			@notification.close if @notification
@@ -112,7 +115,9 @@ module TransferBenchmarkHarness
 			end
 		end
 		def export
-			[['toc', ['--toc']], ['samples', ['--xpath', '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]']]].each do |suffix, query|
+			queries = [['toc', ['--toc']], ['samples', ['--xpath', '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]']]]
+			queries << ['fs', ['--xpath', '/trace-toc/run[@number="1"]/data/table[@schema="FsSyscall"]']] if @filesystem
+			queries.each do |suffix, query|
 				command = ['xcrun', 'xctrace', 'export', '--input', "#{@prefix}.trace", *query, '--output', "#{@prefix}.#{suffix}.xml"]
 				raise 'Profiler export failed' unless TransferBenchmarkHarness.run_bounded(command, "#{@prefix}.export.log", timeout: 60)
 			end
@@ -335,8 +340,8 @@ module TransferBenchmarkHarness
 			raise 'Source comparison cannot use smoke/profiling' if @source_comparison && (smoke || profile)
 			@output, @work, @smoke, @profile = output, work, smoke, profile
 			@profiler = ENV.fetch('BUTTER_BENCHMARK_PROFILER', 'sample')
-			raise 'Unknown benchmark profiler' unless %w[sample time-profiler].include?(@profiler)
-			raise 'Time Profiler requires --profile' if !profile && @profiler != 'sample'
+			raise 'Unknown benchmark profiler' unless %w[sample time-profiler file-activity].include?(@profiler)
+			raise 'Instrumented profiling requires --profile' if !profile && @profiler != 'sample'
 			@trials = []
 			if baseline
 				raise 'A representative full baseline is required' unless JSON.parse(File.read(File.join(baseline, 'environment.json')))['mode'] == '--full'
@@ -379,11 +384,11 @@ module TransferBenchmarkHarness
 				timeout = @smoke ? 30 : 600
 				TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'ready'] }, timeout: timeout)
 				raise 'Metadata payload byte count mismatch' unless children.all? { |child| child.phase('ready').fetch('payload_bytes') == fixture['bytes'] }
-				if @profile && @profiler == 'time-profiler'
+				if @profile && @profiler != 'sample'
 					tested = direction == 'download' ? down : seed
-					trace = TimeProfiler.new(tested.phase('ready').fetch('pid'), File.join(@output, id))
+					trace = TimeProfiler.new(tested.phase('ready').fetch('pid'), File.join(@output, id), filesystem: @profiler == 'file-activity')
 					trace.wait_ready(children)
-					record[:profiler] = { name: 'Time Profiler', target: engine, attached_before_start: true, counterpart_instrumented: false }
+					record[:profiler] = { name: @profiler == 'file-activity' ? 'File Activity + Time Profiler' : 'Time Profiler', target: engine, attached_before_start: true, counterpart_instrumented: false, capture_window: @profiler == 'file-activity' ? 'requested trailing 1s before durable completion' : 'whole transfer through durable completion' }
 				end
 				seed.send_command('start'); down.send_command('start', ports: seed.phase('ready').fetch('ports'))
 				if @profile && @profiler == 'sample'
