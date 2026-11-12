@@ -27,8 +27,12 @@ digests plus saved-state reopen pass. No timing or correctness failure occurred.
 CPU falls 18.9%; throughput rises 17.3%. Original-baseline and incremental
 memory gates both pass. Incremental median peak RSS ratio is 1.045
 [1.028–1.068], with observed maximum ratio 1.040. The full package suite passes
-all 337 tests; 28 focused tests in four suites also pass. Native regression
-validation and the final eighteen-case timing matrix remain outstanding.
+all 337 tests; 28 focused tests in four suites also pass. Committed source
+`90c3414` subsequently passes all 466 native reference checks, including
+encrypted TCP, µTP, discovery, sparse/hybrid proofs and web-seed transfers.
+All 44 focused transfer/resource/output-budget tests pass under each of Address
+and Thread Sanitizer for that committed source.
+The final eighteen-case timing matrix remains outstanding.
 
 Native-relative acceptance is still unmet: paired CPU ratio 2.692
 [2.646–2.715] exceeds 1.25 and throughput 0.660 [0.657–0.679] is below 0.90.

@@ -313,6 +313,7 @@ dependency archives as the baseline. They remain separate from timing trials.
 These single instrumented pairs attribute work, rather than estimate acceptance
 intervals. Whole-layout stamp invalidation and anchored path inspections remain
 prominent in the many-file stacks. Seeding retains per-block upload tasks,
-disk-admission actor crossings and Network.framework sends. Request-window
-defaults remain unchanged; Swift records its download pipeline and incoming
-upload quotas, and the reference records its native request-queue defaults.
+disk-admission actor crossings and Network.framework sends. Those historical
+profiles use the eight-request Swift default; the subsequent window experiment
+above uses sixteen. Swift records its download pipeline and incoming upload
+quotas, and the reference records its native request-queue defaults.
