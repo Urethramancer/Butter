@@ -24,6 +24,12 @@ twelve profile-only trials pass validation. Stamp inspection, stored-byte hashin
 and scheduling remain substantial; the profiles do not establish either
 throughput regression's cause.
 
+A [balanced source comparison](seeding-source-comparison-2026-11-12.md) retains
+56 further diagnostic trials. Neither large seeding loss reproduces as a source
+effect when the old and current engines are interleaved with one native binary.
+CPU/throughput intervals cross one in both cases. Original full-run regressions
+remain recorded; their sequence/environment cause and CPU parity remain open.
+
 The earlier focused [hash-readiness optimisation](hash-readiness-results-2026-11-12.md)
 reduces focused single-file hybrid download CPU from 6.950 to 6.019 s/GiB
 (13.4%) and raises throughput from 182.4 to 213.1 MB/s. Fourteen trials and both
@@ -193,6 +199,30 @@ costs; CPU parity remains open.
 
 Setting all three case/format/direction filters with `--profile` selects that
 exact workload, including cases outside the default four-profile set.
+
+`Scripts/test-benchmark.sh --compare-source [OUTPUT]` diagnoses source changes
+using the same controller and pinned native binary. Set
+`BUTTER_BENCHMARK_PREVIOUS_REVISION` to a compatible commit (default `1931e70`).
+The script creates a disposable detached worktree, builds both Release engines
+before timing, and links the same current driver source against each. It records
+both source/package fingerprints and driver hashes, then removes the old
+worktree and temporary builds on exit; cleanup failures retain their log.
+
+By default this mode selects many-file v1 seeding and concurrent v2 seeding,
+the two measured regressions. All three case/format/direction filters select an
+explicit alternative. Each case has one warm-up per engine per source and a
+fixed six balanced, reproducibly shuffled source-order pairs. Within each source
+block, Swift/native order is also balanced. Native-to-native control trials use
+the identical native binary under both labels. All processes and destinations
+are fresh; sources are streamed warm, payloads independently digested and state
+reopened. Source-prefixed trial IDs preserve every sample/failure separately.
+
+The diagnostic reports paired current/previous Swift CPU, verified throughput,
+whole-process RSS and native-counterpart CPU, plus native control ratios and
+each source's normal native comparison. It never substitutes for the full
+acceptance matrix, never retries to remove a loss, and leaves intervals crossing
+one inconclusive. Its source pairs are fixed at six; the ordinary `--full`
+acceptance extension policy remains unchanged.
 
 ## Checkpoint policy
 

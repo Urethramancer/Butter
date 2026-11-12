@@ -9,9 +9,13 @@ require 'time'
 module TransferBenchmarkHarness
 	PHASES = %w[prepare ready start verified persistence durable shutdown stopped].freeze
 	PROFILE_CASES = [['single', 'v1', 'download'], ['single', 'hybrid', 'download'], ['many', 'hybrid', 'download'], ['single', 'v1', 'seed']].freeze
+	SOURCE_CASES = [['many', 'v1', 'seed'], ['concurrent', 'v2', 'seed']].freeze
 	def self.profile_case?(workload, format, direction, filters = ENV)
+		selected_case?(workload, format, direction, PROFILE_CASES, filters)
+	end
+	def self.selected_case?(workload, format, direction, defaults, filters = ENV)
 		requested = %w[BUTTER_BENCHMARK_CASE BUTTER_BENCHMARK_FORMAT BUTTER_BENCHMARK_DIRECTION].map { |key| filters[key] }
-		requested.all? ? requested == [workload, format, direction] : PROFILE_CASES.include?([workload, format, direction])
+		requested.all? ? requested == [workload, format, direction] : defaults.include?([workload, format, direction])
 	end
 	def self.now
 		Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -252,9 +256,10 @@ module TransferBenchmarkHarness
 			cpu_seconds_per_gib: (durable[:user] + durable[:system]) / (bytes.to_f / 1_073_741_824),
 			peer_errors: child.phase('stopped').fetch('peer_errors', []), whole: child.whole)
 	end
-	def self.orders(count, seed)
+	def self.orders(count, seed, labels: %w[Swift libtorrent])
 		raise 'Pair count must be positive and even' unless count > 0 && count.even?
-		(Array.new(count / 2) { %w[Swift libtorrent] } + Array.new(count / 2) { %w[libtorrent Swift] }).shuffle(random: Random.new(seed))
+		raise 'Two distinct order labels required' unless labels.size == 2 && labels.uniq.size == 2
+		(Array.new(count / 2) { labels.dup } + Array.new(count / 2) { labels.reverse }).shuffle(random: Random.new(seed))
 	end
 	def self.median(values)
 		sorted = values.sort; n = sorted.length
@@ -269,7 +274,7 @@ module TransferBenchmarkHarness
 	def self.summary(trials)
 		measured = trials.reject { |trial| trial[:warmup] }
 		pairs = measured.group_by { |trial| trial[:pair] }.values
-		valid = pairs.select { |pair| pair.length == 2 && pair.all? { |trial| trial[:accepted] } }
+		valid = pairs.select { |pair| pair.map { |trial| trial[:engine].to_s }.sort == %w[Swift libtorrent].sort && pair.all? { |trial| trial[:accepted] } }
 		return { status: 'failed', pairs: pairs.length, valid_pairs: valid.length } if valid.length != pairs.length || valid.empty?
 		ratios = %i[verified_bytes_per_second durable_bytes_per_second cpu_seconds_per_gib].to_h do |key|
 			values = valid.map do |pair|
@@ -302,10 +307,32 @@ module TransferBenchmarkHarness
 		status = values[249] <= 1.1 && values[9749] > 1.1 ? 'inconclusive' : values[9749] <= 1.1 && maximum_ratio <= 1.1 ? 'pass' : 'target-unmet'
 		{ status: status, median_peak_rss_ratio: median(candidate) / median(original).to_f, lower: values[249], upper: values[9749], maximum_peak_rss_ratio: maximum_ratio, method: 'independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10' }
 	end
+	def self.source_summary(trials)
+		variants = %w[previous current].to_h { |source| [source, summary(trials.select { |r| r[:source_variant] == source })] }
+		pairs = trials.reject { |r| r[:warmup] }.group_by { |r| r[:pair] }.values
+		expected = %w[previous current].product(%w[Swift libtorrent]).sort
+		valid = pairs.select { |p| p.all? { |r| r[:accepted] } && p.map { |r| [r[:source_variant].to_s, r[:engine].to_s] }.sort == expected }
+		return { status: 'failed', pairs: pairs.size, valid_pairs: valid.size, variants: variants } if valid.empty? || valid.size != pairs.size || trials.any? { |r| !r[:accepted] }
+		paired = ->(engine, path) do
+			interval(valid.map do |pair|
+				previous, current = %w[previous current].map { |source| pair.find { |r| r[:source_variant] == source && r[:engine] == engine }.dig(*path) }
+				raise 'Invalid source comparison measurement' unless previous.is_a?(Numeric) && current.is_a?(Numeric) && previous.finite? && current.finite? && previous > 0 && current > 0
+				current.to_f / previous
+			end)
+		end
+		specs = { cpu_seconds_per_gib: [:engine_metrics, :cpu_seconds_per_gib], verified_bytes_per_second: [:engine_metrics, :verified_bytes_per_second], peak_rss: [:engine_metrics, :whole, :peak_rss], counterpart_cpu_seconds_per_gib: [:counterpart_metrics, :cpu_seconds_per_gib] }
+		{ status: 'source-comparison-only', pairs: pairs.size, valid_pairs: valid.size, variants: variants,
+			source_ratios: specs.transform_values { |path| paired.call('Swift', path) },
+			native_control_ratios: %i[cpu_seconds_per_gib verified_bytes_per_second].to_h { |key| [key, paired.call('libtorrent', [:engine_metrics, key])] },
+			method: 'Current/previous within balanced source-order pairs; fixed six pairs; diagnostic only, no acceptance inference or uncertainty-driven retries' }
+	end
 
 	class Runner
-		def initialize(swift, reference, output, work, smoke: false, profile: false, baseline: ENV['BUTTER_BENCHMARK_BASELINE'])
+		def initialize(swift, reference, output, work, smoke: false, profile: false, previous: nil, baseline: ENV['BUTTER_BENCHMARK_BASELINE'])
 			@commands = { 'Swift' => [swift], 'libtorrent' => [reference] }
+			@source_commands = { 'current' => [swift] }; @source_commands['previous'] = [previous] if previous
+			@source_comparison = !previous.nil?
+			raise 'Source comparison cannot use smoke/profiling' if @source_comparison && (smoke || profile)
 			@output, @work, @smoke, @profile = output, work, smoke, profile
 			@profiler = ENV.fetch('BUTTER_BENCHMARK_PROFILER', 'sample')
 			raise 'Unknown benchmark profiler' unless %w[sample time-profiler].include?(@profiler)
@@ -317,8 +344,11 @@ module TransferBenchmarkHarness
 				@baseline = File.readlines(File.join(baseline, 'trials.jsonl')).map { |line| JSON.parse(line, symbolize_names: true) }
 			end
 		end
-		def trial(fixture, format, direction, engine, pair, warmup)
-			id = [fixture['case'], format, direction, pair, engine, warmup ? 'warmup' : 'measured'].join('-')
+		def command_for(engine, source)
+			engine == 'Swift' && source ? @source_commands.fetch(source) : @commands.fetch(engine)
+		end
+		def trial(fixture, format, direction, engine, pair, warmup, source: nil)
+			id = [source, fixture['case'], format, direction, pair, engine, warmup ? 'warmup' : 'measured'].compact.join('-')
 			folder = File.join(@work, id); FileUtils.mkdir_p(folder)
 			log_dir = File.join(@output, id); FileUtils.mkdir_p(log_dir)
 			root = File.join(@work, 'fixtures', fixture['case'])
@@ -328,6 +358,7 @@ module TransferBenchmarkHarness
 			seed_items = items.each_with_index.map { |item, index| item.merge(destination: File.join(root, 'seed'), state: File.join(folder, "seed-state-#{index}")) }
 			jobs = { 'seed' => { role: 'seed', items: seed_items }, 'download' => { role: 'download', items: items } }
 			record = { id: id, case: fixture['case'], format: format, direction: direction, engine: engine, pair: pair, warmup: warmup, bytes: fixture['bytes'], accepted: false }
+			record[:source_variant] = source if source
 			children = []; profilers = []; trace = nil
 			begin
 				# Explicitly warm every source with an independent streaming digest, outside timing.
@@ -342,7 +373,7 @@ module TransferBenchmarkHarness
 				jobs.each do |role, job|
 					job_path = File.join(folder, "#{role}.json"); File.write(job_path, JSON.generate(job))
 					selected = (direction == 'download' ? role == 'download' : role == 'seed') ? engine : 'libtorrent'
-					roles[role] = Child.new(@commands.fetch(selected), job_path, File.join(log_dir, "#{role}.log")); children << roles[role]
+					roles[role] = Child.new(command_for(selected, source), job_path, File.join(log_dir, "#{role}.log")); children << roles[role]
 				end
 				seed, down = roles.values_at('seed', 'download')
 				timeout = @smoke ? 30 : 600
@@ -385,7 +416,7 @@ module TransferBenchmarkHarness
 				end
 				jobs.each_key do |role|
 					selected = (direction == 'download' ? role == 'download' : role == 'seed') ? engine : 'libtorrent'
-					raise "Reopen failed: #{role}" unless TransferBenchmarkHarness.run_bounded([*@commands[selected], '--verify', roles[role].job_path], File.join(log_dir, "#{role}-reopen.log"), timeout: timeout)
+					raise "Reopen failed: #{role}" unless TransferBenchmarkHarness.run_bounded([*command_for(selected, source), '--verify', roles[role].job_path], File.join(log_dir, "#{role}-reopen.log"), timeout: timeout)
 				end
 				tested, counterpart = direction == 'download' ? [down, seed] : [seed, down]
 				record[:engine_metrics] = TransferBenchmarkHarness.metrics(tested, fixture['bytes'])
@@ -411,6 +442,20 @@ module TransferBenchmarkHarness
 			end
 			puts "#{id}: #{record[:accepted] ? 'verified' : record[:error]}"; $stdout.flush
 		end
+		def source_case(fixture, format, direction, seed)
+			%w[previous current].each { |source| %w[Swift libtorrent].each { |engine| trial(fixture, format, direction, engine, -1, true, source: source) } }
+			engines = TransferBenchmarkHarness.orders(6, seed)
+			TransferBenchmarkHarness.orders(6, seed + 2000, labels: %w[previous current]).each_with_index do |sources, pair|
+				sources.each { |source| engines[pair].each { |engine| trial(fixture, format, direction, engine, pair, false, source: source) } }
+			end
+			selected = @trials.select { |r| r.values_at(:case, :format, :direction) == [fixture['case'], format, direction] }
+			result = TransferBenchmarkHarness.source_summary(selected)
+			if @baseline
+				baseline = @baseline.select { |r| r.values_at(:case, :format, :direction) == [fixture['case'], format, direction] }
+				result[:baseline_memory] = %w[previous current].to_h { |source| [source, TransferBenchmarkHarness.memory_summary(selected.select { |r| r[:source_variant] == source }, baseline)] }
+			end
+			result
+		end
 		def run(fixtures)
 			Signal.trap('TERM') { raise Interrupt, 'Benchmark terminated' }
 			results = []
@@ -425,6 +470,11 @@ module TransferBenchmarkHarness
 						end
 						seed = 11011 + index * 100 + format_index * 10 + direction_index
 						key = { case: fixture['case'], format: format, direction: direction, order_seed: seed }
+						if @source_comparison
+							next unless TransferBenchmarkHarness.selected_case?(fixture['case'], format, direction, SOURCE_CASES)
+							results << key.merge(source_case(fixture, format, direction, seed))
+							File.write(File.join(@output, 'summary.json'), JSON.pretty_generate(results)); next
+						end
 						%w[Swift libtorrent].each { |engine| trial(fixture, format, direction, engine, -1, true) } unless @profile
 						orders = @smoke || @profile ? [%w[Swift libtorrent]] : TransferBenchmarkHarness.orders(6, seed)
 						orders.each_with_index { |order, pair| order.each { |engine| trial(fixture, format, direction, engine, pair, false) } }
@@ -458,9 +508,10 @@ module TransferBenchmarkHarness
 end
 
 if $PROGRAM_NAME == __FILE__
-	swift, reference, output, work, mode = ARGV
+	swift, reference, output, work, mode, previous = ARGV
+	raise 'Previous source driver required' if mode == '--compare-source' && previous.nil?
 	FileUtils.mkdir_p(output)
 	manifest = JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
 	FileUtils.cp(File.join(work, 'fixtures', 'manifest.json'), File.join(output, 'fixtures.json'))
-	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: mode == '--profile').run(manifest)
+	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: mode == '--profile', previous: mode == '--compare-source' ? previous : nil).run(manifest)
 end

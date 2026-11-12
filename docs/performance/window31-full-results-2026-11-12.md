@@ -76,6 +76,9 @@ hashing, disk calls and scheduling after removing the dominant picker scan.
 Many-file v1 seeding CPU rises 5.1%, while throughput falls 23.5%. Concurrent
 v2 seeding uses 11.1% less CPU but loses 20.0% throughput; it still clearly
 passes the native throughput gate. Both losses remain visible separately.
+A subsequent [balanced source comparison](seeding-source-comparison-2026-11-12.md)
+does not reproduce either loss as a source effect. That diagnostic does not
+replace these samples or explain their sequence/runtime cause.
 All nine download CPU intervals improve, with individual reductions from
 18.7% to 49.8%; this range is not a combined workload score.
 

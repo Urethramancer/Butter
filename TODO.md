@@ -7,10 +7,12 @@
   10% of baseline. The [full results](docs/performance/window31-full-results-2026-11-12.md)
   pass memory in all eighteen cases and throughput in nine, but fail CPU throughout.
 - Investigate the many-file v1 seeding regression against the preceding full
-  candidate: CPU rises 5.1% and throughput falls 23.5%. Retain both runs and
-  establish the cause with separate profiles and controlled comparisons.
+  candidate: CPU rises 5.1% and throughput falls 23.5%. A balanced old/current
+  source comparison does not reproduce the loss as a source effect; retain the
+  original runs and isolate the sequence/runtime conditions.
 - Investigate the concurrent v2 seeding throughput loss of 20.0% despite lower
-  CPU; it still meets native throughput, but the regression remains open.
+  CPU. The source comparison is inconclusive around a ratio of one; it still
+  meets native throughput, but the full-run regression remains open.
 - Rerun the matrix/profiles for the final candidate and complete remaining release
   acceptance; the latest complete matrix and CPU profiles are `5b9ef12`.
 - Reduce repeated whole-layout stamp inspection and per-block upload,

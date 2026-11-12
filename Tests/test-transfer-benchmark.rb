@@ -3,6 +3,81 @@ require_relative 'TransferBenchmarkHarness'
 
 class TransferBenchmarkHarnessTests < Minitest::Test
 	H = TransferBenchmarkHarness
+	def source_trial(source, engine, pair, warmup: false)
+		current = source == 'current'
+		{ case: 'many', format: 'v1', direction: 'seed', source_variant: source, engine: engine, pair: pair, warmup: warmup, accepted: true,
+			engine_metrics: { cpu_seconds_per_gib: engine == 'Swift' ? (current ? 4.0 : 2.0) : 1.0,
+				verified_bytes_per_second: engine == 'Swift' ? (current ? 100.0 : 200.0) : 400.0,
+				durable_bytes_per_second: 90.0, whole: { peak_rss: current ? 1050 : 1000 } },
+			counterpart_metrics: { cpu_seconds_per_gib: current ? 0.8 : 0.7 } }
+	end
+	def source_trials
+		6.times.flat_map { |pair| %w[previous current].flat_map { |source| %w[Swift libtorrent].map { |engine| source_trial(source, engine, pair) } } }
+	end
+	def test_source_comparison_pairing_accounts_for_native_control_and_ignores_warmups
+		rows = source_trials
+		warmup = source_trial('previous', 'Swift', -1, warmup: true); warmup[:engine_metrics][:cpu_seconds_per_gib] = 1000
+		result = H.source_summary(rows + [warmup])
+		assert_equal 'source-comparison-only', result[:status]
+		assert_equal 6, result[:valid_pairs]
+		assert_equal 2.0, result[:source_ratios][:cpu_seconds_per_gib][:median]
+		assert_equal 0.5, result[:source_ratios][:verified_bytes_per_second][:median]
+		assert_in_delta 1.05, result[:source_ratios][:peak_rss][:median], 1e-12
+		assert_in_delta 8.0 / 7, result[:source_ratios][:counterpart_cpu_seconds_per_gib][:median], 1e-12
+		assert_equal 1.0, result[:native_control_ratios][:cpu_seconds_per_gib][:median]
+		assert_equal 1.0, result[:native_control_ratios][:verified_bytes_per_second][:median]
+	end
+	def test_failed_or_duplicate_source_trials_cannot_be_hidden
+		[:failed_native, :duplicate_engine, :failed_warmup].each do |kind|
+			rows = source_trials
+			case kind
+			when :failed_native; rows.find { |r| r[:engine] == 'libtorrent' }[:accepted] = false
+			when :duplicate_engine; rows.find { |r| r[:engine] == 'libtorrent' }[:engine] = 'Swift'
+			when :failed_warmup
+				warmup = source_trial('current', 'Swift', -1, warmup: true); warmup[:accepted] = false; rows << warmup
+			end
+			assert_equal 'failed', H.source_summary(rows)[:status], kind.to_s
+		end
+	end
+	def test_source_schedule_balances_both_orders_and_uses_one_reference_command
+		runner = H::Runner.new('/current', '/reference', '/unused', '/unused', previous: '/previous', baseline: nil)
+		assert_equal ['/current'], runner.command_for('Swift', 'current')
+		assert_equal ['/previous'], runner.command_for('Swift', 'previous')
+		%w[previous current].each { |source| assert_equal ['/reference'], runner.command_for('libtorrent', source) }
+		owner = self
+		runner.define_singleton_method(:trial) do |fixture, format, direction, engine, pair, warmup, source: nil|
+			@trials << owner.source_trial(source, engine, pair, warmup: warmup)
+		end
+		assert_equal 'source-comparison-only', runner.source_case({ 'case' => 'many' }, 'v1', 'seed', 17)[:status]
+		rows = runner.instance_variable_get(:@trials)
+		assert_equal 4, rows.count { |r| r[:warmup] }
+		measured = rows.reject { |r| r[:warmup] }
+		assert_equal 24, measured.size
+		assert_equal 3, measured.group_by { |r| r[:pair] }.values.count { |pair| pair.first[:source_variant] == 'previous' }
+		%w[previous current].each do |source|
+			pairs = measured.select { |r| r[:source_variant] == source }.group_by { |r| r[:pair] }.values
+			assert_equal 3, pairs.count { |pair| pair.first[:engine] == 'Swift' }
+		end
+		observed = measured.group_by { |r| r[:pair] }.values.map { |pair| pair.map { |r| r[:source_variant] }.uniq }
+		assert_equal H.orders(6, 2017, labels: %w[previous current]), observed
+		assert_raises(RuntimeError) { H.orders(6, 1, labels: %w[current current]) }
+		assert H.selected_case?('many', 'v1', 'seed', H::SOURCE_CASES, {})
+		refute H.selected_case?('single', 'v1', 'download', H::SOURCE_CASES, {})
+	end
+	def test_failed_source_variants_keep_distinct_raw_records
+		Dir.mktmpdir('butter-source-variants') do |root|
+			out, work = File.join(root, 'out'), File.join(root, 'work')
+			FileUtils.mkdir_p(out); FileUtils.mkdir_p(File.join(work, 'fixtures/many/seed'))
+			File.write(File.join(work, 'fixtures/many/seed/payload'), 'payload')
+			fixture = { 'case' => 'many', 'bytes' => 7, 'files' => [{ 'path' => 'payload', 'size' => 7, 'sha256' => 'wrong' }], 'torrents' => { 'v1' => ['fixture.torrent'] } }
+			runner = H::Runner.new('/unused/current', '/unused/reference', out, work, previous: '/unused/previous', baseline: nil)
+			capture_io { %w[previous current].each { |source| runner.trial(fixture, 'v1', 'seed', 'Swift', 0, false, source: source) } }
+			rows = File.readlines(File.join(out, 'trials.jsonl')).map { |line| JSON.parse(line) }
+			assert_equal %w[previous current], rows.map { |r| r['source_variant'] }
+			assert_equal 2, rows.map { |r| r['id'] }.uniq.size
+			assert rows.all? { |r| !r['accepted'] && r['error'].include?('Source digest changed') }
+		end
+	end
 	def with_profiler(mode)
 		Dir.mktmpdir('butter-profiler-test') do |root|
 			flag = File.join(root, 'ready')
