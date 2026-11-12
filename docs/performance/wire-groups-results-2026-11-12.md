@@ -85,3 +85,30 @@ increase is inconclusive. Many-file changes are also inconclusive, rather than
 proof of unchanged performance. Counterpart CPU intervals cross one in all
 three download cases. [Complete download measurements and raw hashes](wire-groups-download-comparison-2026-11-12.json)
 retain the source/control results and raw paths.
+
+## Revision: preserve ordinary Data frames
+
+Revision `4806204` keeps ordinary frames directly as Data, allocating shared wire
+wrappers only for grouped upload payloads. Its own fixed six-pair comparisons
+against `e7eb79e` validate all 56 trials. This is a changed source, rather than a
+retry or extension of the first version's measurements.
+
+| Revised workload | CPU ratio [95% interval] | Throughput ratio [95% interval] | RSS ratio [95% interval] | Counterpart CPU ratio [95% interval] |
+| --- | --- | --- | --- | --- |
+| Concurrent hybrid download | 0.997 [0.982–1.018] | 1.019 [0.980–1.078] | 0.992 [0.929–1.044] | 0.993 [0.960–1.145] |
+| Single v1 seed | 0.957 [0.920–0.972] | 0.986 [0.968–1.016] | 0.977 [0.952–1.038] | 0.954 [0.914–0.999] |
+
+The seeding CPU reduction remains reproducible. No measured cost is established
+in these two revised cases. The concurrent RSS interval remains wide: this does
+not prove unchanged memory or establish a direct revision/first-version effect.
+The original version's measured memory cost remains disqualifying and is not
+erased by the revision. Current v1 seeding raw medians are 578.6 MB/s and
+2.686 CPU seconds/GiB versus native 444.1 MB/s and 1.750 s/GiB; the paired
+CPU/native ratio is 1.527 [1.473–1.607], still above target.
+
+The revision passes 354 package tests, fifteen focused tests under each
+sanitizer, and Release build. The first version's 156 native upload checks do
+not substitute for final native validation of the revised representation.
+[Revised comparisons and raw hashes](wire-raw-comparison-2026-11-12.json) retain
+results. Broader source checks, native validation and full-matrix acceptance
+remain pending.

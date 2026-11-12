@@ -1,9 +1,10 @@
 # Swift/libtorrent transfer comparison
 
-[Owned upload wire buffers](wire-groups-results-2026-11-12.md) reduce seeding
-CPU 2.2–4.3%, but the first version raises concurrent download peak RSS 1.5%
-[0.8–7.4%]. This form is disqualified by the no-cost requirement; a revision
-must remove that regression before the change can be retained.
+[Owned upload wire buffers](wire-groups-results-2026-11-12.md) now retain ordinary
+frames as Data. The revision reduces v1 seeding CPU 4.3% and no longer establishes
+a concurrent download RSS regression, though uncertainty remains wide. Broader
+revision checks and full-matrix acceptance are pending. The first version's
+measured download memory cost remains recorded and disqualifies that form.
 
 [Fresh current-source Running CPU profiles](window8-current-profiles-2026-11-12.md)
 validate all eight prescribed captures after the profiler recheck. They identify

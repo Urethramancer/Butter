@@ -2,9 +2,10 @@
 
 ## TCP performance parity
 
-- Remove the upload wire-buffer prototype's concurrent download RSS regression
-  (1.5% [0.8–7.4%]) before retaining its 2.2–4.3% seeding CPU gains. Revalidate
-  the revised representation and full matrix; full parity remains unmet.
+- Finish broader source checks, native validation and the full matrix for revised
+  upload wire buffers. V1 seeding CPU falls 4.3%; concurrent download no longer
+  establishes the first version's RSS regression, with wide uncertainty. Full
+  parity remains unmet.
 
 - Obtain quiet-host timings for the final candidate. All eight current-source
   Running CPU captures now validate; earlier Instruments failures and loaded-host
