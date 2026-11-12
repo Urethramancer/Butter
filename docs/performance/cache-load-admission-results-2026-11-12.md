@@ -33,6 +33,23 @@ passed under each sanitizer. Address Sanitizer's encryption cases ran separately
 from its other 29 cases. Native integration and a new full matrix are still
 outstanding for this source.
 
+## Separate profile
+
+A fresh Release profile captures both engines and their counterparts in this
+same seeding workload. These two profiled trials are labelled `profile-only`
+and excluded from timing acceptance. Swift's sample still contains whole-layout
+file-stamp scans (`fstatat` and path handling), stored-byte SHA-256/Merkle hashing,
+allocations, scheduling and Network.framework calls. The native sample contains
+file reads and socket work. Samples include idle waits and do not establish CPU
+percentages. The previous bulk-attribute experiment remains rejected; these
+samples do not justify bypassing verification or caching file identities across
+operations.
+
+Separately, the six timing samples give median user/system CPU seconds through
+durable completion of 3.071/3.059 for Swift and 0.421/1.517 for native. These are
+independent medians of each component, rather than a decomposition of a selected
+median trial.
+
 ## Memory and remaining gap
 
 Whole-process peak RSS is 25.58 MiB median and 26.03 MiB maximum, compared with
@@ -58,6 +75,7 @@ other workloads; the latest complete matrix remains the earlier
 - [Before/after intervals](raw/cache-load-admission-many-v2/before-after.json), [incremental memory and individual measurements](raw/cache-load-admission-many-v2/memory-versus-immediate-before.json), [preceding run](raw/available-input-seeding/summary.json).
 - [Original failing regression](raw/cache-load-admission-many-v2/test-before-failure.log).
 - [Package and sanitizer checks](raw/cache-load-admission-many-v2/checks.json).
+- [Separate profile trials](raw/cache-load-admission-profile/trials.jsonl), [Swift seeding sample](raw/cache-load-admission-profile/many-v2-seed-0-Swift-measured-seed.sample.txt), [native seeding sample](raw/cache-load-admission-profile/many-v2-seed-0-libtorrent-measured-seed.sample.txt), [profile environment](raw/cache-load-admission-profile/environment.json).
 
 Production and harness hashes were checked against the timed run before saving
 these artifacts. Later test-only coverage adds queued-load closure. No trial
