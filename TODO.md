@@ -15,7 +15,7 @@
   meets native throughput, but the full-run regression remains open.
 - Rerun the matrix/profiles for the final candidate and complete remaining release
   acceptance; the latest complete matrix and CPU profiles are `5b9ef12`.
-- Complete native interoperability and final performance acceptance for grouped
+- Complete final performance acceptance for grouped
   upload workers. Controlled source comparisons reduce seeding CPU 16.5%
   (single v1), 16.9% (many v1) and 12.9% (concurrent v2); full-matrix parity
   remains unproven.

@@ -39,8 +39,10 @@ New gated tests cover independent cancellation/replacement, choke/re-unchoke,
 disconnect of one peer sharing a read with another, and shutdown while disk
 admission remains blocked. They verify exact payloads and complete work/cache
 drain. The cancellation/replacement contract was proved first on unchanged
-production. Native interoperability, many-file/concurrent performance and final
-acceptance remain open at this step. Raw environment, source hashes, trials
+production. Committed production `61584b7` subsequently passes all 466 pinned
+native interoperability checks, including encrypted TCP/µTP, all 24 independent
+session DHT transfers and ten HTTP-to-native-to-libtorrent web-seed comparisons.
+Final acceptance remains open. Raw environment, source hashes, trials
 and checks are in [`raw/upload-groups`](raw/upload-groups).
 
 Committed production `61584b7` then completes 56 further trials against
@@ -58,5 +60,5 @@ intervals cross one in each case. Many-file counterpart CPU is 1.018
 phase measurement and diagnostic remains in
 [`raw/upload-groups-broader`](raw/upload-groups-broader). These source comparisons
 do not replace original full-run samples, resolve their sequence/environment
-regressions, or establish full-matrix/native CPU parity. Native interoperability
-and final acceptance remain open.
+regressions, or establish full-matrix/native CPU parity. Final acceptance remains
+open.
