@@ -1,0 +1,237 @@
+{
+  "method": "independent median percentile bootstrap; CPU through durable completion; new/previous ratio; no cross-commit pairing",
+  "random_generator": "Ruby Random",
+  "random_seed": 11011,
+  "resamples": 10000,
+  "percentile_indices": [
+    249,
+    9749
+  ],
+  "resample_order": "new then previous",
+  "input_order": [
+    "previous full matrix",
+    "snapshot reuse full matrix"
+  ],
+  "input_sha256": [
+    "4775e69eaad15e879066fabf97a013e1c9b56d6c8481d8a3e161f4eaa0df7c44",
+    "ad603b7637c7712b0800273e5ded7c9e91397eb49ba17f3301b2ff243b5ae081"
+  ],
+  "cases": [
+    {
+      "case": "single",
+      "format": "v1",
+      "direction": "download",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 8.235256,
+      "new_cpu": 7.656626,
+      "ratio": 0.9297374604991029,
+      "lower": 0.8976729870896498,
+      "upper": 0.9533254911028292
+    },
+    {
+      "case": "single",
+      "format": "v1",
+      "direction": "seed",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 8.3307035,
+      "new_cpu": 7.990313500000001,
+      "ratio": 0.959140305497609,
+      "lower": 0.9313816245429647,
+      "upper": 0.9722979784185429
+    },
+    {
+      "case": "single",
+      "format": "v2",
+      "direction": "download",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 9.664884,
+      "new_cpu": 8.797266,
+      "ratio": 0.9102298589408833,
+      "lower": 0.844042385051367,
+      "upper": 0.9446025484130874
+    },
+    {
+      "case": "single",
+      "format": "v2",
+      "direction": "seed",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 8.72832,
+      "new_cpu": 8.7437295,
+      "ratio": 1.0017654600197976,
+      "lower": 0.9903289259251274,
+      "upper": 1.0074615992760894
+    },
+    {
+      "case": "single",
+      "format": "hybrid",
+      "direction": "download",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 8.706182,
+      "new_cpu": 8.8403975,
+      "ratio": 1.0154161146642695,
+      "lower": 0.9929324028044292,
+      "upper": 1.0314379045650024
+    },
+    {
+      "case": "single",
+      "format": "hybrid",
+      "direction": "seed",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 8.8442765,
+      "new_cpu": 8.813058,
+      "ratio": 0.9964702030742707,
+      "lower": 0.9665060914896179,
+      "upper": 1.0066020234145197
+    },
+    {
+      "case": "many",
+      "format": "v1",
+      "direction": "download",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 15.4498095,
+      "new_cpu": 14.7944925,
+      "ratio": 0.9575841372024684,
+      "lower": 0.9218693276767411,
+      "upper": 0.9962435494146166
+    },
+    {
+      "case": "many",
+      "format": "v1",
+      "direction": "seed",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 14.928202500000001,
+      "new_cpu": 13.092798499999999,
+      "ratio": 0.8770512390892338,
+      "lower": 0.8624154756849504,
+      "upper": 0.891560264100735
+    },
+    {
+      "case": "many",
+      "format": "v2",
+      "direction": "download",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 16.776018999999998,
+      "new_cpu": 16.580979,
+      "ratio": 0.9883738805970594,
+      "lower": 0.9541083424249416,
+      "upper": 1.020088585975016
+    },
+    {
+      "case": "many",
+      "format": "v2",
+      "direction": "seed",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 16.002702,
+      "new_cpu": 14.500918500000001,
+      "ratio": 0.906154379429174,
+      "lower": 0.8399055982736342,
+      "upper": 0.929847170522725
+    },
+    {
+      "case": "many",
+      "format": "hybrid",
+      "direction": "download",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 16.8685065,
+      "new_cpu": 16.4103515,
+      "ratio": 0.9728396227609126,
+      "lower": 0.9011430751897619,
+      "upper": 1.0050617905839268
+    },
+    {
+      "case": "many",
+      "format": "hybrid",
+      "direction": "seed",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 15.999938,
+      "new_cpu": 14.082133500000001,
+      "ratio": 0.8801367542799229,
+      "lower": 0.8551912386317357,
+      "upper": 0.9273739811580133
+    },
+    {
+      "case": "concurrent",
+      "format": "v1",
+      "direction": "download",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 9.4928365,
+      "new_cpu": 9.30871,
+      "ratio": 0.9806036372795424,
+      "lower": 0.9600173042596021,
+      "upper": 1.0085050963615527
+    },
+    {
+      "case": "concurrent",
+      "format": "v1",
+      "direction": "seed",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 7.457784,
+      "new_cpu": 7.476194,
+      "ratio": 1.0024685617068019,
+      "lower": 0.9916062666866552,
+      "upper": 1.0100866114552036
+    },
+    {
+      "case": "concurrent",
+      "format": "v2",
+      "direction": "download",
+      "previous_samples": 12,
+      "new_samples": 6,
+      "previous_cpu": 10.293249,
+      "new_cpu": 10.058647,
+      "ratio": 0.9772081681886838,
+      "lower": 0.9369484899446417,
+      "upper": 0.9926455768057467
+    },
+    {
+      "case": "concurrent",
+      "format": "v2",
+      "direction": "seed",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 8.452452000000001,
+      "new_cpu": 8.332625499999999,
+      "ratio": 0.9858234628247516,
+      "lower": 0.9787257101716508,
+      "upper": 0.9956358854269134
+    },
+    {
+      "case": "concurrent",
+      "format": "hybrid",
+      "direction": "download",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 10.150171,
+      "new_cpu": 9.9574805,
+      "ratio": 0.9810160341141051,
+      "lower": 0.9727418642458175,
+      "upper": 1.0051917389649898
+    },
+    {
+      "case": "concurrent",
+      "format": "hybrid",
+      "direction": "seed",
+      "previous_samples": 6,
+      "new_samples": 6,
+      "previous_cpu": 8.3864855,
+      "new_cpu": 8.3957505,
+      "ratio": 1.0011047535943396,
+      "lower": 0.9918830698803306,
+      "upper": 1.01438591959441
+    }
+  ]
+}

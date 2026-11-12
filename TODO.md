@@ -4,10 +4,11 @@
 
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
-  10% of baseline. The [full results](docs/performance/results-2026-11-12.md)
+  10% of baseline. The [full results](docs/performance/snapshot-reuse-results-2026-11-12.md)
   pass memory throughout but fail CPU in all eighteen cases.
-- Isolate and recover the many-file seeding CPU regressions: candidate/baseline
-  medians are 1.025× for v1, 1.151× for v2 and 1.099× for hybrid.
+- Recover the remaining many-file v2 seeding CPU regression: the latest full
+  median is 14.50 s/GiB against the original 13.90. Snapshot reuse lowered all
+  three seeding medians; v1 and hybrid are now below their original medians.
 - Reduce repeated whole-layout stamp/path inspection and per-block upload,
   admission and Network.framework scheduling costs identified in the profiles,
   preserving stored-byte hashing, ownership checks, cancellation and queue caps.
