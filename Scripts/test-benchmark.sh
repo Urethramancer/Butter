@@ -12,7 +12,7 @@ out=${2:-$PWD/.build/benchmarks/$(date -u +%Y%m%dT%H%M%SZ)}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 [ ! -e "$out/environment.json" ] && [ ! -e "$out/trials.jsonl" ] || { echo 'Use a fresh output directory to preserve previous results.' >&2; exit 2; }
-work=$(mktemp -d /tmp/butter-benchmark.XXXXXX)
+work=$(mktemp -d "${TMPDIR:-/tmp}/butter-benchmark.XXXXXX")
 cleanup() {
 	if [ -f "$work/previous-source/.git" ]; then
 		git worktree remove --force "$work/previous-source" > "$out/cleanup.log" 2>&1 || return 1
@@ -51,7 +51,7 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
   record = {schema: 1, mode: mode, revision: capture.call("git", "rev-parse", "HEAD"), dirty: capture.call("git", "status", "--short"),
     libtorrent_revision: "6da363d2994f17c0b3c0450d124cf73a31a73847", swift: capture.call("swift", "--version"), clang: capture.call("clang++", "--version"),
     os: capture.call("sw_vers"), machine: capture.call("sysctl", "-n", "hw.model", "hw.memsize", "hw.logicalcpu"),
-    filesystem: capture.call("df", "-h", root), resource_limits: capture.call("sh", "-c", "ulimit -a"),
+    filesystem: capture.call("df", "-h", root), work_directory: root, resource_limits: capture.call("sh", "-c", "ulimit -a"),
     filters: ENV.select { |key, _| key.start_with?("BUTTER_BENCHMARK_") },
     swift_flags: "Release; swiftc -O -swift-version 6", reference_flags: "CMake Release; arm64; pinned static libtorrent",
     transport: "loopback TCP, encryption disabled, PEX/discovery disabled; production request windows",

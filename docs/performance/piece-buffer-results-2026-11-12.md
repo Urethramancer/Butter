@@ -25,7 +25,7 @@ All 347 package tests pass, with 110 focused tests under each of Address and Thr
 
 Raw results, exact source/build hashes and phase/counterpart measurements remain
 locally in `.build/benchmarks/piece-buffer-handoff-source-order`. The
-machine-readable summaries are retained beside this report. Native interoperability and final-matrix acceptance remain pending.
+machine-readable summaries are retained beside this report. The full native rerun passes all 466 interoperability checks. Final-matrix acceptance remains pending.
 
 Six further source pairs per case (56 validated trials) compare the same change
 with `545fbff`. All 84 trials across the three cases pass; no failures are retried.
@@ -49,3 +49,14 @@ Broader raw phases, source hashes and counterpart results remain locally in
 `.build/benchmarks/piece-buffer-handoff-broader`. These focused source diagnostics
 do not replace the eighteen-case final matrix or resolve earlier full-run
 sequence/runtime regressions.
+
+The first native run exits unsuccessfully after at least 179 observed passes.
+Its redirected log, fixture directory and Swift module cache under `/tmp` are
+missing at completion; no child remains and 58 GiB is available. Its cause is
+unresolved and no failure text can be recovered. A recorded rerun changes only
+the temporary fixture and compiler-cache locations to workspace directories;
+all 466 checks pass. The first failure record and rerun wrapper remain in
+`.build/diagnostics/piece-buffer`. No correctness failure is attributed to the
+buffer change from this missing evidence. Benchmark temporary storage now
+honours `TMPDIR` and records its location, allowing a workspace directory for
+the full run without changing the measurement protocol.

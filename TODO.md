@@ -16,7 +16,8 @@
 - Rerun the matrix/profiles for the final candidate and complete remaining release
   acceptance; the latest complete matrix is `5b9ef12`, latest profiles `61584b7`.
 - Complete final performance acceptance for grouped upload workers and
-  direct verified-buffer returns (focused seeding CPU reductions of 5.5–12.2%). Controlled source comparisons reduce seeding CPU 16.5%
+  direct verified-buffer returns (focused seeding CPU reductions of 5.5–12.2%).
+  Controlled source comparisons reduce seeding CPU 16.5%
   (single v1), 16.9% (many v1) and 12.9% (concurrent v2); full-matrix parity
   remains unproven.
 - Reduce repeated whole-layout stamp inspection (38.6% inclusive in many-file
@@ -25,6 +26,10 @@
   and queue caps.
 
 ## Validation diagnostics
+
+- Identify the native run's temporary-path disappearance: the first run exits 1
+  with its log, fixture and module cache missing; a workspace-directory rerun
+  passes all 466 checks. Evidence remains in `.build/diagnostics/piece-buffer`.
 
 - Reproduce the initial full-package network bind errors/timeouts during the
   queued-read experiment. Isolated network tests, the second full candidate
