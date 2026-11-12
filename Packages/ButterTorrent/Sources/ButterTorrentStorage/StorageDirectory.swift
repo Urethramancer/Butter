@@ -8,9 +8,6 @@ final class StorageStampScan {
 	private var root: StorageDirectory?
 	private var parentPath: String?
 	private var descriptor: Int32 = -1
-	private var visits = 0
-	private var inspected: [String] = []
-	private var entries: [String: StorageBulkInspection.Entry] = [:]
 	deinit { if descriptor >= 0 { close(descriptor) } }
 	func inspect(_ path: String, in directory: StorageDirectory) throws -> FileStamp? {
 		// The parent was validated when this scan opened it. Compare exact UTF-8
@@ -21,12 +18,12 @@ final class StorageStampScan {
 			let name = path[(slash.map { path.index(after: $0) } ?? path.startIndex)...]
 			guard path.utf8.count <= 4096, StorageLayout.validComponent(name) else { throw StorageFailure.invalid("relative file path") }
 			guard descriptor >= 0 else { return nil }
-			return try inspectLeaf(String(name), in: directory)
+			return try directory.inspect(String(name), at: descriptor)
 		}
 		let parts = try StorageLayout.components(path), parent = parts.dropLast().joined(separator: "/")
 		if root !== directory || parentPath != parent {
 			if descriptor >= 0 { close(descriptor) }; descriptor = -1
-			root = directory; parentPath = parent; visits = 0; inspected.removeAll(); entries.removeAll()
+			root = directory; parentPath = parent
 			do {
 				descriptor = try directory.parent(path) { parent, _ in
 					let copy = dup(parent)
@@ -35,19 +32,7 @@ final class StorageStampScan {
 			} catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
 		}
 		guard descriptor >= 0 else { return nil }
-		return try inspectLeaf(parts.last!, in: directory)
-	}
-	private func inspectLeaf(_ name: String, in directory: StorageDirectory) throws -> FileStamp? {
-		visits += 1
-		if visits < 8 { inspected.append(name) }
-		if visits == 8 {
-			entries = StorageBulkInspection.read(descriptor) ?? [:]
-			for previous in inspected { entries[previous] = nil }; inspected.removeAll()
-		}
-		// String hashing may normalise Unicode. Accept only the original name bytes;
-		// a canonical alias, repeated name or absent entry takes the scalar path.
-		if let entry = entries.removeValue(forKey: name), entry.name.utf8.elementsEqual(name.utf8) { return entry.stamp }
-		return try directory.inspect(name, at: descriptor)
+		return try directory.inspect(parts.last!, at: descriptor)
 	}
 }
 
