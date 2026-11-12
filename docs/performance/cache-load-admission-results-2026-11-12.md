@@ -83,3 +83,36 @@ other workloads; the latest complete matrix remains the earlier
 Production and harness hashes were checked against the timed run before saving
 these artifacts. Later test-only coverage adds queued-load closure. No trial
 was retried or discarded and no tag was created.
+
+## Rejected read-batching follow-up
+
+An experiment coalesced distinct cache misses already queued after admission,
+sharing one before/after file snapshot across at most four pieces and 16 MiB.
+It retained each stored-byte hash and per-piece error, did not wait to fill a
+batch, and kept the cache reservations and request limits. All 336 package tests
+passed, including active/queued cancellation, selective storage, hybrid/v2
+authentication and replacement during a batch. An additional coarse-stamp
+corruption assertion also passed. Two initial test-fixture compilation errors
+are retained with the corrected test evidence.
+
+All fourteen comparison trials were accepted, but CPU was 6.255 versus 6.128
+s/GiB: ratio 1.021 [0.888–1.063]. Throughput was 281.4 versus 264.6 MB/s:
+1.063 [0.863–1.321]. Neither interval establishes an improvement. Median
+user/system CPU was 3.101/3.164 seconds, versus 3.071/3.059 before. Median peak
+RSS was 25.14 MiB; original and incremental memory gates passed.
+
+The entire experiment was reverted because it has no reproducible CPU benefit.
+Production remains the fully verified cache-admission source above. This result
+does not establish the number of pieces actually coalesced during transfers;
+the deterministic test only proves grouping when multiple reads are queued.
+The preserved patch applies to `4bf1738`; no read-batch API, actor or test remains
+in production.
+
+[All trials](raw/verified-read-batches-many-v2/trials.jsonl),
+[summary](raw/verified-read-batches-many-v2/summary.json),
+[before/after uncertainty](raw/verified-read-batches-many-v2/before-after.json),
+[incremental memory](raw/verified-read-batches-many-v2/memory-versus-immediate-before.json),
+[measured source/environment](raw/verified-read-batches-many-v2/environment.json),
+[checks and failures](raw/verified-read-batches-many-v2/checks.json), and
+[discarded patch](raw/verified-read-batches-many-v2/experiment.patch) retain the
+complete result separately from the accepted candidate.
