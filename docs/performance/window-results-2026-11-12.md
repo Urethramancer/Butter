@@ -48,3 +48,24 @@ It does not replace the earlier full matrix.
 [source/environment](raw/window16-single-v1/environment.json) retain the
 evidence. Independent cross-revision intervals use 10,000 bootstrap resamples;
 trials from different revisions are not paired.
+
+## Fresh CPU profiles
+
+After timing and correctness checks, source `90c3414` completed the four
+required CPU-profile workloads for both engines: all eight profile-only trials
+passed independent digest and state-reopen checks. These single instrumented
+pairs do not establish timing improvements in the other workloads.
+
+Single-file v1 download has 3,915 Running samples, twelve without backtraces
+(retained in the denominator). Picker allocation accounts for 15.7% inclusive
+weight, with `openat` at 5.3% flat and `close` at 5.8%. Many-file hybrid download
+retains 33.8% under stamp scans, including 20.5% flat in `fstatat` and 13.6% in
+`openat`. The previous hash-request subtraction cost is no longer prominent in
+the hybrid profile. Single-file v1 seeding retains 5.3% under global task enqueue
+and 14.8% flat in SHA1 compression. Inclusive percentages overlap; sample weights
+are statistical attribution rather than measured CPU durations.
+
+[Profile trials](raw/window16-cpu-profiles/trials.jsonl),
+[profile environment](raw/window16-cpu-profiles/environment.json) and
+[checks/XML hashes](raw/window16-cpu-profiles/checks.json) preserve the samples
+and source fingerprints separately from timing results.
