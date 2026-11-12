@@ -2,6 +2,11 @@
 
 ## TCP performance parity
 
+- Retain performance improvements only without established regressions in CPU,
+  throughput, memory or correctness, including counterpart CPU. Re-measure the
+  candidate after removing owned-buffer returns and vector writes; the last
+  full matrix describes the preceding production source.
+
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
   10% of baseline. The [full results](docs/performance/piece-buffer-full-results-2026-11-12.md)

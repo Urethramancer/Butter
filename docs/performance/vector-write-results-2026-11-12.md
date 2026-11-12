@@ -1,5 +1,10 @@
 # Bounded contiguous vector writes
 
+Reverted after the user's no-trade-offs requirement: increased incremental RSS
+and counterpart CPU in the single-file case disqualify this change. The results
+remain historical evidence. The restored paths pass all 350 package tests and
+a Release build; functional batch and real-ENOSPC coverage remains.
+
 Production candidate `cbd0863` joins contiguous buffers for one file into one
 vector write, at most sixteen buffers and 256 KiB. File boundaries, gaps and
 overlap split runs; the existing eight-descriptor per-job cache and all queue

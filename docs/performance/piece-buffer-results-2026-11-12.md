@@ -1,5 +1,10 @@
 # Return the owned verified-piece buffer
 
+Reverted after the user's no-trade-offs requirement: the measured incremental
+RSS increases below disqualify this change despite its CPU savings. The results
+remain historical evidence. The restored paths pass all 350 package tests and
+a Release build, together with removal of the vector-write candidate.
+
 For a complete piece of at most 256 KiB, return the owned read buffer after
 hashing and full-layout checks, avoiding a second allocation and copy. Partial
 ranges and larger pieces retain the existing accumulation path. No verification,

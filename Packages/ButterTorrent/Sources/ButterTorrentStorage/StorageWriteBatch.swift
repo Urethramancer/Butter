@@ -19,13 +19,6 @@ extension TorrentStorage {
 	}
 }
 
-private struct PayloadWriteRun {
-	let file: Int
-	let offset: Int64
-	var count: Int
-	var buffers: [Data]
-}
-
 extension StorageState {
 	static func validateWrites(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int) throws {
 		guard !writes.isEmpty, writes.count <= maximumCount else { throw StorageFailure.limit("write batch blocks") }
@@ -35,7 +28,7 @@ extension StorageState {
 			total += write.data.count
 		}
 	}
-	func writeOperations(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int, check: () throws -> Void, vectorWrite: StorageDirectory.VectorWriter = { pwritev($0, $1, $2, $3) }) throws {
+	func writeOperations(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int, check: () throws -> Void) throws {
 		try ready(); try check(); try Self.validateWrites(writes, maximumBytes: maximumBytes, maximumCount: maximumCount)
 		// Validate every range and padding byte before any write or durable invalidation.
 		let segments = try writes.map { try layout.segments(piece: $0.piece, offset: $0.offset, count: $0.data.count) }
@@ -57,52 +50,29 @@ extension StorageState {
 		for piece in pieces { try forgetPendingVerification(piece) }
 		var files: [Int: Int32] = [:], order: [Int] = []
 		defer { for file in files.values { close(file) } }
-		var run: PayloadWriteRun?, completed = 0
-		func flushRun() throws {
-			guard let current = run else { return }; run = nil
-			if completed > 0 { try check() }
-			let (directory, path) = location(current.file)
-			let file: Int32
-			if let cached = files[current.file] { file = cached }
-			else {
-				if files.count == 8 { let oldest = order.removeFirst(); close(files.removeValue(forKey: oldest)!) }
-				file = try directory.openFile(path, write: true); files[current.file] = file; order.append(current.file)
-			}
-			func prepare() throws {
-				let opened = try directory.stamp(file)
-				guard let stamp = try directory.inspect(path), stamp.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
-				if stamp != record.stamps[current.file] { try invalidateChangedFiles() }
-			}
-			try prepare(); pendingFlush.insert(current.file)
-			if current.buffers.count == 1 {
-				try StorageDirectory.write(current.buffers[0], to: file, offset: current.offset, check: check)
-				record.stamps[current.file] = try directory.stamp(file)
-			} else {
-				try StorageDirectory.writeVector(current.buffers, to: file, offset: current.offset, check: {
-					try check(); try prepare()
-				}, didWrite: {
-					let after = try directory.stamp(file)
-					guard try directory.inspect(path) == after else { throw StorageFailure.invalid("payload replaced during write batch") }
-					record.stamps[current.file] = after
-				}, write: vectorWrite)
-			}
-			completed += 1
-		}
-		for (write, parts) in zip(writes, segments) {
+		for index in writes.indices {
+			if index > 0 { try check() }
+			let write = writes[index], parts = segments[index]
 			var cursor = write.data.startIndex
 			for segment in parts {
 				defer { cursor += segment.count }
 				if segment.padding { continue }
-				let data = write.data[cursor..<(cursor + segment.count)]
-				if run?.file == segment.file, run!.offset + Int64(run!.count) == segment.offset,
-					run!.buffers.count < 16, segment.count <= 262144 - run!.count {
-					run!.buffers.append(data); run!.count += segment.count
+				let (directory, path) = location(segment.file)
+				let file: Int32
+				if let cached = files[segment.file] {
+					file = cached
 				} else {
-					try flushRun()
-					run = PayloadWriteRun(file: segment.file, offset: segment.offset, count: segment.count, buffers: [data])
+					if files.count == 8 { let oldest = order.removeFirst(); close(files.removeValue(forKey: oldest)!) }
+					file = try directory.openFile(path, write: true); files[segment.file] = file; order.append(segment.file)
 				}
+				// Re-check even the first open: replacement can occur after the initial scan.
+				let opened = try directory.stamp(file)
+				guard let current = try directory.inspect(path), current.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
+				if current != record.stamps[segment.file] { try invalidateChangedFiles() }
+				pendingFlush.insert(segment.file)
+				try StorageDirectory.write(write.data[cursor..<(cursor + segment.count)], to: file, offset: segment.offset, check: check)
+				record.stamps[segment.file] = try directory.stamp(file)
 			}
 		}
-		try flushRun()
 	}
 }

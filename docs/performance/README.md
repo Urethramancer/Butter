@@ -6,6 +6,13 @@ and peak RSS within 10% of the fresh Swift baseline. Results are per workload;
 there is no combined performance score. Encryption and µTP remain correctness
 regressions, outside this throughput milestone.
 
+The user's subsequent requirement excludes gains with measured drawbacks.
+Owned-piece-buffer returns and vector writes are therefore reverted: their
+incremental memory or counterpart CPU increases disqualify them. Their reports
+and the latest full matrix below are historical results, not measurements of
+the restored candidate. The rollback passes 350 package tests and a Release
+build. Grouped upload workers remain supported by the measured comparisons.
+
 The [latest full comparison](piece-buffer-full-results-2026-11-12.md) retains
 276 accepted trials and no failures for production source `b328472`. Memory
 passes all eighteen cases, eleven meet throughput, and every case still fails
