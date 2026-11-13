@@ -20,6 +20,21 @@ extension TorrentStorage {
 }
 
 extension StorageState {
+	private func invalidateWriteTargets(_ segments: [[StorageLayout.Segment]]) throws {
+		var targets: Set<Int> = []
+		for parts in segments { for segment in parts where !segment.padding { targets.insert(segment.file) } }
+		let scan = StorageStampScan()
+		// Inspect every target before changing progress. Other files are checked by
+		// verification, snapshots, checkpoints and filesystem-operation barriers.
+		let current = try targets.sorted().map { index in
+			let (directory, path) = location(index)
+			return (index, try scan.inspect(path, in: directory))
+		}
+		for (index, stamp) in current where stamp != record.stamps[index] {
+			for piece in try layout.pieces(touchingFile: index) { record.set(piece, false) }
+			record.stamps[index] = stamp
+		}
+	}
 	static func validateWrites(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int) throws {
 		guard !writes.isEmpty, writes.count <= maximumCount else { throw StorageFailure.limit("write batch blocks") }
 		var total = 0
@@ -39,7 +54,7 @@ extension StorageState {
 				cursor += segment.count
 			}
 		}
-		try invalidateChangedFiles()
+		try invalidateWriteTargets(segments)
 		let pieces = Set(writes.map(\.piece))
 		let invalidated = pieces.filter(committedContains)
 		for piece in pieces { record.set(piece, false) }

@@ -16,6 +16,31 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 }
 
 @Suite struct StorageWriteBatchTests {
+	@Test func unrelatedPathsAreCheckedAtIntegrityBarriersRatherThanEveryWrite() async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try batchMetadata(fileCount: 2, fileSize: 16384)
+			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), checkpointPolicy: .managed, event: { _ in }, check: {})
+			try state.writeOperations([StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)),
+				StorageWrite(piece: 1, offset: 0, data: bytes.suffix(16384))], maximumBytes: 262144, maximumCount: 16, check: {})
+			#expect(try state.verify(piece: 0, check: {}))
+			let unrelated = root.appendingPathComponent("data/bundle/file-0"), retained = root.appendingPathComponent("retained")
+			let outside = root.appendingPathComponent("outside"), outsideBytes = Data([7, 8, 9])
+			try outsideBytes.write(to: outside)
+			try FileManager.default.moveItem(at: unrelated, to: retained)
+			try FileManager.default.createSymbolicLink(at: unrelated, withDestinationURL: outside)
+			// This write only owns file-1. It must not follow or inspect file-0.
+			try state.writeOperations([StorageWrite(piece: 1, offset: 0, data: Data([255]))], maximumBytes: 262144, maximumCount: 16, check: {})
+			#expect(try Data(contentsOf: root.appendingPathComponent("data/bundle/file-1")).first == 255)
+			#expect(try Data(contentsOf: outside) == outsideBytes)
+			#expect(try Data(contentsOf: retained) == bytes.prefix(16384))
+			let failure = StorageFailure.invalid("managed path is not a regular file")
+			#expect(throws: failure) { try state.verify(piece: 1, check: {}) }
+			#expect(throws: failure) { try state.snapshot() }
+			#expect(throws: failure) { try state.save() }
+			let checkpoint = try PropertyListDecoder().decode(StorageCheckpoint.self, from: Data(contentsOf: root.appendingPathComponent("state/checkpoint.plist")))
+			#expect(!checkpoint.contains(0) && !checkpoint.contains(1))
+		}
+	}
 	enum ParentChange: CaseIterable, Sendable { case replacement, symlink, originalFile, permissions }
 	@Test(arguments: ParentChange.allCases) func parentReplacementBetweenBlocksKeepsPathAndFileOwnership(_ change: ParentChange) async throws {
 		try await storageFixture { root in
