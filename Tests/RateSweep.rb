@@ -107,6 +107,7 @@ module RateSweep
 			item = { torrent: File.join(root, fixture.fetch('torrents').fetch('hybrid').fetch(0)), destination: File.join(folder, 'download'), state: File.join(folder, 'download-state') }
 			jobs = { 'seed' => {role: 'seed', partial: true, upload_bytes_per_second: RateSweep.bytes_per_second(rate), items: [item.merge(destination: File.join(root, 'seed'), state: File.join(folder, 'seed-state'))]},
 				'download' => {role: 'download', partial: true, items: [item]} }
+			jobs['download'][:profileHoldAfterStop] = true if @profile && !@counters
 			children = []; roles = {}; trace = nil
 			commands = @commands.merge('Swift' => source == 'previous' ? [@previous] : @commands.fetch('Swift'))
 			record = {id: id, engine: engine, mbps: rate, validated: false, exploratory: true, pair: sequence, warmup: warmup, source_variant: source, diagnostic: @profile}
@@ -127,7 +128,7 @@ module RateSweep
 				if @profile && !@counters
 					trace = H::TimeProfiler.new(down.phase('ready').fetch('pid'), File.join(logs, 'download'))
 					trace.wait_ready(children)
-					record[:profiler] = {name: 'Time Profiler', capture_window: 'attached before transfer start through durable shutdown gate; includes settle, measurement, drain and persistence', running_samples_only: true, counterpart_instrumented: false}
+					record[:profiler] = {name: 'Time Profiler', capture_window: 'attached before transfer start through stopped after durable engine/storage shutdown; includes settle, measurement, drain, persistence and final shutdown', running_samples_only: true, counterpart_instrumented: false}
 				end
 				seed.send_command('start'); down.send_command('start', ports: seed.phase('ready').fetch('ports'))
 				H.wait(children, children.map { |c| [c, 'start'] })
@@ -143,9 +144,12 @@ module RateSweep
 				H.wait(children, children.map { |c| [c, 'verified'] })
 				children.each { |c| c.send_command('persist') }
 				H.wait(children, children.map { |c| [c, 'durable'] })
-				trace.finish if trace
 				children.each { |c| c.send_command('stop') }
 				H.wait(children, children.map { |c| [c, 'stopped'] })
+				if trace
+					trace.finish
+					down.send_command('release')
+				end
 				children.each(&:finish)
 				record[:engine_metrics][:whole] = down.whole
 				record[:counterpart_metrics][:whole] = seed.whole
@@ -177,7 +181,7 @@ module RateSweep
 			if @mode == '--rate-compare'
 				File.write(File.join(@output, 'rate-comparison.json'), JSON.pretty_generate(RateSweep.comparison_summary(@samples)))
 			end
-			lines = [@profile ? 'Diagnostic interval: transfer start through durable shutdown gate. Instrumented samples excluded from performance comparisons.' : 'Timed partial downloads: 5s settle, 10s measured. CPU 100% = one core. Decimal MB/s. No full-transfer acceptance claim.', '',
+			lines = [@profile ? 'Diagnostic interval: transfer start through stopped after durable engine/storage shutdown. Instrumented samples excluded from performance comparisons.' : 'Timed partial downloads: 5s settle, 10s measured. CPU 100% = one core. Decimal MB/s. No full-transfer acceptance claim.', '',
 				'| Sample | Engine | Mbps | MB/s | User s | System s | Total s | User % | System % | Total % | User s/GiB | System s/GiB | Total s/GiB | Peak MiB | Seed CPU % | Seed CPU s/GiB | Status |',
 				'| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
 			@samples.each do |s|

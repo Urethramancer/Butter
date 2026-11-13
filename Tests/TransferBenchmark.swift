@@ -9,7 +9,7 @@ import ButterTorrentEngine
 // Line-delimited JSON over bounded OS pipes. Only phase boundaries are emitted.
 @main struct TransferBenchmark {
 	struct Item: Codable { let torrent: String; let destination: String; let state: String }
-	struct Job: Codable { let role: String; let items: [Item]; let partial: Bool? }
+	struct Job: Codable { let role: String; let items: [Item]; let partial: Bool?; let profileHoldAfterStop: Bool? }
 	struct Command: Decodable { let command: String; let ports: [UInt16]? }
 	static func emit(_ phase: String, ports: [UInt16] = [], bytes: Int64 = 0, errors: [String] = [], received: Int64 = 0, pieces: [Int]? = nil) throws {
 		var usage = rusage(); guard getrusage(RUSAGE_SELF, &usage) == 0 else { throw CocoaError(.fileReadUnknown) }
@@ -124,6 +124,7 @@ import ButterTorrentEngine
 			for engine in engines { try await engine.shutdown() }
 			for storage in stores { try await storage.shutdown() }
 			try emit("stopped", errors: failures)
+			if job.profileHoldAfterStop == true { _ = try await command("release") }
 		} catch {
 			for listener in listeners { try? await listener.shutdown() }
 			for task in accepts { task.cancel(); _ = try? await task.value }

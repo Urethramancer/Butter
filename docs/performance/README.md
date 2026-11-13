@@ -2,7 +2,9 @@
 
 [Focused 500 Mbps CPU work](rate500-results-2026-11-13.md) separates kernel-facing
 filesystem, payload I/O, networking, scheduling and copying stacks from user
-hashing/allocation. Four baseline diagnostic trials validate.
+hashing/allocation. Six diagnostics and all 28 direct-leaf source
+trials validate. Direct hashing remains inconclusive and is reverted; no
+production CPU reduction is claimed.
 
 [Common connection-rate CPU sweep](rate-sweep-results-2026-11-13.md) validates
 all ten partial downloads. Butter uses 6.7–67.5% of one core across
@@ -682,9 +684,9 @@ remain separate.
 ## Focused 500 Mbps diagnostics and source comparisons
 
 `Scripts/test-benchmark.sh --rate-profile OUTPUT` captures Instruments Time
-Profiler Running samples from before transfer start through the durable shutdown
-gate. This includes the five-second settle, ten-second measurement, drain and
-persistence. Run `BUTTER_STORAGE_DIAGNOSTICS=1` with the same mode separately
+Profiler Running samples from before transfer start through stopped after durable
+engine/storage shutdown. This includes the five-second settle, ten-second
+measurement, drain and persistence. Run `BUTTER_STORAGE_DIAGNOSTICS=1` with the same mode separately
 for operation counts, without Instruments. These runs are excluded from timing.
 
 `BUTTER_BENCHMARK_PREVIOUS_REVISION=REV Scripts/test-benchmark.sh --rate-compare OUTPUT`

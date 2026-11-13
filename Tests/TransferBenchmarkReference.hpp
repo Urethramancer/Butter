@@ -211,4 +211,5 @@ static void benchmark(NSDictionary* job, bool verify) {
 	benchmarkEvent("durable"); benchmarkCommand("stop"); benchmarkEvent("shutdown");
 	} // Include session destruction in the shutdown phase and whole-process accounting.
 	benchmarkEvent("stopped");
+	if ([job[@"profileHoldAfterStop"] boolValue]) benchmarkCommand("release");
 }
