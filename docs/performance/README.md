@@ -1,5 +1,12 @@
 # Swift/libtorrent transfer comparison
 
+[Refilling during admitted writes](write-prefill-results-2026-11-13.md) improves
+CPU/throughput versus the preceding refill candidate: many-file hybrid
+10.9%/16.7%, concurrent hybrid 4.1%/12.3%, single-file v1 10.4%/19.4%.
+All 84 source trials validate. Single-file RSS falls 1.1%; other RSS changes
+remain inconclusive. Native validation and a refreshed full matrix are pending.
+The candidate remains provisional; the full matrix below predates both refill changes.
+
 [Refilling the existing window before verification](verification-prefill-results-2026-11-13.md)
 reduces many-file hybrid download CPU by 9.9% [5.1–14.8%] and concurrent
 hybrid download CPU by 8.5% [5.3–12.5%]. Three fixed six-pair source cases

@@ -2,12 +2,11 @@
 
 ## TCP performance parity
 
-- Extend the provisional verification-prefill candidate's format coverage.
-  Three source cases validate 84 trials: many-file and
-  concurrent hybrid CPU fall 9.9% and 8.5%; throughput and RSS changes remain
-  inconclusive. Native interoperability passes (466 PASS records). Rerun the full
-  matrix for any retained final candidate; the existing matrix predates this change.
-  Fresh profiles still identify filesystem inspection/opening as the largest gap.
+- Validate the provisional write-prefill candidate's native interoperability,
+  application checks and full matrix. Three source cases validate 84 trials with
+  CPU/throughput gains in every case; many/concurrent RSS remain inconclusive.
+  The existing full matrix predates both refill changes. Fresh profiles of the
+  preceding refill candidate still identify filesystem work as the largest gap.
 
 - Reduce the revised candidate's remaining CPU gap: its full matrix validates
   all 252 trials, passing throughput 9/18, CPU 0/18 and memory 18/18. Prioritise
