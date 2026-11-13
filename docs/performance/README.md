@@ -674,3 +674,28 @@ Every claimed verified piece is independently compared with the fixture, and the
 reopened partial checkpoint must restore the same claims. These checks validate
 partial downloads, not full-transfer acceptance. Historical unrestricted matrices
 remain separate.
+
+## Focused 500 Mbps diagnostics and source comparisons
+
+`Scripts/test-benchmark.sh --rate-profile OUTPUT` captures Instruments Time
+Profiler Running samples from before transfer start through the durable shutdown
+gate. This includes the five-second settle, ten-second measurement, drain and
+persistence. Run `BUTTER_STORAGE_DIAGNOSTICS=1` with the same mode separately
+for operation counts, without Instruments. These runs are excluded from timing.
+
+`BUTTER_BENCHMARK_PREVIOUS_REVISION=REV Scripts/test-benchmark.sh --rate-compare OUTPUT`
+compares the current sources with REV at 500 Mbps using the same native binary:
+four warm-ups and six fixed balanced source pairs (28 samples). Both modes use
+the existing 4 GiB, 128-file hybrid fixture, 256 KiB pieces, seed-side loopback
+limit, fresh destinations and independently checked partial checkpoints.
+
+Rate reports include user/system/total CPU seconds, percentages and seconds/GiB,
+payload throughput, whole-process peak RSS and counterpart CPU. Timed metrics
+cover only the ten-second window; CPU is execution time, not disk wait time.
+`rate-comparison.json` reports paired 95% intervals and retention eligibility:
+established lower total CPU/GiB, no established throughput or counterpart CPU
+regression, saturation safeguards and RSS within 10%. Inconclusive CPU results
+are insufficient; there are no automatic extra repetitions. The five-rate sweep
+and unrestricted modes remain available. Profile categories use disjoint leaf
+symbols and full calling stacks; inclusive percentages overlap and must not be
+summed. Syscall stacks identify kernel-facing work, not kernel residence time.

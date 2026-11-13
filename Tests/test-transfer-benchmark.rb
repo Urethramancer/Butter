@@ -173,7 +173,12 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 			summary = H.profile_summary(path, 42)
 			assert_equal 2, summary[:running_samples]
 			assert_equal 2000000, summary[:weight_ns]
+			assert_equal ['leaf', 'parent', 'parent'], summary[:stacks].first[:frames]
+			assert_equal 100.0, summary[:stacks].first[:percent]
 			assert_equal [{ symbol: 'leaf', weight_ns: 2000000, percent: 100.0 }], summary[:flat]
+			assert_in_delta 100.0, summary[:categories].sum { |r| r[:percent] }
+			assert_equal 'filesystem metadata/open/close', H.profile_category(['__openat', 'StorageDirectory.inspect'])
+			assert_equal 'other user processing or unresolved execution', H.profile_category(['processing', 'StorageWorker.run'])
 			assert_equal [100.0, 100.0], summary[:inclusive].map { |row| row[:percent] }
 			File.write(path, File.read(path).sub('</node>', '<row><process ref="1"/><thread-state ref="2"/><weight ref="3"/></row></node>'))
 			incomplete = H.profile_summary(path, 42)
@@ -231,6 +236,11 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 		metrics = H.metrics(child, 1_073_741_824)
 		assert_equal 1_073_741_824, metrics[:verified_bytes_per_second]
 		assert_in_delta 1.05, metrics[:cpu_seconds_per_gib], 1e-12
+		assert_in_delta 0.75, metrics[:user_cpu_seconds], 1e-12
+		assert_in_delta 0.3, metrics[:system_cpu_seconds], 1e-12
+		assert_in_delta 25, metrics[:user_cpu_percent], 1e-12
+		assert_in_delta 10, metrics[:system_cpu_percent], 1e-12
+		assert_in_delta 1.05, metrics[:user_cpu_seconds_per_gib] + metrics[:system_cpu_seconds_per_gib], 1e-12
 		assert_in_delta 0.35, metrics[:verified_cpu_seconds_per_gib], 1e-12
 		assert_equal 1.0, metrics[:persistence][:wall]
 		assert_equal 12345, metrics[:whole][:peak_rss]

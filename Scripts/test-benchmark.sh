@@ -3,18 +3,27 @@
 set -eu
 cd "$(dirname "$0")/.."
 mode=${1:---full}
-case "$mode" in --full|--smoke|--profile|--compare-source|--profile-source|--rate-sweep) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--profile|--compare-source|--profile-source|--rate-sweep] [OUTPUT]' >&2; exit 2 ;; esac
+case "$mode" in --full|--smoke|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare] [OUTPUT]' >&2; exit 2 ;; esac
 if [ "${BUTTER_STORAGE_DIAGNOSTICS:-0}" = 1 ]; then
-	case "$mode" in --profile|--profile-source) ;; *) echo 'Storage counters are diagnostic only; use --profile or --profile-source.' >&2; exit 2 ;; esac
+	case "$mode" in --profile|--profile-source|--rate-profile) ;; *) echo 'Storage counters are diagnostic only; use --profile or --profile-source.' >&2; exit 2 ;; esac
 fi
-if [ "$mode" = --profile-source ] && [ -z "${BUTTER_BENCHMARK_PREVIOUS_REVISION:-}" ]; then
-	echo 'Set BUTTER_BENCHMARK_PREVIOUS_REVISION for --profile-source.' >&2; exit 2
+if { [ "$mode" = --profile-source ] || [ "$mode" = --rate-compare ]; } && [ -z "${BUTTER_BENCHMARK_PREVIOUS_REVISION:-}" ]; then
+	echo 'Set BUTTER_BENCHMARK_PREVIOUS_REVISION for source profiles or rate comparisons.' >&2; exit 2
+fi
+if [ "$mode" = --rate-profile ]; then
+	if [ "${BUTTER_STORAGE_DIAGNOSTICS:-0}" = 1 ]; then
+		[ "${BUTTER_BENCHMARK_PROFILER:-sample}" = sample ] || { echo 'Run rate counters separately from Instruments.' >&2; exit 2; }
+	else
+		BUTTER_BENCHMARK_PROFILER=${BUTTER_BENCHMARK_PROFILER:-time-profiler}
+		[ "$BUTTER_BENCHMARK_PROFILER" = time-profiler ] || { echo 'Rate profiles require Time Profiler or separate storage counters.' >&2; exit 2; }
+		export BUTTER_BENCHMARK_PROFILER
+	fi
 fi
 case "${BUTTER_BENCHMARK_PROFILER:-sample}:$mode" in
-	sample:*|time-profiler:--profile|file-activity:--profile|heap:--profile|time-profiler:--profile-source|file-activity:--profile-source|heap:--profile-source) ;;
+	sample:*|time-profiler:--rate-profile|time-profiler:--profile|file-activity:--profile|heap:--profile|time-profiler:--profile-source|file-activity:--profile-source|heap:--profile-source) ;;
 	*) echo 'Use sample, or time-profiler/file-activity/heap with --profile or --profile-source.' >&2; exit 2 ;;
 esac
-if [ "$mode" = --rate-sweep ]; then
+if [ "$mode" = --rate-sweep ] || [ "$mode" = --rate-compare ]; then
 	[ "${BUTTER_STORAGE_DIAGNOSTICS:-0}" = 0 ] && [ "${BUTTER_BENCHMARK_PROFILER:-sample}" = sample ] || { echo "Rate sweeps require counters and profilers disabled." >&2; exit 2; }
 fi
 default_output=$PWD/.build/benchmarks
@@ -45,7 +54,7 @@ swiftc -O -D BUTTER_STORAGE_DIAGNOSTICS_AVAILABLE -swift-version 6 -parse-as-lib
 	Tests/TransferBenchmark.swift -o "$work/TransferBenchmark" >> "$out/build.log" 2>&1
 previous_driver=
 previous_root=
-if [ "$mode" = --compare-source ] || [ "$mode" = --profile-source ]; then
+if [ "$mode" = --compare-source ] || [ "$mode" = --profile-source ] || [ "$mode" = --rate-compare ]; then
 	previous_revision=$(git rev-parse --verify --end-of-options "${BUTTER_BENCHMARK_PREVIOUS_REVISION:-1931e70}^{commit}")
 	previous_root=$work/previous-source
 	git worktree add --detach "$previous_root" "$previous_revision" >> "$out/build.log" 2>&1
@@ -61,9 +70,10 @@ fi
 ruby -rjson -rdigest -ropen3 -rrbconfig -e '
   capture = ->(*cmd) { output, status = Open3.capture2e(*cmd); raise output unless status.success?; output.strip }
   root, out, mode, reference, swift_driver, previous_driver, previous_root = ARGV
-  profiled = %w[--profile --profile-source].include?(mode)
+  rate_mode = mode.start_with?("--rate-")
+  profiled = %w[--profile --profile-source --rate-profile].include?(mode)
   profiler = ENV.fetch("BUTTER_BENCHMARK_PROFILER", "sample")
-  profile_window = {"heap" => "ready/verified/durable gate snapshots; intrusive diagnostics, not peak RSS or allocation churn", "file-activity" => "requested trailing 1s before durable completion; diagnostic only", "time-profiler" => "whole transfer through durable completion"}.fetch(profiler, "2s samples after start")
+  profile_window = mode == "--rate-profile" ? "transfer start through durable shutdown gate; includes settle, measurement, drain and persistence; counters use a separate run" : {"heap" => "ready/verified/durable gate snapshots; intrusive diagnostics, not peak RSS or allocation churn", "file-activity" => "requested trailing 1s before durable completion; diagnostic only", "time-profiler" => "whole transfer through durable completion"}.fetch(profiler, "2s samples after start")
   record = {schema: 1, mode: mode, revision: capture.call("git", "rev-parse", "HEAD"), dirty: capture.call("git", "status", "--short"),
     libtorrent_revision: "6da363d2994f17c0b3c0450d124cf73a31a73847", swift: capture.call("swift", "--version"), clang: capture.call("clang++", "--version"),
     os: capture.call("sw_vers"), machine: capture.call("sysctl", "-n", "hw.model", "hw.memsize", "hw.logicalcpu"),
@@ -72,16 +82,16 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
     swift_flags: "Release; swiftc -O -swift-version 6", reference_flags: "CMake Release; arm64; pinned static libtorrent",
     transport: "loopback TCP, encryption disabled, PEX/discovery disabled; production request windows",
     cache: "fresh processes and destinations; sources streamed and SHA256 checked before every trial; explicitly warm, no cold-cache claim",
-    durability: mode == "--rate-sweep" ? "After measurement: stop traffic, drain, checkpoint and fsync; independently compare every claimed verified piece with the fixture and reopen the partial checkpoint. Not full-transfer acceptance." : "Swift native payload fsync then atomic state fsync/rename/directory fsync; its forced completion checkpoint is inside the verified interval. Libtorrent finished precedes pause/flush_cache fence plus explicit payload/directory fsync then resume fsync/rename/directory fsync. Through-durable metrics include both placements.",
-    sampling: mode == "--rate-sweep" ? "Exploratory; one sample per engine/rate; fixed shuffled rates, alternating engine order; 5s settle and 10s measurement; no retries or significance inference" : mode == "--compare-source" ? "one warm-up per engine/source; fixed six balanced source-order pairs, each with a balanced Swift/native engine-order pair per source; source-comparison-only, no acceptance inference or uncertainty-driven retries" : profiled ? "one diagnostic trial per engine and source variant per selected case; no warm-ups; excluded from timing acceptance" : "one warm-up per engine per case, six balanced shuffled pairs; extend inconclusive cases to twelve pairs; smoke uses one pair and 32 MiB",
+    durability: rate_mode ? "After measurement: stop traffic, drain, checkpoint and fsync; independently compare every claimed verified piece with the fixture and reopen the partial checkpoint. Not full-transfer acceptance." : "Swift native payload fsync then atomic state fsync/rename/directory fsync; its forced completion checkpoint is inside the verified interval. Libtorrent finished precedes pause/flush_cache fence plus explicit payload/directory fsync then resume fsync/rename/directory fsync. Through-durable metrics include both placements.",
+    sampling: mode == "--rate-profile" ? "one diagnostic per engine at 500 Mbps; excluded from comparisons" : mode == "--rate-compare" ? "one warm-up per source/engine; fixed six balanced pairs at 500 Mbps, 28 samples; no automatic repetitions" : rate_mode ? "Exploratory; one sample per engine/rate; fixed shuffled rates, alternating engine order; 5s settle and 10s measurement; no retries or significance inference" : %w[--compare-source --rate-compare].include?(mode) ? "one warm-up per engine/source; fixed six balanced source-order pairs, each with a balanced Swift/native engine-order pair per source; source-comparison-only, no acceptance inference or uncertainty-driven retries" : profiled ? "one diagnostic trial per engine and source variant per selected case; no warm-ups; excluded from timing acceptance" : "one warm-up per engine per case, six balanced shuffled pairs; extend inconclusive cases to twelve pairs; smoke uses one pair and 32 MiB",
     profiler: profiled ? {name: profiler, capture_window: profile_window, time_profiler_method: %w[time-profiler file-activity].include?(profiler) ? "attach tested process before start using Instruments notification; Running samples only; stop after durable; counterpart phase CPU retained, not instrumented" : nil} : nil,
-    timing: mode == "--rate-sweep" ? "Monotonic wall/user/system and received payload deltas between measurement-start/end; CPU 100% means one core; CPU/GiB excludes settle, persistence and teardown; counterpart CPU retained separately." : "phase wall/user/system from each driver; CPU/GiB through durable completion; whole process wall/user/system/peak RSS from /usr/bin/time -l, including teardown"}
+    timing: rate_mode ? "Monotonic wall/user/system and received payload deltas between measurement-start/end; CPU 100% means one core; CPU/GiB excludes settle, persistence and teardown; counterpart CPU retained separately." : "phase wall/user/system from each driver; CPU/GiB through durable completion; whole process wall/user/system/peak RSS from /usr/bin/time -l, including teardown"}
   files = %w[Tests/TransferBenchmark.swift Tests/TransferBenchmarkReference.hpp Tests/TCPPeerReference.mm Tests/TransferBenchmarkHarness.rb Tests/RateSweep.rb Tests/Reference/CMakeLists.txt Scripts/test-benchmark.sh Scripts/bootstrap-engine.sh]
   record[:harness_sha256] = files.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }
   record[:swift_source_sha256] = Dir.glob("Packages/ButterTorrent/Sources/**/*.swift").sort.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }
   record[:package_sha256] = Digest::SHA256.file("Packages/ButterTorrent/Package.swift").hexdigest
   record[:driver_sha256] = {swift: Digest::SHA256.file(swift_driver).hexdigest, reference: Digest::SHA256.file(reference).hexdigest}
-  if %w[--compare-source --profile-source].include?(mode)
+  if %w[--compare-source --profile-source --rate-compare].include?(mode)
     record[:source_comparison] = {previous_revision: capture.call("git", "-C", previous_root, "rev-parse", "HEAD"), current_revision: record[:revision], driver_source: "same current Tests/TransferBenchmark.swift for both engines", native_counterpart: "one identical pinned binary for all sources, engines and counterparts"}
     record[:previous_swift_source_sha256] = Dir.glob(File.join(previous_root, "Packages/ButterTorrent/Sources/**/*.swift")).sort.to_h { |path| [path.delete_prefix(previous_root + "/"), Digest::SHA256.file(path).hexdigest] }
     record[:previous_package_sha256] = Digest::SHA256.file(File.join(previous_root, "Packages/ButterTorrent/Package.swift")).hexdigest
@@ -97,12 +107,12 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
   File.write(File.join(out, "environment.json"), JSON.pretty_generate(record))
 ' "$work" "$out" "$mode" "$reference" "$work/TransferBenchmark" "$previous_driver" "$previous_root"
 rm -f "$out/build.log"
-if [ "$mode" = --rate-sweep ]; then "$work/TransferBenchmark" fixture "$work/fixtures" --rate-sweep
+if [ "${mode#--rate-}" != "$mode" ]; then "$work/TransferBenchmark" fixture "$work/fixtures" --rate-sweep
 elif [ "$mode" = --smoke ]; then "$work/TransferBenchmark" fixture "$work/fixtures" --small
 else "$work/TransferBenchmark" fixture "$work/fixtures"; fi
-if [ "$mode" = --rate-sweep ]; then
-	ruby Tests/RateSweep.rb "$work/TransferBenchmark" "$reference" "$out" "$work"
-elif [ "$mode" = --compare-source ] || [ "$mode" = --profile-source ]; then
+if [ "${mode#--rate-}" != "$mode" ]; then
+	ruby Tests/RateSweep.rb "$work/TransferBenchmark" "$reference" "$out" "$work" "$mode" "$previous_driver"
+elif [ "$mode" = --compare-source ] || [ "$mode" = --profile-source ] || [ "$mode" = --rate-compare ]; then
 	ruby Tests/TransferBenchmarkHarness.rb "$work/TransferBenchmark" "$reference" "$out" "$work" "$mode" "$previous_driver"
 else
 	ruby Tests/TransferBenchmarkHarness.rb "$work/TransferBenchmark" "$reference" "$out" "$work" "$mode"

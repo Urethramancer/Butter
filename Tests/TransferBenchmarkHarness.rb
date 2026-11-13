@@ -137,6 +137,22 @@ module TransferBenchmarkHarness
 		end
 	end
 
+	# Classify each sample once by its executing leaf. Preserve full calling stacks
+	# for attribution; worker ancestry alone does not identify scheduling overhead.
+	def self.profile_category(frames)
+		leaf = frames.first
+		case leaf
+		when /\A(?:__)?(?:openat|open|close|fstatat|fstat|stat|lstat|dup|fcntl|fsync|rename|unlink|mkdir|faccessat)(?:\z|_)/ then 'filesystem metadata/open/close'
+		when /\A(?:__)?(?:pread|pwrite|read|write)(?:\z|_)/ then 'payload I/O'
+		when /\A(?:__)?(?:recvmsg|sendmsg|recvfrom|sendto|getsockopt|setsockopt|connect|accept|socket)(?:\z|_)/ then 'networking'
+		when /mach_msg|kevent|workq_kernreturn|ulock|psynch|thread_switch/ then 'scheduling and event delivery'
+		when /SHA\d|ccdigest|HashFunction/ then 'user hashing'
+		when /memmove|memcpy|bzero/ then 'user copying/clearing'
+		when /malloc|_free|swift_alloc|DataStorage.init/ then 'user allocation'
+		when /start_wqthread|unavailable backtrace/ then 'unattributed'
+		else 'other user processing or unresolved execution'
+		end
+	end
 	def self.profile_summary(path, target)
 		require 'rexml/document'
 		document = REXML::Document.new(File.read(path))
@@ -146,7 +162,7 @@ module TransferBenchmarkHarness
 			rows << element if element.name == 'row'
 		end
 		resolve = ->(element) { element && (element.attributes['ref'] ? refs.fetch(element.attributes['ref']) : element) }
-		flat, inclusive = Hash.new(0), Hash.new(0)
+		flat, inclusive, stacks, categories = Hash.new(0), Hash.new(0), Hash.new(0), Hash.new(0)
 		count = 0; unavailable = 0
 		rows.each do |row|
 			process = resolve.call(row.elements['process'])
@@ -159,6 +175,8 @@ module TransferBenchmarkHarness
 			if frames.empty?
 				unavailable += 1; frames = ['[unavailable backtrace]']
 			end
+			categories[profile_category(frames)] += weight
+			stacks[frames] += weight
 			flat[frames.first] += weight
 			frames.uniq.each { |frame| inclusive[frame] += weight }
 			count += 1
@@ -168,7 +186,9 @@ module TransferBenchmarkHarness
 		rank = ->(values) { values.sort_by { |name, weight| [-weight, name] }.first(100).map { |name, weight| { symbol: name, weight_ns: weight, percent: 100.0 * weight / total } } }
 		{ target_pid: target, running_samples: count, unavailable_backtrace_samples: unavailable, weight_ns: total,
 			method: 'Running samples for the tested process only; statistical sample weights, not measured CPU durations; inclusive symbols overlap',
-			flat: rank.call(flat), inclusive: rank.call(inclusive) }
+			category_method: 'Disjoint executing-leaf symbol groups; kernel-facing syscall stacks, not a measurement of kernel residence. Inspect calling stacks for purpose. No inclusive sums; unresolved worker entry remains unattributed.',
+			categories: rank.call(categories), flat: rank.call(flat), inclusive: rank.call(inclusive),
+			stacks: stacks.sort_by { |frames, weight| [-weight, frames] }.map { |frames, weight| {frames: frames, weight_ns: weight, percent: 100.0 * weight / total} } }
 	end
 
 	class Child
@@ -269,7 +289,10 @@ module TransferBenchmarkHarness
 		values = phases.transform_values { |a, b| delta(child.phase(a), child.phase(b)) }
 		transfer, durable = values.fetch(:transfer), values.fetch(:through_durable)
 		raise 'Zero transfer duration' unless transfer[:wall] > 0 && durable[:wall] >= transfer[:wall]
-		values.merge(verified_bytes_per_second: bytes / transfer[:wall], durable_bytes_per_second: bytes / durable[:wall],
+		values.merge(user_cpu_seconds: durable[:user], system_cpu_seconds: durable[:system], cpu_seconds: durable[:user] + durable[:system],
+			user_cpu_percent: 100 * durable[:user] / durable[:wall], system_cpu_percent: 100 * durable[:system] / durable[:wall], cpu_percent: 100 * (durable[:user] + durable[:system]) / durable[:wall],
+			user_cpu_seconds_per_gib: durable[:user] / (bytes.to_f / 1_073_741_824), system_cpu_seconds_per_gib: durable[:system] / (bytes.to_f / 1_073_741_824),
+			verified_bytes_per_second: bytes / transfer[:wall], durable_bytes_per_second: bytes / durable[:wall],
 			verified_cpu_seconds_per_gib: (transfer[:user] + transfer[:system]) / (bytes.to_f / 1_073_741_824),
 			cpu_seconds_per_gib: (durable[:user] + durable[:system]) / (bytes.to_f / 1_073_741_824),
 			peer_errors: child.phase('stopped').fetch('peer_errors', []), whole: child.whole)

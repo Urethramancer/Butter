@@ -12,12 +12,71 @@ class RateSweepTests < Minitest::Test
 			m = RateSweep.metrics(first, last, 100)
 			assert_in_delta 12.5 * ratio, m[:mb_per_second]
 			assert_in_delta 30, m[:cpu_percent]
+			assert_in_delta 20, m[:user_cpu_percent]
+			assert_in_delta 10, m[:system_cpu_percent]
+			assert_in_delta 3, m[:cpu_seconds]
+			assert_in_delta m[:cpu_seconds_per_gib], m[:user_cpu_seconds_per_gib] + m[:system_cpu_seconds_per_gib]
 			assert_in_delta 3.0 * 1_073_741_824 / bytes, m[:cpu_seconds_per_gib]
 			assert_equal status, m[:rate_status]
 			counterpart = RateSweep.metrics(first, last.merge('received_payload_bytes'=>0), 100, received: bytes)
 			assert_equal m, counterpart
 		end
 		assert_raises(RuntimeError) { RateSweep.metrics(first, first, 100) }
+	end
+	def test_fixed_source_schedule_and_retention_gates
+		schedule = RateSweep.comparison_schedule
+		assert_equal schedule, RateSweep.comparison_schedule
+		assert_equal 28, schedule.size
+		assert_equal %w[previous current].product(%w[Swift libtorrent]).sort, schedule.select(&:last).map { |r| r.first(2) }.sort
+		pairs = schedule.reject(&:last).group_by { |r| r[2] }.values
+		assert_equal 6, pairs.size
+		assert_equal 3, pairs.count { |p| p.first.first == 'previous' }
+		%w[previous current].each do |source|
+			assert_equal 3, pairs.count { |p| p.select { |r| r.first == source }.first[1] == 'Swift' }
+		end
+		rows = schedule.map do |source, engine, pair, warmup|
+			cpu = source == 'current' && engine == 'Swift' ? 0.8 : 1.0
+			{source_variant: source, engine: engine, pair: pair, warmup: warmup, validated: true,
+				engine_metrics: {cpu_seconds_per_gib: cpu, user_cpu_seconds_per_gib: cpu / 2, system_cpu_seconds_per_gib: cpu / 2, mb_per_second: 62.5, rate_status: 'saturated', whole: {peak_rss: 1000}}, counterpart_metrics: {cpu_seconds_per_gib: 1.0}}
+		end
+		result = RateSweep.comparison_summary(rows)
+		assert_equal 'eligible', result[:retention]
+		assert_in_delta 0.8, result[:source_ratios][:system_cpu_seconds_per_gib][:median]
+		rows.select { |r| r[:engine] == %q[Swift] && r[:source_variant] == %q[current] }.each { |r| r[:engine_metrics][:whole][:peak_rss] = 2000 }
+		refute_equal 'eligible', RateSweep.comparison_summary(rows)[:retention]
+		rows[4][:validated] = false
+		assert_equal 'failed', RateSweep.comparison_summary(rows)[:status]
+		rows[4][:validated] = true; rows[0][:diagnostic] = true
+		assert_equal 'failed', RateSweep.comparison_summary(rows)[:status]
+	end
+	def test_modes_select_500_or_the_existing_sweep
+		Dir.mktmpdir do |root|
+			FileUtils.mkdir_p(File.join(root, 'fixtures'))
+			File.write(File.join(root, 'fixtures', 'manifest.json'), JSON.generate([{'case'=>'many', 'bytes'=>4 * 1_073_741_824}]))
+			['--rate-profile', '--rate-compare', '--rate-sweep'].each do |mode|
+				out = File.join(root, mode); FileUtils.mkdir_p(out)
+				runner = RateSweep::Runner.new('/swift', '/native', out, root, mode, '/previous')
+				calls = []
+				runner.define_singleton_method(:sample) { |fixture, engine, rate, pair, **options| calls << [engine, rate, pair, options] }
+				runner.define_singleton_method(:report) {}
+				runner.run
+				assert_equal(mode == '--rate-compare' ? 28 : mode == '--rate-profile' ? 2 : 10, calls.size)
+				assert_equal(mode == '--rate-sweep' ? RateSweep::RATES : [500], calls.map { |r| r[1] }.uniq.sort)
+			end
+		end
+	end
+	def test_rate_modes_reject_invalid_configuration_before_build
+		cases = [
+			['--rate-compare', {'BUTTER_BENCHMARK_PREVIOUS_REVISION'=>nil}, /PREVIOUS_REVISION/],
+			['--rate-compare', {'BUTTER_BENCHMARK_PREVIOUS_REVISION'=>'HEAD', 'BUTTER_STORAGE_DIAGNOSTICS'=>'1'}, /diagnostic/i],
+			['--rate-profile', {'BUTTER_BENCHMARK_PROFILER'=>'heap'}, /Time Profiler/],
+			['--rate-profile', {'BUTTER_STORAGE_DIAGNOSTICS'=>'1', 'BUTTER_BENCHMARK_PROFILER'=>'time-profiler'}, /separately/]
+		]
+		cases.each do |mode, env, message|
+			text, status = Open3.capture2e(env, File.expand_path('../Scripts/test-benchmark.sh', __dir__), mode)
+			assert_equal 2, status.exitstatus
+			assert_match message, text
+		end
 	end
 	def test_timed_window_drains_events_and_stops_at_deadline
 		input, output = IO.pipe
