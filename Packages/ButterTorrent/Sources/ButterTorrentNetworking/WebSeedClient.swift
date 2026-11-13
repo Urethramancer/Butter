@@ -1,4 +1,5 @@
 import Foundation
+import ButterTorrentMetadata
 
 /// WebSeedClient fetches bounded BEP 17 and BEP 19 ranges without trusting them as verified data.
 public actor WebSeedClient {
@@ -68,9 +69,9 @@ public actor WebSeedClient {
 
 	/// Fetches one contiguous BEP 17 range within a piece; range=nil requests the full piece.
 	public func pieceRange(from seed: URL, infoHash: Data, piece: Int, pieceSize: Int, range: Range<Int>? = nil) async throws -> Data {
-		guard pieceSize > 0, pieceSize <= 16_777_216 else { throw HTTPServiceError.invalid("HTTP seed piece size") }
+		guard pieceSize > 0, pieceSize <= TorrentMetadata.maximumSupportedPieceLength else { throw HTTPServiceError.invalid("HTTP seed piece size") }
 		let selected = range ?? 0..<pieceSize
-		guard infoHash.count == 20, (0...Int(Int32.max)).contains(piece), pieceSize > 0, pieceSize <= 16_777_216,
+		guard infoHash.count == 20, (0...Int(Int32.max)).contains(piece),
 			selected.lowerBound >= 0, selected.upperBound <= pieceSize, !selected.isEmpty, selected.count <= maximumBytes else {
 			throw HTTPServiceError.invalid("HTTP seed piece range")
 		}

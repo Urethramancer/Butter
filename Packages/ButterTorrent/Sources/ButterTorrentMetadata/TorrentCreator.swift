@@ -29,7 +29,7 @@ public enum TorrentCreator {
 		if requestedLength == nil {
 			while total / Int64(pieceLength) > 2048 && pieceLength < 16 * 1024 * 1024 { pieceLength *= 2 }
 		}
-		guard pieceLength >= 16384, pieceLength <= 16 * 1024 * 1024, pieceLength & (pieceLength - 1) == 0 else {
+		guard pieceLength >= 16384, pieceLength <= TorrentMetadata.maximumSupportedPieceLength, pieceLength & (pieceLength - 1) == 0 else {
 			throw MetadataError.invalid("invalid creation piece length")
 		}
 		// Bound retained hash lists before reading payload data, not just at encoding.

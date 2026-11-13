@@ -4,6 +4,16 @@ import Testing
 
 @Suite struct WebSeedTests {
 	let seed = URL(string: "https://seed.invalid/pub/")!
+	@Test func largePiecesKeepHTTPRequestsBounded() async throws {
+		let length = 32 * 1024 * 1024, bytes = Data(repeating: 42, count: 16384)
+		let http = ScriptedHTTP([.success(HTTPResponse(status: 200, body: bytes))])
+		let client = WebSeedClient(transport: http, maximumBytes: 16384)
+		#expect(try await client.pieceRange(from: seed, infoHash: Data(0..<20), piece: 65_535, pieceSize: length, range: (length - bytes.count)..<length) == bytes)
+		#expect(await http.requests[0].maximumResponseBytes == bytes.count)
+		await #expect(throws: HTTPServiceError.self) { try await client.pieceRange(from: seed, infoHash: Data(0..<20), piece: 0, pieceSize: length) }
+		await #expect(throws: HTTPServiceError.self) { try await client.pieceRange(from: seed, infoHash: Data(0..<20), piece: 0, pieceSize: length * 2, range: 0..<1) }
+		#expect(await http.requests.count == 1)
+	}
 	@Test func encodedMultifileRangeAndWholeFileFallback() async throws {
 		let http = ScriptedHTTP([
 			.success(HTTPResponse(status: 206, headers: ["Content-Range": "bytes 2-4/9"], body: Data([2, 3, 4]))),

@@ -37,7 +37,7 @@ public actor TorrentStorage {
 	public func write(piece: Int, offset: Int, data: Data) async throws {
 		try await worker.run { [state] cancellation in try state.write(piece: piece, offset: offset, data: data, check: cancellation.check) }
 	}
-	/// Returns one immutable, hash-checked piece, bounded by the layout's 16 MiB limit.
+	/// Returns one immutable, hash-checked piece, bounded by the layout's 32 MiB limit.
 	public func readVerifiedPiece(_ piece: Int) async throws -> Data {
 		try await worker.run { [state] cancellation in try state.verifiedPiece(piece, check: cancellation.check) }
 	}

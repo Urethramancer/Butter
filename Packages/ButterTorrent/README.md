@@ -25,7 +25,9 @@ Merkle trees/piece layers, and emits hybrid metadata with canonical file orderin
 padding, private flags and trackers. Empty files are retained, symlinks excluded
 and changed source files rejected. Descriptor-relative reads refuse symlinks in
 source subdirectories. Limits include 50,000 source files, depth 90, fewer than
-400,000 pieces and 16 MiB maximum piece size, in addition to encoding limits.
+400,000 pieces and 32 MiB maximum piece size, in addition to encoding limits.
+Automatic creation sizing still targets roughly 2,048 pieces and caps at 16 MiB;
+32 MiB is available for explicit creation settings and existing torrents.
 Creation needs a source containing at least one byte. Progress and cancellation
 callbacks are synchronous; callers choose the worker. Butter uses one serial
 worker, atomic publication, explicit cancellation and shutdown settlement.
@@ -170,8 +172,9 @@ are consumed once, and cancellation releases reserved/writing blocks.
 Default limits are fifty peers (maximum two hundred), eight pipelined requests
 (maximum thirty-two), four upload slots, sixty-four upload jobs and four disk
 permits. A peer queues at most 128 messages/512 KiB. The upload cache retains at
-most eight immutable pieces/32 MiB, with four bounded loads; each piece is at most
-16 MiB. Payload rate limits use an injectable monotonic clock and a one-second
+most eight immutable pieces per transfer, with four bounded loads, within the
+shared 64 MiB default budget; each piece is at most 32 MiB. Smaller explicitly
+configured cache budgets reject pieces that cannot fit. Payload rate limits use an injectable monotonic clock and a one-second
 token burst. Incomplete handshakes expire after ten seconds; idle peers and
 repeated request timeouts close. Extension negotiation, magnets, v2, encryption
 and µTP belong to subsequent phases. Production transfers remain on libtorrent.

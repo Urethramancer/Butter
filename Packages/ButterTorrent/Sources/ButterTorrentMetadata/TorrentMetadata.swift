@@ -2,6 +2,8 @@ import Foundation
 
 /// TorrentMetadata inspects v1, v2 and hybrid metadata without changing its info bytes.
 public struct TorrentMetadata: Sendable {
+	/// Maximum piece length supported by creation, storage and transfer operations.
+	public static let maximumSupportedPieceLength = 32 * 1024 * 1024
 	public struct File: Codable, Equatable, Sendable {
 		public let index: Int
 		public let path: String

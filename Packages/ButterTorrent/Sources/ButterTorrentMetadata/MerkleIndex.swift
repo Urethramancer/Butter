@@ -53,7 +53,7 @@ public struct MerkleIndex: Sendable {
 	public let enabled: Bool
 	public init(metadata: TorrentMetadata) throws {
 		enabled = metadata.hashes.v2 != nil
-		guard metadata.pieceLength <= 16_777_216, metadata.inspection.files.count <= 50_000 else { throw MetadataError.limit("Merkle layout") }
+		guard metadata.pieceLength <= TorrentMetadata.maximumSupportedPieceLength, metadata.inspection.files.count <= 50_000 else { throw MetadataError.limit("Merkle layout") }
 		var files: [Data: File] = [:], pieces: [Int: Piece] = [:], starts: [Data: [Int]] = [:], offset: Int64 = 0
 		for file in metadata.inspection.files {
 			defer { offset += file.size }

@@ -32,7 +32,7 @@ public struct StorageLayout: Sendable {
 	private let starts: [Int64]
 	public init(metadata: TorrentMetadata) throws {
 		files = metadata.inspection.files
-		guard files.count <= 50_000, metadata.pieceLength <= 16 * 1024 * 1024 else { throw StorageFailure.limit("file count or piece size") }
+		guard files.count <= 50_000, metadata.pieceLength <= TorrentMetadata.maximumSupportedPieceLength else { throw StorageFailure.limit("file count or piece size") }
 		pieceLength = Int(metadata.pieceLength)
 		var starts: [Int64] = [], total: Int64 = 0
 		for file in files { starts.append(total); total += file.size }
