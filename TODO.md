@@ -2,15 +2,17 @@
 
 ## TCP performance parity
 
-- Complete the full matrix for the revised request-burst candidate with original scalar admission
-  restored. Revised single-file download
+- Resolve revised request-burst source RSS/seeding uncertainty and profile the
+  remaining CPU gap. The full matrix validates all 252 trials, passing throughput
+  9/18, CPU 0/18 and original-baseline memory 18/18. Revised single-file download
   saves 8.3% CPU and raises throughput 3.7%; RSS and seeding remain inconclusive
   across 112 validated trials; many-file hybrid CPU/throughput improve 4.5%/2.0%
   and concurrent hybrid 5.8%/3.6%, with inconclusive RSS. First form is disqualified by 5.0%
   higher seeding RSS; all 112 trials remain. Keep this failure separate from
   revised-source evidence. Native checks (466 PASS records), application,
-  recovery, sanitizers and Debug/Release builds pass. Earlier full results
-  predate the independent Unicode fix and request bursts.
+  recovery, sanitizers and Debug/Release builds pass. Investigate cross-run
+  concurrent v1 seeding CPU and many-file v2 seeding throughput differences;
+  native controls also shift, so do not infer a source cause from separate runs.
 
 - Isolate the UTF-8 lookup's RSS cost before further scanner variants. It saves
   6.0% CPU but adds 1.9% peak RSS and remains rejected. Gate heap/VM diagnostics
@@ -38,7 +40,7 @@
 
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
-  10% of baseline. The [current full results](docs/performance/write-prefill-full-results-2026-11-13.md)
+  10% of baseline. The [current full results](docs/performance/request-burst-revised-full-results-2026-11-13.md)
   pass memory 18/18 and throughput 9/18, but fail CPU throughout. Retain gains only
   without established costs in CPU, throughput, memory, correctness or counterpart CPU.
 - Investigate the historical many-file v1 seeding regression against its preceding full

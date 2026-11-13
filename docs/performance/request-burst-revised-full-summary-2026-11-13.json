@@ -1,0 +1,920 @@
+[
+  {
+    "case": "single",
+    "format": "v1",
+    "direction": "download",
+    "order_seed": 11011,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 0.7390577499302128,
+        "lower": 0.7279063254411963,
+        "upper": 0.7719506891856327,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 0.8968834545009117,
+        "lower": 0.7965606353735751,
+        "upper": 0.928872767631413,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 2.0044389792756276,
+        "lower": 1.9751641895265202,
+        "upper": 2.0515434851733563,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 331257881.9095582,
+        "durable_bytes_per_second": 331193013.0677776,
+        "cpu_seconds_per_gib": 3.6969185
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 447665293.8653182,
+        "durable_bytes_per_second": 372436340.40568817,
+        "cpu_seconds_per_gib": 1.8352330000000001
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.19584569732937684,
+      "lower": 0.19440337909186906,
+      "upper": 0.20034579641236222,
+      "maximum_peak_rss_ratio": 0.19598732840549102,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "single",
+    "format": "v1",
+    "direction": "seed",
+    "order_seed": 11012,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 1.2711031224079727,
+        "lower": 1.210195591568554,
+        "upper": 1.313376622826393,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 1.2709380226340548,
+        "lower": 1.2100142423869533,
+        "upper": 1.313016056060929,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 1.5097097567840956,
+        "lower": 1.4505936984012324,
+        "upper": 1.5340966913104164,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 570403865.3786821,
+        "durable_bytes_per_second": 569998987.9000928,
+        "cpu_seconds_per_gib": 2.5538275
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 448749032.7222804,
+        "durable_bytes_per_second": 448488833.3732671,
+        "cpu_seconds_per_gib": 1.694073
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.22488425075328874,
+      "lower": 0.22205979095095388,
+      "upper": 0.22719550926951768,
+      "maximum_peak_rss_ratio": 0.22502920560747663,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "single",
+    "format": "v2",
+    "direction": "download",
+    "order_seed": 11021,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 0.69652474037352,
+        "lower": 0.6884479752516774,
+        "upper": 0.7231458995277066,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 0.8623004158884002,
+        "lower": 0.7574814916435636,
+        "upper": 0.8986686122416032,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 2.1115262267009953,
+        "lower": 2.035841436715487,
+        "upper": 2.174776039983711,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 311411483.77032363,
+        "durable_bytes_per_second": 311356238.486767,
+        "cpu_seconds_per_gib": 3.9366595
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 446783910.3234445,
+        "durable_bytes_per_second": 363321828.56922245,
+        "cpu_seconds_per_gib": 1.8643645
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.21626984126984128,
+      "lower": 0.213604313562837,
+      "upper": 0.21892744479495269,
+      "maximum_peak_rss_ratio": 0.21647350993377484,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "single",
+    "format": "v2",
+    "direction": "seed",
+    "order_seed": 11022,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 1.2598534009041211,
+        "lower": 1.1553614072231473,
+        "upper": 1.3126553681957471,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 1.263435359290386,
+        "lower": 1.1586097611662494,
+        "upper": 1.3163740960629664,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 1.5259640649788624,
+        "lower": 1.5035488020196905,
+        "upper": 1.6431079704392797,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 562654822.1474905,
+        "durable_bytes_per_second": 562361703.731245,
+        "cpu_seconds_per_gib": 2.667419
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 446838729.28756803,
+        "durable_bytes_per_second": 445314102.531592,
+        "cpu_seconds_per_gib": 1.7515145
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.23669334116437854,
+      "lower": 0.22981638006412125,
+      "upper": 0.28234050052872756,
+      "maximum_peak_rss_ratio": 0.24151928095100028,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "single",
+    "format": "hybrid",
+    "direction": "download",
+    "order_seed": 11031,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 0.6343589497636313,
+        "lower": 0.6182651214939378,
+        "upper": 0.6488096317781676,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 0.7112650497052151,
+        "lower": 0.6650696746647629,
+        "upper": 0.7863148889243406,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 1.6916311426432364,
+        "lower": 1.6374393879655527,
+        "upper": 1.7613489935166358,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 274336180.47150445,
+        "durable_bytes_per_second": 274289816.44637614,
+        "cpu_seconds_per_gib": 4.4096625
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 430397685.87164164,
+        "durable_bytes_per_second": 384763876.54219306,
+        "cpu_seconds_per_gib": 2.6178455
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.21806075738660008,
+      "lower": 0.21579762519359835,
+      "upper": 0.22107698779974758,
+      "maximum_peak_rss_ratio": 0.21903385631709332,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "single",
+    "format": "hybrid",
+    "direction": "seed",
+    "order_seed": 11032,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 1.3940740864222694,
+        "lower": 1.3776332063957473,
+        "upper": 1.419192343617389,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 1.4010565348591135,
+        "lower": 1.382705788014574,
+        "upper": 1.4238334004174082,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 1.6863792265783946,
+        "lower": 1.5759017225124872,
+        "upper": 1.7313643355613284,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 617889990.7852124,
+        "durable_bytes_per_second": 617411502.8756175,
+        "cpu_seconds_per_gib": 3.0090149999999998
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 444869416.22799337,
+        "durable_bytes_per_second": 442959499.961439,
+        "cpu_seconds_per_gib": 1.7933005
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.2110843021130365,
+      "lower": 0.20511702282308475,
+      "upper": 0.21898077063683558,
+      "maximum_peak_rss_ratio": 0.2180115273775216,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "many",
+    "format": "v1",
+    "direction": "download",
+    "order_seed": 11111,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 0.3381470965167951,
+        "lower": 0.3362619111685202,
+        "upper": 0.3498709198817418,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 0.3419402706589998,
+        "lower": 0.33721915742202657,
+        "upper": 0.35204843879944336,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 3.844824767339295,
+        "lower": 3.7470478616654335,
+        "upper": 4.077606400932195,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 148572917.53110737,
+        "durable_bytes_per_second": 148524766.41582698,
+        "cpu_seconds_per_gib": 7.4978774999999995
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 439216650.7300928,
+        "durable_bytes_per_second": 435757763.3802207,
+        "cpu_seconds_per_gib": 1.96753
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.20992667794698253,
+      "lower": 0.20576859321471985,
+      "upper": 0.21652123327515999,
+      "maximum_peak_rss_ratio": 0.2053709002861545,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "many",
+    "format": "v1",
+    "direction": "seed",
+    "order_seed": 11112,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 0.8671386797607081,
+        "lower": 0.8194706775397487,
+        "upper": 0.8816231165395729,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 0.8674748655617299,
+        "lower": 0.8198790988596236,
+        "upper": 0.8821078094266046,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 2.109374921943034,
+        "lower": 1.9951133392982001,
+        "upper": 2.2173797152637826,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 380035865.2208052,
+        "durable_bytes_per_second": 379799490.09017706,
+        "cpu_seconds_per_gib": 4.1666810000000005
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 443774411.2292494,
+        "durable_bytes_per_second": 443258436.5152036,
+        "cpu_seconds_per_gib": 1.970945
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.18763235916984328,
+      "lower": 0.1807143865593675,
+      "upper": 0.20310077519379846,
+      "maximum_peak_rss_ratio": 0.20694503022634614,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "many",
+    "format": "v2",
+    "direction": "download",
+    "order_seed": 11121,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 0.34243268084883405,
+        "lower": 0.32792398186316285,
+        "upper": 0.3656568835818642,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 0.3463329143705963,
+        "lower": 0.33130557001820365,
+        "upper": 0.37187003322723144,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 3.8433709383899837,
+        "lower": 3.7026951719968335,
+        "upper": 3.9907597544915605,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 144949519.62255162,
+        "durable_bytes_per_second": 144905978.83988413,
+        "cpu_seconds_per_gib": 7.832932
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 421700566.72249997,
+        "durable_bytes_per_second": 417317402.390491,
+        "cpu_seconds_per_gib": 2.0761010000000004
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.24925032985486387,
+      "lower": 0.2465327594452415,
+      "upper": 0.26050217286335103,
+      "maximum_peak_rss_ratio": 0.268048606147248,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "many",
+    "format": "v2",
+    "direction": "seed",
+    "order_seed": 11122,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 0.7758044106275769,
+        "lower": 0.6011328867463864,
+        "upper": 0.8065458709781609,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 0.778745742607907,
+        "lower": 0.6036705852535473,
+        "upper": 0.8092818671885076,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 2.017751651804663,
+        "lower": 1.945895537166077,
+        "upper": 2.092648360529311,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 330817948.86642015,
+        "durable_bytes_per_second": 330644527.3888099,
+        "cpu_seconds_per_gib": 4.099677
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 425454194.96632767,
+        "durable_bytes_per_second": 423573723.48501754,
+        "cpu_seconds_per_gib": 2.0174589999999997
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.2010919017288444,
+      "lower": 0.1929530201342282,
+      "upper": 0.22290588728849112,
+      "maximum_peak_rss_ratio": 0.2300292764533668,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "many",
+    "format": "hybrid",
+    "direction": "download",
+    "order_seed": 11131,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 0.3108744572325248,
+        "lower": 0.30828757258279366,
+        "upper": 0.33599280981142654,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 0.3120934931037408,
+        "lower": 0.3098176724102986,
+        "upper": 0.33896604670320635,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 3.0063161069572217,
+        "lower": 2.956421957279736,
+        "upper": 3.2301530572450834,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 139043936.19419456,
+        "durable_bytes_per_second": 139002433.4774816,
+        "cpu_seconds_per_gib": 7.925819
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 447839952.99474,
+        "durable_bytes_per_second": 445894730.2284349,
+        "cpu_seconds_per_gib": 2.6364504999999996
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.2459729570840682,
+      "lower": 0.24134748500230735,
+      "upper": 0.2487919858573954,
+      "maximum_peak_rss_ratio": 0.24442912933609004,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "many",
+    "format": "hybrid",
+    "direction": "seed",
+    "order_seed": 11132,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 0.6251158829462506,
+        "lower": 0.6208003070037931,
+        "upper": 0.6392324220165717,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 0.6278103512482802,
+        "lower": 0.6233181536187112,
+        "upper": 0.6415670410831532,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 2.363092108991066,
+        "lower": 2.3087727601563435,
+        "upper": 2.4388537066086027,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 280782573.7272896,
+        "durable_bytes_per_second": 280633350.7829609,
+        "cpu_seconds_per_gib": 4.691404500000001
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 449652159.9947921,
+        "durable_bytes_per_second": 447554174.0599518,
+        "cpu_seconds_per_gib": 1.9894534999999998
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.21376635967038293,
+      "lower": 0.21023474828612976,
+      "upper": 0.21958313136209404,
+      "maximum_peak_rss_ratio": 0.22360420121614152,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "concurrent",
+    "format": "v1",
+    "direction": "download",
+    "order_seed": 11211,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 1.2950751057970393,
+        "lower": 1.2132424917377531,
+        "upper": 1.3532867864409432,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 1.6449742991469931,
+        "lower": 1.4595008564627951,
+        "upper": 1.7421601982865056,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 2.4795084585705,
+        "lower": 2.4092534106530614,
+        "upper": 2.5586695873092036,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 624514141.8912727,
+        "durable_bytes_per_second": 623980526.6073934,
+        "cpu_seconds_per_gib": 6.4158595
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 479362649.65447223,
+        "durable_bytes_per_second": 380608333.4826934,
+        "cpu_seconds_per_gib": 2.5813435
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.25623536597780716,
+      "lower": 0.254845949806162,
+      "upper": 0.2686689140872408,
+      "maximum_peak_rss_ratio": 0.277924184066491,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "concurrent",
+    "format": "v1",
+    "direction": "seed",
+    "order_seed": 11212,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 1.7211012816763158,
+        "lower": 1.6486742814584656,
+        "upper": 1.7307159779204868,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 1.7123776045281551,
+        "lower": 1.6501529636043821,
+        "upper": 1.7252495804312997,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 1.5209997012187824,
+        "lower": 1.344356251697536,
+        "upper": 1.5851671254894617,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 820761060.4074769,
+        "durable_bytes_per_second": 811314347.1058635,
+        "cpu_seconds_per_gib": 2.995374
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 477746283.68868303,
+        "durable_bytes_per_second": 473795265.5639392,
+        "cpu_seconds_per_gib": 1.931864
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.3311186440677966,
+      "lower": 0.31775639335618244,
+      "upper": 0.37080006026819345,
+      "maximum_peak_rss_ratio": 0.3285695555264193,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "concurrent",
+    "format": "v2",
+    "direction": "download",
+    "order_seed": 11221,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 1.2988095431168902,
+        "lower": 1.2519332382941653,
+        "upper": 1.3312178884098573,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 1.5827329134750894,
+        "lower": 1.5210459561073366,
+        "upper": 1.7903432190005697,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 2.468781607905152,
+        "lower": 2.3599533880131913,
+        "upper": 2.5473396107104778,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 610829344.3346083,
+        "durable_bytes_per_second": 610366418.5198567,
+        "cpu_seconds_per_gib": 6.5311449999999995
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 472014556.47825843,
+        "durable_bytes_per_second": 379130375.6184133,
+        "cpu_seconds_per_gib": 2.6465039999999997
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.27353587847291627,
+      "lower": 0.26835090511239307,
+      "upper": 0.28113132120727563,
+      "maximum_peak_rss_ratio": 0.2846628207678536,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "concurrent",
+    "format": "v2",
+    "direction": "seed",
+    "order_seed": 11222,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 1.8686758238847752,
+        "lower": 1.8575394806298438,
+        "upper": 1.8993713038472895,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 1.8778883989796749,
+        "lower": 1.8583860537054155,
+        "upper": 1.9100158109205458,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 1.5576566641875262,
+        "lower": 1.4890129819042563,
+        "upper": 1.6114461446785562,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 884420525.1862974,
+        "durable_bytes_per_second": 879493901.5399562,
+        "cpu_seconds_per_gib": 3.0514069999999998
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 473798884.38287294,
+        "durable_bytes_per_second": 469793482.83544725,
+        "cpu_seconds_per_gib": 1.9553585
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.33431257344300824,
+      "lower": 0.3261208576998051,
+      "upper": 0.37124836885602436,
+      "maximum_peak_rss_ratio": 0.33260393873085337,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "concurrent",
+    "format": "hybrid",
+    "direction": "download",
+    "order_seed": 11231,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 1.2487148809162623,
+        "lower": 1.147771640545498,
+        "upper": 1.3113524838450372,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 1.506739450173503,
+        "lower": 1.3491223635125298,
+        "upper": 1.6996335452591032,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 2.055804270587629,
+        "lower": 1.9683656259928048,
+        "upper": 2.4814644527207825,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 637538590.7090734,
+        "durable_bytes_per_second": 636993447.6857374,
+        "cpu_seconds_per_gib": 6.4132265
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 518141827.66446936,
+        "durable_bytes_per_second": 414766802.94908345,
+        "cpu_seconds_per_gib": 3.119992
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.27876726035621374,
+      "lower": 0.27042957042957044,
+      "upper": 0.28819725141471303,
+      "maximum_peak_rss_ratio": 0.28828109403074464,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  },
+  {
+    "case": "concurrent",
+    "format": "hybrid",
+    "direction": "seed",
+    "order_seed": 11232,
+    "status": "target-unmet",
+    "requires_more_pairs": false,
+    "pairs": 6,
+    "ratios": {
+      "verified_bytes_per_second": {
+        "median": 1.6057181675499708,
+        "lower": 1.5904614756534858,
+        "upper": 1.6758527692194536,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "durable_bytes_per_second": {
+        "median": 1.6097162523902493,
+        "lower": 1.6000057072196854,
+        "upper": 1.6914313375889316,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "cpu_seconds_per_gib": {
+        "median": 1.7973524522059237,
+        "lower": 1.708229816053903,
+        "upper": 1.8692518979665635,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "medians": {
+      "Swift": {
+        "verified_bytes_per_second": 824433794.2243736,
+        "durable_bytes_per_second": 817329050.420548,
+        "cpu_seconds_per_gib": 3.5985069999999997
+      },
+      "libtorrent": {
+        "verified_bytes_per_second": 507680774.9854101,
+        "durable_bytes_per_second": 498944528.95229876,
+        "cpu_seconds_per_gib": 2.0073170000000005
+      }
+    },
+    "memory": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.3309610864455471,
+      "lower": 0.32181042964906525,
+      "upper": 0.3405706789111184,
+      "maximum_peak_rss_ratio": 0.34205752785695775,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "smoke": false,
+    "profiled": false
+  }
+]

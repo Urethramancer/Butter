@@ -39,7 +39,9 @@ Measured revision `80a0c9a` has matching production source/package hashes.
 Seeding establishes neither improvement nor regression. Its wide intervals
 do not prove the first form's RSS cost is resolved. Revised/native paired CPU
 is 2.301 [2.223–2.602] and throughput 0.810 [0.656–0.915]. Native controls also
-cross one. No cost-free or parity claim is made. The final full matrix remains open.
+cross one. No cost-free or parity claim is made. The
+[full matrix](request-burst-revised-full-results-2026-11-13.md) validates all 252
+trials but still misses CPU acceptance in every case.
 
 Correctness validation passes 362 package tests, 25 focused ownership tests under
 each of AddressSanitizer and ThreadSanitizer, Release build and the complete

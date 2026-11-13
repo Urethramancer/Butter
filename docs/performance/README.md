@@ -1,5 +1,11 @@
 # Swift/libtorrent transfer comparison
 
+[Revised request-burst full matrix](request-burst-revised-full-results-2026-11-13.md)
+validates all 252 trials: throughput passes 9/18, CPU 0/18 and original-baseline
+memory 18/18. CPU/native ranges from 1.51× to 3.84×; parity remains unmet.
+Source RSS/seeding uncertainty and cross-run seeding differences remain open.
+Earlier full matrices describe preceding production sources.
+
 [Revised request bursts](request-burst-revised-results-2026-11-13.md) reduce
 single-file v1 download CPU 8.3% and raise throughput 3.7%; many-file hybrid
 CPU falls 4.5% and throughput rises 2.0%; concurrent hybrid improves 5.8%/3.6%.
@@ -7,7 +13,7 @@ All 112 trials across downloads and
 many-file seeding validate. Download RSS and all seeding changes
 remain inconclusive; the earlier memory cost is not proven resolved. Native
 validation (466 PASS records), application, recovery, sanitizer and build checks
-pass. The final full performance matrix remains open.
+pass. The full performance matrix is recorded above.
 
 [Ready TCP request bursts](request-burst-results-2026-11-13.md) first reduce
 download CPU, but are disqualified by 5.0% higher many-file v1 seeding RSS.
@@ -36,7 +42,7 @@ but RSS +1.9% [0.8–5.2%]. All 28 trials validate. Lookup alone still has a mem
 cost in this download case; the earlier C-string candidate used v1 seeding,
 so its memory cause remains unproven. Restored source matches the full matrix below.
 
-[Current write-refill full matrix](write-prefill-full-results-2026-11-13.md)
+[Historical write-refill full matrix](write-prefill-full-results-2026-11-13.md)
 validates all 252 trials: throughput passes 9/18, CPU 0/18 and memory 18/18.
 CPU/native ranges from 1.55× to 3.97×; many-file downloads remain the largest
 gap. Earlier matrices below describe preceding production sources.
