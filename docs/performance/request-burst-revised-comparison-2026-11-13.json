@@ -802,6 +802,167 @@
         "environment.json": "7327045d2bb62c5374448aa98a2299ecc791341e69e4864f86ffcd30817bef6a",
         "fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
       }
+    },
+    {
+      "root": ".build/benchmarks/request-burst-scalar-many-v2-seed-source-order",
+      "accepted": 28,
+      "failed": 0,
+      "measured_revision": "51572646446d5bcdbb6507fd9783f681740112fb",
+      "production_source_matches": "93a41c8",
+      "summary": [
+        {
+          "case": "many",
+          "format": "v2",
+          "direction": "seed",
+          "order_seed": 11122,
+          "status": "source-comparison-only",
+          "pairs": 6,
+          "valid_pairs": 6,
+          "variants": {
+            "previous": {
+              "status": "target-unmet",
+              "requires_more_pairs": false,
+              "pairs": 6,
+              "ratios": {
+                "verified_bytes_per_second": {
+                  "median": 0.7878409726809781,
+                  "lower": 0.7772641189608067,
+                  "upper": 0.7943383987325724,
+                  "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+                },
+                "durable_bytes_per_second": {
+                  "median": 0.7906485853201459,
+                  "lower": 0.7800099344409397,
+                  "upper": 0.7973190839779296,
+                  "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+                },
+                "cpu_seconds_per_gib": {
+                  "median": 2.044309746490166,
+                  "lower": 1.9477978448232103,
+                  "upper": 2.2552459659531046,
+                  "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+                }
+              },
+              "medians": {
+                "Swift": {
+                  "verified_bytes_per_second": 345764769.88051665,
+                  "durable_bytes_per_second": 345560575.8745993,
+                  "cpu_seconds_per_gib": 4.083339499999999
+                },
+                "libtorrent": {
+                  "verified_bytes_per_second": 438242315.40331817,
+                  "durable_bytes_per_second": 436425301.8026792,
+                  "cpu_seconds_per_gib": 2.006449
+                }
+              },
+              "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+            },
+            "current": {
+              "status": "target-unmet",
+              "requires_more_pairs": false,
+              "pairs": 6,
+              "ratios": {
+                "verified_bytes_per_second": {
+                  "median": 0.7855626592752664,
+                  "lower": 0.6927284385340347,
+                  "upper": 0.7999833505781107,
+                  "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+                },
+                "durable_bytes_per_second": {
+                  "median": 0.788593609521036,
+                  "lower": 0.6951594218482664,
+                  "upper": 0.8030230345919674,
+                  "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+                },
+                "cpu_seconds_per_gib": {
+                  "median": 2.063579314522852,
+                  "lower": 2.0302414615245628,
+                  "upper": 2.164292535392902,
+                  "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+                }
+              },
+              "medians": {
+                "Swift": {
+                  "verified_bytes_per_second": 342305680.2849639,
+                  "durable_bytes_per_second": 342125179.7749858,
+                  "cpu_seconds_per_gib": 4.0502185
+                },
+                "libtorrent": {
+                  "verified_bytes_per_second": 436560012.0270846,
+                  "durable_bytes_per_second": 434793718.36942685,
+                  "cpu_seconds_per_gib": 1.9496855
+                }
+              },
+              "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+            }
+          },
+          "source_ratios": {
+            "cpu_seconds_per_gib": {
+              "median": 0.9959330477502639,
+              "lower": 0.9725554415685447,
+              "upper": 1.0106845413679215,
+              "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+            },
+            "verified_bytes_per_second": {
+              "median": 0.9992785361228014,
+              "lower": 0.8714926233788247,
+              "upper": 1.0182740135179853,
+              "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+            },
+            "peak_rss": {
+              "median": 1.0151547178182647,
+              "lower": 0.9845510052670219,
+              "upper": 1.035765448572974,
+              "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+            },
+            "counterpart_cpu_seconds_per_gib": {
+              "median": 1.0050206425441708,
+              "lower": 0.9795663879314517,
+              "upper": 1.0091795513408877,
+              "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+            }
+          },
+          "native_control_ratios": {
+            "cpu_seconds_per_gib": {
+              "median": 0.9910967921007126,
+              "lower": 0.9331359072740176,
+              "upper": 1.0453486355360768,
+              "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+            },
+            "verified_bytes_per_second": {
+              "median": 0.998734285795446,
+              "lower": 0.9873881187956989,
+              "upper": 1.004838360663438,
+              "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+            }
+          },
+          "method": "Current/previous within balanced source-order pairs; fixed six pairs; diagnostic only, no acceptance inference or uncertainty-driven retries",
+          "baseline_memory": {
+            "previous": {
+              "status": "pass",
+              "median_peak_rss_ratio": 0.19409253167214952,
+              "lower": 0.19301675977653632,
+              "upper": 0.20117556504093487,
+              "maximum_peak_rss_ratio": 0.205771643663739,
+              "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+            },
+            "current": {
+              "status": "pass",
+              "median_peak_rss_ratio": 0.19976202141807237,
+              "lower": 0.1939766613094822,
+              "upper": 0.20165358744394618,
+              "maximum_peak_rss_ratio": 0.20103164645197266,
+              "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+            }
+          }
+        }
+      ],
+      "sha256": {
+        "trials.jsonl": "56387ac8ac541963b32cb1190d53e97688eb8a7c1774c2b6479b9e5d481bc308",
+        "summary.json": "7893d7354719645fe389daecc854b50c6ae5f1b46ba5df3009e9fcb493af1745",
+        "environment.json": "4a1501772c6f08a63064bded5f9898df15141aa111237ddfd0a24e851cb1450e",
+        "fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+      }
     }
   ],
   "finalization": "Seed run later has normal summary and final success message; earlier missing-handle interruption diagnosis is superseded. No trials rerun or replaced."

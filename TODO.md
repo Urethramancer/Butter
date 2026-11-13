@@ -6,12 +6,13 @@
   remaining CPU gap. The full matrix validates all 252 trials, passing throughput
   9/18, CPU 0/18 and original-baseline memory 18/18. Revised single-file download
   saves 8.3% CPU and raises throughput 3.7%; RSS and seeding remain inconclusive
-  across 140 validated trials; many-file hybrid CPU/throughput improve 4.5%/2.0%
+  across 168 validated trials; many-file hybrid CPU/throughput improve 4.5%/2.0%
   and concurrent hybrid 5.8%/3.6%, with inconclusive RSS. First form is disqualified by 5.0%
   higher seeding RSS; all 112 trials remain. Keep this failure separate from
   revised-source evidence. Native checks (466 PASS records), application,
   recovery, sanitizers and Debug/Release builds pass. Investigate cross-run
-  many-file v2 seeding throughput differences. Concurrent v1 seeding source CPU
+  many-file v2 seeding throughput differences: its source ratio 0.999
+  [0.871–1.018] still includes the earlier 8.5% loss. Concurrent v1 seeding source CPU
   is 1.001 [0.985–1.006], not reproducing its 7.0% cross-run rise; RSS and
   throughput remain inconclusive. Native controls also shift, so do not infer
   a source cause from separate runs.

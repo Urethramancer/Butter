@@ -6,7 +6,7 @@ to the revised source; the first form's seeding RSS regression remains recorded.
 
 Each case uses four warm-ups and six balanced source/engine pairs, production
 windows, fresh processes/destinations and explicitly warm source files. All
-140 trials pass independent payload digests and saved-state reopening; none is
+168 trials pass independent payload digests and saved-state reopening; none is
 retried or replaced. Ratios below are revised/previous, with 95% paired median
 bootstrap intervals.
 
@@ -17,6 +17,7 @@ bootstrap intervals.
 | Concurrent hybrid download | 0.942 [0.925–0.954] | 1.036 [1.014–1.094] | 1.037 [0.975–1.073] | 0.905 [0.860–1.073] |
 | Many-file v1 seeding | 1.002 [0.991–1.051] | 0.959 [0.831–1.052] | 1.029 [0.966–1.079] | 0.995 [0.985–1.040] |
 | Concurrent v1 seeding | 1.001 [0.985–1.006] | 0.992 [0.987–1.001] | 1.011 [0.996–1.030] | 1.004 [0.978–1.253] |
+| Many-file v2 seeding | 0.996 [0.973–1.011] | 0.999 [0.871–1.018] | 1.015 [0.985–1.036] | 1.005 [0.980–1.009] |
 
 Single-file download CPU falls 8.3% and throughput rises 3.7%; counterpart CPU
 falls 8.6%. RSS remains inconclusive. Raw Swift medians are 4.042 → 3.716 CPU
@@ -45,6 +46,13 @@ not a retry or replacement; measured revision `2f2c230` has matching production
 hashes. The earlier cross-run difference remains recorded, and absence of a
 source cost is unproven.
 
+Many-file v2 seeding investigates its earlier 8.5% absolute throughput loss.
+The source median is nearly unchanged, but its −12.9% to +1.8% interval still
+includes the earlier loss. This remains unresolved, not disproved. CPU, RSS,
+counterpart CPU and native controls are also inconclusive. All 28 new trials
+validate; none replaces earlier samples. Measured revision `5157264` has matching
+production hashes.
+
 Seeding establishes neither improvement nor regression. Its wide intervals
 do not prove the first form's RSS cost is resolved. Revised/native paired CPU
 is 2.301 [2.223–2.602] and throughput 0.810 [0.656–0.915]. Native controls also
@@ -69,4 +77,4 @@ the reconstructed statistics match the normal summary. No wrapper exit status
 was observed for that run. The single-file wrapper exits successfully.
 
 [Summaries and raw artifact hashes](request-burst-revised-comparison-2026-11-13.json)
-preserve all five cases under `.build/benchmarks/request-burst-scalar-*`.
+preserve all six cases under `.build/benchmarks/request-burst-scalar-*`.
