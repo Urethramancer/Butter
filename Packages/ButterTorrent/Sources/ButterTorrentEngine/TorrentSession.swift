@@ -58,6 +58,7 @@ private final class SessionEntry {
 	var error = ""
 	var closed = false
 	var pendingValidation = false
+	var validationPeer: NetworkEndpoint?
 	var running = false
 	var activity: SessionTransferActivity?
 	var receipts: [URL] = []
@@ -97,6 +98,7 @@ public actor TorrentSession {
 	private var networkError = ""
 	private var networkChanging = false
 	private var closed = false
+	private var shuttingDown = false
 	private let commands = SessionCommandGate()
 	private let publication = TransferPermits(1)
 	private let routing = TransferPermits(1)
@@ -131,7 +133,7 @@ public actor TorrentSession {
 		restorePolicy = policy
 	}
 	private func scheduleLaunchValidation() {
-		guard launchWorker == nil, entries.contains(where: { $0.pendingValidation }) else { return }
+		guard !shuttingDown, launchWorker == nil, entries.contains(where: { $0.pendingValidation }) else { return }
 		launchWorker = Task { [weak self] in await self?.validateLaunchQueue() }
 	}
 	private func validateLaunchQueue() async {
@@ -144,8 +146,12 @@ public actor TorrentSession {
 						try await entry.owner.recheck()
 						entry.last = try await entry.owner.snapshot()
 						entry.pendingValidation = false; entry.activity = nil; entry.error = ""
-						if entry.running { try await entry.owner.start(); try await self.refreshRouting(); await self.startTracker(entry) }
+						if entry.running {
+							try await entry.owner.start(); try await self.refreshRouting(); await self.startTracker(entry)
+							await self.connectValidationPeer(entry)
+						}
 					} catch {
+						if Task.isCancelled { throw error }
 						entry.pendingValidation = false; entry.activity = nil; entry.running = false
 						entry.error = error.localizedDescription
 						try? await entry.owner.pause()
@@ -154,6 +160,11 @@ public actor TorrentSession {
 			} catch { if Task.isCancelled { break }; entry.pendingValidation = false; entry.activity = nil; entry.error = error.localizedDescription }
 		}
 		launchWorker = nil
+	}
+	private func connectValidationPeer(_ entry: SessionEntry) async {
+		guard let endpoint = entry.validationPeer else { return }
+		entry.validationPeer = nil
+		_ = try? await connect(id: entry.id, to: endpoint)
 	}
 	public var currentPeerSettings: SessionPeerSettings {
 		if let peerSettings { return peerSettings }
@@ -230,7 +241,8 @@ public actor TorrentSession {
 			try await repository.publish(id: id, metadata: metadata, state: prepared)
 			let entry = SessionEntry(id: id, metadata: metadata, prepared: prepared, owner: managed, last: snapshot, configuration: configuration)
 			let progress = TransferProgress(metadata: metadata, storage: snapshot.storage)
-			if restore, restorePolicy != .deferred, (restorePolicy == .trustCompleted ? progress.done != progress.wanted || snapshot.storage.pendingVerificationCount > 0 : snapshot.storage.hasExistingPayload) {
+			let restoredPayload = restore || (pending != nil && snapshot.storage.hasExistingPayload)
+			if restoredPayload, restorePolicy != .deferred, (restorePolicy == .trustCompleted ? progress.done != progress.wanted || snapshot.storage.pendingVerificationCount > 0 : snapshot.storage.hasExistingPayload) {
 				entry.pendingValidation = true; entry.activity = .checking
 			}
 			if snapshot.storage.needsRecovery { entry.error = StorageFailure.recoveryRequired("a filesystem operation is pending").localizedDescription }
@@ -259,12 +271,13 @@ public actor TorrentSession {
 				let down = downloadLimit ?? entry.downloadLimit, up = uploadLimit ?? entry.uploadLimit
 				try await entry.owner.setLimits(download: down, upload: up); entry.downloadLimit = down; entry.uploadLimit = up
 			}
-			if entry.pendingValidation { entry.running = running; return }
+			if entry.pendingValidation { entry.running = running; self.scheduleLaunchValidation(); return }
 			if running && entry.error.isEmpty {
 				try await entry.owner.start(); entry.running = true
 				do { try await self.refreshRouting() } catch { entry.running = false; try? await entry.owner.pause(); throw error }
 				await self.network?.resumeMapping()
 				await self.startTracker(entry)
+				await self.connectValidationPeer(entry)
 			} else { try await self.pauseEntry(entry) }
 		}
 	}
@@ -401,7 +414,7 @@ public actor TorrentSession {
 		}
 	}
 	@discardableResult public func connect(id: String, to endpoint: NetworkEndpoint, utp: UTPTransport? = nil) async throws -> UUID {
-		guard !closed, !networkChanging else { throw NetworkFailure.busy }
+		guard !closed, !networkChanging, !shuttingDown else { throw NetworkFailure.busy }
 		guard configuration.addressFilter.allows(endpoint.address) else { throw PeerFailure.invalid("blocked peer") }
 		if let pending = pending(id), pending.running, let resolver = pending.resolver {
 			if utp != nil, peerSettings?.utp == false { throw NetworkFailure.invalid("µTP is disabled") }
@@ -445,8 +458,10 @@ public actor TorrentSession {
 	public func shutdown() async throws { _ = try await shutdownEligibility() }
 	/// Drain transfers and report whether completed claims can be trusted on a clean launch.
 	public func shutdownEligibility() async throws -> Bool {
-		await launchWorker?.value
-		return try await serial {
+		guard !shuttingDown else { throw NetworkFailure.busy }
+		shuttingDown = true; defer { shuttingDown = false }
+		let validating = launchWorker; validating?.cancel(); await validating?.value
+		return try await serial(duringShutdown: true) {
 			self.stopExports()
 			var failure: Error?
 			for pending in self.pendingMagnets { pending.running = false; await self.stopMagnet(pending) }
@@ -466,13 +481,14 @@ public actor TorrentSession {
 				try await entry.owner.save()
 				entry.last = try await entry.owner.snapshot()
 				let disk = entry.last.storage
-				if entry.pendingValidation || disk.needsRecovery || disk.pendingVerificationCount > 0 || !entry.error.isEmpty { eligible = false }
+				let progress = TransferProgress(metadata: entry.metadata, storage: disk)
+				if entry.pendingValidation || disk.needsRecovery || !entry.error.isEmpty { eligible = false }
+				if progress.done == progress.wanted && disk.pendingVerificationCount > 0 { eligible = false }
 			}
 			return eligible
 		}
 	}
-	public func snapshot
-() async throws -> TorrentSessionSnapshot {
+	public func snapshot() async throws -> TorrentSessionSnapshot {
 		try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }
 		var snapshots: [SessionTransferSnapshot] = []
 		for entry in self.entries {
@@ -689,6 +705,7 @@ public actor TorrentSession {
 					let stored = try await self.repository.retainedMetadata(id: winner.id)
 					guard stored == nil || stored?.originalInfo == metadata.originalInfo else { throw MetadataError.invalid("retained magnet identity") }
 					entry = try await self.publishMetadata(id: winner.id, metadata: metadata, destination: winner.destination, restore: stored != nil, configuration: configuration, pending: winner.state)
+					if entry.pendingValidation, !entry.metadata.inspection.private { entry.validationPeer = verified.1 }
 					if winner.running, entry.error.isEmpty, !entry.pendingValidation {
 						do {
 							try await entry.owner.start()
@@ -714,7 +731,7 @@ public actor TorrentSession {
 		} catch {
 			if let pending = pending(id), pending.revision == revision {
 				pending.promotion = nil
-				if !(error is CancellationError) { pending.error = error.localizedDescription; pending.running = false }
+				if !(error is CancellationError), !shuttingDown { pending.error = error.localizedDescription; pending.running = false }
 			}
 		}
 	}
@@ -843,10 +860,12 @@ public actor TorrentSession {
 		[hashes.v1, hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }
 	}
 	private static func matches(_ expected: InfoHashes, _ actual: InfoHashes) -> Bool { (expected.v1 == nil || expected.v1 == actual.v1) && (expected.v2 == nil || expected.v2 == actual.v2) }
-	private func serial<T: Sendable>(id: String? = nil, publishing: Bool = false, _ body: () async throws -> T) async throws -> T {
+	private func serial<T: Sendable>(id: String? = nil, publishing: Bool = false, duringShutdown: Bool = false, _ body: () async throws -> T) async throws -> T {
+		guard !shuttingDown || duringShutdown else { throw NetworkFailure.busy }
 		let token = try await commands.acquire(id); var ownsPublication = false
 		do {
 			try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }
+			guard !shuttingDown || duringShutdown else { throw NetworkFailure.busy }
 			if publishing || id.map({ pending($0) != nil }) == true { try await publication.acquire(); ownsPublication = true }
 			try Task.checkCancellation()
 			let result = try await body()

@@ -36,7 +36,7 @@ import ButterTorrentNetworking
 			} catch { release.signal(); try? await managed.close(); throw error }
 		}
 	}
-	@Test func repairDrainsCachedUploadsAndRestoresRunningState() async throws {
+	@Test(arguments: [false, true]) func repairAndFileValidationDrainCachedUploadsAndRestoreRunningState(validating: Bool) async throws {
 		try await withManagedSeed { fixture, seed, resources in
 			let source = fixture.root.appendingPathComponent("repair-copy")
 			try fixture.bytes.prefix(10003).write(to: source)
@@ -48,10 +48,14 @@ import ButterTorrentNetworking
 			try await peer.send(.interested); try await peer.send(.request(PeerBlock(piece: 0, offset: 0, length: 16384)))
 			try await eventually { await resources.snapshot().cachedBytes > 0 }
 			try Data(repeating: 255, count: 10003).write(to: fixture.root.appendingPathComponent("source/bundle/a"))
-			let repaired = try await engineDeadline { try await seed.repairFile(0, from: source) }
-			#expect(repaired.repairedFiles == 1 && repaired.verifiedPieces == 1 && repaired.pendingPieces == 0)
+			if validating { try await engineDeadline { try await seed.recheck(files: [0]) } }
+			else {
+				let repaired = try await engineDeadline { try await seed.repairFile(0, from: source) }
+				#expect(repaired.repairedFiles == 1 && repaired.verifiedPieces == 1 && repaired.pendingPieces == 0)
+			}
 			let snapshot = try await seed.snapshot()
-			#expect(snapshot.running && snapshot.transfer?.complete == true && snapshot.transfer?.peers.isEmpty == true)
+			#expect(snapshot.running && snapshot.transfer?.complete == !validating && snapshot.transfer?.peers.isEmpty == true)
+			#expect(snapshot.storage.verifiedPieces.contains(0) == !validating)
 			#expect(await resources.snapshot().cachedBytes == 0)
 			#expect(try Data(contentsOf: source) == fixture.bytes.prefix(10003))
 		}
@@ -142,7 +146,7 @@ import ButterTorrentNetworking
 	private func withManagedSeed(configuration: TCPTransferConfiguration = plainTransferConfiguration(), _ body: (TransferFixture, ManagedTransfer, TransferResources) async throws -> Void) async throws {
 		let fixture = try TransferFixture(), resources = try TransferResources(maximumDiskOperations: 2)
 		let seed = try await ManagedTransfer.open(metadata: fixture.metadata, destination: fixture.root.appendingPathComponent("source"),
-			stateDirectory: fixture.root.appendingPathComponent("managed-state"), configuration: configuration, resources: resources)
+			stateDirectory: fixture.root.appendingPathComponent("managed-state"), readPolicy: .trustedVerified, configuration: configuration, resources: resources)
 		do { try await seed.recheck(); try await body(fixture, seed, resources); try await seed.close() }
 		catch { try? await seed.close(); await fixture.clean(); throw error }
 		await fixture.clean()

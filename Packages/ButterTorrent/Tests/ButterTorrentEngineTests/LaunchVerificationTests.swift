@@ -5,6 +5,52 @@ import ButterTorrentMetadata
 @testable import ButterTorrentEngine
 
 extension NativeSessionTests { @Suite struct LaunchVerificationTests {
+	@Test func shutdownCancelsValidationAdmissionAndPausedResumeRestartsTheQueue() async throws {
+		try await transferFixture { fixture in
+			let resources = try TransferResources(maximumDiskOperations: 1)
+			let source = fixture.root.appendingPathComponent("input.torrent"), session = TorrentSession(storage: fixture.root.appendingPathComponent("library"), configuration: plainTransferConfiguration(), resources: resources)
+			try fixture.metadata.document.original.write(to: source)
+			var held = false
+			do {
+				_ = try await session.add(id: "torrent", source: source, destination: fixture.root.appendingPathComponent("source"))
+				try await session.recheck(id: "torrent")
+				_ = try await session.remove(id: "torrent", retainState: true)
+				try await resources.disk.acquire(); held = true
+				try await session.setRestorePolicy(.validateAll)
+				_ = try await session.add(id: "torrent", source: source, destination: fixture.root.appendingPathComponent("source"), restore: true)
+				try await eventually { await resources.snapshot().waitingDiskOperations == 1 }
+				let eligible = try await engineDeadline { try await session.shutdownEligibility() }
+				#expect(!eligible)
+				#expect(try await session.snapshot().transfers[0].state.storage.verifiedPieces.isEmpty)
+				await resources.disk.release(); held = false
+				try await session.run(id: "torrent", running: false)
+				try await eventually { try await session.snapshot().transfers[0].activity == nil }
+				let row = try await session.snapshot().transfers[0]
+				#expect(!row.state.running && row.state.storage.verifiedPieces == [0, 1, 2])
+				try await session.close()
+			} catch { if held { await resources.disk.release() }; try? await session.close(); throw error }
+		}
+	}
+	@Test func unfinishedMissingHashesDoNotDiscardOtherCompletedTrust() async throws {
+		try await transferFixture { fixture in
+			let unfinished = try V2Fixture(version: 3), session = TorrentSession(storage: fixture.root.appendingPathComponent("library"), configuration: plainTransferConfiguration())
+			do {
+				let completeSource = fixture.root.appendingPathComponent("complete.torrent"), partialSource = fixture.root.appendingPathComponent("partial.torrent")
+				try fixture.metadata.document.original.write(to: completeSource)
+				let sparse = try TorrentMetadata(infoBytes: unfinished.metadata.originalInfo, expected: unfinished.metadata.hashes)
+				try sparse.document.original.write(to: partialSource)
+				_ = try await session.add(id: "complete", source: completeSource, destination: fixture.root.appendingPathComponent("source"))
+				try await session.recheck(id: "complete")
+				_ = try await session.add(id: "partial", source: partialSource, destination: unfinished.root.appendingPathComponent("source"))
+				try await session.recheck(id: "partial")
+				let partial = try #require(await session.snapshot().transfers.first { $0.id == "partial" })
+				#expect(partial.state.storage.pendingVerificationCount > 0)
+				#expect(try await session.shutdownEligibility())
+				try await session.close()
+			} catch { try? await session.close(); await unfinished.close(); throw error }
+			await unfinished.close()
+		}
+	}
 	@Test func pendingJournalMakesShutdownIneligibleWithoutBlockingQuit() async throws {
 		try await transferFixture { fixture in
 			let library = fixture.root.appendingPathComponent("library"), source = fixture.root.appendingPathComponent("input.torrent")
@@ -41,6 +87,7 @@ extension NativeSessionTests { @Suite struct LaunchVerificationTests {
 				counts.reset()
 				try await session.setRestorePolicy(scenario == "unclean" ? .validateAll : .trustCompleted)
 				_ = try await session.add(id: "torrent", source: source, destination: fixture.root.appendingPathComponent("source"), restore: true)
+				try await eventually { try await session.snapshot().transfers[0].activity == nil }
 				#expect(try await session.shutdownEligibility())
 				let row = try #require(await session.snapshot().transfers.first)
 				#expect(!row.state.running && row.activity == nil)

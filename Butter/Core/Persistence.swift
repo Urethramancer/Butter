@@ -31,7 +31,8 @@ actor StateStorage: StatePersisting {
 		let temporary = ".state-\(UUID().uuidString)", backup = ".previous-\(UUID().uuidString)", name = url.lastPathComponent
 		let file = openat(directory, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
 		guard file >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-		defer { close(file); unlinkat(directory, temporary, 0); unlinkat(directory, backup, 0) }
+		var preserveBackup = false
+		defer { close(file); unlinkat(directory, temporary, 0); if !preserveBackup { unlinkat(directory, backup, 0) } }
 		try data.withUnsafeBytes { bytes in
 			var offset = 0
 			while offset < bytes.count {
@@ -48,8 +49,10 @@ actor StateStorage: StatePersisting {
 		if fsync(directory) != 0 {
 			let failure = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
 			let restored = retained ? renameat(directory, backup, directory, name) : unlinkat(directory, name, 0)
+			preserveBackup = retained && restored != 0
 			guard restored == 0, fsync(directory) == 0 else {
-				throw NSError(domain: "Butter.Storage", code: 4, userInfo: [NSLocalizedDescriptionKey: "State replacement and rollback could not be made durable. Check disk access before restarting transfers.", NSUnderlyingErrorKey: failure])
+				let recovery = preserveBackup ? " Previous state was retained as \(backup)." : ""
+				throw NSError(domain: "Butter.Storage", code: 4, userInfo: [NSLocalizedDescriptionKey: "State replacement and rollback could not be made durable. Check disk access before restarting transfers.\(recovery)", NSUnderlyingErrorKey: failure])
 			}
 			throw failure
 		}

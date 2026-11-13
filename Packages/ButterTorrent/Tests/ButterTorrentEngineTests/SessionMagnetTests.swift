@@ -40,11 +40,16 @@ extension NativeSessionTests { @Suite struct SessionMagnetTests {
 		await fixture.close()
 	}
 
-	@Test(arguments: [false, true]) func incomingPeerProvidesMetadataWithoutDiscovery(_ utp: Bool) async throws {
+	@Test(arguments: [false, true], [false, true]) func incomingPeerProvidesMetadataWithoutDiscovery(_ utp: Bool, _ existingPayload: Bool) async throws {
 		let fixture = try V2Fixture(version: 3)
 		let seed = TorrentSession(storage: fixture.root.appendingPathComponent("seed-library"), configuration: plainTransferConfiguration(), loopbackOnly: true)
-		let down = TorrentSession(storage: fixture.root.appendingPathComponent("down-library"), configuration: plainTransferConfiguration(), loopbackOnly: true)
+		let gate = MagnetValidationGate()
+		let down = TorrentSession(storage: fixture.root.appendingPathComponent("down-library"), configuration: plainTransferConfiguration(), loopbackOnly: true, storageEvent: { _, event in if existingPayload { gate.record(event) } })
 		do {
+			if existingPayload {
+				try FileManager.default.copyItem(at: fixture.root.appendingPathComponent("source"), to: fixture.root.appendingPathComponent("download"))
+				try await down.setRestorePolicy(.validateAll)
+			}
 			var settings = SessionPeerSettings()
 			settings.tcp = !utp; settings.utp = utp; settings.pex = false
 			_ = try await seed.configurePeers(settings)
@@ -56,6 +61,12 @@ extension NativeSessionTests { @Suite struct SessionMagnetTests {
 			_ = try await down.add(id: "magnet", magnet: Magnet(hashes: fixture.metadata.hashes), destination: fixture.root.appendingPathComponent("download"))
 			try await down.run(id: "magnet", running: true)
 			_ = try await seed.connect(id: "seed", to: NetworkEndpoint("127.0.0.1", port: port))
+			if existingPayload {
+				try await eventually { gate.entered }
+				let row = try #require(await down.snapshot().transfers.first)
+				#expect(row.activity == .checking && row.state.transfer == nil && row.state.storage.verifiedPieces.isEmpty)
+				gate.release()
+			}
 			try await eventually { try await down.snapshot().transfers.first?.state.transfer?.complete == true }
 			let snapshot = try await down.snapshot()
 			#expect(snapshot.magnets.isEmpty && snapshot.transfers[0].metadata.originalInfo == fixture.metadata.originalInfo)
@@ -63,7 +74,7 @@ extension NativeSessionTests { @Suite struct SessionMagnetTests {
 			for file in fixture.metadata.inspection.files where !file.pad {
 				#expect(try Data(contentsOf: fixture.root.appendingPathComponent("download/" + file.path)) == Data(contentsOf: fixture.root.appendingPathComponent("source/" + file.path)))
 			}
-		} catch { try? await down.close(); try? await seed.close(); await fixture.close(); throw error }
+		} catch { gate.release(); try? await down.close(); try? await seed.close(); await fixture.close(); throw error }
 		await fixture.close()
 	}
 
@@ -211,3 +222,16 @@ extension NativeSessionTests { @Suite struct SessionMagnetTests {
 		await fixture.close()
 	}
 } }
+
+private final class MagnetValidationGate: @unchecked Sendable {
+	private let lock = NSLock()
+	private let semaphore = DispatchSemaphore(value: 0)
+	private var blocked = false
+	var entered: Bool { lock.withLock { blocked } }
+	func record(_ event: StorageEvent) {
+		guard case .pieceHashed = event else { return }
+		let first = lock.withLock { if blocked { return false }; blocked = true; return true }
+		if first { _ = semaphore.wait(timeout: .now() + 6) }
+	}
+	func release() { semaphore.signal() }
+}
