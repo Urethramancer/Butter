@@ -61,12 +61,16 @@ extension TCPTransferComparisonTests {
 					if hash == rejected {
 						guard !events.isEmpty, events.allSatisfy({ $0 == .started }) else { throw PeerFailure.invalid("rejected tracker identity acquired a lifecycle") }
 					} else {
-						var expectedEvents: [TrackerEvent?] = nativeSeed ? [.started, .stopped] : [.started, .completed, .stopped]
+						// A reopened seed can announce before lazy checks finish. Its
+						// initial verified `left`, not the fixture's role, determines completion.
+						let startsComplete = nativeSeed && identityCalls.first?.left == 0
+						var expectedEvents: [TrackerEvent?] = startsComplete ? [.started, .stopped] : [.started, .completed, .stopped]
 						if magnetDownload && !nativeSeed {
 							expectedEvents.insert(contentsOf: [.started, .stopped], at: 0)
 							guard identityCalls.prefix(2).allSatisfy({ $0.left == 16_384 }) else { throw PeerFailure.invalid("pending tracker left differs") }
 						}
 						guard events == expectedEvents else { throw PeerFailure.invalid("tracker lifecycle differs: \(events)") }
+						guard identityCalls.last?.left == 0, identityCalls.filter({ $0.event == .completed }).allSatisfy({ $0.left == 0 }) else { throw PeerFailure.invalid("completed tracker lifecycle retained missing bytes") }
 					}
 				}
 				let output = nativeSeed ? work.appendingPathComponent("reference-download") : destination

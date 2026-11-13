@@ -187,6 +187,7 @@ extension StorageState {
 		try claim()
 	}
 	private func checkedRepairFile(_ directory: StorageDirectory, path: String, owned: FileStamp, digest: Data, check: () throws -> Void) throws -> FileStamp {
+		guard let current = try directory.inspect(path), current.sameFile(owned) else { throw StorageFailure.recoveryRequired("repair file is missing or replaced; retain the journal and backup files") }
 		let checked = try directory.checkedDigest(path, check: check)
 		guard checked.stamp.sameFile(owned), checked.hash == digest, try directory.inspect(path) == checked.stamp else { throw StorageFailure.recoveryRequired("repair file identity or contents changed") }
 		return checked.stamp

@@ -14,6 +14,24 @@ func repairMetadata() throws -> TorrentMetadata {
 }
 
 @Suite struct StorageRepairTests {
+	@Test(arguments: [false, true]) func replacedDestinationIsRetainedAcrossPublication(published: Bool) async throws {
+		try await storageFixture { root in
+			let source = root.appendingPathComponent("replacement"), destination = root.appendingPathComponent("data/bundle/a"), replacement = Data([91, 92])
+			try Data(0..<5).write(to: source)
+			let state = try StorageState(metadata: repairMetadata(), layout: StorageLayout(metadata: repairMetadata()), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { event in
+				if event == (published ? .filePublished(0) : .repairStaged(0)) { try? replacement.write(to: destination, options: .atomic) }
+			}, check: {})
+			try state.write(piece: 0, offset: 0, data: Data(repeating: 255, count: 5), check: {})
+			#expect(throws: StorageFailure.self) { try state.repairFiles([0: source], check: {}) }
+			#expect(try Data(contentsOf: destination) == replacement)
+			#expect(try Data(contentsOf: source) == Data(0..<5))
+			#expect(state.hasJournal == published)
+			if published {
+				#expect(throws: StorageFailure.self) { try state.recover(acceptMatchingCopies: false, check: {}) }
+				#expect(try Data(contentsOf: destination) == replacement)
+			}
+		}
+	}
 	@Test(arguments: [false, true]) func boundaryRepairRetainsSourcesAndUsesRenamedSelectiveDestinations(selective: Bool) async throws {
 		try await storageFixture { root in
 			let metadata = try repairMetadata(), a = root.appendingPathComponent("a"), b = root.appendingPathComponent("b")
