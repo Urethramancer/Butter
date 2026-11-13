@@ -145,7 +145,7 @@
   },
   "candidate": "0264db9",
   "previous": "5148f4b",
-  "decision": "Promising focused CPU/throughput gain; no established RSS/counterpart cost in this case. Broader cases and native validation pending; not acceptance.",
+  "decision": "Rejected and reverted: many-file v1 seeding establishes 2.4% throughput loss despite 4.6% CPU reduction. Download gains do not override the cost. Retain independent Unicode correctness correction.",
   "raw": [
     {
       "path": ".build/benchmarks/character-index-many-hybrid-source-order/environment.json",
@@ -181,5 +181,191 @@
       "path": ".build/diagnostics/piece-buffer/character-index-corrected-release.log",
       "sha256": "7f15b05fd5dcf3856c821021d8fb21b687b19fd096ba77168dcc2b504fdc24d8"
     }
-  ]
+  ],
+  "seeding": {
+    "case": "many",
+    "format": "v1",
+    "direction": "seed",
+    "order_seed": 11112,
+    "status": "source-comparison-only",
+    "pairs": 6,
+    "valid_pairs": 6,
+    "variants": {
+      "previous": {
+        "status": "target-unmet",
+        "requires_more_pairs": false,
+        "pairs": 6,
+        "ratios": {
+          "verified_bytes_per_second": {
+            "median": 0.8576355237564499,
+            "lower": 0.8506893622300151,
+            "upper": 0.8671266132436339,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "durable_bytes_per_second": {
+            "median": 0.8579829653235616,
+            "lower": 0.8511017114399368,
+            "upper": 0.8676363898915562,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "cpu_seconds_per_gib": {
+            "median": 2.0672572472709567,
+            "lower": 1.9971499981313672,
+            "upper": 2.093846679906985,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          }
+        },
+        "medians": {
+          "Swift": {
+            "verified_bytes_per_second": 382282492.062203,
+            "durable_bytes_per_second": 382002751.2812067,
+            "cpu_seconds_per_gib": 4.117674500000001
+          },
+          "libtorrent": {
+            "verified_bytes_per_second": 446321014.69082606,
+            "durable_bytes_per_second": 445774298.8059646,
+            "cpu_seconds_per_gib": 1.9856905
+          }
+        },
+        "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+      },
+      "current": {
+        "status": "target-unmet",
+        "requires_more_pairs": false,
+        "pairs": 6,
+        "ratios": {
+          "verified_bytes_per_second": {
+            "median": 0.8440319385072013,
+            "lower": 0.8189167595524267,
+            "upper": 0.8631710727076201,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "durable_bytes_per_second": {
+            "median": 0.8443456231536093,
+            "lower": 0.8186236790673425,
+            "upper": 0.8640083634644178,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "cpu_seconds_per_gib": {
+            "median": 1.9657948528713973,
+            "lower": 1.8740487713262608,
+            "upper": 2.013946760130293,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          }
+        },
+        "medians": {
+          "Swift": {
+            "verified_bytes_per_second": 373709847.1438491,
+            "durable_bytes_per_second": 373438386.23359,
+            "cpu_seconds_per_gib": 3.9502154999999997
+          },
+          "libtorrent": {
+            "verified_bytes_per_second": 442762434.0340698,
+            "durable_bytes_per_second": 442276400.76089895,
+            "cpu_seconds_per_gib": 2.0210415
+          }
+        },
+        "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+      }
+    },
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 0.9535427358650799,
+        "lower": 0.9493417083541572,
+        "upper": 0.9819016589079195,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9755531800464521,
+        "lower": 0.9524895452302393,
+        "upper": 0.9966539005347621,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 0.9537625359422119,
+        "lower": 0.9027627077359138,
+        "upper": 1.0742530855440489,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 0.9926052272015534,
+        "lower": 0.9750599030164819,
+        "upper": 1.0151474734519144,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_control_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 1.0259914266751005,
+        "lower": 0.9598617971433381,
+        "upper": 1.0520088861340753,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9942235143482687,
+        "lower": 0.9886275338693045,
+        "upper": 0.999202359298053,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "method": "Current/previous within balanced source-order pairs; fixed six pairs; diagnostic only, no acceptance inference or uncertainty-driven retries",
+    "baseline_memory": {
+      "previous": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.20492729069603274,
+        "lower": 0.1873767258382643,
+        "upper": 0.20921332388377037,
+        "maximum_peak_rss_ratio": 0.21045972163644033,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "current": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.19447974022306933,
+        "lower": 0.18757921419518378,
+        "upper": 0.20345313601127554,
+        "maximum_peak_rss_ratio": 0.20539856600590467,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      }
+    },
+    "raw": [
+      {
+        "path": ".build/benchmarks/character-index-many-v1-seed-source-order/environment.json",
+        "sha256": "c6102c49797858f5d6836f08d4ea3c2c7ff1f90fb448486efa721e2acbf02de8"
+      },
+      {
+        "path": ".build/benchmarks/character-index-many-v1-seed-source-order/fixtures.json",
+        "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+      },
+      {
+        "path": ".build/benchmarks/character-index-many-v1-seed-source-order/trials.jsonl",
+        "sha256": "269b06b12c1fb1f2f64d80091f90f29dfad5442fba68b2a432189efb5bae00e8"
+      },
+      {
+        "path": ".build/benchmarks/character-index-many-v1-seed-source-order/summary.json",
+        "sha256": "3a07ba6866fc5282e3605dae8ba67daa499f5c84c8e725add26f349ef6723a6b"
+      }
+    ]
+  },
+  "restored_checks": [
+    {
+      "path": ".build/diagnostics/piece-buffer/character-index-restored-storage.log",
+      "sha256": "194f37ee3d21374826928bd6dc06b9cf6eb82ade8829242b57c5de3212985a57"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/character-index-restored-release.log",
+      "sha256": "1681c76583f4fe486528209874d5bf3d513d8237d1dd5fde1f4931170c916e02"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/character-index-restored-benchmark-release.log",
+      "sha256": "b12f16ad9aa18c4997582eeb587d4415ed94447913a365bb90e7bc07abeda087"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/character-index-restored-bridge.log",
+      "sha256": "fb2532234379f86523c346c3b9945cf3d26215d815dc50d4d99a51a7304fb0d1"
+    }
+  ],
+  "rejected_patch": {
+    "path": ".build/diagnostics/piece-buffer/character-index-rejected.patch",
+    "sha256": "4b16010f4c7df65a80b004ff2bb886aee9fa06245a636115dcb98793170e583f"
+  }
 }

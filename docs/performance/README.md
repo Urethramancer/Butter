@@ -1,10 +1,9 @@
 # Swift/libtorrent transfer comparison
 
-[Validated character-index lookup](character-index-results-2026-11-13.md) shows
-CPU −4.1% and throughput +4.8% in many-file hybrid downloads, with no established
-RSS increase. All 28 trials validate; broader/native checks remain pending.
-Both sources include the independently tested cached Unicode-path correction.
-The full matrix below predates these scanner changes.
+[Character-index lookup](character-index-results-2026-11-13.md) is rejected and
+reverted: download CPU/throughput improve, but many-file v1 seeding loses 2.4%
+throughput despite lower CPU. All 56 trials validate. Only the independently
+verified cached Unicode-path correction remains; the full matrix predates it.
 
 [Source memory diagnostics](byte-split-memory-profile-2026-11-13.md) validate
 four trials and 24 gate snapshots. Retained/rejected live heap is nearly equal;
