@@ -33,6 +33,7 @@ final class StorageStampScan {
 			do {
 				descriptor = try directory.parent(path) { parent, _ in
 					let copy = dup(parent)
+					StorageDiagnostics.count(.descriptorDuplicates)
 					guard copy >= 0 else { throw diskError("Cannot retain inspection directory") }; return copy
 				}
 			} catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
@@ -73,7 +74,7 @@ final class StorageDirectory: @unchecked Sendable {
 		self.url = url.standardizedFileURL.resolvingSymlinksInPath()
 		if create { try FileManager.default.createDirectory(at: self.url, withIntermediateDirectories: true) }
 		fd = open(self.url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-		StorageDiagnostics.count(.descriptorOpens)
+		StorageDiagnostics.opened(.directoryOpens)
 		guard fd >= 0 else { throw diskError("Cannot open storage root") }
 	}
 	deinit { close(fd) }
@@ -83,13 +84,13 @@ final class StorageDirectory: @unchecked Sendable {
 			guard mkdirat(fd, name, 0o700) == 0 else { throw diskError("Cannot create state directory") }; try sync(fd)
 		}
 		let descriptor = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-		StorageDiagnostics.count(.descriptorOpens)
+		StorageDiagnostics.opened(.directoryOpens)
 		guard descriptor >= 0 else { throw diskError("Cannot open state directory") }
 		return StorageDirectory(url: url.appendingPathComponent(name), descriptor: descriptor)
 	}
 	func names() throws -> [String] {
 		let descriptor = openat(fd, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-		StorageDiagnostics.count(.descriptorOpens)
+		StorageDiagnostics.opened(.directoryOpens)
 		guard descriptor >= 0 else { throw diskError("Cannot enumerate state directory") }
 		guard let directory = fdopendir(descriptor) else { close(descriptor); throw diskError("Cannot enumerate state directory") }
 		defer { closedir(directory) }
@@ -117,12 +118,13 @@ final class StorageDirectory: @unchecked Sendable {
 	func parent<T>(_ path: String, create: Bool = false, _ body: (Int32, String) throws -> T) throws -> T {
 		let parts = try StorageLayout.components(path)
 		var directory = dup(fd)
+		StorageDiagnostics.count(.descriptorDuplicates)
 		guard directory >= 0 else { throw diskError("Cannot duplicate directory") }
 		defer { close(directory) }
 		for part in parts.dropLast() {
 			if create, mkdirat(directory, part, 0o700) == 0 { try sync(directory) }
 			let next = openat(directory, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-			StorageDiagnostics.count(.descriptorOpens)
+			StorageDiagnostics.opened(.directoryOpens)
 			guard next >= 0 else { throw diskError("Cannot open managed directory") }
 			close(directory); directory = next
 		}
@@ -132,7 +134,7 @@ final class StorageDirectory: @unchecked Sendable {
 		try parent(path, create: write) { directory, name in
 			let flags = (write ? O_RDWR | O_CREAT : O_RDONLY) | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK | (exclusive ? O_EXCL : 0)
 			let file = openat(directory, name, flags, 0o600)
-			StorageDiagnostics.count(.descriptorOpens)
+			StorageDiagnostics.opened(.fileOpens)
 			guard file >= 0 else { throw diskError("Cannot open managed file") }
 			do { _ = try stamp(file, shared: !write); return file } catch { close(file); throw error }
 		}
@@ -200,7 +202,7 @@ final class StorageDirectory: @unchecked Sendable {
 		try parent(path, create: true) { directory, name in
 			let temporary = ".atomic-" + UUID().uuidString
 			let file = openat(directory, temporary, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
-			StorageDiagnostics.count(.descriptorOpens)
+			StorageDiagnostics.opened(.atomicStateOpens)
 			guard file >= 0 else { throw diskError("Cannot create atomic state") }
 			defer { close(file); unlinkat(directory, temporary, 0) }
 			try Self.write(data, to: file, offset: 0, check: {})

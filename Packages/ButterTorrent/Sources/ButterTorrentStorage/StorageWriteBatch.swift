@@ -51,6 +51,7 @@ extension StorageState {
 				cursor += segment.count
 			}
 		}
+		StorageDiagnostics.count(.writeBatches); StorageDiagnostics.count(.writeBlocks, writes.count)
 		try invalidateWriteTargets(segments)
 		let pieces = Set(writes.map(\.piece))
 		let invalidated = pieces.filter(committedContains)
@@ -72,7 +73,7 @@ extension StorageState {
 				let (directory, path) = location(segment.file)
 				let file: Int32
 				if let cached = files[segment.file] {
-					file = cached
+					file = cached; StorageDiagnostics.count(.writeDescriptorCacheHits)
 				} else {
 					if files.count == 8 { let oldest = order.removeFirst(); close(files.removeValue(forKey: oldest)!) }
 					file = try directory.openFile(path, write: true); files[segment.file] = file; order.append(segment.file)

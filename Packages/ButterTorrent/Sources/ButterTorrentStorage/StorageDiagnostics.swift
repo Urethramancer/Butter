@@ -7,8 +7,13 @@ public enum StorageDiagnostics {
 	public enum Counter: String, Sendable {
 		case scans, filesInspected, descriptorOpens, diskJobs, bytesRead, bytesWritten
 		case bytesHashed, sha1Bytes, sha256Bytes, cacheHits, verificationInvalidations
+		case descriptorDuplicates, writeBatches, writeBlocks, writeDescriptorCacheHits
 	}
+	enum OpenKind: String { case directoryOpens, fileOpens, atomicStateOpens }
 	private static let totals = Totals()
+	static func opened(_ kind: OpenKind) {
+		guard enabled else { return }; totals.opened(kind.rawValue)
+	}
 	public static func count(_ counter: Counter, _ amount: Int = 1) {
 		guard enabled else { return }; totals.add(counter.rawValue, Int64(amount))
 	}
@@ -22,6 +27,9 @@ public enum StorageDiagnostics {
 	private final class Totals: @unchecked Sendable {
 		private let lock = NSLock()
 		private var values: [String: Int64] = [:]
+		func opened(_ kind: String) {
+			lock.withLock { values["descriptorOpens", default: 0] += 1; values[kind, default: 0] += 1 }
+		}
 		func add(_ key: String, _ amount: Int64) { lock.withLock { values[key, default: 0] += amount } }
 		func snapshot() -> [String: Int64] { lock.withLock { values } }
 	}
