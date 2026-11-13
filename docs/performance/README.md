@@ -1,5 +1,11 @@
 # Swift/libtorrent transfer comparison
 
+[Source memory diagnostics](byte-split-memory-profile-2026-11-13.md) validate
+four trials and 24 gate snapshots. Retained/rejected live heap is nearly equal;
+the rejected capture has more dirty empty malloc arenas and stack residency.
+These intrusive single captures do not establish cause or overturn its RSS cost.
+Bounded heap/VM source profiling is now available in the existing harness.
+
 [Per-job autorelease scope](disk-autorelease-results-2026-11-13.md) is rejected
 and reverted: six balanced source pairs establish no CPU, throughput or RSS
 benefit. All 28 trials validate; current production still matches the full matrix.

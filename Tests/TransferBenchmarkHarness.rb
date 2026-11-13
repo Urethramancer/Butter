@@ -219,7 +219,7 @@ module TransferBenchmarkHarness
 				if (result = Process.waitpid2(@pid, Process::WNOHANG))
 					@reaped = true
 					unless result[1].success?
-						tail = File.binread(@log, 4096, [File.size(@log) - 4096, 0].max)
+						tail = File.binread(@log, 4096, [File.size(@log) - 4096, 0].max).force_encoding(Encoding::UTF_8).scrub
 						raise "Child failed (#{result[1]}): #{@log}\n#{tail}"
 					end
 					break

@@ -303,7 +303,7 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 				  puts JSON.generate(phase: phase, time: index + 1, user: index * 0.1, system: index * 0.2, peak_rss: 1000)
 				  STDOUT.flush
 				end
-				if mode == 'exit-after-stopped'; abort 'fixture failed after stopped'; end
+				if mode == 'exit-after-stopped'; STDERR.write([255].pack('C')); abort 'fixture failed after stopped'; end
 			RUBY
 			children = programs.each_with_index.map do |mode, index|
 				job = File.join(root, "job-#{index}.json"); File.write(job, JSON.generate(mode: mode))
@@ -327,6 +327,8 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 			H.wait(children, [[children[0], 'stopped']], timeout: 3)
 			error = assert_raises(RuntimeError) { children[0].finish }
 			assert_match(/fixture failed after stopped/, error.message)
+			assert error.message.valid_encoding?
+			assert_includes JSON.generate(error: error.message), 'fixture failed after stopped'
 		end
 	end
 	def test_deadline_counterpart_failure_and_cleanup

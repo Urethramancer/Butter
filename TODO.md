@@ -2,6 +2,13 @@
 
 ## TCP performance parity
 
+- Isolate the UTF-8 lookup's RSS cost before further scanner variants. It saves
+  6.0% CPU but adds 1.9% peak RSS and remains rejected. Gate heap/VM diagnostics
+  show nearly equal live heap with different empty-arena/stack residency; this
+  does not prove cause or measure churn. Use the new bounded source profiler;
+  Instruments Allocations startup probes currently fail. Per-job autorelease
+  scope establishes no benefit and is reverted.
+
 - Reduce filesystem inspection/opening and remaining disk scheduling costs:
   fresh write-refill profiles show 43.9% flat fstatat/openat/close and 35.5%
   inclusive layout scans in many-file hybrid downloads. Partial syscall captures
