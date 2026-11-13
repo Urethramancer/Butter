@@ -1,5 +1,11 @@
 # Swift/libtorrent transfer comparison
 
+[Scoped write inspection](scoped-write-results-2026-11-13.md) reduces many-file
+hybrid download CPU 14.7% and raises throughput 18.8% in a separate 28-trial
+parent comparison. Memory and counterpart CPU remain inconclusive. All 24
+records from the earlier interrupted comparison are preserved separately.
+The full matrix below predates this change.
+
 [Grouped upload full matrix](upload-publication-full-results-2026-11-13.md)
 validates all 264 trials. Throughput passes nine cases, fails eight and remains
 inconclusive for many-file v1 seeding after twelve pairs. CPU passes 0/18 and
