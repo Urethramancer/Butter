@@ -11,8 +11,8 @@ import ButterTorrentStorage
 			try await seed.start(); #expect(try await seed.snapshot().transfer?.complete == true)
 			try Data(repeating: 255, count: fixture.lengths[0]).write(to: fixture.root.appendingPathComponent("source/bundle/a"))
 			let snapshot = try await seed.snapshot()
-			#expect(snapshot.running && snapshot.transfer?.complete == false)
-			#expect(!snapshot.storage.verifiedPieces.contains(0) && snapshot.transfer?.pieceStates[0] == 0)
+			#expect(snapshot.running && snapshot.transfer == nil)
+			#expect(!snapshot.storage.verifiedPieces.contains(0) && snapshot.storage.pendingVerificationCount > 0)
 		}
 	}
 	@Test func pauseCancelsAnUnansweredOutgoingNegotiation() async throws {

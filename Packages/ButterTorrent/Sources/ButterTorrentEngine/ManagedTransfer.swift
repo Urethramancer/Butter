@@ -32,6 +32,11 @@ public actor ManagedTransfer {
 	var transfer: TCPTransfer?
 	var closed = false
 	var pauseFailed = false
+	private var observedGeneration: UInt64?
+	private var automaticRecovery: Task<Void, Never>?
+	private var automaticRecoveryID: UUID?
+	private var automaticResume = false
+	private var automaticError: (any Error)?
 	var discoveryHandler: (@Sendable (ManagedDiscoveryNotice) async -> Void)?
 	var discoveryRevision = UUID()
 	var discoveryPumps: [Task<Void, Never>] = []
@@ -57,10 +62,15 @@ public actor ManagedTransfer {
 	public func start() async throws {
 		try await serial {
 			guard !self.pauseFailed else { throw StorageFailure.recoveryRequired("retry pausing before restarting") }
+			if let error = self.automaticError { throw error }
+			if self.automaticResume { return }
 			if self.transfer == nil { try await self.resume() }
 		}
 	}
-	public func pause() async throws { try await serial { try await self.quiesce() } }
+	public func pause() async throws {
+		_ = await cancelAutomaticRecovery()
+		try await serial { try await self.quiesce() }
+	}
 	func disconnectPeers() async throws { try await serial { await self.transfer?.disconnectPeers() } }
 	public func setLimits(download: Int, upload: Int) async throws {
 		try await serial {
@@ -92,14 +102,19 @@ public actor ManagedTransfer {
 	}
 	public func snapshot() async throws -> ManagedTransferSnapshot {
 		try await serial {
+			if let error = self.automaticError { throw error }
 			// Sample the picker before disk stamps so newly verified pieces cannot look
 			// like invalidation. External file changes must retire the old advertisements.
 			var wire = await self.transfer?.snapshot(), disk = try await self.storage.snapshot()
-			if let previous = wire, !self.pauseFailed, !previous.verifiedPieces.isSubset(of: disk.verifiedPieces) {
-				try await self.quiesce(); try await self.resume()
-				wire = await self.transfer?.snapshot(); disk = try await self.storage.snapshot()
+			let changed = self.observedGeneration.map { $0 != disk.integrityGeneration } ?? false
+			let invalidated = wire.map { !$0.verifiedPieces.isSubset(of: disk.verifiedPieces) } ?? false
+			self.observedGeneration = disk.integrityGeneration
+			if self.transfer != nil, !self.pauseFailed, changed || invalidated {
+				try await self.quiesce()
+				wire = nil; disk = try await self.storage.snapshot()
+				self.beginAutomaticRecovery(generation: disk.integrityGeneration)
 			}
-			return ManagedTransferSnapshot(storage: disk, transfer: wire, running: self.transfer != nil && !self.pauseFailed)
+			return ManagedTransferSnapshot(storage: disk, transfer: wire, running: (self.transfer != nil || self.automaticResume) && !self.pauseFailed)
 		}
 	}
 	public func changeStorage(_ change: TransferStorageChange) async throws {
@@ -141,6 +156,7 @@ public actor ManagedTransfer {
 		}
 	}
 	public func close() async throws {
+		_ = await cancelAutomaticRecovery()
 		try await commands.acquire()
 		do {
 			if !closed { try await quiesce(); try await storage.shutdown(); closed = true }
@@ -149,6 +165,7 @@ public actor ManagedTransfer {
 	}
 	private func resume() async throws {
 		try Task.checkCancellation()
+		observedGeneration = try await storage.snapshot().integrityGeneration
 		transfer = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration, peerID: peerID, budget: budget, resources: resources, clock: clock, webSeedClient: webClient)
 		startDiscovery(transfer!)
 	}
@@ -159,8 +176,9 @@ public actor ManagedTransfer {
 		catch { pauseFailed = true; throw error }
 	}
 	private func mutate(_ body: (TorrentStorage) async throws -> Void) async throws {
+		let recovering = await cancelAutomaticRecovery()
 		try await serial {
-			let wasRunning = self.transfer != nil
+			let wasRunning = self.transfer != nil || recovering
 			try await self.quiesce()
 			do { try Task.checkCancellation(); try await body(self.storage) }
 			catch {
@@ -173,7 +191,8 @@ public actor ManagedTransfer {
 		}
 	}
 	public func trash(directory: URL? = nil) async throws -> [URL] {
-		try await serial { try await self.quiesce(); return try await self.storage.trash(directory: directory) }
+		_ = await cancelAutomaticRecovery()
+		return try await serial { try await self.quiesce(); return try await self.storage.trash(directory: directory) }
 	}
 	private func serial<T: Sendable>(_ body: () async throws -> T) async throws -> T {
 		try await commands.acquire()
@@ -182,7 +201,59 @@ public actor ManagedTransfer {
 			let result = try await body(); await commands.release(); return result
 		} catch { await commands.release(); throw error }
 	}
-	deinit { for task in discoveryPumps { task.cancel() } }
+	private func cancelAutomaticRecovery() async -> Bool {
+		let task = automaticRecovery, running = automaticResume
+		automaticRecovery = nil; automaticRecoveryID = nil; automaticResume = false; automaticError = nil
+		task?.cancel(); await task?.value
+		return running
+	}
+	private func beginAutomaticRecovery(generation: UInt64) {
+		let id = UUID(), clock = clock
+		automaticRecoveryID = id; automaticResume = true
+		automaticRecovery = Task { [weak self] in
+			var generation = generation
+			do {
+				while !Task.isCancelled {
+					try await clock.sleep(for: 1)
+					guard let next = try await self?.recoverStableGeneration(id, generation: generation) else { return }
+					generation = next
+				}
+			} catch { await self?.automaticRecoveryFailed(id, error: error) }
+		}
+	}
+	private func automaticRecoveryFailed(_ id: UUID, error: any Error) {
+		guard automaticRecoveryID == id else { return }
+		automaticRecoveryID = nil; automaticRecovery = nil; automaticResume = false
+		if !(error is CancellationError) { automaticError = error }
+	}
+	private func recoverStableGeneration(_ id: UUID, generation: UInt64) async throws -> UInt64? {
+		try await serial {
+			guard self.automaticRecoveryID == id else { return nil }
+			let before = try await self.storage.snapshot()
+			if before.integrityGeneration != generation { return before.integrityGeneration }
+			let scope = TransferDiskScope(resources: self.resources)
+			for piece in 0..<self.storage.layout.pieceCount where before.uncheckedPieces[piece / 8] & (128 >> (piece % 8)) != 0 {
+				try Task.checkCancellation(); try await scope.acquire()
+				do { _ = try await self.storage.recoverExistingPiece(piece) }
+				catch {
+					await scope.release()
+					let current = try await self.storage.snapshot()
+					if current.integrityGeneration != generation { return current.integrityGeneration }
+					throw error
+				}
+				await scope.release()
+			}
+			try await self.storage.flush()
+			let after = try await self.storage.snapshot()
+			if after.integrityGeneration != generation { return after.integrityGeneration }
+			try Task.checkCancellation()
+			guard self.automaticRecoveryID == id else { return nil }
+			if self.automaticResume { try await self.resume() }
+			self.automaticResume = false; self.automaticRecoveryID = nil; self.automaticRecovery = nil
+			return nil
+		}
+	}
+	deinit { automaticRecovery?.cancel(); for task in discoveryPumps { task.cancel() } }
 }
 
 private struct TransferCheckpointClock: StorageCheckpointClock {
