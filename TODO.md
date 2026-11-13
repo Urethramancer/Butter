@@ -2,17 +2,11 @@
 
 ## TCP performance parity
 
-- Complete the final lazy-verification/repair profiles, balanced source comparison
-  and 18-case acceptance matrix. Scoped write inspection and scoped piece
-  verification are independently measured and retained; their memory and
-  counterpart-CPU intervals remain inconclusive. See
-  [scoped-write results](docs/performance/scoped-write-results-2026-11-13.md) and
-  [scoped-verification results](docs/performance/scoped-verification-results-2026-11-13.md).
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU/GiB through durable completion, and peak RSS within 10% of
-  the original fresh Swift baseline. The preceding
-  [full matrix](docs/performance/upload-publication-full-results-2026-11-13.md)
-  passes throughput 9/18, CPU 0/18 and memory 18/18. No parity claim is justified.
+  the original fresh Swift baseline. The current
+  [full matrix](docs/performance/repair-final-full-results-2026-11-13.md)
+  passes throughput 11/18, CPU 0/18 and memory 18/18. No parity claim is justified.
 - Resolve source uncertainty in grouped uploads/request bursts, including RSS,
   counterpart CPU and many/concurrent throughput. Preserve the historical
   many-file v1 seeding CPU/throughput and concurrent v2 seeding throughput losses:

@@ -1,9 +1,16 @@
 # Swift/libtorrent transfer comparison
 
+[Lazy verification and repair full matrix](repair-final-full-results-2026-11-13.md)
+validates all 264 trials: throughput passes 11/18, CPU 0/18 and original-baseline
+memory 18/18. Many-file downloads remain the priority; parity is unmet.
+[Fresh profiles](repair-final-profiles-2026-11-13.md) identify repeated filesystem
+work. [Lazy source comparison](lazy-verification-source-2026-11-13.md) leaves
+full-transfer changes inconclusive; restart availability is measured separately.
+
 [Scoped piece verification](scoped-verification-results-2026-11-13.md) reduces
 many-file hybrid download CPU 21.8% and raises throughput 31.0% across 28
 validated trials, independently of deferred startup. Memory and counterpart
-CPU remain inconclusive; final full-matrix acceptance is still outstanding.
+CPU remain inconclusive; the current full matrix is recorded above.
 
 [Scoped write inspection](scoped-write-results-2026-11-13.md) reduces many-file
 hybrid download CPU 14.7% and raises throughput 18.8% in a separate 28-trial
