@@ -2,10 +2,40 @@ import Foundation
 import Testing
 import ButterTorrentMetadata
 import ButterTorrentNetworking
-import ButterTorrentStorage
+@testable import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 @Suite struct ManagedTransferTests {
+	@Test(arguments: [false, true]) func repairDrainsQueuedNetworkWrites(folder: Bool) async throws {
+		try await transferFixture { fixture in
+			let resources = try TransferResources(maximumDiskOperations: 1), destination = fixture.root.appendingPathComponent("managed")
+			let managed = try await ManagedTransfer.open(metadata: fixture.metadata, destination: destination, stateDirectory: fixture.root.appendingPathComponent("managed-state"), configuration: plainTransferConfiguration(), resources: resources)
+			let release = DispatchSemaphore(value: 0)
+			do {
+				try await managed.start(); let engine = try #require(await managed.transfer)
+				let peer = try await fixture.scripted(engine); defer { peer.stream.close(); release.signal() }
+				try await peer.seed(pieceCount: 3)
+				let request = try #require(try await peer.requests(6).first { $0.piece == 0 && $0.offset == 0 })
+				let worker = await engine.storage.worker, entered = AsyncStream<Void>.makeStream()
+				let blocker = Task { try await worker.run { _ in entered.continuation.yield(()); _ = release.wait(timeout: .now() + 6) } }
+				try await engineDeadline { for await _ in entered.stream { return }; throw PeerFailure.closed }
+				try await peer.send(.piece(request.piece, request.offset, Data(repeating: 255, count: request.length)))
+				try await eventually { await engine.snapshot().writingBlocks > 0 }
+				let source = fixture.root.appendingPathComponent(folder ? "source" : "source/bundle/a")
+				let repairing = Task {
+					if folder { return try await managed.repairFolder(from: source) }
+					return try await managed.repairFile(0, from: source)
+				}
+				try await eventually { await engine.stopping }
+				release.signal(); try await blocker.value
+				_ = try await engineDeadline { try await repairing.value }
+				#expect(await engine.snapshot().writingBlocks == 0)
+				#expect(try Data(contentsOf: destination.appendingPathComponent("bundle/a")) == fixture.bytes.prefix(10003))
+				#expect(try await managed.snapshot().running)
+				try await managed.close()
+			} catch { release.signal(); try? await managed.close(); throw error }
+		}
+	}
 	@Test func repairDrainsCachedUploadsAndRestoresRunningState() async throws {
 		try await withManagedSeed { fixture, seed, resources in
 			let source = fixture.root.appendingPathComponent("repair-copy")
