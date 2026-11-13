@@ -9,6 +9,9 @@ bulk inspection worthwhile. Restored production hashes match the full matrix.
 validates all 252 trials: throughput passes 9/18, CPU 0/18 and original-baseline
 memory 18/18. CPU/native ranges from 1.51× to 3.84×; parity remains unmet.
 Source RSS/seeding uncertainty and cross-run seeding differences remain open.
+An additional concurrent v1 seeding source case does not reproduce its 7.0%
+cross-run CPU rise; throughput and RSS remain inconclusive. All 140 source
+trials validate, without replacements or retries.
 Earlier full matrices describe preceding production sources.
 
 [Fresh revised-source profiles](request-burst-profiles-2026-11-13.md) validate

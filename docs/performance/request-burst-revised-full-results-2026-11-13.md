@@ -55,7 +55,10 @@ independent historical run, not a causal source estimate. Some absolute seeding
 metrics worsen: concurrent v1 CPU is 2.995 versus 2.800 seconds/GiB; many-file
 v2 seeding throughput is 330.8 versus 361.6 MB/s. Native measurements also
 shift. These differences remain open rather than being dismissed or attributed
-to the candidate. The [balanced source comparisons](request-burst-revised-results-2026-11-13.md)
+to the candidate. A subsequent balanced concurrent v1 seeding source comparison
+does not reproduce its 7.0% CPU rise (paired ratio 1.001 [0.985–1.006]);
+throughput and RSS remain inconclusive. Many-file v2 remains to be investigated.
+The [balanced source comparisons](request-burst-revised-results-2026-11-13.md)
 separately establish download CPU/throughput gains, but RSS and seeding remain
 inconclusive. The first form's established seeding RSS cost remains recorded;
 this full run does not prove the revision resolves it.
