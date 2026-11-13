@@ -1,5 +1,11 @@
 # Swift/libtorrent transfer comparison
 
+[Ready TCP request bursts](request-burst-results-2026-11-13.md) reduce single-file
+v1 download CPU 8.7%, raise throughput 4.7% and reduce counterpart CPU 10.1%.
+All 28 source trials validate; RSS changes remain inconclusive. Package and
+engine sanitizer checks pass; broader/native checks and the full matrix remain
+pending. Earlier full-matrix results predate this provisional candidate.
+
 [Character-index lookup](character-index-results-2026-11-13.md) is rejected and
 reverted: download CPU/throughput improve, but many-file v1 seeding loses 2.4%
 throughput despite lower CPU. All 56 trials validate. Only the independently

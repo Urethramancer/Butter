@@ -2,12 +2,19 @@
 
 ## TCP performance parity
 
+- Validate ready TCP request bursts across other workloads and native suites.
+  The first fixed six-pair case validates all 28 trials: single-file v1 download
+  CPU −8.7%, throughput +4.7%, counterpart CPU −10.1%; RSS is inconclusive.
+  Rerun the full matrix for a retained final candidate. Existing results predate
+  this change and the independent cached Unicode-path correction.
+
 - Isolate the UTF-8 lookup's RSS cost before further scanner variants. It saves
   6.0% CPU but adds 1.9% peak RSS and remains rejected. Gate heap/VM diagnostics
   show nearly equal live heap with different empty-arena/stack residency; this
   does not prove cause or measure churn. Use the new bounded source profiler;
   Instruments Allocations startup probes currently fail. Per-job autorelease
-  scope establishes no benefit and is reverted.
+  scope establishes no benefit and is reverted. Character-index conversion
+  also remains reverted: seeding throughput falls 2.4% despite lower CPU.
 
 - Reduce filesystem inspection/opening and remaining disk scheduling costs:
   fresh write-refill profiles show 43.9% flat fstatat/openat/close and 35.5%
