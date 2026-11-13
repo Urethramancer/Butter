@@ -3,7 +3,8 @@
 Candidate `afad9d1` versus `d37ffe5`: single-file/128-file 1 GiB v1 TCP seeding
 and four simultaneous 256 MiB hybrid seeds, 256 KiB pieces and production
 request windows. Each case uses four warm-ups followed by six balanced
-source/engine pairs. All 84 trials validate
+source/engine pairs. A fourth case checks many-file hybrid download regressions.
+All 112 trials validate
 independent payload digests and saved-state reopening; none is retried or omitted.
 The first table describes single-file seeding.
 
@@ -44,6 +45,18 @@ one. Measured revision `728ed84` has matching production source/package hashes.
 | Peak RSS | 0.985 | 0.947–1.075 |
 | Counterpart CPU seconds/GiB | 1.007 | 0.924–1.027 |
 
+Many-file hybrid download CPU, throughput, RSS and counterpart CPU are all
+inconclusive, as are native controls. No regression is established, but absence
+of costs is unproven. All 28 trials validate; measured revision `22129ca` has
+matching production source/package hashes.
+
+| Many-file hybrid download candidate/previous | Paired median | 95% interval |
+| --- | ---: | ---: |
+| CPU seconds/GiB | 1.001 | 0.973–1.028 |
+| Verified throughput | 1.017 | 0.974–1.028 |
+| Peak RSS | 0.997 | 0.934–1.013 |
+| Counterpart CPU seconds/GiB | 1.019 | 0.937–1.057 |
+
 The existing encoded upload buffer still contains at most sixteen frames and
 256 KiB. Its already-reserved frames now publish under one lock with one writer
 wake-up, rather than locking and yielding per frame. Total byte/message
@@ -62,4 +75,4 @@ deadlines; the current profiles do not establish a need for a timer rewrite.
 
 [Summary, source checks, validation and raw hashes](upload-publication-comparison-2026-11-13.json)
 retain evidence. Raw trials remain in
-`.build/benchmarks/upload-publication-*-seed-source-order`.
+`.build/benchmarks/upload-publication-*-source-order`.
