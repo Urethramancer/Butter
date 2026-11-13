@@ -2,9 +2,9 @@
 
 [Isolated UTF-8 separator lookup](byte-split-results-2026-11-13.md) is rejected
 and reverted: six balanced source pairs show CPU −6.0% and throughput +6.3%,
-but RSS +1.9% [0.8–5.2%]. All 28 trials validate. Removing the earlier C-string
-change alone does not resolve the memory cost; current source still matches
-the write-refill full matrix below.
+but RSS +1.9% [0.8–5.2%]. All 28 trials validate. Lookup alone still has a memory
+cost in this download case; the earlier C-string candidate used v1 seeding,
+so its memory cause remains unproven. Restored source matches the full matrix below.
 
 [Current write-refill full matrix](write-prefill-full-results-2026-11-13.md)
 validates all 252 trials: throughput passes 9/18, CPU 0/18 and memory 18/18.

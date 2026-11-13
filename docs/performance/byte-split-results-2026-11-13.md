@@ -19,9 +19,10 @@ seconds/GiB and 133.7 → 143.0 MB/s; no performance improvement is retained.
 
 The four-line change isolated UTF-8 separator lookup and prefix comparison from
 the earlier rejected C-string/validator changes. Existing String leaf creation,
-validation and filesystem calls remained. This rules out removing the C-string
-change alone as a solution to the earlier memory cost; the allocation/lifetime
-cause remains unproven.
+validation and filesystem calls remained. The isolated lookup still has a memory
+cost in this workload. The earlier C-string candidate measured v1 seeding, so
+these runs do not isolate the cause of that earlier regression; allocation and
+lifetime causes remain unproven.
 
 All 62 storage tests pass normally and under each sanitizer on the candidate,
 including Unicode, symlink/parent replacement and checkpoint contracts. Restored

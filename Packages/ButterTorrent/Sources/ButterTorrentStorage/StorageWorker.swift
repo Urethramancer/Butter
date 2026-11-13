@@ -51,7 +51,7 @@ final class StorageWorker: @unchecked Sendable {
 final class DiskWorkPool: @unchecked Sendable {
 	private struct Job: Sendable { let owner: UUID; let bulk: Bool; let run: @Sendable () -> Void }
 	private let lock = NSLock()
-	private let queue = DispatchQueue(label: "Butter.Storage", attributes: .concurrent)
+	private let queue = DispatchQueue(label: "Butter.Storage", attributes: .concurrent, autoreleaseFrequency: .workItem)
 	private let maximum: Int
 	private var busy: Set<UUID> = []
 	private var bulkOwners: Set<UUID> = []
