@@ -1,0 +1,32 @@
+{
+  "result": "Fixed cached-parent rejection of valid nested leaves beginning with combining marks; traversal validation and symlink rejection remain.",
+  "regression": "Both parameter cases fail on unchanged production with invalid relative file path.",
+  "validation": "358 package tests, 63 storage tests under each sanitizer, Release build and 52 native storage checks pass.",
+  "performance": "No performance claim; this correction is the baseline for subsequent source comparisons.",
+  "raw": [
+    {
+      "path": ".build/diagnostics/piece-buffer/combining-scan-before.log",
+      "sha256": "7796f77ff578e67ad91351a559f38ef3da78988d1e7995290cb96965fe6af78c"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/combining-scan-package.log",
+      "sha256": "065fa9eb00a9aa8a783cd75e5a2efca182748ff669b102cf77f8ed693aaf7ae7"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/combining-scan-asan.log",
+      "sha256": "96a20cb0c0e84c1e3f28291cd10f4821721c7e6a143822846f92f53cc053993b"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/combining-scan-tsan.log",
+      "sha256": "d9ce8756d88f0f08055a21724872de645d0d23aa4495e9b649f6901b8e2f4f3b"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/combining-scan-release.log",
+      "sha256": "277bec60e9dac2172fafb7877f476e1f3eb23dad1f597924cbded3b22cb3fbf7"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/combining-scan-native-storage.log",
+      "sha256": "e8e7b71de801dcaf005a2a064a65f7fb780769c025d265c5a64b0106f8af4604"
+    }
+  ]
+}

@@ -81,6 +81,22 @@ private enum ParentProbeError: Error, Equatable { case stopped }
 			#expect(try scan.inspect("parent/first", in: directory) == directory.inspect("parent/first"))
 		}
 	}
+	@Test(arguments: ["\u{0301}", "\u{FE0F}"])
+	func stampScanResolvesNestedCombiningLeafAfterCachingAnAncestor(_ mark: String) async throws {
+		try await storageFixture { root in
+			let directory = try StorageDirectory(root), scan = StorageStampScan()
+			let path = "parent/nested/" + mark + "leaf"
+			try directory.atomic(Data([1]), path: "parent/first")
+			try directory.atomic(Data([2]), path: path)
+			#expect(try scan.inspect("parent/first", in: directory) != nil)
+			#expect(try scan.inspect(path, in: directory) == directory.inspect(path))
+			#expect(throws: StorageFailure.invalid("relative file path")) { try scan.inspect("parent/nested/../first", in: directory) }
+			try FileManager.default.moveItem(at: root.appendingPathComponent("parent/nested"), to: root.appendingPathComponent("retained"))
+			try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("parent/nested"), withDestinationURL: root.appendingPathComponent("retained"))
+			#expect(try scan.inspect("parent/first", in: directory) != nil)
+			#expect(throws: (any Error).self) { try scan.inspect(path, in: directory) }
+		}
+	}
 	@Test func stampScanHandlesRootLeavesAndSwitchesBetweenParents() async throws {
 		try await storageFixture { root in
 			let directory = try StorageDirectory(root), scan = StorageStampScan()

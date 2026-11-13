@@ -16,9 +16,14 @@ final class StorageStampScan {
 		let parentEnd = slash ?? path.startIndex
 		if !path.hasPrefix("/"), root === directory, let parentPath, path[..<parentEnd].utf8.elementsEqual(parentPath.utf8) {
 			let name = path[(slash.map { path.index(after: $0) } ?? path.startIndex)...]
-			guard path.utf8.count <= 4096, StorageLayout.validComponent(name) else { throw StorageFailure.invalid("relative file path") }
-			guard descriptor >= 0 else { return nil }
-			return try directory.inspect(String(name), at: descriptor)
+			guard path.utf8.count <= 4096 else { throw StorageFailure.invalid("relative file path") }
+			if StorageLayout.validComponent(name) {
+				guard descriptor >= 0 else { return nil }
+				return try directory.inspect(String(name), at: descriptor)
+			}
+			// A slash joined to a combining mark is not a standalone Character.
+			// Resolve this ambiguous split through the validated byte components.
+			guard name.utf8.contains(47) else { throw StorageFailure.invalid("relative file path") }
 		}
 		let parts = try StorageLayout.components(path), parent = parts.dropLast().joined(separator: "/")
 		if root !== directory || parentPath != parent {
