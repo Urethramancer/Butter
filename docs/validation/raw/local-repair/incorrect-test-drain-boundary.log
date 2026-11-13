@@ -1,0 +1,33 @@
+Building for debugging...
+[Computing dependencies]
+[1 / 11] ButterTorrentEngine-product
+[2 / 7] ButterTorrentEngineTests-product
+[4 / 9] ButterTorrentEngineTests-product
+[10 / 14] ButterTorrentEngineTests-product
+Build complete! (1,97 secs)
+◇ Test run started.
+↳ Testing Library Version: 2403
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ManagedTransferTests started.
+◇ Test repairDrainsQueuedNetworkWrites(folder:) started.
+◇ Test case passing 1 argument folder → false to repairDrainsQueuedNetworkWrites(folder:) started.
+✘ Test repairDrainsQueuedNetworkWrites(folder:) recorded an issue with 1 argument folder → false at ManagedTransferTests.swift:9:3: Caught error: .invalid("test deadline")
+◇ Test case passing 1 argument folder → true to repairDrainsQueuedNetworkWrites(folder:) started.
+✘ Test repairDrainsQueuedNetworkWrites(folder:) recorded an issue with 1 argument folder → true at ManagedTransferTests.swift:9:3: Caught error: .invalid("test deadline")
+✘ Test repairDrainsQueuedNetworkWrites(folder:) with 2 test cases failed after 12.108 seconds with 2 issues.
+◇ Test repairDrainsCachedUploadsAndRestoresRunningState() started.
+✔ Test repairDrainsCachedUploadsAndRestoresRunningState() passed after 0.033 seconds.
+◇ Test changedFilesRetireVerifiedAdvertisementsBeforeResuming() started.
+✔ Test changedFilesRetireVerifiedAdvertisementsBeforeResuming() passed after 0.017 seconds.
+◇ Test pauseCancelsAnUnansweredOutgoingNegotiation() started.
+✔ Test pauseCancelsAnUnansweredOutgoingNegotiation() passed after 0.093 seconds.
+◇ Test renameDrainsARateLimitedUploadAndResumesVerifiedSeeding() started.
+✔ Test renameDrainsARateLimitedUploadAndResumesVerifiedSeeding() passed after 0.043 seconds.
+◇ Test overlappingExportsAndStorageCommandsRetainIdentityAndSelection() started.
+✔ Test overlappingExportsAndStorageCommandsRetainIdentityAndSelection() passed after 0.044 seconds.
+◇ Test failedCheckpointPreventsMutationAndPauseCanBeRetried() started.
+✔ Test failedCheckpointPreventsMutationAndPauseCanBeRetried() passed after 0.021 seconds.
+✘ Suite ManagedTransferTests failed after 12.362 seconds with 2 issues.
+✘ Test run with 7 tests in 1 suite failed after 12.362 seconds with 2 issues.
+Note: Some test targets reported failures:
+  - ButterTorrentEngineTests (Swift Testing)

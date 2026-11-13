@@ -1,5 +1,9 @@
 # Butter
 
+A native macOS BitTorrent client built with SwiftUI and the local
+`Packages/ButterTorrent` Swift engine. Targets Apple Silicon and macOS 26 and
+requires Xcode 27.2 or later.
+
 The inspector's **Repair from local file…** action can replace a missing or
 damaged file from a separate local copy. **Repair from Folder…** in a torrent's
 context menu repairs that torrent, independently of the selection. Choose its
@@ -15,11 +19,8 @@ running. Paused torrents wait for resume or **Verify Local Data**. External file
 changes detected by normal snapshot polling retire stale advertisements and
 are rechecked after unchanged observations one second apart. Piece sizes up to
 32 MiB are supported; automatic creation sizing and default cache budgets are
-unchanged.
-
-A native macOS BitTorrent client built with SwiftUI and the local
-`Packages/ButterTorrent` Swift engine. Targets Apple Silicon and macOS 26 and
-requires Xcode 27.2 or later.
+unchanged. Each metadata-backed torrent shows a **v1**, **v2** or **Hybrid** badge
+beside its name; pending magnets remain unlabelled until metadata arrives.
 
 Butter supports torrent files and magnets, TCP and µTP, selective downloads,
 hybrid torrent creation, local file renames, resume recovery, grouped transfers,

@@ -1,0 +1,45 @@
+Building for debugging...
+[Computing dependencies]
+[1 / 1]
+[2 / 8] ButterTorrentStorageTests-product
+[4 / 10] ButterTorrentStorageTests-product
+[8 / 12] ButterTorrentStorageTests-product
+[10 / 12] ButterTorrentStorageTests-product
+Build complete! (1,76 secs)
+◇ Test run started.
+↳ Testing Library Version: 2403
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite StorageRepairTests started.
+◇ Test replacedDestinationIsRetainedAcrossPublication(published:) started.
+◇ Test case passing 1 argument published → false to replacedDestinationIsRetainedAcrossPublication(published:) started.
+◇ Test case passing 1 argument published → true to replacedDestinationIsRetainedAcrossPublication(published:) started.
+✘ Test replacedDestinationIsRetainedAcrossPublication(published:) recorded an issue with 1 argument published → true at StorageRepairTests.swift:30:5: Expectation failed: expected error of type StorageFailure, but "Error Domain=NSPOSIXErrorDomain Code=2 "No such file or directory" UserInfo={NSLocalizedDescription=Cannot open managed file: No such file or directory}" of type NSError was thrown instead
+↳ StorageFailure.self → Error Domain=NSPOSIXErrorDomain Code=2 "No such file or directory" UserInfo={NSLocalizedDescription=Cannot open managed file: No such file or directory}
+↳   StorageFailure → <not evaluated>
+↳   self → <not evaluated>
+✘ Test replacedDestinationIsRetainedAcrossPublication(published:) with 2 test cases failed after 0.016 seconds with 1 issue.
+◇ Test boundaryRepairRetainsSourcesAndUsesRenamedSelectiveDestinations(selective:) started.
+◇ Test case passing 1 argument selective → false to boundaryRepairRetainsSourcesAndUsesRenamedSelectiveDestinations(selective:) started.
+◇ Test case passing 1 argument selective → true to boundaryRepairRetainsSourcesAndUsesRenamedSelectiveDestinations(selective:) started.
+✔ Test boundaryRepairRetainsSourcesAndUsesRenamedSelectiveDestinations(selective:) with 2 test cases passed after 0.023 seconds.
+◇ Test mismatchCannotLoseAVerifiedBoundaryPiece() started.
+✔ Test mismatchCannotLoseAVerifiedBoundaryPiece() passed after 0.005 seconds.
+◇ Test repairAuthenticatesEveryFormat(_:) started.
+◇ Test case passing 1 argument format → "v1" to repairAuthenticatesEveryFormat(_:) started.
+◇ Test case passing 1 argument format → "v2" to repairAuthenticatesEveryFormat(_:) started.
+◇ Test case passing 1 argument format → "hybrid" to repairAuthenticatesEveryFormat(_:) started.
+◇ Test case passing 1 argument format → "hybrid-missing-layers" to repairAuthenticatesEveryFormat(_:) started.
+✔ Test repairAuthenticatesEveryFormat(_:) with 4 test cases passed after 0.021 seconds.
+◇ Test interruptedRepairRecoversWithoutItsSource(_:) started.
+◇ Test case passing 1 argument interruption → .journalDurable to interruptedRepairRecoversWithoutItsSource(_:) started.
+◇ Test case passing 1 argument interruption → .repairBackup(0) to interruptedRepairRecoversWithoutItsSource(_:) started.
+◇ Test case passing 1 argument interruption → .filePublished(0) to interruptedRepairRecoversWithoutItsSource(_:) started.
+◇ Test case passing 1 argument interruption → .entryDurable(0) to interruptedRepairRecoversWithoutItsSource(_:) started.
+◇ Test case passing 1 argument interruption → .checkpointDurable to interruptedRepairRecoversWithoutItsSource(_:) started.
+✔ Test interruptedRepairRecoversWithoutItsSource(_:) with 5 test cases passed after 0.035 seconds.
+◇ Test sourceMutationAndUnsafeSourcesLeaveDestinationsUntouched() started.
+✔ Test sourceMutationAndUnsafeSourcesLeaveDestinationsUntouched() passed after 0.004 seconds.
+✘ Suite StorageRepairTests failed after 0.106 seconds with 1 issue.
+✘ Test run with 6 tests in 1 suite failed after 0.106 seconds with 1 issue.
+Note: Some test targets reported failures:
+  - ButterTorrentStorageTests (Swift Testing)
