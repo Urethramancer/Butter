@@ -19,7 +19,9 @@ CPU falls 4.7% [2.8–5.3%]. Throughput, RSS and counterpart CPU remain
 inconclusive; the wide RSS interval includes a substantial cost. Native control
 intervals cross one. This is experimental, with no cost-free or parity claim.
 The focused six-case source comparisons and correctness checks are complete;
-the final full matrix remains open.
+the [full matrix](upload-publication-full-results-2026-11-13.md) validates all
+264 trials but CPU acceptance remains unmet in every case. Many-file v1 seeding
+throughput is still inconclusive after the declared twelve-pair extension.
 
 Many-file seeding independently establishes CPU −4.6% [−5.0% to −3.3%],
 throughput +1.2% [+0.4% to +2.2%] and counterpart CPU −1.9% [−3.1% to −1.0%].

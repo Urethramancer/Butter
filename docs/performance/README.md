@@ -1,5 +1,11 @@
 # Swift/libtorrent transfer comparison
 
+[Grouped upload full matrix](upload-publication-full-results-2026-11-13.md)
+validates all 264 trials. Throughput passes nine cases, fails eight and remains
+inconclusive for many-file v1 seeding after twelve pairs. CPU passes 0/18 and
+original-baseline memory 18/18; CPU/native ranges from 1.43× to 3.98×. Source
+uncertainty and cross-run download differences remain open; parity is unmet.
+
 [Grouped upload publication](upload-publication-results-2026-11-13.md) reduces
 single-file v1 seeding CPU 4.7%, many-file CPU 4.6% and concurrent hybrid CPU
 3.4%. All 168 trials across these seeds and three download cases validate.
@@ -7,7 +13,7 @@ Single-file download RSS falls 0.3%; other download changes remain inconclusive.
 Many-file throughput rises 1.2% and counterpart CPU falls 1.9%. RSS remains
 inconclusive, including a wide single-file interval. Correctness passes native
 interoperability (466 PASS records), application, recovery, sanitizers and build
-checks. The final full performance matrix remains open.
+checks. The full performance matrix is recorded above.
 
 [Raw-name bulk inspection](raw-bulk-results-2026-11-13.md) is rejected and
 reverted: CPU rises 1.7%, throughput falls 2.2% and peak RSS rises 1.3% across

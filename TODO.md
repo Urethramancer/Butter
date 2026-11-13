@@ -2,7 +2,12 @@
 
 ## TCP performance parity
 
-- Complete the full matrix for grouped upload publication. Single-file v1 CPU
+- Resolve remaining grouped upload performance uncertainty and profile the
+  current candidate. The full matrix validates all 264 trials: throughput passes
+  nine cases, fails eight and remains inconclusive in many-file v1 seeding after
+  twelve pairs; CPU passes 0/18 and original-baseline memory 18/18. Investigate
+  many-file v1 download CPU's 6.2% cross-run rise with balanced source evidence;
+  native CPU also shifts. Single-file v1 seeding CPU
   falls 4.7%; many-file CPU falls 4.6%, throughput
   rises 1.2% and counterpart CPU falls 1.9%; concurrent hybrid CPU falls 3.4%
   across 168 validated trials including all three download regression
@@ -61,8 +66,9 @@
 
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
-  10% of baseline. The [current full results](docs/performance/request-burst-revised-full-results-2026-11-13.md)
-  pass memory 18/18 and throughput 9/18, but fail CPU throughout. Retain gains only
+  10% of baseline. The [current full results](docs/performance/upload-publication-full-results-2026-11-13.md)
+  pass memory 18/18 and throughput 9/18 (one throughput case remains inconclusive),
+  but fail CPU throughout. Retain gains only
   without established costs in CPU, throughput, memory, correctness or counterpart CPU.
 - Investigate the historical many-file v1 seeding regression against its preceding full
   candidate: CPU rises 5.1% and throughput falls 23.5%. A balanced old/current
