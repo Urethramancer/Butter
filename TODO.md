@@ -3,7 +3,9 @@
 ## TCP performance parity
 
 - Measure the revised request-burst candidate with original scalar admission
-  restored. First form has download CPU gains but is disqualified by 5.0%
+  restored on many-file and concurrent downloads. Revised single-file download
+  saves 8.3% CPU and raises throughput 3.7%; RSS and seeding remain inconclusive
+  across 56 validated trials. First form is disqualified by 5.0%
   higher seeding RSS; all 112 trials remain. Keep this failure separate from
   revised-source evidence, then run native checks and the full matrix for any
   retained final candidate. Existing results predate the independent Unicode fix.
