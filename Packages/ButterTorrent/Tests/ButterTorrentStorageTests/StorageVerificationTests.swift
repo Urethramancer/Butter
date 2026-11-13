@@ -4,6 +4,27 @@ import ButterTorrentMetadata
 @testable import ButterTorrentStorage
 
 @Suite struct StorageVerificationTests {
+	@Test func cleanRestorationRequiresHashesForUnselectedVerifiedClaimsToo() async throws {
+		try await storageFixture { root in
+			let (complete, _) = try storageMetadata(root)
+			let metadata = try TorrentMetadata(infoBytes: complete.originalInfo, expected: complete.hashes), catalog = try MerkleCatalog(metadata: complete)
+			let selected = metadata.inspection.files.map { !$0.pad && $0.path.hasSuffix("/b") }
+			let directory = root.appendingPathComponent("state"), destination = root.appendingPathComponent("data")
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: directory, selected: selected)
+			try await storage.importFiles(from: root)
+			for piece in 0..<storage.layout.pieceCount {
+				if let request = storage.merkleIndex.request(for: piece), let response = try catalog.response(request) { try await storage.installHashes(request, hashes: response) }
+				#expect(try await storage.verify(piece: piece))
+			}
+			try await storage.shutdown()
+			try FileManager.default.removeItem(at: directory.appendingPathComponent("hashes.plist"))
+			let restored = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: directory, verificationPolicy: .trustCompleted, readPolicy: .trustedVerified)
+			#expect(try await restored.availableHashes() == [2])
+			#expect(try await restored.snapshot().verifiedPieces == [2])
+			await #expect(throws: StorageFailure.self) { try await restored.readVerifiedPiece(0) }
+			try await restored.shutdown()
+		}
+	}
 	@Test(arguments: ["complete", "partial", "dirty", "selective"]) func cleanRestorationRequiresAcceptedCompletion(_ scenario: String) async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try storageMetadata(root), destination = root.appendingPathComponent("data"), directory = root.appendingPathComponent("state")

@@ -144,8 +144,14 @@ final class StorageState: @unchecked Sendable {
 				let cached = (0..<layout.pieceCount).filter { record.contains($0) }
 				verificationPending = record.verified
 				try invalidateChangedFiles()
-				let required = try Set(layout.files.indices.filter { record.selected[$0] && !layout.files[$0].pad }.flatMap { try layout.pieces(touchingFile: $0) })
-				let trusted = verificationPolicy == .trustCompleted && required.allSatisfy { record.contains($0) && (!merkle.index.enabled || merkle.expected($0) != nil) }
+				// Every restored advertisement needs its authenticated hashes, including
+				// claims outside a completed selected subset.
+				var trusted = false
+				if verificationPolicy == .trustCompleted {
+					if merkle.index.enabled { for piece in cached where merkle.expected(piece) == nil { record.set(piece, false) } }
+					let required = try Set(layout.files.indices.filter { record.selected[$0] && !layout.files[$0].pad }.flatMap { try layout.pieces(touchingFile: $0) })
+					trusted = required.allSatisfy { record.contains($0) && (!merkle.index.enabled || merkle.expected($0) != nil) }
+				}
 				if trusted { verificationPending.resetBytes(in: 0..<verificationPending.count) }
 				else { record.verified.resetBytes(in: 0..<record.verified.count) }
 				// Uncheckpointed bytes are candidates too, including unchanged file stamps.
