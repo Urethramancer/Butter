@@ -5,10 +5,12 @@ validates all 264 trials. Throughput passes nine cases, fails eight and remains
 inconclusive for many-file v1 seeding after twelve pairs. CPU passes 0/18 and
 original-baseline memory 18/18; CPU/native ranges from 1.43× to 3.98×. Source
 uncertainty and cross-run download differences remain open; parity is unmet.
+A new many-file v1 source case does not reproduce its 6.2% cross-run CPU rise;
+all source metrics remain inconclusive. Source evidence now totals 196 validated trials.
 
 [Grouped upload publication](upload-publication-results-2026-11-13.md) reduces
 single-file v1 seeding CPU 4.7%, many-file CPU 4.6% and concurrent hybrid CPU
-3.4%. All 168 trials across these seeds and three download cases validate.
+3.4%. All 196 trials across these seeds and four download cases validate.
 Single-file download RSS falls 0.3%; other download changes remain inconclusive.
 Many-file throughput rises 1.2% and counterpart CPU falls 1.9%. RSS remains
 inconclusive, including a wide single-file interval. Correctness passes native

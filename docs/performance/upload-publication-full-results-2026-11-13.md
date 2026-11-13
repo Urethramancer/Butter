@@ -61,7 +61,9 @@ an independent historical run, not a causal source comparison. Both ends of
 the CPU-ratio range move, from 1.51–3.84 to 1.43–3.98; this is not a combined
 improvement score. Some absolute download CPU metrics worsen: many-file v1 is
 7.963 versus 7.498 seconds/GiB (6.2% higher). Native CPU also shifts, and this
-specific source/workload difference remains to be investigated. Many-file v1
+specific source/workload difference is not reproduced by a subsequent balanced
+source comparison: CPU ratio 0.995 [0.952–1.030]. Throughput/RSS remain
+inconclusive; the original full-run difference is retained. Many-file v1
 seeding's native CPU falls from 1.971 to 1.697 while Swift falls from 4.167 to
 4.079; its worse native ratio does not establish a Swift source regression.
 All results remain rather than being selected for favourable comparisons.

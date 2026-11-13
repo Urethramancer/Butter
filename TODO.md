@@ -5,12 +5,13 @@
 - Resolve remaining grouped upload performance uncertainty and profile the
   current candidate. The full matrix validates all 264 trials: throughput passes
   nine cases, fails eight and remains inconclusive in many-file v1 seeding after
-  twelve pairs; CPU passes 0/18 and original-baseline memory 18/18. Investigate
-  many-file v1 download CPU's 6.2% cross-run rise with balanced source evidence;
-  native CPU also shifts. Single-file v1 seeding CPU
+  twelve pairs; CPU passes 0/18 and original-baseline memory 18/18. Many-file v1
+  download source CPU 0.995 [0.952–1.030] does not reproduce its 6.2% cross-run
+  rise; source metrics remain inconclusive and the original difference remains.
+  Single-file v1 seeding CPU
   falls 4.7%; many-file CPU falls 4.6%, throughput
   rises 1.2% and counterpart CPU falls 1.9%; concurrent hybrid CPU falls 3.4%
-  across 168 validated trials including all three download regression
+  across 196 validated trials including four download regression
   checks. Single-file download RSS falls 0.3%; other download changes are
   inconclusive. Preserve
   inconclusive source intervals, especially RSS and the wide single-file memory
