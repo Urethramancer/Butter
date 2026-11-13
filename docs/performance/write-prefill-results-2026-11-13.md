@@ -46,7 +46,9 @@ actual ENOSPC, failed checkpoint publication and read-only volumes. Unsigned
 Debug/Release application builds, linkage/licence checks and the unchanged
 repeat build pass. The user's Xcode edits remain untouched; no tag is created.
 
-The full matrix remains pending. The candidate is provisional; this is not
+The [full matrix](write-prefill-full-results-2026-11-13.md) validates all 252
+trials: throughput passes 9/18, CPU 0/18 and baseline memory 18/18. It does not
+resolve the source RSS intervals above. CPU parity remains unmet; this is not
 release acceptance.
 
 [Measurements, validation and raw hashes](write-prefill-comparison-2026-11-13.json)

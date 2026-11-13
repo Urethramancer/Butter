@@ -2,15 +2,14 @@
 
 ## TCP performance parity
 
-- Complete the provisional write-prefill candidate's full matrix. Three source cases validate 84 trials with
-  CPU/throughput gains in every case; many/concurrent RSS remain inconclusive.
-  Native interoperability, application/recovery checks and Debug/Release builds
-  pass. The existing full matrix predates both refill changes. Fresh profiles of the
-  preceding refill candidate still identify filesystem work as the largest gap.
+- Capture fresh profiles of the write-refill source before the next optimisation.
+  Earlier profiles identify filesystem work as the largest gap. Three source
+  cases validate 84 trials with CPU/throughput gains; many/concurrent RSS remain
+  inconclusive. Preserve those intervals rather than claiming absence of cost.
 
-- Reduce the revised candidate's remaining CPU gap: its full matrix validates
+- Reduce the write-refill candidate's remaining CPU gap: its full matrix validates
   all 252 trials, passing throughput 9/18, CPU 0/18 and memory 18/18. Prioritise
-  many-file downloads (4.32–5.19× native CPU); preserve wide/inconclusive source
+  many-file downloads (3.25–3.97× native CPU); preserve wide/inconclusive source
   throughput intervals and all rejected experiments.
 
 - Resolve wide/inconclusive source throughput intervals and obtain quiet-host
@@ -19,7 +18,7 @@
 
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU seconds/GiB through durable completion and peak RSS within
-  10% of baseline. The [current full results](docs/performance/wire-raw-full-results-2026-11-13.md)
+  10% of baseline. The [current full results](docs/performance/write-prefill-full-results-2026-11-13.md)
   pass memory 18/18 and throughput 9/18, but fail CPU throughout. Retain gains only
   without established costs in CPU, throughput, memory, correctness or counterpart CPU.
 - Investigate the historical many-file v1 seeding regression against its preceding full

@@ -1,25 +1,29 @@
 # Swift/libtorrent transfer comparison
 
+[Current write-refill full matrix](write-prefill-full-results-2026-11-13.md)
+validates all 252 trials: throughput passes 9/18, CPU 0/18 and memory 18/18.
+CPU/native ranges from 1.55× to 3.97×; many-file downloads remain the largest
+gap. Earlier matrices below describe preceding production sources.
+
 [Refilling during admitted writes](write-prefill-results-2026-11-13.md) improves
 CPU/throughput versus the preceding refill candidate: many-file hybrid
 10.9%/16.7%, concurrent hybrid 4.1%/12.3%, single-file v1 10.4%/19.4%.
 All 84 source trials validate. Single-file RSS falls 1.1%; other RSS changes
 remain inconclusive. Native validation passes (466 PASS records), as do
-application, recovery, sanitizer and Debug/Release build checks. A refreshed full
-matrix remains pending.
-The candidate remains provisional; the full matrix below predates both refill changes.
+application, recovery, sanitizer and Debug/Release build checks. The refreshed
+full matrix is recorded above; CPU parity and source memory uncertainty remain open.
 
 [Refilling the existing window before verification](verification-prefill-results-2026-11-13.md)
 reduces many-file hybrid download CPU by 9.9% [5.1–14.8%] and concurrent
 hybrid download CPU by 8.5% [5.3–12.5%]. Three fixed six-pair source cases
 validate all 84 trials; single-file v1 CPU, throughput and RSS changes remain
 inconclusive. The native suite passes with 466 PASS records. Broader format
-coverage and the final full matrix remain pending; the candidate is provisional.
-The full matrix below describes the preceding production source.
+coverage is supplied by the newer full matrix above, which includes the subsequent
+write-time refill change. Source throughput/memory uncertainty remains open.
 [Fresh candidate profiles](verification-prefill-profile-2026-11-13.md) validate
 both engines and still identify filesystem inspection/opening as the largest gap.
 
-[Current revised-buffer full matrix](wire-raw-full-results-2026-11-13.md) validates
+[Historical revised-buffer full matrix](wire-raw-full-results-2026-11-13.md) validates
 252/252 trials: throughput passes 9/18, CPU 0/18 and memory 18/18. CPU/native
 ranges from 1.53× to 5.19×. Many-file downloads remain the largest gap; parity
 is unmet. Historical matrices below describe different candidates.
@@ -34,8 +38,8 @@ The first version's measured download memory cost remains disqualifying.
 
 [Write-parent retention experiment](write-parent-results-2026-11-13.md) is rejected
 and reverted: six balanced source pairs do not establish CPU or throughput
-benefit. New parent-replacement/access contracts remain; current production
-source matches the full matrix above.
+benefit. New parent-replacement/access contracts remain; restored production
+before the refill changes matches the historical revised-buffer matrix.
 
 [Fresh revised-source many-file CPU profiles](wire-raw-many-hybrid-profile-2026-11-13.md)
 validate both engines after the full matrix. Swift stat/open/close account for
