@@ -515,7 +515,12 @@ public actor TorrentSession {
 			if !entry.closed, pending(entry.id) == nil, let token = await commands.tryAcquire(entry.id) {
 				guard !entry.closed, entries.contains(where: { $0 === entry }) else { await commands.release(token); continue }
 				do { entry.last = try await entry.owner.snapshot(); sampled = true; await commands.release(token) }
-				catch { await commands.release(token); throw error }
+				catch {
+					await commands.release(token)
+					if Task.isCancelled || error is CancellationError || entry.running || entry.error.isEmpty { throw error }
+					// A known paused failure must not hide healthy transfers or stall their queue.
+					entry.error = error.localizedDescription
+				}
 			}
 			let messages = await entry.tracker?.messages() ?? entry.trackerMessages
 			let fallback = await entry.tracker?.failure() ?? entry.trackerFailure

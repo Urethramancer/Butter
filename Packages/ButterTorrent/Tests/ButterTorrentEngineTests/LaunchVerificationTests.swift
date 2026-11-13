@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Testing
 import ButterTorrentMetadata
 @testable import ButterTorrentStorage
@@ -8,6 +9,8 @@ extension NativeSessionTests { @Suite struct LaunchVerificationTests {
 	@Test func shutdownCancelsValidationAdmissionAndPausedResumeRestartsTheQueue() async throws {
 		try await transferFixture { fixture in
 			let resources = try TransferResources(maximumDiskOperations: 1), other = try V2Fixture(version: 3)
+			let parent = fixture.root.appendingPathComponent("source/bundle")
+			defer { _ = chmod(parent.path, 0o700) }
 			let source = fixture.root.appendingPathComponent("input.torrent"), session = TorrentSession(storage: fixture.root.appendingPathComponent("library"), configuration: plainTransferConfiguration(), resources: resources)
 			try fixture.metadata.document.original.write(to: source)
 			var held = false
@@ -38,8 +41,25 @@ extension NativeSessionTests { @Suite struct LaunchVerificationTests {
 				try await eventually { try await session.snapshot().transfers.first { $0.id == "torrent" }?.activity == nil }
 				let row = try #require(await session.snapshot().transfers.first { $0.id == "torrent" })
 				#expect(!row.state.running && row.state.storage.verifiedPieces == [0, 1, 2])
+				// A later launch failure is isolated to this paused torrent.
+				_ = try await session.remove(id: "torrent", retainState: true)
+				try await resources.disk.acquire(); held = true
+				_ = try await session.add(id: "torrent", source: source, destination: fixture.root.appendingPathComponent("source"), restore: true)
+				try await eventually { await resources.snapshot().waitingDiskOperations == 1 }
+				#expect(chmod(parent.path, 0o300) == 0)
+				await resources.disk.release(); held = false
+				try await eventually {
+					let row = try await session.snapshot().transfers.first { $0.id == "torrent" }
+					return row?.activity == nil && row?.error.isEmpty == false
+				}
+				try await session.pause(id: "torrent")
+				try await session.run(id: "seed", running: true)
+				let visible = try await session.snapshot().transfers
+				#expect(visible.count == 2 && visible.first { $0.id == "torrent" }?.state.running == false)
+				#expect(visible.first { $0.id == "seed" }?.state.running == true)
+				#expect(chmod(parent.path, 0o700) == 0)
 				try await session.close()
-			} catch { if held { await resources.disk.release() }; try? await session.close(); await other.close(); throw error }
+			} catch { _ = chmod(parent.path, 0o700); if held { await resources.disk.release() }; try? await session.close(); await other.close(); throw error }
 			await other.close()
 		}
 	}

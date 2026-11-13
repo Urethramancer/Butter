@@ -149,8 +149,10 @@ final class StorageState: @unchecked Sendable {
 				var trusted = false
 				if verificationPolicy == .trustCompleted {
 					if merkle.index.enabled { for piece in cached where merkle.expected(piece) == nil { record.set(piece, false) } }
-					let required = try Set(layout.files.indices.filter { record.selected[$0] && !layout.files[$0].pad }.flatMap { try layout.pieces(touchingFile: $0) })
-					trusted = required.allSatisfy { record.contains($0) && (!merkle.index.enabled || merkle.expected($0) != nil) }
+					trusted = try layout.files.indices.allSatisfy { index in
+						guard record.selected[index], !layout.files[index].pad else { return true }
+						return try layout.pieces(touchingFile: index).allSatisfy { record.contains($0) && (!merkle.index.enabled || merkle.expected($0) != nil) }
+					}
 				}
 				if trusted { verificationPending.resetBytes(in: 0..<verificationPending.count) }
 				else { record.verified.resetBytes(in: 0..<record.verified.count) }
