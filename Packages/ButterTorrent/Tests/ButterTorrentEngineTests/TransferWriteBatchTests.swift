@@ -47,6 +47,39 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 }
 
 @Suite struct TransferWriteBatchTests {
+	@Test(arguments: [false, true]) func requestsOverlapVerificationWithinTheExistingWindow(_ batched: Bool) async throws {
+		try await transferFixture { fixture in
+			let gate = BatchVerificationGate(), resources = try TransferResources(maximumDiskOperations: 1), clock = EngineClock()
+			var config = plainTransferConfiguration(); config.pipeline = batched ? 2 : 1
+			let down = try await fixture.transfer("download", configuration: config, clock: clock, resources: resources, event: { gate.observe($0) })
+			let peer = try await fixture.scripted(down)
+			defer { gate.release.signal(); peer.stream.close() }
+			try await peer.seed(pieceCount: 3)
+			var requests = try await peer.requests(config.pipeline)
+			let id = await down.snapshot().peers[0].id
+			if !batched {
+				let block = requests[0]
+				try await down.received(id, message: .piece(block.piece, block.offset, fixture.bytes.subdata(in: block.offset..<(block.offset + block.length))))
+				requests = try await peer.requests(1)
+			}
+			let blocks = requests.map { IncomingPieceBlock(piece: $0.piece, offset: $0.offset, bytes: fixture.bytes.subdata(in: $0.offset..<($0.offset + $0.length))) }
+			gate.arm()
+			let writing = Task {
+				if batched { try await down.receivedBlocks(id, blocks: blocks) }
+				else { try await down.received(id, message: .piece(blocks[0].piece, blocks[0].offset, blocks[0].bytes)) }
+			}
+			do {
+				try await engineDeadline { for await _ in gate.entered.stream { return }; throw PeerFailure.closed }
+				let next = try await peer.requests(config.pipeline)
+				#expect(next.allSatisfy { $0.piece == 1 })
+				#expect(await down.verifyingPiecesForTesting() == [0])
+				#expect(await resources.snapshot().diskOperations == 1)
+				gate.release.signal(); try await writing.value
+				let status = await down.snapshot()
+				#expect(status.verifiedPieces == [0] && status.peers.first?.pendingRequests == config.pipeline)
+			} catch { writing.cancel(); gate.release.signal(); _ = try? await writing.value; throw error }
+		}
+	}
 	@Test(arguments: [false, true], [false, true]) func availableRequestBurstProcessesCancelBeforeBlockedPayloads(_ encrypted: Bool, _ limited: Bool) async throws {
 		try await transferFixture { fixture in
 			let resources = try TransferResources(maximumDiskOperations: 1)

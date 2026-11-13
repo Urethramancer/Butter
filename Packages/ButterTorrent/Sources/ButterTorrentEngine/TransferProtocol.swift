@@ -148,6 +148,7 @@ extension TCPTransfer {
 		do { try await storage.write(piece: block.piece, offset: block.offset, data: bytes) }
 		catch { picker.abortedWrite(block); discardUnretainedPayload(); diskFailed(error); throw error }
 		guard picker.written(block) else { return }
+		prefillBeforeVerification(id)
 		try await verifyReceivedPiece(block.piece)
 	}
 	func verifyReceivedPiece(_ piece: Int) async throws {

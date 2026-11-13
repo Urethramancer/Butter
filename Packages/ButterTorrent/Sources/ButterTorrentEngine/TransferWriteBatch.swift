@@ -1,5 +1,6 @@
 import Foundation
 import ButterTorrentStorage
+import ButterTorrentNetworking
 
 struct IncomingPieceBlock: Sendable {
 	let piece: Int
@@ -9,6 +10,11 @@ struct IncomingPieceBlock: Sendable {
 }
 
 extension TCPTransfer {
+	func prefillBeforeVerification(_ id: UUID) {
+		guard !Task.isCancelled, configuration.downloadLimit == 0, wantedHashesReady,
+			peers[id]?.session.stream.kind == .tcp else { return }
+		fill(id)
+	}
 	func acceptPayload(_ peer: TransferPeer, block: PeerBlock, now: TimeInterval) throws {
 		try validate(block)
 		if peer.pending.remove(block) == nil {
@@ -63,6 +69,7 @@ extension TCPTransfer {
 			if !staged.isEmpty { try await storage.writeBatch(staged.map { StorageWrite(piece: $0.piece, offset: $0.offset, data: $0.bytes) }) }
 		} catch { abortBatch(staged); diskFailed(error); await disk.release(); throw error }
 		let ready = staged.compactMap { picker.written($0.block) ? $0.piece : nil }
+		if !ready.isEmpty { prefillBeforeVerification(id) }
 		var pending = ready[...]
 		do { while let piece = pending.popFirst() { try await verifyReceivedPiece(piece) } }
 		catch {
