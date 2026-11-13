@@ -43,12 +43,36 @@ assertions and shared disk admission failed. The complete failure log remains
 at `.build/descriptor-diagnostics-tests.log`; the prescribed serial run passes
 all 77 storage tests. No failing measurement has been replaced.
 
-## Next experiment
+## Rejected parent reuse after scoped verification
 
-Retest bounded immediate-parent reuse against the current scoped-verification
+Retested bounded immediate-parent reuse against the current scoped-verification
 source. The [original attempt](write-parent-results-2026-11-13.md) remains rejected
 and its evidence is unchanged. New evidence is the 90.6% reduction in inspected
 leaves, directories accounting for 88% of remaining opens, and the unsuccessful
 root-duplication experiment. This changes the measured cost balance; it is not
 proof that retention now helps. Keep full parent-stamp/effective-access checks,
 per-block leaf identity checks, eight payload slots and existing job limits.
+
+Candidate `bf7b252` versus `a30e41e` again validates all 28 balanced trials.
+Directory opens fall from 95,603 to 30,377 in the separate diagnostic, but it
+adds 74,318 parent inspections and 65,395 effective-access checks.
+The [new diagnostic counts](raw/scoped-parent-profile/counts.json) retain this
+replacement work; [raw phases](raw/scoped-parent-profile/trials.jsonl) and the
+[sample manifest](raw/scoped-parent-profile/sample-manifest.json) preserve both
+engines. Full sample text remains in `.build/benchmarks/scoped-parent-profile-20261113`.
+
+| Current/previous | Median | 95% interval |
+| --- | ---: | ---: |
+| cpu_seconds_per_gib | 0.9602 | 0.9021–1.0125 |
+| verified_bytes_per_second | 1.0535 | 0.9913–1.1171 |
+| peak_rss | 1.0036 | 0.9730–1.1008 |
+| counterpart_cpu_seconds_per_gib | 0.9570 | 0.8369–1.1034 |
+
+All source intervals include one, so the candidate is reverted. Native-control
+CPU also shifts down (0.9905, interval 0.9819–0.9946), reinforcing the need for
+balanced controls and caution. It is not evidence that Swift became faster.
+No counters, profilers, other builds or tests ran during timing. All 77 storage
+tests pass before measurement. [Raw trials](raw/scoped-parent-source/trials.jsonl),
+[summary](raw/scoped-parent-source/summary.json) and
+[environment](raw/scoped-parent-source/environment.json) retain the new evidence
+separately from the original parent-cache rejection. No samples were replaced.
