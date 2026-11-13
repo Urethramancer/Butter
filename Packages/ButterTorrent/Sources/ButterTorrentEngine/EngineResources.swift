@@ -74,7 +74,7 @@ actor SharedPieceCache {
 		let load: Load
 		while true {
 			try Task.checkCancellation(); guard !owner.closed else { throw PeerFailure.closed }; order &+= 1
-			if let value = values[key] { values[key] = (value.0, order); return value.0 }
+			if let value = values[key] { StorageDiagnostics.count(.cacheHits); values[key] = (value.0, order); return value.0 }
 			if let current = loading[key] { load = current; break }
 			if loading.count >= 64 || loading.keys.filter({ $0.owner == owner.id }).count >= 4 || length > limit - reserved {
 				try await waitForCapacity(); continue

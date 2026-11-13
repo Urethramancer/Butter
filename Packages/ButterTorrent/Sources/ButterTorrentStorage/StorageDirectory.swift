@@ -5,6 +5,7 @@ import CryptoKit
 // Reuse only the last parent during one stamp scan. No descriptor survives into
 // the next scan, which must observe renamed/replaced directories afresh.
 final class StorageStampScan {
+	init() { StorageDiagnostics.count(.scans) }
 	private var root: StorageDirectory?
 	private var parentPath: String?
 	private var descriptor: Int32 = -1
@@ -72,6 +73,7 @@ final class StorageDirectory: @unchecked Sendable {
 		self.url = url.standardizedFileURL.resolvingSymlinksInPath()
 		if create { try FileManager.default.createDirectory(at: self.url, withIntermediateDirectories: true) }
 		fd = open(self.url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+		StorageDiagnostics.count(.descriptorOpens)
 		guard fd >= 0 else { throw diskError("Cannot open storage root") }
 	}
 	deinit { close(fd) }
@@ -81,11 +83,13 @@ final class StorageDirectory: @unchecked Sendable {
 			guard mkdirat(fd, name, 0o700) == 0 else { throw diskError("Cannot create state directory") }; try sync(fd)
 		}
 		let descriptor = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+		StorageDiagnostics.count(.descriptorOpens)
 		guard descriptor >= 0 else { throw diskError("Cannot open state directory") }
 		return StorageDirectory(url: url.appendingPathComponent(name), descriptor: descriptor)
 	}
 	func names() throws -> [String] {
 		let descriptor = openat(fd, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+		StorageDiagnostics.count(.descriptorOpens)
 		guard descriptor >= 0 else { throw diskError("Cannot enumerate state directory") }
 		guard let directory = fdopendir(descriptor) else { close(descriptor); throw diskError("Cannot enumerate state directory") }
 		defer { closedir(directory) }
@@ -118,6 +122,7 @@ final class StorageDirectory: @unchecked Sendable {
 		for part in parts.dropLast() {
 			if create, mkdirat(directory, part, 0o700) == 0 { try sync(directory) }
 			let next = openat(directory, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+			StorageDiagnostics.count(.descriptorOpens)
 			guard next >= 0 else { throw diskError("Cannot open managed directory") }
 			close(directory); directory = next
 		}
@@ -127,6 +132,7 @@ final class StorageDirectory: @unchecked Sendable {
 		try parent(path, create: write) { directory, name in
 			let flags = (write ? O_RDWR | O_CREAT : O_RDONLY) | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK | (exclusive ? O_EXCL : 0)
 			let file = openat(directory, name, flags, 0o600)
+			StorageDiagnostics.count(.descriptorOpens)
 			guard file >= 0 else { throw diskError("Cannot open managed file") }
 			do { _ = try stamp(file, shared: !write); return file } catch { close(file); throw error }
 		}
@@ -148,6 +154,7 @@ final class StorageDirectory: @unchecked Sendable {
 		catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
 	}
 	fileprivate func inspect(_ name: String, at directory: Int32) throws -> FileStamp? {
+		StorageDiagnostics.count(.filesInspected)
 		var value = stat()
 		if fstatat(directory, name, &value, AT_SYMLINK_NOFOLLOW) != 0 {
 			if errno == ENOENT { return nil }; throw diskError("Cannot inspect managed file")
@@ -172,6 +179,7 @@ final class StorageDirectory: @unchecked Sendable {
 				if errno == EINTR { continue }; throw diskError("Cannot read file")
 			}
 			bytes.count = readCount
+			StorageDiagnostics.io(read: true, bytes: readCount)
 			return bytes
 		}
 	}
@@ -183,6 +191,7 @@ final class StorageDirectory: @unchecked Sendable {
 				let count = pwrite(file, bytes.baseAddress!.advanced(by: written), min(65536, bytes.count - written), off_t(offset) + off_t(written))
 				if count < 0, errno == EINTR { continue }
 				guard count > 0 else { throw diskError("Cannot write file") }; written += count
+				StorageDiagnostics.io(read: false, bytes: count)
 			}
 		}
 	}
@@ -191,6 +200,7 @@ final class StorageDirectory: @unchecked Sendable {
 		try parent(path, create: true) { directory, name in
 			let temporary = ".atomic-" + UUID().uuidString
 			let file = openat(directory, temporary, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+			StorageDiagnostics.count(.descriptorOpens)
 			guard file >= 0 else { throw diskError("Cannot create atomic state") }
 			defer { close(file); unlinkat(directory, temporary, 0) }
 			try Self.write(data, to: file, offset: 0, check: {})
@@ -246,6 +256,7 @@ final class StorageDirectory: @unchecked Sendable {
 			try check(); let data = try Self.read(file, offset: offset, count: Int(min(65536, before.size - offset)))
 			guard !data.isEmpty else { throw StorageFailure.invalid("file shortened during copy") }
 			hash.update(data: data); offset += Int64(data.count)
+			StorageDiagnostics.count(.bytesHashed, data.count); StorageDiagnostics.count(.sha256Bytes, data.count)
 		}
 		guard try stamp(file, shared: true) == before else { throw StorageFailure.invalid("file changed during copy") }
 		return (Data(hash.finalize()), before)

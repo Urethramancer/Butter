@@ -4,6 +4,9 @@ set -eu
 cd "$(dirname "$0")/.."
 mode=${1:---full}
 case "$mode" in --full|--smoke|--profile|--compare-source|--profile-source) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--profile|--compare-source|--profile-source] [OUTPUT]' >&2; exit 2 ;; esac
+if [ "${BUTTER_STORAGE_DIAGNOSTICS:-0}" = 1 ]; then
+	case "$mode" in --profile|--profile-source) ;; *) echo 'Storage counters are diagnostic only; use --profile or --profile-source.' >&2; exit 2 ;; esac
+fi
 if [ "$mode" = --profile-source ] && [ -z "${BUTTER_BENCHMARK_PREVIOUS_REVISION:-}" ]; then
 	echo 'Set BUTTER_BENCHMARK_PREVIOUS_REVISION for --profile-source.' >&2; exit 2
 fi
@@ -32,7 +35,7 @@ reference=$PWD/.dependencies/reference-build/TCPPeerReference
 scratch=$PWD/.build/benchmark-release
 swift build -c release --package-path Packages/ButterTorrent --scratch-path "$scratch" >> "$out/build.log" 2>&1
 bin=$(swift build -c release --package-path Packages/ButterTorrent --scratch-path "$scratch" --show-bin-path)
-swiftc -O -swift-version 6 -parse-as-library -module-cache-path "$work/modules" -I "$bin" -L "$bin" \
+swiftc -O -D BUTTER_STORAGE_DIAGNOSTICS_AVAILABLE -swift-version 6 -parse-as-library -module-cache-path "$work/modules" -I "$bin" -L "$bin" \
 	-lButterTorrentEngine -lButterTorrentStorage -lButterTorrentNetworking -lButterTorrentMetadata \
 	Tests/TransferBenchmark.swift -o "$work/TransferBenchmark" >> "$out/build.log" 2>&1
 previous_driver=
@@ -44,7 +47,9 @@ if [ "$mode" = --compare-source ] || [ "$mode" = --profile-source ]; then
 	swift build -c release --package-path "$previous_root/Packages/ButterTorrent" --scratch-path "$work/previous-build" >> "$out/build.log" 2>&1
 	previous_bin=$(swift build -c release --package-path "$previous_root/Packages/ButterTorrent" --scratch-path "$work/previous-build" --show-bin-path)
 	previous_driver=$work/PreviousTransferBenchmark
-	swiftc -O -swift-version 6 -parse-as-library -module-cache-path "$work/modules" -I "$previous_bin" -L "$previous_bin" \
+	previous_diagnostics=
+	if [ -f "$previous_root/Packages/ButterTorrent/Sources/ButterTorrentStorage/StorageDiagnostics.swift" ]; then previous_diagnostics='-D BUTTER_STORAGE_DIAGNOSTICS_AVAILABLE'; fi
+	swiftc -O $previous_diagnostics -swift-version 6 -parse-as-library -module-cache-path "$work/modules" -I "$previous_bin" -L "$previous_bin" \
 		-lButterTorrentEngine -lButterTorrentStorage -lButterTorrentNetworking -lButterTorrentMetadata \
 		Tests/TransferBenchmark.swift -o "$previous_driver" >> "$out/build.log" 2>&1
 fi
@@ -58,7 +63,7 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
     libtorrent_revision: "6da363d2994f17c0b3c0450d124cf73a31a73847", swift: capture.call("swift", "--version"), clang: capture.call("clang++", "--version"),
     os: capture.call("sw_vers"), machine: capture.call("sysctl", "-n", "hw.model", "hw.memsize", "hw.logicalcpu"),
     filesystem: capture.call("df", "-h", root), work_directory: root, resource_limits: capture.call("sh", "-c", "ulimit -a"),
-    filters: ENV.select { |key, _| key.start_with?("BUTTER_BENCHMARK_") },
+    filters: ENV.select { |key, _| key.start_with?("BUTTER_BENCHMARK_") || key == "BUTTER_STORAGE_DIAGNOSTICS" },
     swift_flags: "Release; swiftc -O -swift-version 6", reference_flags: "CMake Release; arm64; pinned static libtorrent",
     transport: "loopback TCP, encryption disabled, PEX/discovery disabled; production request windows",
     cache: "fresh processes and destinations; sources streamed and SHA256 checked before every trial; explicitly warm, no cold-cache claim",

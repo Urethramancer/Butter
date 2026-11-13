@@ -181,7 +181,9 @@ final class StorageState: @unchecked Sendable {
 		let changed = Set(current.indices.filter { current[$0] != record.stamps[$0] })
 		guard !changed.isEmpty else { return current }
 		for index in changed where !layout.files[index].pad {
-			for piece in try layout.pieces(touchingFile: index) { record.set(piece, false) }
+			for piece in try layout.pieces(touchingFile: index) {
+				if record.contains(piece) { StorageDiagnostics.count(.verificationInvalidations) }; record.set(piece, false)
+			}
 		}
 		record.stamps = current
 		return current
@@ -294,11 +296,14 @@ final class StorageState: @unchecked Sendable {
 		while offset < length {
 			try check(); let count = min(262144, length - offset)
 			let data = try read(piece: piece, offset: offset, count: count, verifiedOnly: false, check: check)
+			StorageDiagnostics.count(.bytesHashed, data.count)
+			if hash != nil { StorageDiagnostics.count(.sha1Bytes, data.count) }
 			hash?.update(data: data)
 			if let mapping {
 				for block in stride(from: offset, to: min(offset + count, mapping.length), by: 16384) {
 					let end = min(block + 16384, mapping.length)
 					leaves.append(Data(SHA256.hash(data: data.subdata(in: (block - offset)..<(end - offset)))))
+					StorageDiagnostics.count(.sha256Bytes, end - block)
 				}
 			}
 			if let range {

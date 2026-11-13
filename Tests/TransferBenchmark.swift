@@ -13,11 +13,14 @@ import ButterTorrentEngine
 	struct Command: Decodable { let command: String; let ports: [UInt16]? }
 	static func emit(_ phase: String, ports: [UInt16] = [], bytes: Int64 = 0, errors: [String] = []) throws {
 		var usage = rusage(); guard getrusage(RUSAGE_SELF, &usage) == 0 else { throw CocoaError(.fileReadUnknown) }
-		let record: [String: Any] = ["phase": phase, "pid": getpid(), "time": ProcessInfo.processInfo.systemUptime,
+		var record: [String: Any] = ["phase": phase, "pid": getpid(), "time": ProcessInfo.processInfo.systemUptime,
 			"user": Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6,
 			"system": Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6,
 			"peak_rss": usage.ru_maxrss, "ports": ports, "payload_bytes": bytes, "request_window": TCPTransferConfiguration().pipeline,
 			"upload_admission": ["advertised_reqq": TCPTransferConfiguration.advertisedUploadRequestLimit, "requests_per_peer": 32, "jobs_per_transfer": 64, "output_bytes": 524288, "output_messages": 128], "peer_errors": errors]
+		#if BUTTER_STORAGE_DIAGNOSTICS_AVAILABLE
+		if StorageDiagnostics.enabled { record["storage_diagnostics"] = StorageDiagnostics.snapshot() }
+		#endif
 		var bytes = try JSONSerialization.data(withJSONObject: record); bytes.append(10)
 		try FileHandle.standardOutput.write(contentsOf: bytes)
 	}

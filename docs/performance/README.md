@@ -407,6 +407,16 @@ retained; these instrumented results are labelled profile-only and never used
 as timing acceptance evidence. Sampling attributes stacks and waits; allocation
 counts require additional Instruments Allocations recordings when indicated.
 
+`BUTTER_STORAGE_DIAGNOSTICS=1` adds aggregate Swift storage counters to phase
+events in profile modes only. Timing modes reject it. Counters include stamp
+scans, leaf inspections, descriptor-open attempts, disk jobs, bytes read/written,
+stored bytes hashed, SHA-1/SHA-256 input bytes, immutable upload-cache hits and
+verification invalidations. Read/write call sizes use ceiling powers of two;
+zero and one share bucket zero. I/O includes state files, and hash counters
+include copy checks. These are process totals, not per-block logs. Counters are
+absent for older source revisions without this instrumentation; absence means
+unavailable, not zero. Native work still requires separate native diagnostics.
+
 Set `BUTTER_BENCHMARK_PROFILER=time-profiler` with `--profile` to capture
 Instruments Time Profiler instead. Each engine is attached separately while
 both drivers wait at ready; an Instruments start notification gates transfer

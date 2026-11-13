@@ -37,7 +37,7 @@ final class StorageWorker: @unchecked Sendable {
 		return try await withTaskCancellationHandler {
 			try await withCheckedThrowingContinuation { continuation in
 				Self.pool.submit(owner: self.owner, bulk: bulk) {
-					let result = Result { try cancellation.check(); return try operation(cancellation) }
+					let result = Result { try cancellation.check(); StorageDiagnostics.count(.diskJobs); return try operation(cancellation) }
 					self.lock.withLock { self.pending -= 1 }
 					Self.budget.release()
 					continuation.resume(with: result)
