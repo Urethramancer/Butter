@@ -1,5 +1,10 @@
 # Swift/libtorrent transfer comparison
 
+[Grouped upload publication](upload-publication-results-2026-11-13.md) reduces
+single-file v1 seeding CPU 4.7% across 28 validated source trials. Throughput,
+RSS and counterpart CPU remain inconclusive, including a wide RSS interval.
+The candidate is experimental; broader comparisons and final validation remain open.
+
 [Raw-name bulk inspection](raw-bulk-results-2026-11-13.md) is rejected and
 reverted: CPU rises 1.7%, throughput falls 2.2% and peak RSS rises 1.3% across
 28 validated trials. Removing directory-entry String construction did not make

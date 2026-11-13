@@ -2,6 +2,12 @@
 
 ## TCP performance parity
 
+- Measure grouped upload publication on many-file and concurrent seeding, then
+  download regressions. Single-file v1 CPU falls 4.7% across 28 validated trials;
+  throughput/RSS/counterpart CPU remain inconclusive. Preserve the wide memory
+  interval rather than claiming no cost. Package/sanitizer/Release checks pass;
+  native interoperability and a full matrix remain open for any retained candidate.
+
 - Resolve revised request-burst source RSS/seeding uncertainty and reduce the
   remaining CPU gap. The full matrix validates all 252 trials, passing throughput
   9/18, CPU 0/18 and original-baseline memory 18/18. Revised single-file download
