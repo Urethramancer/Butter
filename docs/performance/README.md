@@ -1,5 +1,10 @@
 # Swift/libtorrent transfer comparison
 
+[Scoped piece verification](scoped-verification-results-2026-11-13.md) reduces
+many-file hybrid download CPU 21.8% and raises throughput 31.0% across 28
+validated trials, independently of deferred startup. Memory and counterpart
+CPU remain inconclusive; final full-matrix acceptance is still outstanding.
+
 [Scoped write inspection](scoped-write-results-2026-11-13.md) reduces many-file
 hybrid download CPU 14.7% and raises throughput 18.8% in a separate 28-trial
 parent comparison. Memory and counterpart CPU remain inconclusive. All 24
@@ -497,11 +502,16 @@ pending work and surface errors; explicit flush/save/shutdown can retry.
 Completion, pause, save/export, shutdown and filesystem changes force a barrier.
 Shutdown cancels and drains scheduled checkpoint work.
 
-A restart retains uncheckpointed bytes. Before requesting an existing unverified
-piece, the picker performs one bounded local check for that piece, lazily and
-under existing disk admission limits. Only fully verified data is advertised;
-missing or corrupt data falls back to normal requests. Recovery bookkeeping uses
-bounded bitsets and introduces no eager payload scan or legacy resume importer.
+A restart retains uncheckpointed bytes. Managed reopening defers historical
+checkpoint claims; direct storage callers retain eager checking by default.
+Paused transfers report verification pending. Running transfers check at most
+one background piece per transfer through existing disk admission, with demand
+checks taking precedence. Passing pieces become available progressively.
+Attempts are coalesced by bounded bitsets and reset when dependent files change;
+piece observations retain file generations across checkpoint work. Only fully
+verified data is advertised. Missing or corrupt data falls back to requests.
+Completion waiters and complete snapshots wait for the durable checkpoint and
+a whole-layout reconciliation. Immutable checked upload bytes remain reusable.
 
 ## Recorded checkpoint experiment
 
