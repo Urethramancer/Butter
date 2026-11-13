@@ -98,7 +98,15 @@ struct TorrentRow: View {
 		HStack(spacing: 12) {
 			Menu { PriorityMenu(ids: store.selection.contains(torrent.id) ? store.selection : [torrent.id]) } label: { Image(systemName: "line.3.horizontal.decrease.circle").font(.title3) }.menuStyle(.borderlessButton).frame(width: 23).controlHelp("Change priority for \(store.title(torrent))").accessibilityValue(store.priority(for: torrent).label)
 			VStack(alignment: .leading, spacing: 5) {
-				HStack { Text(store.title(torrent)).font(.headline).lineLimit(1); Spacer(); Text("\(Int(torrent.verifiedProgress * 100))%").monospacedDigit().foregroundStyle(.secondary) }
+				HStack {
+					Text(store.title(torrent)).font(.headline).lineLimit(1)
+					if let format = torrent.formatLabel {
+						Text(format).font(.caption2.weight(.semibold)).foregroundStyle(.primary)
+							.padding(.horizontal, 5).padding(.vertical, 2).background(.quaternary, in: .rect(cornerRadius: 4)).fixedSize()
+							.accessibilityLabel("Torrent format: \(format)").help(format == "Hybrid" ? "Hybrid torrent supporting both v1 and v2." : "BitTorrent \(format) torrent.")
+					}
+					Spacer(); Text("\(Int(torrent.verifiedProgress * 100))%").monospacedDigit().foregroundStyle(.secondary)
+				}
 				PieceProgress(pieces: torrent.pieces).frame(height: 7)
 				HStack { Text("\(bytes(torrent.done)) of \(bytes(torrent.wanted)) · \(store.state(torrent))").lineLimit(1); Spacer(); if torrent.down > 0 { Text("↓ \(speed(torrent.down))") }; if torrent.up > 0 { Text("↑ \(speed(torrent.up))") } }.font(.caption).foregroundStyle(torrent.error.isEmpty ? Color.secondary : Color.red).accessibilityElement(children: .ignore).accessibilityLabel("\(bytes(torrent.done)) of \(bytes(torrent.wanted)), \(store.state(torrent)). Download \(speed(torrent.down)), upload \(speed(torrent.up)).")
 			}

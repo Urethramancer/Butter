@@ -36,6 +36,13 @@ func observation(_ id: String, _ priority: TransferPriority = .normal, order: In
 		try require(object["pieces"] as? [Int] == [0, 1, 2, 3, 4], "Compact states retain the numeric JSON contract")
 		let decoded = try JSONDecoder().decode(TransferSnapshot.self, from: encoded)
 		try require(decoded.pieces == snapshot.pieces, "All display states round-trip")
+		let v1 = String(repeating: "a", count: 40), v2 = String(repeating: "b", count: 64)
+		for (hashes, label): ([String], String?) in [([], nil), ([v1], "v1"), ([v2], "v2"), ([v2, v1], "Hybrid")] {
+			snapshot.hashes = hashes; snapshot.metadata = true
+			try require(snapshot.formatLabel == label, "Format badge follows metadata identities")
+			snapshot.metadata = false
+			try require(snapshot.formatLabel == nil, "Pending magnets do not claim a metadata format")
+		}
 	}
 	static func groups() throws {
 		let t = fixture()

@@ -114,6 +114,15 @@ struct TransferSnapshot: Codable, Identifiable {
 	var files: [TransferFile]
 	var trackers: [TrackerSnapshot]
 	var peers: [PeerSnapshot]
+	var formatLabel: String? {
+		guard metadata else { return nil }
+		switch (hashes.contains { $0.count == 40 }, hashes.contains { $0.count == 64 }) {
+		case (true, true): return "Hybrid"
+		case (true, false): return "v1"
+		case (false, true): return "v2"
+		case (false, false): return nil
+		}
+	}
 	var ratio: Double { Double(uploaded) / Double(max(1, downloaded > 0 ? downloaded : wanted)) }
 	var eta: String { down > 0 && !complete ? Duration.seconds(Double(max(0, wanted - done)) / Double(down)).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .abbreviated, maximumUnitCount: 2)) : "—" }
 	var verifiedProgress: Double { wanted > 0 ? Double(done) / Double(wanted) : 0 }
