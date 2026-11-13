@@ -32,8 +32,30 @@ is requested within the existing window while verification holds the sole disk
 permit, without publishing piece completion. All 356 package tests, eight
 focused tests under each sanitizer and Release build pass.
 
-Broader source comparisons, native interoperability and the final full matrix
-remain pending. This is focused evidence, not release or parity acceptance.
+## Broader checks
+
+Two further fixed six-pair source comparisons each validate all 28 trials,
+bringing source timing coverage to 84 accepted trials with no failures.
+
+| Workload | CPU ratio [95%] | Throughput ratio [95%] | RSS ratio [95%] | Counterpart CPU ratio [95%] |
+| --- | ---: | ---: | ---: | ---: |
+| Concurrent hybrid download | 0.915 [0.875–0.947] | 1.105 [0.972–1.254] | 1.014 [0.917–1.105] | 0.858 [0.756–1.044] |
+| Single-file v1 download | 0.937 [0.847–1.003] | 1.008 [0.912–1.121] | 0.994 [0.947–1.058] | 0.865 [0.704–1.046] |
+
+Concurrent CPU falls reproducibly by 8.5%; single-file CPU is inconclusive.
+Neither case establishes throughput, RSS or counterpart CPU changes. In
+particular, the concurrent RSS interval includes a 10.5% increase relative
+to the preceding source, so a memory cost has not been ruled out. Native
+controls' intervals cross one in both cases. No null is extended or retried.
+
+The unfiltered native suite exits successfully with 466 PASS records, including
+bidirectional transfers, TCP/µTP, encryption, selective storage, fragmented
+IPv4/IPv6, session discovery and web seeds. The historical µTP timeout passes
+with unchanged deadlines; its original cause remains unexplained.
+
+The candidate remains provisional. Broader format coverage, profiles and the
+final full matrix remain pending; wide throughput and memory intervals are
+inconclusive. This is focused evidence, not release or parity acceptance.
 
 [Measurements, validation logs and raw hashes](verification-prefill-comparison-2026-11-13.json)
 retain the evidence. Raw trials remain in

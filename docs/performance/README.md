@@ -1,9 +1,11 @@
 # Swift/libtorrent transfer comparison
 
 [Refilling the existing window before verification](verification-prefill-results-2026-11-13.md)
-reduces many-file hybrid download CPU by 9.9% [5.1–14.8%] in six balanced
-source pairs. All 28 trials validate; throughput and RSS changes remain
-inconclusive. Broader comparisons and native interoperability are pending.
+reduces many-file hybrid download CPU by 9.9% [5.1–14.8%] and concurrent
+hybrid download CPU by 8.5% [5.3–12.5%]. Three fixed six-pair source cases
+validate all 84 trials; single-file v1 CPU, throughput and RSS changes remain
+inconclusive. The native suite passes with 466 PASS records. Broader format
+coverage and the final full matrix remain pending; the candidate is provisional.
 The full matrix below describes the preceding production source.
 
 [Current revised-buffer full matrix](wire-raw-full-results-2026-11-13.md) validates

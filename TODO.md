@@ -2,9 +2,10 @@
 
 ## TCP performance parity
 
-- Validate the verification-prefill candidate across other workloads and native
-  interoperability before retention. Its focused many-file hybrid source comparison
-  reduces CPU 9.9%; throughput and RSS changes are inconclusive. Rerun the full
+- Extend the provisional verification-prefill candidate's format coverage and
+  inspect fresh profiles. Three source cases validate 84 trials: many-file and
+  concurrent hybrid CPU fall 9.9% and 8.5%; throughput and RSS changes remain
+  inconclusive. Native interoperability passes (466 PASS records). Rerun the full
   matrix for any retained final candidate; the existing matrix predates this change.
 
 - Reduce the revised candidate's remaining CPU gap: its full matrix validates
