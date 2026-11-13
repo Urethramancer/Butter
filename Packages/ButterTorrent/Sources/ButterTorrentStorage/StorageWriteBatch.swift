@@ -54,7 +54,7 @@ extension StorageState {
 		try invalidateWriteTargets(segments)
 		let pieces = Set(writes.map(\.piece))
 		let invalidated = pieces.filter(committedContains)
-		for piece in pieces { record.set(piece, false) }
+		for piece in pieces { record.set(piece, false); recoveryChecked[piece / 8] &= ~UInt8(128 >> (piece % 8)) }
 		if !invalidated.isEmpty {
 			// Leave invalidated bits false after failure: save may detect an external edit.
 			try save()
@@ -80,7 +80,7 @@ extension StorageState {
 				// Re-check even the first open: replacement can occur after the initial scan.
 				let opened = try directory.stamp(file)
 				guard let current = try directory.inspect(path), current.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
-				if current != record.stamps[segment.file] { try invalidateChangedFiles() }
+				if current != record.stamps[segment.file] { try invalidateChangedFiles(external: record.stamps[segment.file] != nil) }
 				pendingFlush.insert(segment.file)
 				try StorageDirectory.write(write.data[cursor..<(cursor + segment.count)], to: file, offset: segment.offset, check: check)
 				record.stamps[segment.file] = try directory.stamp(file)

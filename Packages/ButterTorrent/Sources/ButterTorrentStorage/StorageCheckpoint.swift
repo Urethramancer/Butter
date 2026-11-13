@@ -51,6 +51,9 @@ public struct StorageSnapshot: Sendable {
 	public let destination: URL
 	public let paths: [String]
 	public let selected: [Bool]
+	public let integrityGeneration: UInt64
+	public let pendingVerificationCount: Int
+	public let uncheckedPieces: Data
 	public let verifiedPieces: Set<Int>
 	public let downloaded: Int64
 	public let uploaded: Int64

@@ -5,7 +5,6 @@ extension TCPTransfer {
 
 	func advertise(_ piece: Int) {
 		checkpointCompletion()
-		settleCompletionWaiters()
 		for (id, peer) in peers where peer.peerID != nil && !peer.closing {
 			do { try send(id, .have(piece)) } catch { drop(id, error: error) }
 		}

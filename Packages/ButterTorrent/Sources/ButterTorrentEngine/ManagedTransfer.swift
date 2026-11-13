@@ -51,7 +51,7 @@ public actor ManagedTransfer {
 		let identity = peerID ?? Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
 		guard identity.count == 20 else { throw PeerFailure.invalid("peer identifier") }
 		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory, selected: selected, preparedState: preparedState,
-			checkpointPolicy: .managed, checkpointClock: TransferCheckpointClock(clock: clock), event: event)
+			checkpointPolicy: .managed, verificationPolicy: .deferred, checkpointClock: TransferCheckpointClock(clock: clock), event: event)
 		return ManagedTransfer(metadata: metadata, storage: storage, configuration: configuration, resources: resources, budget: budget, peerID: identity, clock: clock, webSeedTransport: webSeedTransport)
 	}
 	public func start() async throws {

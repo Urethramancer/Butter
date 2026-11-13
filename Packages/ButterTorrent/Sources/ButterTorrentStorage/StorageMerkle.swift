@@ -60,7 +60,11 @@ extension StorageState {
 		let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
 		let bytes = try encoder.encode(HashCheckpoint(identity: record.metadataHash, records: candidate.records))
 		guard bytes.count <= 100_663_296 else { throw StorageFailure.limit("hash checkpoint") }
-		try state.atomic(bytes, path: "hashes.plist"); merkle = candidate
+		try state.atomic(bytes, path: "hashes.plist")
+		for piece in candidate.available.subtracting(merkle.available) {
+			recoveryChecked[piece / 8] &= ~UInt8(128 >> (piece % 8))
+		}
+		merkle = candidate
 		event(.pieceLayersChanged)
 	}
 	func hybridFile(containing piece: Int) throws -> (file: MerkleIndex.File, start: Int) {

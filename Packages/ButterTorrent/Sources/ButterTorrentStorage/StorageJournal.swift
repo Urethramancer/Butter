@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 
 public enum StorageEvent: Sendable, Equatable {
+	case pieceHashed(Int)
 	case journalDurable
 	case filePublished(Int)
 	case entryDurable(Int)

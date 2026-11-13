@@ -142,7 +142,7 @@ actor NativeSnapshotMapper {
 			}
 			let complete = done == wanted
 			let activity: String?
-			switch row.activity { case .checking: activity = row.state.running ? "Checking" : nil; case .moving: activity = "Moving"; case .renaming: activity = "Renaming"; case nil: activity = nil }
+			switch row.activity { case .checking: activity = "Checking"; case .moving: activity = "Moving"; case .renaming: activity = "Renaming"; case nil: activity = disk.pendingVerificationCount > 0 ? (row.state.running ? "Checking" : "Verification pending") : nil }
 			rows.append(TransferSnapshot(id: row.id, name: metadata.inspection.name, path: disk.destination.path,
 				state: activity ?? (row.state.running ? (complete ? "Seeding" : "Downloading") : "Paused"), error: wire?.storageError ?? row.error, metadata: true,
 				private: metadata.inspection.private, complete: complete, progress: wanted == 0 ? 1 : Double(done) / Double(wanted), wanted: wanted, done: done, total: total,

@@ -43,6 +43,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 	}
 	static func label(_ event: StorageEvent) -> String {
 		switch event {
+		case .pieceHashed(let index): "hashed-\(index)"
 		case .journalDurable: "journal"
 		case .filePublished(let index): "published-\(index)"
 		case .entryDurable(let index): "entry-\(index)"

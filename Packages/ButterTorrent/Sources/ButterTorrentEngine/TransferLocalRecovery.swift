@@ -1,12 +1,24 @@
 import Foundation
 
 extension TCPTransfer {
-	// Probe only pieces selected for a real request; never scan the torrent on start.
+	// Demand checks enter before another background check is scheduled.
 	func deferForLocalRecovery(_ peer: UUID, block: PeerBlock) -> Bool {
 		guard hasExistingPayload, !locallyChecked.contains(block.piece) else { return false }
 		picker.rejected(peer, block: block)
 		let piece = block.piece
 		guard localRecoveries[piece] == nil else { return true }
+		startLocalRecovery(piece)
+		return true
+	}
+	func scheduleBackgroundRecovery() {
+		guard !stopping, storageError == nil, localRecoveries.isEmpty else { return }
+		while backgroundRecoveryCursor < storage.layout.pieceCount {
+			let piece = backgroundRecoveryCursor; backgroundRecoveryCursor += 1
+			guard pendingLocalChecks.contains(piece), !locallyChecked.contains(piece), !picker.completed.contains(piece), picker.active[piece] == nil else { continue }
+			startLocalRecovery(piece); return
+		}
+	}
+	private func startLocalRecovery(_ piece: Int) {
 		localRecoveries[piece] = Task {
 			do {
 				try await disk.acquire()
@@ -21,8 +33,7 @@ extension TCPTransfer {
 				}
 			} catch { diskFailed(error) }
 			localRecoveries[piece] = nil
-			if !stopping { fillAll() }
+			if !stopping { fillAll(); scheduleBackgroundRecovery() }
 		}
-		return true
 	}
 }

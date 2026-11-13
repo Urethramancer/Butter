@@ -155,8 +155,11 @@ public actor TCPTransfer {
 	var shutdownTask: (UUID, Task<Void, Error>)?
 	var completionWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
 	var completionCheckpoint: Task<Void, Error>?
+	var completionDurable = false
 	let hasExistingPayload: Bool
 	var locallyChecked: PieceBitfield
+	var pendingLocalChecks: PieceBitfield
+	var backgroundRecoveryCursor = 0
 	var localRecoveries: [Int: Task<Void, Never>] = [:]
 	var webSeeds: [TransferWebSeed] = []
 	var webTask: Task<Void, Never>?
@@ -188,6 +191,7 @@ public actor TCPTransfer {
 		}
 		picker = PiecePicker(layout: storage.layout, wanted: wanted, completed: initial.verifiedPieces, lengths: storage.merkleIndex.pieces.mapValues(\.length))
 		hasExistingPayload = initial.hasExistingPayload; locallyChecked = try PieceBitfield(count: storage.layout.pieceCount)
+		pendingLocalChecks = try PieceBitfield(count: storage.layout.pieceCount, bytes: initial.uncheckedPieces)
 		hashReady = hashes; wantedHashesReady = wanted.isSubset(of: hashes)
 		downloaded = initial.downloaded; uploaded = initial.uploaded; corruptBytes = initial.corruptBytes; redundantBytes = initial.redundantBytes; lastChoke = clock.now()
 	}
@@ -203,17 +207,32 @@ public actor TCPTransfer {
 			peerID: identity, budget: budget ?? TCPPeerBudget(limit: configuration.maximumPeers), resources: resources, clock: clock)
 		try await transfer.flushInitialCompletion()
 		await transfer.startTicker()
+		await transfer.scheduleBackgroundRecovery()
 		await transfer.startWebSeeds(client: webSeedClient ?? WebSeedClient(transport: NetworkHTTPTransport(clock: clock, addressFilter: configuration.addressFilter), clock: clock, maximumBytes: 16384), admission: resources.web)
 		return transfer
 	}
-	private func flushInitialCompletion() async throws { if picker.complete { try await storage.flush(retryFailed: false) } }
+	private func flushInitialCompletion() async throws {
+		if picker.complete {
+			try await storage.flush(retryFailed: false)
+			guard try await picker.wanted.isSubset(of: storage.snapshot().verifiedPieces) else { throw StorageFailure.invalid("payload changed before completion") }
+			completionDurable = true
+		}
+	}
 	func checkpointCompletion() {
 		guard !stopping, picker.complete, completionCheckpoint == nil else { return }
-		let storage = storage
+		let storage = storage, wanted = picker.wanted
 		completionCheckpoint = Task { [weak self] in
-			do { try await storage.flush(retryFailed: false) }
+			do {
+				try await storage.flush(retryFailed: false)
+				guard try await wanted.isSubset(of: storage.snapshot().verifiedPieces) else { throw StorageFailure.invalid("payload changed before completion") }
+				await self?.publishDurableCompletion()
+			}
 			catch { await self?.diskFailed(error); throw error }
 		}
+	}
+	private func publishDurableCompletion() {
+		guard !stopping else { return }
+		completionDurable = true; settleCompletionWaiters()
 	}
 	func startTicker() {
 		let clock = clock, interval = min(1, configuration.requestTimeout / 2)
@@ -292,7 +311,7 @@ public actor TCPTransfer {
 		disconnectingPeers = false
 	}
 	public func snapshot() -> TCPTransferSnapshot {
-		TCPTransferSnapshot(webSeeds: webSeeds.map { $0.snapshot }, complete: picker.complete, verifiedPieces: picker.completed, wantedPieces: picker.wanted,
+		TCPTransferSnapshot(webSeeds: webSeeds.map { $0.snapshot }, complete: picker.complete && completionDurable, verifiedPieces: picker.completed, wantedPieces: picker.wanted,
 			pieceStates: (0..<storage.layout.pieceCount).map { picker.completed.contains($0) ? 1 : picker.active[$0] != nil || picker.staged.contains($0) ? 2 : peers.isEmpty ? 0 : picker.availability[$0] > 0 ? 3 : 4 },
 			peers: peers.map { id, peer in TCPPeerSnapshot(id: id, endpoint: peer.session.stream.remoteEndpoint, client: peer.extensions.client, remoteInterested: peer.remoteInterested, peerID: peer.peerID, remoteChoking: peer.remoteChoking, choking: peer.choking,
 				pendingRequests: peer.pending.count, downloaded: peer.downloaded, uploaded: peer.uploaded, v2: peer.features.v2, fast: peer.features.fast, encryption: peer.encryption, transport: peer.session.stream.kind) },
@@ -305,7 +324,7 @@ public actor TCPTransfer {
 		try await withTaskCancellationHandler {
 			try Task.checkCancellation()
 			if let storageError { throw PeerFailure.invalid(storageError) }
-			if picker.complete { return }
+			if picker.complete && completionDurable { return }
 			guard !stopping else { throw PeerFailure.closed }
 			guard completionWaiters.count < 1024 else { throw PeerFailure.limit("completion waiters") }
 			try await withCheckedThrowingContinuation { continuation in
@@ -319,7 +338,7 @@ public actor TCPTransfer {
 		completionWaiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
 	}
 	func settleCompletionWaiters(_ error: Error? = nil) {
-		guard error != nil || picker.complete else { return }
+		guard error != nil || (picker.complete && completionDurable) else { return }
 		let pending = completionWaiters; completionWaiters.removeAll()
 		for waiter in pending.values {
 			if let error { waiter.resume(throwing: error) } else { waiter.resume() }

@@ -244,7 +244,7 @@ private func checkpointEventually(_ operation: () async throws -> Bool) async th
 			try await storage.write(piece: 1, offset: 0, data: Data([255]))
 			#expect(try await storage.recoverExistingPiece(1) == false)
 			try await storage.write(piece: 1, offset: 0, data: bytes.suffix(3616) + Data(repeating: 0, count: 16384 - 3616))
-			#expect(try await storage.recoverExistingPiece(1) == false) // One attempted local check per opening.
+			#expect(try await storage.recoverExistingPiece(1)) // New writes reset the attempted generation.
 			#expect(try await storage.verify(piece: 1))
 			try await storage.shutdown()
 		}

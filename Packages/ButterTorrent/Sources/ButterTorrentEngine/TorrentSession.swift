@@ -188,8 +188,7 @@ public actor TorrentSession {
 					else { storageEvent(id, event) }
 				}); owner = managed
 			await observeDiscovery(id: id, owner: managed)
-			var snapshot = try await managed.snapshot()
-			if !snapshot.storage.needsRecovery { try await managed.recheck(); snapshot = try await managed.snapshot() }
+			let snapshot = try await managed.snapshot()
 			try Task.checkCancellation()
 			try await repository.publish(id: id, metadata: metadata, state: prepared)
 			let entry = SessionEntry(id: id, metadata: metadata, prepared: prepared, owner: managed, last: snapshot, configuration: configuration)

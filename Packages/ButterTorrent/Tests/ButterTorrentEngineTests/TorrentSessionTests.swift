@@ -114,10 +114,13 @@ extension NativeSessionTests { @Suite struct TorrentSessionTests {
 				_ = try await restored.add(id: "transfer", source: source, destination: fixture.root.appendingPathComponent("wrong"), restore: true)
 				let snapshot = try #require(await restored.snapshot().transfers.first)
 				#expect(!snapshot.state.running && snapshot.state.storage.paths[0] == "bundle/renamed")
-				#expect(snapshot.state.storage.selected == [true, false, true, true] && snapshot.state.storage.verifiedPieces.count == 3)
+				#expect(snapshot.state.storage.selected == [true, false, true, true] && snapshot.state.storage.verifiedPieces.isEmpty)
+				#expect(snapshot.state.storage.pendingVerificationCount == 3)
 				#expect(snapshot.metadata.trackerTiers == [["http://127.0.0.1:8000/announce"]])
 				#expect(snapshot.state.storage.destination == fixture.root.appendingPathComponent("source"))
 				#expect(try TorrentMetadata(await restored.export(id: "transfer")).originalInfo == fixture.metadata.originalInfo)
+				try await restored.recheck(id: "transfer")
+				#expect(try await restored.snapshot().transfers[0].state.storage.verifiedPieces.count == 3)
 				_ = try await restored.remove(id: "transfer")
 			} catch { _ = try? await restored.remove(id: "transfer", retainState: true); throw error }
 		}

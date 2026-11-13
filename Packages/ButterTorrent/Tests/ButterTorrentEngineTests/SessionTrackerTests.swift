@@ -307,12 +307,13 @@ extension NativeSessionTests { @Suite struct SessionTrackerTests {
 			let restoredTracker = RecordingTracker()
 			let restored = try await fixture.download(tiers: [["http://tracker.test/announce"]], tracker: restoredTracker, clock: clock, restore: true)
 			try await restored.run(id: "transfer", running: true)
-			try await eventually { await restoredTracker.requests.count == 1 }
+			try await eventually { await restoredTracker.requests.count >= 1 }
 			let recorded = await restoredTracker.requests, request = recorded[0].1
-			#expect(request.event == .started && request.counters.downloaded == 0 && request.counters.left == 0)
+			#expect(request.event == .started && request.counters.downloaded == 0 && request.counters.left >= 0 && request.counters.left <= Int64(fixture.source.bytes.count))
+			try await eventually { try await restored.snapshot().transfers[0].state.transfer?.complete == true }
 			#expect(try await restored.snapshot().transfers[0].state.storage.downloaded == Int64(fixture.source.bytes.count))
 			try await restored.pause(id: "transfer")
-			#expect(await restoredTracker.requests.compactMap { $0.1.event } == [.started, .stopped])
+			#expect(await restoredTracker.requests.compactMap { $0.1.event } == (request.counters.left == 0 ? [.started, .stopped] : [.started, .completed, .stopped]))
 		} catch { await fixture.close(); throw error }; await fixture.close()
 	}
 }

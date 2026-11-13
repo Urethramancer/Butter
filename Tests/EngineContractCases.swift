@@ -146,7 +146,10 @@ enum EngineContractCases {
 		let imported = try await engine.snapshot()
 		try require(imported.transfers.count == 1, "Duplicate published another transfer")
 		let row = imported.transfers[0]
-		try require(row.state == "Paused" && row.hashes == preview.hashes && row.metadata, "Import must start paused with metadata")
+		try require(["Paused", "Verification pending"].contains(row.state) && row.hashes == preview.hashes && row.metadata, "Import must start paused with metadata")
+		if row.state == "Verification pending" {
+			try require(row.done == 0 && !row.complete && row.pieces.allSatisfy { $0 == 0 }, "Pending verification advertised unchecked data")
+		}
 		try require(row.files[0].original == "fixture.bin" && row.files[0].path == "fixture.bin", "Import changed file paths")
 		_ = try await engine.perform("select", ["id": "fixture", "selected": [0]])
 		_ = try await wait(engine) { $0.transfers.first?.files.first?.selected == false }

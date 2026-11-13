@@ -19,13 +19,14 @@ public actor TorrentStorage {
 	private init(state: StorageState, worker: StorageWorker, clock: any StorageCheckpointClock) { self.state = state; self.worker = worker; checkpointClock = clock; layout = state.layout; infoHashes = state.metadata.hashes; merkleIndex = state.merkle.index }
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
 		coordinator: StorageCoordinator = .shared, preparedState: PreparedTransferState? = nil, checkpointPolicy: StorageCheckpointPolicy = .immediate,
+		verificationPolicy: StorageVerificationPolicy = .eager,
 		checkpointClock: any StorageCheckpointClock = ContinuousStorageCheckpointClock(), event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TorrentStorage {
 		try checkpointPolicy.validate()
 		guard preparedState == nil || preparedState?.directory == stateDirectory else { throw StorageFailure.invalid("prepared checkpoint directory") }
 		let worker = StorageWorker()
 		let state = try await worker.run(bulk: true) { cancellation in
 			let layout = try StorageLayout(metadata: metadata)
-			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, anchoredState: preparedState?.anchor, checkpointPolicy: checkpointPolicy, checkpointClock: checkpointClock, event: event, check: cancellation.check)
+			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, anchoredState: preparedState?.anchor, checkpointPolicy: checkpointPolicy, verificationPolicy: verificationPolicy, checkpointClock: checkpointClock, event: event, check: cancellation.check)
 			try cancellation.check(); return state
 		}
 		return TorrentStorage(state: state, worker: worker, clock: checkpointClock)
@@ -89,6 +90,9 @@ final class StorageState: @unchecked Sendable {
 	var committedVerified: Data
 	var pendingVerified: Data
 	var recoveryChecked: Data
+	var verificationPending: Data
+	var fileGenerations: [UInt64]
+	var integrityGeneration: UInt64 = 0
 	var pendingVerifiedBytes: Int64 = 0
 	var pendingSince: TimeInterval?
 	let checkpointFailures = StorageCheckpointFailures()
@@ -97,10 +101,11 @@ final class StorageState: @unchecked Sendable {
 		set { checkpointFailures.set(newValue) }
 	}
 	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, anchoredState: StorageDirectory? = nil,
-		checkpointPolicy: StorageCheckpointPolicy = .immediate, checkpointClock: any StorageCheckpointClock = ContinuousStorageCheckpointClock(), event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
+		checkpointPolicy: StorageCheckpointPolicy = .immediate, verificationPolicy: StorageVerificationPolicy = .eager, checkpointClock: any StorageCheckpointClock = ContinuousStorageCheckpointClock(), event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
 		self.metadata = metadata; self.layout = layout; self.coordinator = coordinator; self.event = event
 		try checkpointPolicy.validate(); self.checkpointPolicy = checkpointPolicy; self.checkpointClock = checkpointClock
 		committedVerified = Data(repeating: 0, count: (layout.pieceCount + 7) / 8); pendingVerified = committedVerified; recoveryChecked = committedVerified
+		verificationPending = committedVerified; fileGenerations = Array(repeating: 0, count: layout.files.count)
 		merkle = try MerkleCatalog(metadata: metadata)
 		state = try anchoredState ?? StorageDirectory(stateDirectory)
 		lease = try StorageLease(directory: state)
@@ -136,14 +141,21 @@ final class StorageState: @unchecked Sendable {
 				try prepareEmptyFiles()
 				// Stamps are hints: coarse filesystems can conceal same-size edits.
 				let cached = (0..<layout.pieceCount).filter { record.contains($0) }
+				verificationPending = record.verified
 				record.verified = Data(repeating: 0, count: record.verified.count)
-				for piece in cached {
+				try invalidateChangedFiles()
+				// Uncheckpointed bytes are candidates too, including unchanged file stamps.
+				for index in layout.files.indices where !layout.files[index].pad && (record.stamps[index]?.size ?? 0) > 0 {
+					for piece in try layout.pieces(touchingFile: index) { verificationPending[piece / 8] |= UInt8(128 >> (piece % 8)) }
+				}
+				for piece in verificationPolicy == .eager ? cached : [] {
 					try check()
 					let before = try observe(piece: piece)
 					do { record.set(piece, try checkedPiece(piece, before: before, check: check).valid) }
 					catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { }
 					catch StorageFailure.invalid("short payload read") { }
 					catch StorageFailure.missingHashes { }
+					finishVerificationAttempt(piece)
 				}
 				try save()
 			}
@@ -176,11 +188,11 @@ final class StorageState: @unchecked Sendable {
 			let (directory, path) = location(index); return try scan.inspect(path, in: directory)
 		}
 	}
-	@discardableResult func invalidateChangedFiles() throws -> [FileStamp?] {
+	@discardableResult func invalidateChangedFiles(external: Bool = true) throws -> [FileStamp?] {
 		let current = try stamps()
 		let changed = Set(current.indices.filter { current[$0] != record.stamps[$0] })
 		guard !changed.isEmpty else { return current }
-		for index in changed where !layout.files[index].pad { try reconcileFile(index, stamp: current[index]) }
+		for index in changed where !layout.files[index].pad { try reconcileFile(index, stamp: current[index], external: external) }
 		return current
 	}
 	func save() throws {
@@ -214,6 +226,7 @@ final class StorageState: @unchecked Sendable {
 		if let checkpointError { throw checkpointError }
 		if !hasJournal { try invalidateChangedFiles() }
 		return StorageSnapshot(hasExistingPayload: record.stamps.contains { ($0?.size ?? 0) > 0 }, destination: payload.url, paths: record.paths, selected: record.selected,
+			integrityGeneration: integrityGeneration, pendingVerificationCount: verificationPending.reduce(0) { $0 + $1.nonzeroBitCount }, uncheckedPieces: uncheckedPieces,
 			verifiedPieces: hasJournal ? [] : Set((0..<layout.pieceCount).filter { record.contains($0) }), downloaded: record.downloaded, uploaded: record.uploaded,
 			corruptBytes: record.corruptBytes ?? 0, redundantBytes: record.redundantBytes ?? 0,
 			trashReceipts: record.receipts.map { URL(fileURLWithPath: $0) }, needsRecovery: hasJournal)
@@ -259,6 +272,7 @@ final class StorageState: @unchecked Sendable {
 		let valid = try checkedPiece(piece, before: before, check: check).valid
 		if valid { try requireFlush(piece: piece) }
 		record.set(piece, valid)
+		finishVerificationAttempt(piece)
 		if case .immediate = checkpointPolicy {
 			do { try save() } catch { record.set(piece, false); throw error }
 		} else if valid && !wasVerified { try newlyVerified(piece) }
@@ -315,6 +329,7 @@ final class StorageState: @unchecked Sendable {
 			leaves += Array(repeating: Data(repeating: 0, count: 32), count: (1 << file.base) - leaves.count)
 			root = try MerkleMath.root(leaves)
 		}
+		event(.pieceHashed(piece))
 		return (valid, root, result)
 	}
 }
