@@ -122,8 +122,23 @@ final class PeerSession: @unchecked Sendable {
 				ranges.append(lower..<bytes.count)
 			}
 			let buffer = WireBuffer(bytes)
-			for (index, request) in requests[start..<end].enumerated() {
-				try enqueue(Outbound(buffer: buffer, range: ranges[index], token: request.token, block: request.block))
+			try lock.withLock {
+				guard !closed else { throw PeerFailure.closed }
+				// Every frame already owns a reservation. Moving it into the queue
+				// leaves total byte/message admission unchanged; check those totals once.
+				guard queuedBytes + reservedBytes <= Self.outputByteLimit else { throw PeerFailure.limit("peer output bytes") }
+				guard queuedMessages + reservations.count <= 128 else { throw PeerFailure.limit("peer output messages") }
+				var published = false
+				// A late cancellation or invalid credit retains the original published
+				// prefix and must still wake its writer before propagating the error.
+				defer { if published { outputReady.continuation.yield(()) } }
+				for (index, request) in requests[start..<end].enumerated() {
+					guard tokens.contains(request.token), let credit = reservations[request.token] else { throw PeerFailure.closed }
+					guard credit == ranges[index].count else { throw PeerFailure.invalid("upload output reservation") }
+					reservations[request.token] = nil; reservedBytes -= credit
+					outgoing.append(Outbound(buffer: buffer, range: ranges[index], token: request.token, block: request.block))
+					queuedBytes += credit; queuedMessages += 1; published = true
+				}
 			}
 			start = end
 		}

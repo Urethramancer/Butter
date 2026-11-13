@@ -142,6 +142,26 @@ private final class BudgetPeerStream: PeerByteStream, Sendable {
 		#expect(PeerSession.outputBytes(frames + control) == expected)
 		#expect(PeerSession.outputBytes([]).isEmpty)
 	}
+	@Test(arguments: [false, true]) func groupedOutputRetainsItsPublishedPrefixAfterALateReservationFailure(_ wrongCredit: Bool) throws {
+		let session = PeerSession(stream: BudgetPeerStream()), tokens = (0..<3).map { _ in UUID() }
+		defer { session.close() }
+		let blocks = (0..<3).map { PeerBlock(piece: 0, offset: $0, length: 1) }
+		for index in tokens.indices { #expect(session.register(tokens[index], bytes: index == 1 && wrongCredit ? 15 : 14)) }
+		if !wrongCredit { #expect(session.cancel(tokens[1])) }
+		try session.send(.interested)
+		#expect(throws: wrongCredit ? PeerFailure.invalid("upload output reservation") : PeerFailure.closed) {
+			try session.sendPieces(zip(tokens, blocks).map { (token: $0.0, block: $0.1) }, piece: Data([1, 2, 3]))
+		}
+		let prefix = session.claimOutgoing(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144))
+		#expect(prefix.map(\.bytes) == [try PeerMessage.interested.encoded(), try PeerMessage.piece(0, 0, Data([1])).encoded()])
+		#expect(prefix.last?.token == tokens[0] && prefix.last?.payload == 1)
+		// The failed and unattempted entries must not lose reservation credit.
+		#expect(session.cancel(tokens[1]) == wrongCredit)
+		try session.send(.piece(0, 2, Data([3])), token: tokens[2], block: blocks[2])
+		let suffix = session.claimOutgoing(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144))
+		#expect(suffix.map(\.bytes) == [try PeerMessage.piece(0, 2, Data([3])).encoded()])
+		#expect(!session.cancel(tokens[2]))
+	}
 	@Test(arguments: [PeerBlock(piece: 0, offset: -1, length: 1), PeerBlock(piece: 0, offset: Int.max, length: 1),
 		PeerBlock(piece: 0, offset: 0, length: 0), PeerBlock(piece: 0, offset: 0, length: 16385),
 		PeerBlock(piece: 0, offset: 16, length: 1), PeerBlock(piece: -1, offset: 0, length: 1)])
