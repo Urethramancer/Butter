@@ -53,7 +53,18 @@ bidirectional transfers, TCP/µTP, encryption, selective storage, fragmented
 IPv4/IPv6, session discovery and web seeds. The historical µTP timeout passes
 with unchanged deadlines; its original cause remains unexplained.
 
-The candidate remains provisional. Broader format coverage, profiles and the
+Application contract and lifecycle suites pass, including numeric snapshots,
+shutdown/persistence deadlines and completion moves. Native storage records
+52 passes covering killed-process recovery, real ENOSPC, failed publication,
+checkpoint retention and read-only volumes. Unsigned Debug/Release application
+builds, linkage/licence checks and the unchanged repeat build pass. The user's
+Xcode edits remain untouched; no tag is created.
+
+The [fresh profiles](verification-prefill-profile-2026-11-13.md) validate both
+engines and remain consistent with lower write-side work; they do not prove
+call-count changes. Filesystem checks/opening remain the largest gap.
+
+The candidate remains provisional. Broader format coverage and the
 final full matrix remain pending; wide throughput and memory intervals are
 inconclusive. This is focused evidence, not release or parity acceptance.
 

@@ -527,5 +527,35 @@
     "path": ".build/diagnostics/piece-buffer/verification-prefill-native.log",
     "sha256": "edf5dc9609c0f2e8e191986df9359cf4c19c36d8de9bd7c175c9adf374f35cac",
     "historical_timeout": "Current full run passes unchanged deadlines; original historical cause remains unexplained."
-  }
+  },
+  "additional_validation": [
+    {
+      "name": "contract",
+      "exit_status": 0,
+      "path": ".build/diagnostics/piece-buffer/verification-prefill-contract.log",
+      "sha256": "7593184ac1a932cdc1d57619ed40557d9f66ee3239fa16976d80518584a844d4",
+      "pass_records": 1
+    },
+    {
+      "name": "lifecycle",
+      "exit_status": 0,
+      "path": ".build/diagnostics/piece-buffer/verification-prefill-lifecycle.log",
+      "sha256": "3c1d521a5abd3b82b7d5b4bbc201aba50348bd3d1e97bd3d5d022af5a6ea4c7f",
+      "pass_records": 3
+    },
+    {
+      "name": "native-storage",
+      "exit_status": 0,
+      "path": ".build/diagnostics/piece-buffer/verification-prefill-native-storage.log",
+      "sha256": "feca9dd895662ae5ea50253e04a168ac246ec5f9f997e8298e24e4f630f81161",
+      "pass_records": 52
+    },
+    {
+      "name": "app-build",
+      "exit_status": 0,
+      "path": ".build/diagnostics/piece-buffer/verification-prefill-app-build.log",
+      "sha256": "be1c5e6f36fcfb3e60e7bea90e3481b3f0712dca06e7b6849186fcbb60288fa4",
+      "pass_records": 1
+    }
+  ]
 }

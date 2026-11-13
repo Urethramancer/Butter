@@ -1,0 +1,332 @@
+{
+  "candidate": "e9aa57e",
+  "source_files": 94,
+  "source_matches_timed_candidate": true,
+  "method": "Diagnostic Running sample weights for the tested PID only; missing backtraces included in denominators; inclusive costs overlap. Separate, unpaired captures cannot establish call-count or timing changes.",
+  "profiles": {
+    "previous": [
+      {
+        "path": ".build/benchmarks/wire-raw-many-hybrid-profile/many-hybrid-download-0-Swift-measured.cpu.json",
+        "running_samples": 11041,
+        "missing": 2,
+        "flat": [
+          {
+            "symbol": "fstatat",
+            "weight_ns": 2639000000,
+            "percent": 23.901820487274705
+          },
+          {
+            "symbol": "__openat",
+            "weight_ns": 1701000000,
+            "percent": 15.406213205325605
+          },
+          {
+            "symbol": "close",
+            "weight_ns": 790000000,
+            "percent": 7.155148990127706
+          },
+          {
+            "symbol": "pwrite",
+            "weight_ns": 548000000,
+            "percent": 4.96331853998732
+          },
+          {
+            "symbol": "AccelerateCrypto_SHA1_compress",
+            "weight_ns": 460000000,
+            "percent": 4.166289285390816
+          },
+          {
+            "symbol": "AccelerateCrypto_SHA256_compress",
+            "weight_ns": 460000000,
+            "percent": 4.166289285390816
+          },
+          {
+            "symbol": "start_wqthread",
+            "weight_ns": 336000000,
+            "percent": 3.043202608459379
+          },
+          {
+            "symbol": "_platform_memmove",
+            "weight_ns": 215000000,
+            "percent": 1.9472873833891857
+          },
+          {
+            "symbol": "mach_msg2_trap",
+            "weight_ns": 193000000,
+            "percent": 1.7480300697400597
+          },
+          {
+            "symbol": "__recvmsg",
+            "weight_ns": 180000000,
+            "percent": 1.630287111674667
+          }
+        ],
+        "inclusive": [
+          {
+            "symbol": "closure #1 in DiskWorkPool.dispatch(_:)",
+            "weight_ns": 8747000000,
+            "percent": 79.22289647676841
+          },
+          {
+            "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+            "weight_ns": 5860000000,
+            "percent": 53.07490263563083
+          },
+          {
+            "symbol": "closure #1 in TorrentStorage.writeBatch(_:)",
+            "weight_ns": 5702000000,
+            "percent": 51.64387283760529
+          },
+          {
+            "symbol": "StorageState.stamps()",
+            "weight_ns": 4386000000,
+            "percent": 39.72466262113939
+          }
+        ]
+      },
+      {
+        "path": ".build/benchmarks/wire-raw-many-hybrid-profile/many-hybrid-download-0-libtorrent-measured.cpu.json",
+        "running_samples": 2638,
+        "missing": 72,
+        "flat": [
+          {
+            "symbol": "sha256_block_armv8",
+            "weight_ns": 481000000,
+            "percent": 18.233510235026536
+          },
+          {
+            "symbol": "sha1_block_armv8",
+            "weight_ns": 464000000,
+            "percent": 17.589082638362395
+          },
+          {
+            "symbol": "close",
+            "weight_ns": 260000000,
+            "percent": 9.855951478392722
+          },
+          {
+            "symbol": "__recvfrom",
+            "weight_ns": 201000000,
+            "percent": 7.619408642911297
+          },
+          {
+            "symbol": "pwritev",
+            "weight_ns": 169000000,
+            "percent": 6.406368460955269
+          },
+          {
+            "symbol": "_platform_memmove",
+            "weight_ns": 132000000,
+            "percent": 5.003790750568613
+          },
+          {
+            "symbol": "kevent",
+            "weight_ns": 92000000,
+            "percent": 3.4874905231235784
+          },
+          {
+            "symbol": "[unavailable backtrace]",
+            "weight_ns": 72000000,
+            "percent": 2.7293404094010616
+          },
+          {
+            "symbol": "pread",
+            "weight_ns": 66000000,
+            "percent": 2.5018953752843065
+          },
+          {
+            "symbol": "__open",
+            "weight_ns": 58000000,
+            "percent": 2.1986353297952994
+          }
+        ],
+        "inclusive": [
+
+        ]
+      }
+    ],
+    "current": [
+      {
+        "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/many-hybrid-download-0-Swift-measured.cpu.json",
+        "running_samples": 10427,
+        "missing": 0,
+        "flat": [
+          {
+            "symbol": "fstatat",
+            "weight_ns": 2368000000,
+            "percent": 22.710271410760527
+          },
+          {
+            "symbol": "__openat",
+            "weight_ns": 1522000000,
+            "percent": 14.596720053706722
+          },
+          {
+            "symbol": "close",
+            "weight_ns": 753000000,
+            "percent": 7.221636136952143
+          },
+          {
+            "symbol": "pwrite",
+            "weight_ns": 548000000,
+            "percent": 5.255586458233433
+          },
+          {
+            "symbol": "AccelerateCrypto_SHA1_compress",
+            "weight_ns": 476000000,
+            "percent": 4.56507144912247
+          },
+          {
+            "symbol": "AccelerateCrypto_SHA256_compress",
+            "weight_ns": 458000000,
+            "percent": 4.39244269684473
+          },
+          {
+            "symbol": "start_wqthread",
+            "weight_ns": 377000000,
+            "percent": 3.615613311594898
+          },
+          {
+            "symbol": "_platform_memmove",
+            "weight_ns": 240000000,
+            "percent": 2.30171669703654
+          },
+          {
+            "symbol": "__recvmsg",
+            "weight_ns": 177000000,
+            "percent": 1.697516064064448
+          },
+          {
+            "symbol": "__workq_kernreturn",
+            "weight_ns": 148000000,
+            "percent": 1.419391963172533
+          }
+        ],
+        "inclusive": [
+          {
+            "symbol": "closure #1 in DiskWorkPool.dispatch(_:)",
+            "weight_ns": 8048000000,
+            "percent": 77.1842332406253
+          },
+          {
+            "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+            "weight_ns": 5069000000,
+            "percent": 48.61417473865925
+          },
+          {
+            "symbol": "closure #1 in TorrentStorage.writeBatch(_:)",
+            "weight_ns": 4569000000,
+            "percent": 43.81893161983312
+          },
+          {
+            "symbol": "StorageState.stamps()",
+            "weight_ns": 3837000000,
+            "percent": 36.79869569387168
+          }
+        ]
+      },
+      {
+        "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/many-hybrid-download-0-libtorrent-measured.cpu.json",
+        "running_samples": 2780,
+        "missing": 223,
+        "flat": [
+          {
+            "symbol": "sha256_block_armv8",
+            "weight_ns": 483000000,
+            "percent": 17.37410071942446
+          },
+          {
+            "symbol": "sha1_block_armv8",
+            "weight_ns": 445000000,
+            "percent": 16.007194244604317
+          },
+          {
+            "symbol": "close",
+            "weight_ns": 275000000,
+            "percent": 9.892086330935252
+          },
+          {
+            "symbol": "[unavailable backtrace]",
+            "weight_ns": 223000000,
+            "percent": 8.02158273381295
+          },
+          {
+            "symbol": "pwritev",
+            "weight_ns": 183000000,
+            "percent": 6.58273381294964
+          },
+          {
+            "symbol": "__recvfrom",
+            "weight_ns": 148000000,
+            "percent": 5.323741007194244
+          },
+          {
+            "symbol": "_platform_memmove",
+            "weight_ns": 148000000,
+            "percent": 5.323741007194244
+          },
+          {
+            "symbol": "kevent",
+            "weight_ns": 79000000,
+            "percent": 2.841726618705036
+          },
+          {
+            "symbol": "pread",
+            "weight_ns": 62000000,
+            "percent": 2.2302158273381294
+          },
+          {
+            "symbol": "libtorrent::aux::request_a_block(libtorrent::aux::torrent&, libtorrent::aux::peer_connection&)",
+            "weight_ns": 56000000,
+            "percent": 2.014388489208633
+          }
+        ],
+        "inclusive": [
+
+        ]
+      }
+    ]
+  },
+  "raw": [
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/environment.json",
+      "sha256": "b6b96170ed843c85239819106624699c9e0f27ef0018f68fcc9f8b79f47357e0"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/fixtures.json",
+      "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/many-hybrid-download-0-Swift-measured.cpu.json",
+      "sha256": "e0b92eccbd05bc4eb557f9e38c1d6f2f4155484734be87cfd523ee6ad698fab1"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/many-hybrid-download-0-Swift-measured.samples.xml",
+      "sha256": "c59273c42541e72dbd2e5e34c01e3c0c812fa132e6bf7edc5d5137ed3d09bb25"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/many-hybrid-download-0-Swift-measured.toc.xml",
+      "sha256": "9391347e0bce43f99c365f74a6033bce9c4c125fd07f26452eff1c100e70c927"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/many-hybrid-download-0-libtorrent-measured.cpu.json",
+      "sha256": "7a086ed9d1f77248bc0f58481dde7f97f3cf7ed0c0a0b1fa9a2ede6b622bbc75"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/many-hybrid-download-0-libtorrent-measured.samples.xml",
+      "sha256": "75d15c88d3f7328b4d626e4bc5a83353d9f49424ca20d03e281a950fe3f07e3d"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/many-hybrid-download-0-libtorrent-measured.toc.xml",
+      "sha256": "eb839cdad2f1bf12597cd3f228defee9809c3adc09f2ce5d1f4fd6a6caa5bf35"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/summary.json",
+      "sha256": "a64884b3f67445d83b92a2add35543d9fe0925840956226b69a64b20ac3a994f"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-profile/trials.jsonl",
+      "sha256": "2be88db241b86c71f564a95479dd1fbb38b9322337c22f8151959901387e4aa5"
+    }
+  ]
+}

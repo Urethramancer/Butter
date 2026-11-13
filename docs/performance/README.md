@@ -7,6 +7,8 @@ validate all 84 trials; single-file v1 CPU, throughput and RSS changes remain
 inconclusive. The native suite passes with 466 PASS records. Broader format
 coverage and the final full matrix remain pending; the candidate is provisional.
 The full matrix below describes the preceding production source.
+[Fresh candidate profiles](verification-prefill-profile-2026-11-13.md) validate
+both engines and still identify filesystem inspection/opening as the largest gap.
 
 [Current revised-buffer full matrix](wire-raw-full-results-2026-11-13.md) validates
 252/252 trials: throughput passes 9/18, CPU 0/18 and memory 18/18. CPU/native
