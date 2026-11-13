@@ -461,6 +461,12 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		let batchCheckpoint = batchState.appendingPathComponent("checkpoint.plist"), batchBefore = try Data(contentsOf: batchCheckpoint)
 		let batchBytes = contents(0).prefix(16384)
 		let batchWrites = [StorageWrite(piece: 0, offset: 0, data: batchBytes.prefix(8192)), StorageWrite(piece: 0, offset: 8192, data: batchBytes.suffix(8192))]
+		// Keep the checkpoint on the roomy host filesystem so this failure reaches
+		// repair staging on the full destination volume, not its initial barrier.
+		let repair = try await TorrentStorage.open(metadata: metadata, destination: volume.appendingPathComponent("repair-data"), stateDirectory: root.appendingPathComponent("repair-state"))
+		try await repair.write(piece: 0, offset: 0, data: Data(repeating: 255, count: 16384)); try await repair.flush()
+		let repairPath = volume.appendingPathComponent("repair-data/bundle/" + name(0)), repairBefore = try Data(contentsOf: repairPath)
+		let repairSource = seed.appendingPathComponent("seed/bundle/" + name(0))
 		let filler = volume.appendingPathComponent("filler")
 		try Data().write(to: filler)
 		let handle = try FileHandle(forWritingTo: filler)
@@ -487,7 +493,14 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		do { try await batch.writeBatch(batchWrites) } catch { guard full(error) else { throw error }; rejected = true }
 		try require(rejected && (try Data(contentsOf: batchCheckpoint)) == batchBefore, "Batch ENOSPC changed the last durable checkpoint")
 		try require(try await batch.snapshot().verifiedPieces.isEmpty, "Failed batch write claimed verified payload")
+		rejected = false
+		do { _ = try await repair.repairFile(0, from: repairSource) } catch { guard full(error) else { throw error }; rejected = true }
+		try require(rejected && (try Data(contentsOf: repairPath)) == repairBefore && (try Data(contentsOf: repairSource)) == contents(0), "ENOSPC repair changed destination or source")
+		try require(!(try await repair.snapshot().needsRecovery), "Failed staging published a repair journal")
 		try fm.removeItem(at: filler)
+		let repaired = try await repair.repairFile(0, from: repairSource)
+		try require(repaired.repairedFiles == 1 && repaired.verifiedPieces == 4, "Repair did not recover after freeing space")
+		try await repair.shutdown()
 		try await batch.writeBatch(batchWrites)
 		let batchValid = try await batch.verify(piece: 0); try require(batchValid, "Batch write did not recover and verify after freeing space")
 		try await batch.shutdown()
@@ -504,6 +517,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		print("PASS: real ENOSPC preserves checkpoint and verified bytes; writes recover after space is freed")
 		print("PASS: real ENOSPC prevents repository publication; the same transfer publishes after space is freed")
 		print("PASS: real ENOSPC preserves the checkpoint before discard; retry completes after space is freed")
+		print("PASS: real ENOSPC during repair staging preserves both files; retry verifies replacement after freeing space")
 	}
 	static func readOnly(volume: URL) async throws {
 		let state = volume.appendingPathComponent("state"), before = try Data(contentsOf: state.appendingPathComponent("checkpoint.plist"))
@@ -518,7 +532,18 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		do { try await repository.discard(id: "transfer") }
 		catch { let value = error as NSError; try require(value.domain == NSPOSIXErrorDomain && value.code == Int(EROFS), "Unexpected read-only discard error: \(error)"); rejected = true }
 		try require(rejected && (try Data(contentsOf: locator)) == previous, "Read-only discard changed the repository locator")
+		let temporary = fm.temporaryDirectory.appendingPathComponent("butter-readonly-repair-" + UUID().uuidString)
+		try fm.createDirectory(at: temporary, withIntermediateDirectories: true)
+		defer { try? fm.removeItem(at: temporary) }
+		let source = temporary.appendingPathComponent("source"); try contents(0).write(to: source)
+		let repair = try await TorrentStorage.open(metadata: metadata, destination: volume.appendingPathComponent("repair-data"), stateDirectory: temporary.appendingPathComponent("state"), verificationPolicy: .deferred)
+		rejected = false
+		do { _ = try await repair.repairFile(0, from: source) }
+		catch { let value = error as NSError; try require(value.domain == NSPOSIXErrorDomain && value.code == Int(EROFS), "Unexpected read-only repair error: \(error)"); rejected = true }
+		try require(rejected && (try Data(contentsOf: source)) == contents(0) && (try Data(contentsOf: volume.appendingPathComponent("repair-data/bundle/" + name(0)))) == contents(0), "Read-only repair changed destination or source")
+		try await repair.shutdown()
 		print("PASS: actual read-only volume rejects mutable storage and preserves the checkpoint")
 		print("PASS: actual read-only volume rejects repository discard and preserves the locator")
+		print("PASS: actual read-only destination rejects repair staging and preserves both files")
 	}
 }
