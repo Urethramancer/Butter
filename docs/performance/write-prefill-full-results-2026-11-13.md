@@ -69,5 +69,6 @@ run, but its original cause remains unexplained. User Xcode edits are preserved.
 [source checks, raw hashes and acceptance totals](write-prefill-full-evidence-2026-11-13.json)
 retain the result. Raw phases, environment and all trials remain in
 `.build/benchmarks/write-prefill-full`; successful disposable payloads/binaries
-are removed. Fresh profiles of this source remain outstanding before choosing
-the next optimisation. No release, parity or cost-free claim is made.
+are removed. [Fresh profiles of both engines](write-prefill-profiles-2026-11-13.md)
+cover all four prescribed workloads and still identify filesystem work as the
+largest gap. No release, parity or cost-free claim is made.

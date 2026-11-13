@@ -4,6 +4,9 @@
 validates all 252 trials: throughput passes 9/18, CPU 0/18 and memory 18/18.
 CPU/native ranges from 1.55× to 3.97×; many-file downloads remain the largest
 gap. Earlier matrices below describe preceding production sources.
+[Fresh profiles](write-prefill-profiles-2026-11-13.md) validate all eight captures
+and two filesystem diagnostics. The syscall traces are consistent with fuller
+write batches; repeated filesystem inspection/opening remains the largest gap.
 
 [Refilling during admitted writes](write-prefill-results-2026-11-13.md) improves
 CPU/throughput versus the preceding refill candidate: many-file hybrid

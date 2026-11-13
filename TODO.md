@@ -2,10 +2,12 @@
 
 ## TCP performance parity
 
-- Capture fresh profiles of the write-refill source before the next optimisation.
-  Earlier profiles identify filesystem work as the largest gap. Three source
-  cases validate 84 trials with CPU/throughput gains; many/concurrent RSS remain
-  inconclusive. Preserve those intervals rather than claiming absence of cost.
+- Reduce filesystem inspection/opening and remaining disk scheduling costs:
+  fresh write-refill profiles show 43.9% flat fstatat/openat/close and 35.5%
+  inclusive layout scans in many-file hybrid downloads. Partial syscall captures
+  show fuller batches (7.42 versus 3.97 writes per inferred scan section), so
+  increasing request windows/caches is not justified. Preserve inconclusive
+  many/concurrent source RSS intervals rather than claiming absence of cost.
 
 - Reduce the write-refill candidate's remaining CPU gap: its full matrix validates
   all 252 trials, passing throughput 9/18, CPU 0/18 and memory 18/18. Prioritise

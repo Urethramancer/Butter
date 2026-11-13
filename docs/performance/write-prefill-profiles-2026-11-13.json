@@ -1,0 +1,1139 @@
+{
+  "candidate": "cd68e8f",
+  "production_source_files": 94,
+  "sources_match_full_matrix": true,
+  "method": "Instrumented diagnostic Running samples for tested PID; unavailable backtraces retained in denominator. Inclusive costs overlap; sample weights are not measured function durations. Filesystem table coverage incomplete; partial windows and inferred scan sections are not whole-transfer job counts.",
+  "accepted_profile_trials": 8,
+  "accepted_filesystem_trials": 2,
+  "profiles": [
+    {
+      "workload": "many-hybrid-download",
+      "captures": [
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/many-hybrid-download-0-Swift-measured.cpu.json",
+          "running_samples": 8661,
+          "unavailable": 1,
+          "flat_top": [
+            {
+              "symbol": "fstatat",
+              "weight_ns": 1884000000,
+              "percent": 21.752684447523382
+            },
+            {
+              "symbol": "__openat",
+              "weight_ns": 1323000000,
+              "percent": 15.275372358850017
+            },
+            {
+              "symbol": "close",
+              "weight_ns": 591000000,
+              "percent": 6.8236924142708695
+            },
+            {
+              "symbol": "pwrite",
+              "weight_ns": 479000000,
+              "percent": 5.530539198706847
+            },
+            {
+              "symbol": "AccelerateCrypto_SHA256_compress",
+              "weight_ns": 455000000,
+              "percent": 5.253434938228842
+            },
+            {
+              "symbol": "AccelerateCrypto_SHA1_compress",
+              "weight_ns": 440000000,
+              "percent": 5.080244775430089
+            },
+            {
+              "symbol": "start_wqthread",
+              "weight_ns": 248000000,
+              "percent": 2.86341069160605
+            },
+            {
+              "symbol": "_platform_memmove",
+              "weight_ns": 229000000,
+              "percent": 2.644036485394296
+            },
+            {
+              "symbol": "__recvmsg",
+              "weight_ns": 172000000,
+              "percent": 1.9859138667590348
+            },
+            {
+              "symbol": "mach_msg2_trap",
+              "weight_ns": 153000000,
+              "percent": 1.766539660547281
+            }
+          ],
+          "inclusive": [
+            {
+              "symbol": "closure #1 in DiskWorkPool.dispatch(_:)",
+              "weight_ns": 6795000000,
+              "percent": 78.45514374783512
+            },
+            {
+              "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+              "weight_ns": 3958000000,
+              "percent": 45.6991109571643
+            },
+            {
+              "symbol": "closure #1 in TorrentStorage.writeBatch(_:)",
+              "weight_ns": 3956000000,
+              "percent": 45.6760189354578
+            },
+            {
+              "symbol": "StorageState.stamps()",
+              "weight_ns": 3076000000,
+              "percent": 35.51552938459762
+            },
+            {
+              "symbol": "StorageState.checkedPiece(_:range:before:check:)",
+              "weight_ns": 2036000000,
+              "percent": 23.50767809721741
+            },
+            {
+              "symbol": "specialized StorageDirectory.parent<A>(_:create:_:)",
+              "weight_ns": 1593000000,
+              "percent": 18.39279528922757
+            },
+            {
+              "symbol": "StorageState.digestPiece(_:range:check:)",
+              "weight_ns": 1270000000,
+              "percent": 14.663433783627756
+            },
+            {
+              "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+              "weight_ns": 809000000,
+              "percent": 9.340722780279414
+            },
+            {
+              "symbol": "TCPTransfer.fill(_:)",
+              "weight_ns": 190000000,
+              "percent": 2.1937420621175385
+            }
+          ]
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/many-hybrid-download-0-libtorrent-measured.cpu.json",
+          "running_samples": 2568,
+          "unavailable": 124,
+          "flat_top": [
+            {
+              "symbol": "sha256_block_armv8",
+              "weight_ns": 473000000,
+              "percent": 18.419003115264797
+            },
+            {
+              "symbol": "sha1_block_armv8",
+              "weight_ns": 459000000,
+              "percent": 17.873831775700936
+            },
+            {
+              "symbol": "close",
+              "weight_ns": 278000000,
+              "percent": 10.825545171339565
+            },
+            {
+              "symbol": "__recvfrom",
+              "weight_ns": 165000000,
+              "percent": 6.425233644859813
+            },
+            {
+              "symbol": "pwritev",
+              "weight_ns": 137000000,
+              "percent": 5.334890965732087
+            },
+            {
+              "symbol": "_platform_memmove",
+              "weight_ns": 130000000,
+              "percent": 5.062305295950155
+            },
+            {
+              "symbol": "[unavailable backtrace]",
+              "weight_ns": 124000000,
+              "percent": 4.8286604361370715
+            },
+            {
+              "symbol": "kevent",
+              "weight_ns": 94000000,
+              "percent": 3.660436137071651
+            },
+            {
+              "symbol": "__sendmsg",
+              "weight_ns": 61000000,
+              "percent": 2.3753894080996885
+            },
+            {
+              "symbol": "libtorrent::aux::request_a_block(libtorrent::aux::torrent&, libtorrent::aux::peer_connection&)",
+              "weight_ns": 44000000,
+              "percent": 1.7133956386292835
+            }
+          ],
+          "inclusive": [
+
+          ]
+        }
+      ],
+      "instrumented_whole_process": [
+        {
+          "engine": "Swift",
+          "measurements": {
+            "wall": 18.21,
+            "user": 3.6,
+            "system": 5.25,
+            "peak_rss": 17301504
+          }
+        },
+        {
+          "engine": "libtorrent",
+          "measurements": {
+            "wall": 9.78,
+            "user": 1.54,
+            "system": 1.12,
+            "peak_rss": 163069952
+          }
+        }
+      ],
+      "raw": [
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/environment.json",
+          "sha256": "21354501775e56fdafcbf9b2a6a46f79ed9a4a0b49ff1277c1b5f9a0eed48656"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/fixtures.json",
+          "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/many-hybrid-download-0-Swift-measured.cpu.json",
+          "sha256": "7042acda75618311f1eaf09a0c69cfbb236a725eb4c63ae5ff02c4437f906ee4"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/many-hybrid-download-0-Swift-measured.samples.xml",
+          "sha256": "d0ae82d37afd96a7194183b0bae376fa6576dae61e41c3fce4ec13402095b14a"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/many-hybrid-download-0-Swift-measured.toc.xml",
+          "sha256": "2dc778220a9332f146868f29cf3d192443426ce2512b135845cd354433f268c5"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/many-hybrid-download-0-libtorrent-measured.cpu.json",
+          "sha256": "e667d1576eb316f4e7679d45a4a2833c5e9783feb0a6e89cd336fd277ee4cbbf"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/many-hybrid-download-0-libtorrent-measured.samples.xml",
+          "sha256": "a61c75a0e183c2b7ef69f9bd669dabdabb168af543fa089b82be19d87f69316e"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/many-hybrid-download-0-libtorrent-measured.toc.xml",
+          "sha256": "e00cebf30e7597957e2a3c539ad024371a4856e84b59e49eb3040bccd60636d5"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/summary.json",
+          "sha256": "57f532b1f17f0683d57c82b6bf98becdb44157826bd864dd8c6d5e6d91115325"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-many-hybrid-download/trials.jsonl",
+          "sha256": "c98234cdf1bd360d1b3ceca63ffa0ee63afceec4419c36de0e323d790069033f"
+        }
+      ]
+    },
+    {
+      "workload": "single-v1-download",
+      "captures": [
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/single-v1-download-0-Swift-measured.cpu.json",
+          "running_samples": 4020,
+          "unavailable": 38,
+          "flat_top": [
+            {
+              "symbol": "AccelerateCrypto_SHA1_compress",
+              "weight_ns": 481000000,
+              "percent": 11.965174129353233
+            },
+            {
+              "symbol": "close",
+              "weight_ns": 455000000,
+              "percent": 11.318407960199005
+            },
+            {
+              "symbol": "pwrite",
+              "weight_ns": 348000000,
+              "percent": 8.656716417910447
+            },
+            {
+              "symbol": "__openat",
+              "weight_ns": 284000000,
+              "percent": 7.064676616915423
+            },
+            {
+              "symbol": "start_wqthread",
+              "weight_ns": 277000000,
+              "percent": 6.890547263681592
+            },
+            {
+              "symbol": "mach_msg2_trap",
+              "weight_ns": 135000000,
+              "percent": 3.3582089552238807
+            },
+            {
+              "symbol": "_platform_memmove",
+              "weight_ns": 128000000,
+              "percent": 3.18407960199005
+            },
+            {
+              "symbol": "kevent_id",
+              "weight_ns": 120000000,
+              "percent": 2.985074626865672
+            },
+            {
+              "symbol": "fstatat",
+              "weight_ns": 117000000,
+              "percent": 2.91044776119403
+            },
+            {
+              "symbol": "__recvmsg",
+              "weight_ns": 112000000,
+              "percent": 2.7860696517412937
+            }
+          ],
+          "inclusive": [
+            {
+              "symbol": "closure #1 in DiskWorkPool.dispatch(_:)",
+              "weight_ns": 2148000000,
+              "percent": 53.43283582089552
+            },
+            {
+              "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+              "weight_ns": 1326000000,
+              "percent": 32.985074626865675
+            },
+            {
+              "symbol": "closure #1 in TorrentStorage.writeBatch(_:)",
+              "weight_ns": 1316000000,
+              "percent": 32.7363184079602
+            },
+            {
+              "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+              "weight_ns": 743000000,
+              "percent": 18.48258706467662
+            },
+            {
+              "symbol": "StorageState.checkedPiece(_:range:before:check:)",
+              "weight_ns": 736000000,
+              "percent": 18.308457711442784
+            },
+            {
+              "symbol": "StorageState.digestPiece(_:range:check:)",
+              "weight_ns": 718000000,
+              "percent": 17.860696517412936
+            },
+            {
+              "symbol": "specialized StorageDirectory.parent<A>(_:create:_:)",
+              "weight_ns": 494000000,
+              "percent": 12.288557213930348
+            },
+            {
+              "symbol": "TCPTransfer.fill(_:)",
+              "weight_ns": 207000000,
+              "percent": 5.149253731343284
+            },
+            {
+              "symbol": "StorageState.stamps()",
+              "weight_ns": 101000000,
+              "percent": 2.512437810945274
+            }
+          ]
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/single-v1-download-0-libtorrent-measured.cpu.json",
+          "running_samples": 1763,
+          "unavailable": 303,
+          "flat_top": [
+            {
+              "symbol": "sha1_block_armv8",
+              "weight_ns": 475000000,
+              "percent": 26.942711287577993
+            },
+            {
+              "symbol": "[unavailable backtrace]",
+              "weight_ns": 303000000,
+              "percent": 17.18661372660238
+            },
+            {
+              "symbol": "__recvfrom",
+              "weight_ns": 182000000,
+              "percent": 10.323312535450937
+            },
+            {
+              "symbol": "pwritev",
+              "weight_ns": 141000000,
+              "percent": 7.997731140102099
+            },
+            {
+              "symbol": "_platform_memmove",
+              "weight_ns": 104000000,
+              "percent": 5.899035734543392
+            },
+            {
+              "symbol": "kevent",
+              "weight_ns": 86000000,
+              "percent": 4.878048780487805
+            },
+            {
+              "symbol": "__sendmsg",
+              "weight_ns": 58000000,
+              "percent": 3.2898468519568915
+            },
+            {
+              "symbol": "libtorrent::aux::request_a_block(libtorrent::aux::torrent&, libtorrent::aux::peer_connection&)",
+              "weight_ns": 48000000,
+              "percent": 2.7226318774815654
+            },
+            {
+              "symbol": "__psynch_cvwait",
+              "weight_ns": 38000000,
+              "percent": 2.1554169030062393
+            },
+            {
+              "symbol": "__psynch_cvsignal",
+              "weight_ns": 24000000,
+              "percent": 1.3613159387407827
+            }
+          ],
+          "inclusive": [
+
+          ]
+        }
+      ],
+      "instrumented_whole_process": [
+        {
+          "engine": "Swift",
+          "measurements": {
+            "wall": 12.79,
+            "user": 1.76,
+            "system": 2.42,
+            "peak_rss": 15384576
+          }
+        },
+        {
+          "engine": "libtorrent",
+          "measurements": {
+            "wall": 9.4,
+            "user": 0.89,
+            "system": 0.93,
+            "peak_rss": 49889280
+          }
+        }
+      ],
+      "raw": [
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/environment.json",
+          "sha256": "496b5c148d17679b4ff461f75846dfad0d7b4301a51c2aa05198abf8963cb502"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/fixtures.json",
+          "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/single-v1-download-0-Swift-measured.cpu.json",
+          "sha256": "b06f1b6c66368370cc56cd024e14ae0a84ec906fea9a188c9f094c9fba18c00c"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/single-v1-download-0-Swift-measured.samples.xml",
+          "sha256": "1ee3b15bbd42e630352a94c2ecad9c87473bfccb4d2e6baf0a89cdc4793d11bb"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/single-v1-download-0-Swift-measured.toc.xml",
+          "sha256": "0c7f11fe8da9c6576a346a9d21ae48bfc56bd5be791e2ef4553c67a3222aaa27"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/single-v1-download-0-libtorrent-measured.cpu.json",
+          "sha256": "596ab3ce54f6bdd8bad86c68263c98ffa709d218af8250d0c53f5608cee5d46d"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/single-v1-download-0-libtorrent-measured.samples.xml",
+          "sha256": "271806e21bc6afdd24f4800d8cf293c1412bfb57640cfcacf94f20b8e3ea6fd1"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/single-v1-download-0-libtorrent-measured.toc.xml",
+          "sha256": "fabc8ab60a102ef98ded9c3e69aa6d62f6da0e0e6034efd494c13ca472e08a28"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/summary.json",
+          "sha256": "547dd7512d86e9134ddd937e587c5d04af12a8b991dd21bc2399478bc0d3daf9"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-download/trials.jsonl",
+          "sha256": "bdf220ea781be6f3531dcdc8518546221e80080b5a048f842203fb2d95979c5e"
+        }
+      ]
+    },
+    {
+      "workload": "single-hybrid-download",
+      "captures": [
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/single-hybrid-download-0-Swift-measured.cpu.json",
+          "running_samples": 4731,
+          "unavailable": 27,
+          "flat_top": [
+            {
+              "symbol": "AccelerateCrypto_SHA256_compress",
+              "weight_ns": 451000000,
+              "percent": 9.53286831536673
+            },
+            {
+              "symbol": "AccelerateCrypto_SHA1_compress",
+              "weight_ns": 444000000,
+              "percent": 9.384908053265695
+            },
+            {
+              "symbol": "close",
+              "weight_ns": 433000000,
+              "percent": 9.152399069964067
+            },
+            {
+              "symbol": "start_wqthread",
+              "weight_ns": 316000000,
+              "percent": 6.679348974846755
+            },
+            {
+              "symbol": "pwrite",
+              "weight_ns": 302000000,
+              "percent": 6.383428450644684
+            },
+            {
+              "symbol": "__openat",
+              "weight_ns": 297000000,
+              "percent": 6.2777425491439445
+            },
+            {
+              "symbol": "_platform_memmove",
+              "weight_ns": 212000000,
+              "percent": 4.481082223631367
+            },
+            {
+              "symbol": "__recvmsg",
+              "weight_ns": 145000000,
+              "percent": 3.064891143521454
+            },
+            {
+              "symbol": "kevent_id",
+              "weight_ns": 145000000,
+              "percent": 3.064891143521454
+            },
+            {
+              "symbol": "__workq_kernreturn",
+              "weight_ns": 124000000,
+              "percent": 2.621010357218347
+            }
+          ],
+          "inclusive": [
+            {
+              "symbol": "closure #1 in DiskWorkPool.dispatch(_:)",
+              "weight_ns": 2661000000,
+              "percent": 56.24603677869372
+            },
+            {
+              "symbol": "StorageState.checkedPiece(_:range:before:check:)",
+              "weight_ns": 1300000000,
+              "percent": 27.478334390192348
+            },
+            {
+              "symbol": "StorageState.digestPiece(_:range:check:)",
+              "weight_ns": 1269000000,
+              "percent": 26.82308180088776
+            },
+            {
+              "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+              "weight_ns": 1260000000,
+              "percent": 26.63284717818643
+            },
+            {
+              "symbol": "closure #1 in TorrentStorage.writeBatch(_:)",
+              "weight_ns": 1212000000,
+              "percent": 25.61826252377933
+            },
+            {
+              "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+              "weight_ns": 803000000,
+              "percent": 16.97315578101881
+            },
+            {
+              "symbol": "specialized StorageDirectory.parent<A>(_:create:_:)",
+              "weight_ns": 475000000,
+              "percent": 10.040160642570282
+            },
+            {
+              "symbol": "TCPTransfer.fill(_:)",
+              "weight_ns": 194000000,
+              "percent": 4.100612978228704
+            }
+          ]
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/single-hybrid-download-0-libtorrent-measured.cpu.json",
+          "running_samples": 2391,
+          "unavailable": 9,
+          "flat_top": [
+            {
+              "symbol": "sha1_block_armv8",
+              "weight_ns": 492000000,
+              "percent": 20.577164366373903
+            },
+            {
+              "symbol": "sha256_block_armv8",
+              "weight_ns": 480000000,
+              "percent": 20.075282308657467
+            },
+            {
+              "symbol": "pread",
+              "weight_ns": 200000000,
+              "percent": 8.36470096194061
+            },
+            {
+              "symbol": "__recvfrom",
+              "weight_ns": 181000000,
+              "percent": 7.570054370556252
+            },
+            {
+              "symbol": "pwritev",
+              "weight_ns": 151000000,
+              "percent": 6.315349226265161
+            },
+            {
+              "symbol": "_platform_memmove",
+              "weight_ns": 92000000,
+              "percent": 3.847762442492681
+            },
+            {
+              "symbol": "kevent",
+              "weight_ns": 88000000,
+              "percent": 3.6804684232538687
+            },
+            {
+              "symbol": "__sendmsg",
+              "weight_ns": 73000000,
+              "percent": 3.053115851108323
+            },
+            {
+              "symbol": "libtorrent::aux::disk_cache::flush_to_disk(std::__1::function<int (libtorrent::bitfield&, libtorrent::span<libtorrent::aux::disk_job* const>)>, int, std::__1::function<void (libtorrent::aux::tailqueue<libtorrent::aux::disk_job>, libtorrent::aux::disk_job*)>, bool)",
+              "weight_ns": 52000000,
+              "percent": 2.1748222501045587
+            },
+            {
+              "symbol": "libtorrent::aux::request_a_block(libtorrent::aux::torrent&, libtorrent::aux::peer_connection&)",
+              "weight_ns": 45000000,
+              "percent": 1.8820577164366374
+            }
+          ],
+          "inclusive": [
+
+          ]
+        }
+      ],
+      "instrumented_whole_process": [
+        {
+          "engine": "Swift",
+          "measurements": {
+            "wall": 12.87,
+            "user": 2.41,
+            "system": 2.47,
+            "peak_rss": 17530880
+          }
+        },
+        {
+          "engine": "libtorrent",
+          "measurements": {
+            "wall": 10.57,
+            "user": 1.52,
+            "system": 0.91,
+            "peak_rss": 158220288
+          }
+        }
+      ],
+      "raw": [
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/environment.json",
+          "sha256": "320dfa801d9b1906aac9be79489a4a0b64598bd0a625c80f7eaf9a329f27a64f"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/fixtures.json",
+          "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/single-hybrid-download-0-Swift-measured.cpu.json",
+          "sha256": "4bd697e88b9417347411531db53f6cd0df8e87907d6d2cd24f470fb4ffca1b40"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/single-hybrid-download-0-Swift-measured.samples.xml",
+          "sha256": "b60938470d95a9a53803c4835ba0cb02b73974ebbc44e85df464d0f91fee1e6f"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/single-hybrid-download-0-Swift-measured.toc.xml",
+          "sha256": "8fbd57a39e59ba9605f0601352220c681c4554358af8ea9a3dfeacc9bb165ecc"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/single-hybrid-download-0-libtorrent-measured.cpu.json",
+          "sha256": "f2dfcb006956cc6c9467ea1e136c0c47b662315448d4e4dff4e1fb29db3f9c4a"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/single-hybrid-download-0-libtorrent-measured.samples.xml",
+          "sha256": "8a4330ba318fb02273078fa2ac945a23c539047a5f640fa30868c0bca68b18dc"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/single-hybrid-download-0-libtorrent-measured.toc.xml",
+          "sha256": "570db80a77ad8e35a234f31b953cb45169962dc9a719d172bfca4da05b2fe20f"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/summary.json",
+          "sha256": "d6c3e0bb342675189a4b994db13e94e2231905f22c5c9f0db439ddbfe4f9ef40"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-hybrid-download/trials.jsonl",
+          "sha256": "94d223e2c5a44c29d4c924038e8502f85debf7efae50b4449461af24ecabe58b"
+        }
+      ]
+    },
+    {
+      "workload": "single-v1-seed",
+      "captures": [
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/single-v1-seed-0-Swift-measured.cpu.json",
+          "running_samples": 2447,
+          "unavailable": 0,
+          "flat_top": [
+            {
+              "symbol": "AccelerateCrypto_SHA1_compress",
+              "weight_ns": 461000000,
+              "percent": 18.839395177768697
+            },
+            {
+              "symbol": "start_wqthread",
+              "weight_ns": 229000000,
+              "percent": 9.358398038414386
+            },
+            {
+              "symbol": "mach_msg2_trap",
+              "weight_ns": 222000000,
+              "percent": 9.072333469554557
+            },
+            {
+              "symbol": "__sendmsg",
+              "weight_ns": 129000000,
+              "percent": 5.271761340416837
+            },
+            {
+              "symbol": "_platform_memmove",
+              "weight_ns": 116000000,
+              "percent": 4.740498569677156
+            },
+            {
+              "symbol": "pread",
+              "weight_ns": 97000000,
+              "percent": 3.9640375970576214
+            },
+            {
+              "symbol": "kevent_id",
+              "weight_ns": 71000000,
+              "percent": 2.901512055578259
+            },
+            {
+              "symbol": "__openat",
+              "weight_ns": 68000000,
+              "percent": 2.7789129546383324
+            },
+            {
+              "symbol": "__workq_kernreturn",
+              "weight_ns": 58000000,
+              "percent": 2.370249284838578
+            },
+            {
+              "symbol": "__recvmsg",
+              "weight_ns": 54000000,
+              "percent": 2.206783816918676
+            }
+          ],
+          "inclusive": [
+            {
+              "symbol": "closure #1 in DiskWorkPool.dispatch(_:)",
+              "weight_ns": 1049000000,
+              "percent": 42.86881896199428
+            },
+            {
+              "symbol": "StorageState.checkedPiece(_:range:before:check:)",
+              "weight_ns": 1005000000,
+              "percent": 41.07069881487536
+            },
+            {
+              "symbol": "StorageState.digestPiece(_:range:check:)",
+              "weight_ns": 969000000,
+              "percent": 39.59950960359624
+            },
+            {
+              "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+              "weight_ns": 192000000,
+              "percent": 7.8463424601552925
+            },
+            {
+              "symbol": "specialized StorageDirectory.parent<A>(_:create:_:)",
+              "weight_ns": 83000000,
+              "percent": 3.391908459337965
+            },
+            {
+              "symbol": "StorageState.stamps()",
+              "weight_ns": 55000000,
+              "percent": 2.2476501838986516
+            }
+          ]
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/single-v1-seed-0-libtorrent-measured.cpu.json",
+          "running_samples": 1566,
+          "unavailable": 0,
+          "flat_top": [
+            {
+              "symbol": "__psynch_mutexwait",
+              "weight_ns": 274000000,
+              "percent": 17.496807151979567
+            },
+            {
+              "symbol": "pread",
+              "weight_ns": 261000000,
+              "percent": 16.666666666666668
+            },
+            {
+              "symbol": "__sendmsg",
+              "weight_ns": 211000000,
+              "percent": 13.47381864623244
+            },
+            {
+              "symbol": "__psynch_cvwait",
+              "weight_ns": 150000000,
+              "percent": 9.578544061302683
+            },
+            {
+              "symbol": "__psynch_mutexdrop",
+              "weight_ns": 130000000,
+              "percent": 8.301404853128991
+            },
+            {
+              "symbol": "kevent",
+              "weight_ns": 92000000,
+              "percent": 5.874840357598979
+            },
+            {
+              "symbol": "__recvfrom",
+              "weight_ns": 55000000,
+              "percent": 3.5121328224776502
+            },
+            {
+              "symbol": "mach_continuous_time",
+              "weight_ns": 54000000,
+              "percent": 3.4482758620689653
+            },
+            {
+              "symbol": "_platform_memmove",
+              "weight_ns": 45000000,
+              "percent": 2.8735632183908044
+            },
+            {
+              "symbol": "__psynch_cvbroad",
+              "weight_ns": 41000000,
+              "percent": 2.6181353767560664
+            }
+          ],
+          "inclusive": [
+
+          ]
+        }
+      ],
+      "instrumented_whole_process": [
+        {
+          "engine": "Swift",
+          "measurements": {
+            "wall": 10.21,
+            "user": 2.03,
+            "system": 1.34,
+            "peak_rss": 23674880
+          }
+        },
+        {
+          "engine": "libtorrent",
+          "measurements": {
+            "wall": 9.16,
+            "user": 0.84,
+            "system": 1.4,
+            "peak_rss": 17760256
+          }
+        }
+      ],
+      "raw": [
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/environment.json",
+          "sha256": "759d01593008b800563bcb6f80353ef8a860d803cf51633e47f7679877b45670"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/fixtures.json",
+          "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/single-v1-seed-0-Swift-measured.cpu.json",
+          "sha256": "8c562638b3fd2947042179a58a9aaca7f2939c381933b52929f9366e37817855"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/single-v1-seed-0-Swift-measured.samples.xml",
+          "sha256": "25a495bd87faa092af0f2c91cb09c71151b83690c3cac512cf7ffbfab54a6cfe"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/single-v1-seed-0-Swift-measured.toc.xml",
+          "sha256": "be030f44618edea47cdf5a8b55cdb0ff23fd6ed65affcac61d60f62755cecbb0"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/single-v1-seed-0-libtorrent-measured.cpu.json",
+          "sha256": "ed7cc7142bcf436dab6b0599cf723ebe1a8cd09a5c64876e598366bd7e980690"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/single-v1-seed-0-libtorrent-measured.samples.xml",
+          "sha256": "5884eef997630c5709d5b06fa38296ed624bf46129b538dd4cde9773635ad4c9"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/single-v1-seed-0-libtorrent-measured.toc.xml",
+          "sha256": "0e5e1bb1f7cb61e1ce1a37e9859a5a58f8f4eecc9cb95c01b8cad6a36e740fe0"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/summary.json",
+          "sha256": "8f497cc8fdd945081d5b263243d8f86ca7642238bc3d4a6ca3cd07c345af951b"
+        },
+        {
+          "path": ".build/benchmarks/write-prefill-profile-single-v1-seed/trials.jsonl",
+          "sha256": "40d5b4a8a5716eb88902459c32a8ac47a079be3334324fff4f340e360ca95aa2"
+        }
+      ]
+    }
+  ],
+  "filesystem_comparison": [
+    {
+      "path": ".build/benchmarks/write-batch-file-activity/many-hybrid-download-0-Swift-measured.fs-counts.json",
+      "sha256": "f09cee69e3ad8711d0d2f51305230ab135093c567ea25c9d3e470a11e3105a33",
+      "analysis": {
+        "target_pid": 71944,
+        "rows": 97203,
+        "missing_backtraces": 0,
+        "first_ns": 1553615916,
+        "last_ns": 1964055875,
+        "span_seconds": 0.410439959,
+        "syscalls": {
+          "fstatat64": 85958,
+          "write_context:fstatat64": 57537,
+          "write_stamps:fstatat64": 55808,
+          "verify_stamps:fstatat64": 28416,
+          "sys_fstat64": 4031,
+          "write_context:sys_fstat64": 3894,
+          "sys_dup": 3609,
+          "write_context:sys_dup": 3037,
+          "pwrite": 1733,
+          "write_context:pwrite": 1729,
+          "write_stamps:sys_dup": 872,
+          "sendmsg": 514,
+          "verify_stamps:sys_dup": 444,
+          "mkdirat": 436,
+          "pread": 436,
+          "write_context:mkdirat": 436,
+          "recvmsg": 435,
+          "read": 22,
+          "fsync": 18,
+          "renameat": 4,
+          "unlinkat": 4,
+          "write": 3
+        },
+        "write_bytes": {
+          "pwrite": 28378185,
+          "write": 974,
+          "write_context:pwrite": 28327936,
+          "write_return:pwrite": 28327936
+        },
+        "write_context_metadata_sections": 436,
+        "write_context_create_flags": 0,
+        "write_context_threads": 4,
+        "method": "Exported syscall rows for tested PID; metadata sections inferred from ordered per-thread write-context backtrace transitions. Sections are not proven job counts; new-file refresh scans and trace boundaries can add sections. Captured time span is measured, not assumed from requested 1s window."
+      },
+      "block_writes_per_inferred_section": 3.9655963302752295
+    },
+    {
+      "path": ".build/benchmarks/write-batch-file-activity/many-hybrid-download-0-libtorrent-measured.fs-counts.json",
+      "sha256": "736585a9ac08e222e7060104560ca6bb3b20519d114fe123722ebeaeddcc1bd4",
+      "analysis": {
+        "target_pid": 72024,
+        "rows": 54271,
+        "missing_backtraces": 0,
+        "first_ns": 431343333,
+        "last_ns": 1913162083,
+        "span_seconds": 1.48181875,
+        "syscalls": {
+          "pread": 21966,
+          "recvfrom": 17551,
+          "sendmsg": 6323,
+          "ioctl": 2915,
+          "write": 1383,
+          "read": 1382,
+          "open": 1299,
+          "sys_close": 1299,
+          "fsync": 134,
+          "ftruncate": 11,
+          "write_nocancel": 3,
+          "stat64": 2,
+          "mkdir": 1,
+          "read_nocancel": 1,
+          "rename": 1
+        },
+        "write_bytes": {
+          "write": 2228257,
+          "write_nocancel": 1228
+        },
+        "write_context_metadata_sections": 0,
+        "write_context_create_flags": 0,
+        "write_context_threads": 0,
+        "method": "Exported syscall rows for tested PID; metadata sections inferred from ordered per-thread write-context backtrace transitions. Sections are not proven job counts; new-file refresh scans and trace boundaries can add sections. Captured time span is measured, not assumed from requested 1s window."
+      },
+      "block_writes_per_inferred_section": null
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/many-hybrid-download-0-Swift-measured.fs-counts.json",
+      "sha256": "84acadd7d65bdc1612d3c77e5894cb8dd1c91c93369adf5c8ded103e9dc2b76a",
+      "analysis": {
+        "target_pid": 24191,
+        "rows": 96173,
+        "missing_backtraces": 0,
+        "first_ns": 1523808458,
+        "last_ns": 1914846958,
+        "span_seconds": 0.3910385,
+        "syscalls": {
+          "fstatat64": 82413,
+          "write_context:fstatat64": 43471,
+          "write_stamps:fstatat64": 41088,
+          "verify_stamps:fstatat64": 38934,
+          "sys_fstat64": 5268,
+          "write_context:sys_fstat64": 5087,
+          "sys_dup": 4133,
+          "write_context:sys_dup": 3346,
+          "pwrite": 2388,
+          "write_context:pwrite": 2383,
+          "sendmsg": 689,
+          "write_stamps:sys_dup": 642,
+          "verify_stamps:sys_dup": 608,
+          "pread": 600,
+          "mkdirat": 321,
+          "write_context:mkdirat": 321,
+          "recvmsg": 300,
+          "fsync": 26,
+          "read": 22,
+          "renameat": 5,
+          "unlinkat": 5,
+          "write": 3
+        },
+        "write_bytes": {
+          "pwrite": 39105582,
+          "write": 952,
+          "write_context:pwrite": 39043072,
+          "write_return:pwrite": 39043072
+        },
+        "write_context_metadata_sections": 321,
+        "write_context_create_flags": 0,
+        "write_context_threads": 4,
+        "method": "Exported syscall rows for tested PID; metadata sections inferred from ordered per-thread write-context backtrace transitions. Sections are not proven job counts; new-file refresh scans and trace boundaries can add sections. Captured time span is measured, not assumed from requested 1s window."
+      },
+      "block_writes_per_inferred_section": 7.423676012461059
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/many-hybrid-download-0-libtorrent-measured.fs-counts.json",
+      "sha256": "ed64d63e9369c62aba9e9786eb127a0122338cb25f52f6127b79115c2c891e02",
+      "analysis": {
+        "target_pid": 24241,
+        "rows": 64349,
+        "missing_backtraces": 0,
+        "first_ns": 859487958,
+        "last_ns": 1912561541,
+        "span_seconds": 1.053073583,
+        "syscalls": {
+          "pread": 32838,
+          "recvfrom": 15240,
+          "sendmsg": 6646,
+          "ioctl": 2942,
+          "write": 2060,
+          "read": 2059,
+          "open": 1211,
+          "sys_close": 1211,
+          "fsync": 134,
+          "write_nocancel": 3,
+          "stat64": 2,
+          "mkdir": 1,
+          "read_nocancel": 1,
+          "rename": 1
+        },
+        "write_bytes": {
+          "write": 2228933,
+          "write_nocancel": 1249
+        },
+        "write_context_metadata_sections": 0,
+        "write_context_create_flags": 0,
+        "write_context_threads": 0,
+        "method": "Exported syscall rows for tested PID; metadata sections inferred from ordered per-thread write-context backtrace transitions. Sections are not proven job counts; new-file refresh scans and trace boundaries can add sections. Captured time span is measured, not assumed from requested 1s window."
+      },
+      "block_writes_per_inferred_section": null
+    }
+  ],
+  "filesystem_raw": [
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/environment.json",
+      "sha256": "efccba59e2ae704ce96f4a9e3de64344799454d06e49eedba3488a51933897bf"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/fixtures.json",
+      "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/many-hybrid-download-0-Swift-measured.cpu.json",
+      "sha256": "2bfe77473b86183c173b2630aac7914e1e783251fb12425e08011852389c0b61"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/many-hybrid-download-0-Swift-measured.fs.xml",
+      "sha256": "88078e3e5aa44488689a26708ee56f3b193248d783596e342c9c1c9efa7594a2"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/many-hybrid-download-0-Swift-measured.samples.xml",
+      "sha256": "978061dbe2afd8a65bcbe499d105a6f355a126a02a01259eaaceb52acfc28b11"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/many-hybrid-download-0-Swift-measured.toc.xml",
+      "sha256": "16c7fe408889c6d3790f3ae14e07577cbe92699817dc45615e58f9d4c2fad24a"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/many-hybrid-download-0-libtorrent-measured.cpu.json",
+      "sha256": "66a8cf92de1595be299fa81408fdf25290945613aaf0f0a019a6661293cf7fc5"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/many-hybrid-download-0-libtorrent-measured.fs.xml",
+      "sha256": "6645b8b93c94387f4f7a686fb863d696563b80df7b4bb821df70d0c60bb2bcfc"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/many-hybrid-download-0-libtorrent-measured.samples.xml",
+      "sha256": "ae85f63f5b3e380935fb0f71259e04b4e322a3e7c8c855941398884a80e3c0b7"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/many-hybrid-download-0-libtorrent-measured.toc.xml",
+      "sha256": "0ba31ea59699a882daabea799c5190ba7497eca0fdcdd2181ed661af992f5dc7"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/summary.json",
+      "sha256": "76cad38ec97ebee9ce9fc1ed96b6151aa423a0bf3435612765c5deeb814d6e8e"
+    },
+    {
+      "path": ".build/benchmarks/write-prefill-file-activity/trials.jsonl",
+      "sha256": "95d8e33db4e15d4c8cb5c8a01de86e5f5def556cc2115c0c9109d64dc94156ae"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/analyse-fs-batches.rb",
+      "sha256": "6738258fa66eed5dd6465dbf29e07b34f3a21880a57c93bce6c02ca04bc22ca7"
+    }
+  ]
+}
