@@ -2,14 +2,15 @@
 
 ## TCP performance parity
 
-- Validate the revised request-burst candidate with original scalar admission
+- Complete the full matrix for the revised request-burst candidate with original scalar admission
   restored. Revised single-file download
   saves 8.3% CPU and raises throughput 3.7%; RSS and seeding remain inconclusive
   across 112 validated trials; many-file hybrid CPU/throughput improve 4.5%/2.0%
   and concurrent hybrid 5.8%/3.6%, with inconclusive RSS. First form is disqualified by 5.0%
   higher seeding RSS; all 112 trials remain. Keep this failure separate from
-  revised-source evidence, then run native checks and the full matrix for any
-  retained final candidate. Existing results predate the independent Unicode fix.
+  revised-source evidence. Native checks (466 PASS records), application,
+  recovery, sanitizers and Debug/Release builds pass. Earlier full results
+  predate the independent Unicode fix and request bursts.
 
 - Isolate the UTF-8 lookup's RSS cost before further scanner variants. It saves
   6.0% CPU but adds 1.9% peak RSS and remains rejected. Gate heap/VM diagnostics

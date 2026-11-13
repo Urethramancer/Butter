@@ -39,8 +39,17 @@ Measured revision `80a0c9a` has matching production source/package hashes.
 Seeding establishes neither improvement nor regression. Its wide intervals
 do not prove the first form's RSS cost is resolved. Revised/native paired CPU
 is 2.301 [2.223–2.602] and throughput 0.810 [0.656–0.915]. Native controls also
-cross one. No cost-free or parity claim is made. Native validation and the final
-full matrix remain open.
+cross one. No cost-free or parity claim is made. The final full matrix remains open.
+
+Correctness validation passes 362 package tests, 25 focused ownership tests under
+each of AddressSanitizer and ThreadSanitizer, Release build and the complete
+native bidirectional suite (466 PASS records, including encryption and µTP).
+Application contracts/lifecycle, 63 storage unit tests and 52 native real-volume
+failure/interruption checks pass. Unsigned Debug/Release app builds, linkage,
+retained licences and unchanged repeat build also pass. Production source hashes
+still match `93a41c8`; user Xcode edits remain untouched.
+[Validation evidence](request-burst-revised-validation-2026-11-13.json) retains
+counts and log hashes. These checks do not resolve performance uncertainty.
 
 The seeding wrapper's tool handle was lost before observation of finalisation.
 Subsequent inspection finds its normal summary, final success log message and

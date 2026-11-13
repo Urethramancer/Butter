@@ -5,8 +5,9 @@ single-file v1 download CPU 8.3% and raise throughput 3.7%; many-file hybrid
 CPU falls 4.5% and throughput rises 2.0%; concurrent hybrid improves 5.8%/3.6%.
 All 112 trials across downloads and
 many-file seeding validate. Download RSS and all seeding changes
-remain inconclusive; the earlier memory cost is not proven resolved. Broader
-revised-source measurements and final validation remain open.
+remain inconclusive; the earlier memory cost is not proven resolved. Native
+validation (466 PASS records), application, recovery, sanitizer and build checks
+pass. The final full performance matrix remains open.
 
 [Ready TCP request bursts](request-burst-results-2026-11-13.md) first reduce
 download CPU, but are disqualified by 5.0% higher many-file v1 seeding RSS.
