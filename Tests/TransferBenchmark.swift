@@ -9,15 +9,17 @@ import ButterTorrentEngine
 // Line-delimited JSON over bounded OS pipes. Only phase boundaries are emitted.
 @main struct TransferBenchmark {
 	struct Item: Codable { let torrent: String; let destination: String; let state: String }
-	struct Job: Codable { let role: String; let items: [Item] }
+	struct Job: Codable { let role: String; let items: [Item]; let partial: Bool? }
 	struct Command: Decodable { let command: String; let ports: [UInt16]? }
-	static func emit(_ phase: String, ports: [UInt16] = [], bytes: Int64 = 0, errors: [String] = []) throws {
+	static func emit(_ phase: String, ports: [UInt16] = [], bytes: Int64 = 0, errors: [String] = [], received: Int64 = 0, pieces: [Int]? = nil) throws {
 		var usage = rusage(); guard getrusage(RUSAGE_SELF, &usage) == 0 else { throw CocoaError(.fileReadUnknown) }
 		var record: [String: Any] = ["phase": phase, "pid": getpid(), "time": ProcessInfo.processInfo.systemUptime,
 			"user": Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6,
 			"system": Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6,
 			"peak_rss": usage.ru_maxrss, "ports": ports, "payload_bytes": bytes, "request_window": TCPTransferConfiguration().pipeline,
 			"upload_admission": ["advertised_reqq": TCPTransferConfiguration.advertisedUploadRequestLimit, "requests_per_peer": 32, "jobs_per_transfer": 64, "output_bytes": 524288, "output_messages": 128], "peer_errors": errors]
+		record["received_payload_bytes"] = received
+		if let pieces { record["verified_pieces"] = pieces }
 		#if BUTTER_STORAGE_DIAGNOSTICS_AVAILABLE
 		if StorageDiagnostics.enabled { record["storage_diagnostics"] = StorageDiagnostics.snapshot() }
 		#endif
@@ -40,7 +42,7 @@ import ButterTorrentEngine
 	static func main() async throws {
 		let args = CommandLine.arguments
 		if args.count >= 3, args[1] == "fixture" {
-			try fixture(URL(fileURLWithPath: args[2]), small: args.count == 4 && args[3] == "--small"); return
+			try fixture(URL(fileURLWithPath: args[2]), small: args.count == 4 && args[3] == "--small", sweep: args.count == 4 && args[3] == "--rate-sweep"); return
 		}
 		guard args.count == 3, ["--benchmark", "--verify"].contains(args[1]) else { throw PeerFailure.invalid("expected fixture ROOT [--small] or --benchmark/--verify JOB") }
 		let job = try JSONDecoder().decode(Job.self, from: Data(contentsOf: URL(fileURLWithPath: args[2])))
@@ -50,7 +52,8 @@ import ButterTorrentEngine
 				let metadata = try TorrentMetadata(contentsOf: URL(fileURLWithPath: item.torrent))
 				let storage = try await TorrentStorage.open(metadata: metadata, destination: URL(fileURLWithPath: item.destination), stateDirectory: URL(fileURLWithPath: item.state))
 				let snapshot = try await storage.snapshot()
-				guard snapshot.verifiedPieces.count == storage.layout.pieceCount else { try await storage.shutdown(); throw PeerFailure.invalid("incomplete restored checkpoint") }
+				if job.partial == true { try emit("reopened", pieces: snapshot.verifiedPieces.sorted()) }
+				guard job.partial == true || snapshot.verifiedPieces.count == storage.layout.pieceCount else { try await storage.shutdown(); throw PeerFailure.invalid("incomplete restored checkpoint") }
 				try await storage.shutdown()
 			}
 			return
@@ -90,9 +93,21 @@ import ButterTorrentEngine
 				_ = try await command("verified") // The receiving engine, never upload byte counters, decides completion.
 			} else {
 				guard let ports = start.ports, ports.count == engines.count else { throw PeerFailure.invalid("benchmark ports") }
-				try await withThrowingTaskGroup(of: Void.self) { group in
-					for (engine, port) in zip(engines, ports) { group.addTask { _ = try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: port)); try await engine.waitUntilComplete() } }
-					try await group.waitForAll()
+				if job.partial == true {
+					for (engine, port) in zip(engines, ports) { _ = try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: port)) }
+					for phase in ["measurement-start", "measurement-end"] {
+						_ = try await command(phase)
+						let status = await engines[0].snapshot()
+						guard !status.complete, status.storageError == nil else { throw PeerFailure.invalid("sweep completed or storage failed") }
+						try emit(phase, received: status.downloaded)
+					}
+					_ = try await command("quiesce")
+					for engine in engines { try await engine.shutdown() }
+				} else {
+					try await withThrowingTaskGroup(of: Void.self) { group in
+						for (engine, port) in zip(engines, ports) { group.addTask { _ = try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: port)); try await engine.waitUntilComplete() } }
+						try await group.waitForAll()
+					}
 				}
 			}
 			// Read only bounded failure diagnostics; never allocate progress/peer snapshots.
@@ -102,7 +117,7 @@ import ButterTorrentEngine
 			_ = try await command("persist")
 			try emit("persistence")
 			for engine in engines { try await engine.checkpoint() }
-			try emit("durable")
+			try emit("durable", pieces: job.partial == true ? try await stores[0].snapshot().verifiedPieces.sorted() : nil)
 			_ = try await command("stop"); try emit("shutdown")
 			for listener in listeners { try await listener.shutdown() }
 			for task in accepts { task.cancel(); _ = try? await task.value }
@@ -117,14 +132,14 @@ import ButterTorrentEngine
 		}
 	}
 
-	static func fixture(_ root: URL, small: Bool) throws {
+	static func fixture(_ root: URL, small: Bool, sweep: Bool = false) throws {
 		let fm = FileManager.default
 		var manifest: [[String: Any]] = []
-		for name in ["single", "many", "concurrent"] {
+		for name in (sweep ? ["many"] : ["single", "many", "concurrent"]) {
 			let folder = root.appendingPathComponent(name), seed = folder.appendingPathComponent("seed")
 			try fm.createDirectory(at: seed, withIntermediateDirectories: true)
 			let count = name == "many" ? 128 : name == "concurrent" ? 4 : 1
-			let total = small ? 32 * 1_048_576 : 1_073_741_824
+			let total = sweep ? 4 * 1_073_741_824 : small ? 32 * 1_048_576 : 1_073_741_824
 			var files: [[String: Any]] = []
 			for index in 0..<count {
 				let path = name == "many" ? String(format: "bundle/file-%03d.bin", index) : "payload-\(index).bin"
@@ -145,7 +160,7 @@ import ButterTorrentEngine
 				let source = seed.appendingPathComponent(name == "many" ? "bundle" : "payload-\(index).bin")
 				let hybrid = try TorrentCreator.create(source: source, trackers: [], isPrivate: false, pieceLength: 262144)
 				let document = try BencodeDocument(hybrid)
-				for format in ["v1", "v2", "hybrid"] {
+				for format in (sweep ? ["hybrid"] : ["v1", "v2", "hybrid"]) {
 					var info = document.root["info"]!.dictionary!, root = document.root.dictionary!
 					for key in format == "v1" ? ["meta version", "file tree"] : format == "v2" ? ["pieces", "files", "length"] : [] { info[Data(key.utf8)] = nil }
 					root[Data("info".utf8)] = .dictionary(info)

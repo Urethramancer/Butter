@@ -12,13 +12,15 @@
 static NSDictionary* benchmarkWindows = @{};
 static std::int64_t benchmarkBytes = 0;
 static NSMutableArray* benchmarkPeerErrors = [NSMutableArray array];
+static std::int64_t benchmarkReceived = 0;
+static NSArray* benchmarkPieces = nil;
 static void benchmarkEvent(char const* phase, std::vector<int> const& ports = {}) {
 	struct rusage usage{}; require(getrusage(RUSAGE_SELF, &usage) == 0, "Cannot read CPU accounting");
 	NSMutableArray* values = [NSMutableArray array]; for (int port : ports) [values addObject:@(port)];
 	NSDictionary* event = @{@"phase":@(phase), @"pid":@(getpid()), @"time":@(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()),
 		@"user":@(usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6), @"system":@(usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1e6),
 		@"peak_rss":@(usage.ru_maxrss), @"ports":values, @"libtorrent":@(LIBTORRENT_VERSION),
-		@"request_window":benchmarkWindows, @"peer_errors":benchmarkPeerErrors, @"payload_bytes":@(benchmarkBytes)};
+		@"received_payload_bytes":@(benchmarkReceived), @"verified_pieces":benchmarkPieces ?: @[], @"request_window":benchmarkWindows, @"peer_errors":benchmarkPeerErrors, @"payload_bytes":@(benchmarkBytes)};
 	NSData* bytes = [NSJSONSerialization dataWithJSONObject:event options:0 error:nil];
 	require(bytes && fwrite(bytes.bytes, 1, bytes.length, stdout) == bytes.length && fputc('\n', stdout) != EOF && fflush(stdout) == 0, "Cannot send benchmark event");
 }
@@ -43,12 +45,14 @@ static void benchmarkSave(std::filesystem::path const& directory, std::vector<ch
 	int synced = ::fsync(fd); int closed = ::close(fd); require(synced == 0 && closed == 0, "Cannot flush resume data");
 	std::filesystem::rename(temp, target); benchmarkSync(directory, true); benchmarkSync(directory.parent_path(), true);
 }
-static void benchmarkPayload(NSDictionary* item, lt::torrent_info const& info) {
+static void benchmarkPayload(NSDictionary* item, lt::torrent_info const& info, bool partial = false) {
 	std::filesystem::path root([item[@"destination"] UTF8String]);
 	std::set<std::filesystem::path> directories{root};
 	for (auto index : info.files().file_range()) {
 		if (info.files().pad_file_at(index)) continue;
-		auto path = root / info.files().file_path(index); benchmarkSync(path);
+		auto path = root / info.files().file_path(index);
+		if (partial && !std::filesystem::exists(path)) continue;
+		benchmarkSync(path);
 		for (auto parent = path.parent_path(); parent != root; parent = parent.parent_path()) {
 			require(parent != parent.root_path(), "Payload path escaped root"); directories.insert(parent);
 		}
@@ -85,7 +89,7 @@ template <typename Alert> static void benchmarkBarrier(lt::session& session, std
 	}
 }
 static void benchmark(NSDictionary* job, bool verify) {
-	NSArray* items = job[@"items"]; bool seed = [job[@"role"] isEqualToString:@"seed"];
+	NSArray* items = job[@"items"]; bool seed = [job[@"role"] isEqualToString:@"seed"]; bool partial = [job[@"partial"] boolValue];
 	require(items.count > 0 && items.count <= 4 && (seed || [job[@"role"] isEqualToString:@"download"]), "Invalid benchmark job");
 	if (!verify) benchmarkEvent("prepare");
 	{
@@ -97,9 +101,22 @@ static void benchmark(NSDictionary* job, bool verify) {
 	settings.set_int(lt::settings_pack::in_enc_policy, lt::settings_pack::pe_disabled);
 	settings.set_int(lt::settings_pack::out_enc_policy, lt::settings_pack::pe_disabled);
 	settings.set_int(lt::settings_pack::alert_mask, static_cast<std::uint32_t>(lt::alert_category::error | lt::alert_category::storage | lt::alert_category::status | lt::alert_category::connect));
+	int rate = [job[@"upload_bytes_per_second"] intValue];
+	require(rate == 0 || (seed && partial && rate > 0), "Invalid sweep rate");
+	if (rate) settings.set_int(lt::settings_pack::upload_rate_limit, rate);
 	lt::session session(settings);
+	if (rate) {
+		// Replace the loopback's default local class with the globally limited class.
+		auto filter = session.get_peer_class_filter();
+		filter.add_rule(lt::make_address("127.0.0.1"), lt::make_address("127.0.0.1"), 1u << static_cast<unsigned>(lt::session::global_peer_class_id));
+		session.set_peer_class_filter(filter);
+		require(session.get_peer_class_filter().access(lt::make_address("127.0.0.1")) == 1u, "Loopback rate class missing");
+		require(session.get_settings().get_int(lt::settings_pack::upload_rate_limit) == rate, "Upload limit missing");
+		benchmarkWindows = @{@"loopback_global_class":@YES, @"upload_bytes_per_second":@(rate)};
+	}
+
 	auto defaults = session.get_settings();
-	benchmarkWindows = @{@"max_out_request_queue":@(defaults.get_int(lt::settings_pack::max_out_request_queue)),
+	benchmarkWindows = rate ? benchmarkWindows : @{@"max_out_request_queue":@(defaults.get_int(lt::settings_pack::max_out_request_queue)),
 		@"request_queue_time":@(defaults.get_int(lt::settings_pack::request_queue_time)),
 		@"max_allowed_in_request_queue":@(defaults.get_int(lt::settings_pack::max_allowed_in_request_queue))};
 	std::vector<lt::torrent_handle> handles;
@@ -126,31 +143,56 @@ static void benchmark(NSDictionary* job, bool verify) {
 		for (auto const& handle : handles) {
 			auto status = handle.status(); require(!status.errc, status.errc.message().c_str());
 			ready &= status.state != lt::torrent_status::checking_files && status.state != lt::torrent_status::checking_resume_data;
-			if (seed || verify) ready &= status.is_seeding;
+			if (seed || (verify && !partial)) ready &= status.is_seeding;
 		}
 		if (ready) break;
 		require(std::chrono::steady_clock::now() < deadline, "Reference preparation/reopen deadline"); session.wait_for_alert(lt::milliseconds(20));
 	}
-	if (verify) return;
+	auto collectPieces = [&] {
+		NSMutableArray* pieces = [NSMutableArray array];
+		auto status = handles[0].status(lt::torrent_handle::query_pieces);
+		for (int i = 0; i < status.pieces.size(); ++i) if (status.pieces[lt::piece_index_t(i)]) [pieces addObject:@(i)];
+		benchmarkPieces = pieces;
+	};
+	if (verify) { if (partial) { collectPieces(); benchmarkEvent("reopened"); } return; }
+
 	benchmarkEvent("ready", seed ? std::vector<int>(handles.size(), session.listen_port()) : std::vector<int>{});
 	auto command = benchmarkCommand("start"); benchmarkEvent("start");
-	if (seed) benchmarkCommand("verified");
+	if (seed && partial) {
+		for (auto phase : {"measurement-start", "measurement-end"}) { benchmarkCommand(phase); benchmarkReceived = handles[0].status().total_payload_download; benchmarkEvent(phase); }
+		benchmarkCommand("quiesce");
+	} else if (seed) benchmarkCommand("verified");
 	else {
 		NSArray* ports = command[@"ports"]; require(ports.count == handles.size(), "Invalid benchmark ports");
 		for (std::size_t i = 0; i < handles.size(); ++i) handles[i].connect_peer({lt::make_address("127.0.0.1"), [ports[i] unsignedShortValue]});
-		std::vector<bool> finished(handles.size(), false);
-		while (!std::all_of(finished.begin(), finished.end(), [](bool done) { return done; })) {
-			require(std::chrono::steady_clock::now() < deadline, "Reference transfer deadline");
-			session.wait_for_alert(lt::milliseconds(20)); benchmarkCheckAlerts(session, &finished, handles);
+		if (partial) {
+			for (auto phase : {"measurement-start", "measurement-end"}) {
+				benchmarkCommand(phase); auto status = handles[0].status(); require(!status.is_finished, "Sweep completed early");
+				benchmarkReceived = status.total_payload_download; benchmarkEvent(phase);
+			}
+			benchmarkCommand("quiesce");
+		} else {
+			std::vector<bool> finished(handles.size(), false);
+
+			while (!std::all_of(finished.begin(), finished.end(), [](bool done) { return done; })) {
+				require(std::chrono::steady_clock::now() < deadline, "Reference transfer deadline");
+				session.wait_for_alert(lt::milliseconds(20)); benchmarkCheckAlerts(session, &finished, handles);
+			}
 		}
 	}
+	if (partial) {
+		for (auto const& handle : handles) handle.pause();
+		benchmarkBarrier<lt::torrent_paused_alert>(session, handles);
+	}
 	benchmarkEvent("verified"); benchmarkCommand("persist"); benchmarkEvent("persistence");
-	for (auto const& handle : handles) handle.pause();
-	benchmarkBarrier<lt::torrent_paused_alert>(session, handles);
+	if (!partial) {
+		for (auto const& handle : handles) handle.pause();
+		benchmarkBarrier<lt::torrent_paused_alert>(session, handles);
+	}
 	for (auto const& handle : handles) handle.flush_cache();
 	benchmarkBarrier<lt::cache_flushed_alert>(session, handles);
 	for (std::size_t i = 0; i < handles.size(); ++i) {
-		benchmarkPayload(items[i], *handles[i].torrent_file());
+		benchmarkPayload(items[i], *handles[i].torrent_file(), partial);
 		handles[i].save_resume_data(lt::torrent_handle::save_info_dict);
 	}
 	std::vector<bool> saved(handles.size(), false);
@@ -165,6 +207,7 @@ static void benchmark(NSDictionary* job, bool verify) {
 			}
 		}
 	}
+	if (partial && !seed) collectPieces();
 	benchmarkEvent("durable"); benchmarkCommand("stop"); benchmarkEvent("shutdown");
 	} // Include session destruction in the shutdown phase and whole-process accounting.
 	benchmarkEvent("stopped");

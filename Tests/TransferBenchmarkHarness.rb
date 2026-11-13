@@ -174,6 +174,7 @@ module TransferBenchmarkHarness
 	class Child
 		attr_reader :events, :pid, :log, :job_path, :whole
 		def initialize(command, job_path, log)
+			@phases = JSON.parse(File.read(job_path))['partial'] ? %w[prepare ready start measurement-start measurement-end verified persistence durable shutdown stopped] : PHASES
 			@job_path, @log, @events, @buffer = job_path, log, [], ''.b
 			input, @control = IO.pipe
 			@output, output = IO.pipe
@@ -190,11 +191,11 @@ module TransferBenchmarkHarness
 			loop do
 				bytes = @output.read_nonblock(4096)
 				@buffer << bytes
-				raise 'Oversized phase event' if @buffer.bytesize > 65_536
+				raise 'Oversized phase event' if @buffer.bytesize > 262_144
 				while (index = @buffer.index("\n"))
 					line = @buffer.slice!(0, index + 1)
 					event = JSON.parse(line)
-					raise "Unexpected phase #{event['phase']}" unless event['phase'] == PHASES[@events.length]
+					raise "Unexpected phase #{event['phase']}" unless event['phase'] == @phases[@events.length]
 					%w[time user system peak_rss].each { |key| raise "Invalid accounting #{key}" unless event[key].is_a?(Numeric) && event[key].finite? && event[key] >= 0 }
 					if (previous = @events.last)
 						%w[time user system peak_rss].each { |key| raise "Regressing accounting #{key}" if event[key] < previous[key] }
