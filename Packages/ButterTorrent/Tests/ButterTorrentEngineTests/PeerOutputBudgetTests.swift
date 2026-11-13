@@ -5,13 +5,72 @@ import ButterTorrentNetworking
 
 private final class BudgetPeerStream: PeerByteStream, Sendable {
 	var remoteEndpoint: NetworkEndpoint? { nil }
-	var kind: PeerTransportKind { .tcp }
+	let kind: PeerTransportKind
+	init(kind: PeerTransportKind = .tcp) { self.kind = kind }
 	func read(maximumBytes: Int, timeout: TimeInterval) async throws -> Data { throw NetworkFailure.closed }
 	func write(_ data: Data, timeout: TimeInterval) async throws { throw NetworkFailure.closed }
 	func close() {}
 }
 
 @Suite struct PeerOutputBudgetTests {
+	@Test(arguments: [0, 1, 8, 17, 32], [false, true]) func readyRequestBurstsKeepWireOrderAndMessageBounds(_ count: Int, _ utp: Bool) throws {
+		let session = PeerSession(stream: BudgetPeerStream(kind: utp ? .utp : .tcp))
+		defer { session.close() }
+		let blocks = (0..<count).map { PeerBlock(piece: $0 == count - 1 ? Int(UInt32.max) : $0, offset: $0 * 16384, length: 16384) }
+		try session.send(.interested); try session.sendRequests(blocks); try session.send(.choke)
+		var frames: [PeerSession.Outbound] = []
+		while true {
+			let batch = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
+			if batch.isEmpty { break }; #expect(batch.count <= 16); frames += batch
+		}
+		let expected = [try PeerMessage.interested.encoded()] + (try blocks.map { try PeerMessage.request($0).encoded() }) + [try PeerMessage.choke.encoded()]
+		#expect(frames.map(\.bytes) == expected)
+		#expect(frames.allSatisfy { $0.payload == 0 && $0.token == nil && $0.block == nil })
+		#expect(PeerSession.outputBytes(frames) == expected.reduce(into: Data()) { $0.append($1) })
+		let requests = Array(frames.dropFirst().dropLast())
+		if count > 1 && !utp {
+			#expect(requests.allSatisfy { $0.buffer != nil && $0.buffer === requests.first?.buffer })
+		} else { #expect(requests.allSatisfy { $0.buffer == nil }) }
+	}
+	@Test func requestBurstsKeepReservationAndMessageAdmissionAtomic() throws {
+		let session = PeerSession(stream: BudgetPeerStream()), token = UUID()
+		defer { session.close() }
+		let blocks = (0..<8).map { PeerBlock(piece: 0, offset: $0 * 16384, length: 16384) }
+		#expect(session.register(token, bytes: 14))
+		for _ in 0..<15 { try session.sendRequests(blocks) }
+		#expect(throws: PeerFailure.limit("peer output messages")) { try session.sendRequests(blocks) }
+		#expect(session.takeOutgoing(maximumCount: 128, maximumBytes: 262144).count == 120)
+		#expect(session.cancel(token))
+		for _ in 0..<16 { try session.sendRequests(blocks) }
+		#expect(throws: PeerFailure.limit("peer output messages")) { try session.send(.keepAlive) }
+		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).count == 16)
+		try session.sendRequests(blocks)
+		#expect(session.takeOutgoing(maximumCount: 128, maximumBytes: 262144).count == 120)
+	}
+	@Test func requestBurstsKeepByteReservationsAndClosure() throws {
+		let session = PeerSession(stream: BudgetPeerStream()), token = UUID()
+		defer { session.close() }
+		let blocks = Array(repeating: PeerBlock(piece: 0, offset: 0, length: 16384), count: 8)
+		#expect(session.register(token, bytes: PeerSession.outputByteLimit - 135))
+		#expect(throws: PeerFailure.limit("peer output bytes")) { try session.sendRequests(blocks) }
+		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).isEmpty)
+		#expect(session.cancel(token)); try session.sendRequests(blocks)
+		let frames = session.takeOutgoing(maximumCount: 16, maximumBytes: 262144)
+		#expect(frames.count == 8)
+		session.close(); #expect(session.claimOutgoing(frames).isEmpty)
+		#expect(throws: PeerFailure.closed) { try session.sendRequests(blocks) }
+	}
+	@Test(arguments: [PeerBlock(piece: -1, offset: 0, length: 1), PeerBlock(piece: 0, offset: -1, length: 1),
+		PeerBlock(piece: Int.max, offset: 0, length: 1), PeerBlock(piece: 0, offset: Int.max, length: 1),
+		PeerBlock(piece: 0, offset: 0, length: 0), PeerBlock(piece: 0, offset: 0, length: 16385)])
+	func requestBurstsRejectMalformedFramesBeforePublishingAny(_ invalid: PeerBlock) throws {
+		let session = PeerSession(stream: BudgetPeerStream())
+		defer { session.close() }
+		let valid = PeerBlock(piece: 0, offset: 0, length: 1)
+		#expect(throws: PeerFailure.self) { try session.sendRequests([valid, invalid]) }
+		#expect(throws: PeerFailure.limit("peer request batch messages")) { try session.sendRequests(Array(repeating: valid, count: 33)) }
+		#expect(session.takeOutgoing(maximumCount: 16, maximumBytes: 262144).isEmpty)
+	}
 	@Test func availableOutputKeepsFrameOrderAndFlushesShortBatches() throws {
 		let session = PeerSession(stream: BudgetPeerStream())
 		defer { session.close() }

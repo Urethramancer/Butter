@@ -80,6 +80,12 @@ public enum PeerMessage: Equatable, Sendable {
 		}
 		var result = Data(); try PeerBytes.append(body.count, to: &result); result.append(body); return result
 	}
+	static func appendRequest(_ block: PeerBlock, to result: inout Data) throws {
+		guard (1...16384).contains(block.length) else { throw PeerFailure.invalid("request length") }
+		try PeerBytes.append(13, to: &result); result.append(6)
+		try PeerBytes.append(block.piece, to: &result); try PeerBytes.append(block.offset, to: &result)
+		try PeerBytes.append(block.length, to: &result)
+	}
 	static func appendPiece(_ index: Int, _ offset: Int, _ bytes: Data, to result: inout Data) throws {
 		guard (1...16384).contains(bytes.count) else { throw PeerFailure.invalid("piece block size") }
 		try PeerBytes.append(bytes.count + 9, to: &result); result.append(7)
