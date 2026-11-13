@@ -8,9 +8,6 @@ final class StorageStampScan {
 	private var root: StorageDirectory?
 	private var parentPath: String?
 	private var descriptor: Int32 = -1
-	private var visits = 0
-	private var inspected: [String] = []
-	private var bulk: StorageBulkInspection?
 	deinit { if descriptor >= 0 { close(descriptor) } }
 	func inspect(_ path: String, in directory: StorageDirectory) throws -> FileStamp? {
 		// The parent was validated when this scan opened it. Compare exact UTF-8
@@ -22,7 +19,7 @@ final class StorageStampScan {
 			guard path.utf8.count <= 4096 else { throw StorageFailure.invalid("relative file path") }
 			if StorageLayout.validComponent(name) {
 				guard descriptor >= 0 else { return nil }
-				return try inspectLeaf(String(name), in: directory)
+				return try directory.inspect(String(name), at: descriptor)
 			}
 			// A slash joined to a combining mark is not a standalone Character.
 			// Resolve this ambiguous split through the validated byte components.
@@ -31,7 +28,7 @@ final class StorageStampScan {
 		let parts = try StorageLayout.components(path), parent = parts.dropLast().joined(separator: "/")
 		if root !== directory || parentPath != parent {
 			if descriptor >= 0 { close(descriptor) }; descriptor = -1
-			root = directory; parentPath = parent; visits = 0; inspected.removeAll(); bulk = nil
+			root = directory; parentPath = parent
 			do {
 				descriptor = try directory.parent(path) { parent, _ in
 					let copy = dup(parent)
@@ -40,16 +37,7 @@ final class StorageStampScan {
 			} catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
 		}
 		guard descriptor >= 0 else { return nil }
-		return try inspectLeaf(parts.last!, in: directory)
-	}
-	private func inspectLeaf(_ name: String, in directory: StorageDirectory) throws -> FileStamp? {
-		visits += 1
-		if visits < 8 { inspected.append(name) }
-		if visits == 8 {
-			bulk = StorageBulkInspection.read(descriptor)
-			for previous in inspected { _ = bulk?.take(previous) }; inspected.removeAll()
-		}
-		return try bulk?.take(name) ?? directory.inspect(name, at: descriptor)
+		return try directory.inspect(parts.last!, at: descriptor)
 	}
 }
 
