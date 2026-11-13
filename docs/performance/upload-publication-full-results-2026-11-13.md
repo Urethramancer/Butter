@@ -82,8 +82,9 @@ Correctness passes 363 package tests, 20 focused tests under each sanitizer,
 storage checks, application contracts/lifecycle and Debug/Release builds,
 linkage/licences and unchanged repeat build. User Xcode edits remain untouched.
 [Validation evidence](upload-publication-validation-2026-11-13.json) retains
-counts and log hashes. Fresh profiles of the final candidate remain to be
-captured before choosing another CPU change.
+counts and log hashes. [Fresh profiles](upload-publication-profiles-2026-11-13.md)
+validate all eight diagnostic trials and identify repeated full-layout write
+inspection as the next target.
 
 [Absolute medians and intervals](upload-publication-full-comparison-2026-11-13.csv),
 [complete summary](upload-publication-full-summary-2026-11-13.json) and

@@ -2,8 +2,10 @@
 
 ## TCP performance parity
 
-- Resolve remaining grouped upload performance uncertainty and profile the
-  current candidate. The full matrix validates all 264 trials: throughput passes
+- Resolve remaining grouped upload performance uncertainty and reduce repeated
+  full-layout write inspection. Fresh profiles validate eight diagnostic trials:
+  many-file filesystem calls are 45.1% flat and layout scans 33.5% inclusive.
+  The full matrix validates all 264 trials: throughput passes
   nine cases, fails eight and remains inconclusive in many-file v1 seeding after
   twelve pairs; CPU passes 0/18 and original-baseline memory 18/18. Many-file v1
   download source CPU 0.995 [0.952–1.030] does not reproduce its 6.2% cross-run

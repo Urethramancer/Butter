@@ -8,6 +8,11 @@ uncertainty and cross-run download differences remain open; parity is unmet.
 A new many-file v1 source case does not reproduce its 6.2% cross-run CPU rise;
 all source metrics remain inconclusive. Source evidence now totals 196 validated trials.
 
+[Fresh grouped-upload profiles](upload-publication-profiles-2026-11-13.md)
+validate eight diagnostic trials. Many-file filesystem calls remain 45.1% flat,
+with layout scans 33.5% inclusive. Repeated full-layout inspection before bounded
+write batches remains the next target.
+
 [Grouped upload publication](upload-publication-results-2026-11-13.md) reduces
 single-file v1 seeding CPU 4.7%, many-file CPU 4.6% and concurrent hybrid CPU
 3.4%. All 196 trials across these seeds and four download cases validate.
