@@ -7,7 +7,7 @@ import ButterTorrentMetadata
 extension NativeSessionTests { @Suite struct LaunchVerificationTests {
 	@Test func shutdownCancelsValidationAdmissionAndPausedResumeRestartsTheQueue() async throws {
 		try await transferFixture { fixture in
-			let resources = try TransferResources(maximumDiskOperations: 1)
+			let resources = try TransferResources(maximumDiskOperations: 1), other = try V2Fixture(version: 3)
 			let source = fixture.root.appendingPathComponent("input.torrent"), session = TorrentSession(storage: fixture.root.appendingPathComponent("library"), configuration: plainTransferConfiguration(), resources: resources)
 			try fixture.metadata.document.original.write(to: source)
 			var held = false
@@ -15,20 +15,32 @@ extension NativeSessionTests { @Suite struct LaunchVerificationTests {
 				_ = try await session.add(id: "torrent", source: source, destination: fixture.root.appendingPathComponent("source"))
 				try await session.recheck(id: "torrent")
 				_ = try await session.remove(id: "torrent", retainState: true)
-				try await resources.disk.acquire(); held = true
 				try await session.setRestorePolicy(.validateAll)
+				let otherSource = other.root.appendingPathComponent("input.torrent")
+				try other.metadata.document.original.write(to: otherSource)
+				_ = try await session.add(id: "seed", source: otherSource, destination: other.root.appendingPathComponent("source"))
+				try await session.recheck(id: "seed")
+				try await resources.disk.acquire(); held = true
 				_ = try await session.add(id: "torrent", source: source, destination: fixture.root.appendingPathComponent("source"), restore: true)
 				try await eventually { await resources.snapshot().waitingDiskOperations == 1 }
+				await #expect(throws: PeerFailure.self) { try await session.run(id: "torrent", running: true, downloadLimit: -1) }
+				try await engineDeadline { try await session.run(id: "torrent", running: true) }
+				try await engineDeadline { try await session.pause(id: "torrent") }
+				try await engineDeadline { try await session.run(id: "seed", running: true) }
+				let seed = try #require(await session.snapshot().transfers.first { $0.id == "seed" })
+				#expect(seed.state.running && seed.state.transfer?.complete == true)
 				let eligible = try await engineDeadline { try await session.shutdownEligibility() }
 				#expect(!eligible)
-				#expect(try await session.snapshot().transfers[0].state.storage.verifiedPieces.isEmpty)
+				let pending = try #require(await session.snapshot().transfers.first { $0.id == "torrent" })
+				#expect(pending.state.storage.verifiedPieces.isEmpty)
 				await resources.disk.release(); held = false
 				try await session.run(id: "torrent", running: false)
-				try await eventually { try await session.snapshot().transfers[0].activity == nil }
-				let row = try await session.snapshot().transfers[0]
+				try await eventually { try await session.snapshot().transfers.first { $0.id == "torrent" }?.activity == nil }
+				let row = try #require(await session.snapshot().transfers.first { $0.id == "torrent" })
 				#expect(!row.state.running && row.state.storage.verifiedPieces == [0, 1, 2])
 				try await session.close()
-			} catch { if held { await resources.disk.release() }; try? await session.close(); throw error }
+			} catch { if held { await resources.disk.release() }; try? await session.close(); await other.close(); throw error }
+			await other.close()
 		}
 	}
 	@Test func unfinishedMissingHashesDoNotDiscardOtherCompletedTrust() async throws {

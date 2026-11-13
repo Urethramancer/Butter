@@ -144,6 +144,11 @@ public actor TorrentSession {
 					entry.activity = .checking
 					do {
 						try await entry.owner.recheck()
+						while true {
+							let down = entry.downloadLimit, up = entry.uploadLimit
+							try await entry.owner.setLimits(download: down, upload: up)
+							if entry.downloadLimit == down && entry.uploadLimit == up { break }
+						}
 						entry.last = try await entry.owner.snapshot()
 						entry.pendingValidation = false; entry.activity = nil; entry.error = ""
 						if entry.running {
@@ -256,6 +261,7 @@ public actor TorrentSession {
 		}
 	}
 	public func run(id: String, running: Bool, downloadLimit: Int? = nil, uploadLimit: Int? = nil) async throws {
+		if try updateQueuedRun(id, running: running, download: downloadLimit, upload: uploadLimit) { return }
 		try await serial(id: id) {
 			if let pending = self.pending(id) {
 				var configuration = self.configuration
@@ -281,7 +287,20 @@ public actor TorrentSession {
 			} else { try await self.pauseEntry(entry) }
 		}
 	}
+	// A validation owns the command lease, but its running intent must remain responsive.
+	private func updateQueuedRun(_ id: String, running: Bool, download: Int?, upload: Int?) throws -> Bool {
+		try Task.checkCancellation()
+		guard !closed else { throw PeerFailure.closed }
+		guard !shuttingDown else { throw NetworkFailure.busy }
+		guard let entry = entries.first(where: { $0.id == id && !$0.closed && $0.pendingValidation }) else { return false }
+		var limits = configuration
+		limits.downloadLimit = download ?? entry.downloadLimit; limits.uploadLimit = upload ?? entry.uploadLimit
+		try limits.validate()
+		entry.downloadLimit = limits.downloadLimit; entry.uploadLimit = limits.uploadLimit; entry.running = running
+		scheduleLaunchValidation(); return true
+	}
 	public func pause(id: String) async throws {
+		if try updateQueuedRun(id, running: false, download: nil, upload: nil) { return }
 		try await serial(id: id) {
 			if let pending = self.pending(id) { pending.running = false; await self.stopMagnet(pending); try await self.refreshRouting() }
 			else { try await self.pauseEntry(self.entry(id)) }
