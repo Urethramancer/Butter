@@ -3,6 +3,8 @@ import Darwin
 
 public enum StorageEvent: Sendable, Equatable {
 	case pieceHashed(Int)
+	case repairStaged(Int)
+	case repairBackup(Int)
 	case journalDurable
 	case filePublished(Int)
 	case entryDurable(Int)
@@ -42,9 +44,29 @@ struct StorageJournal: Codable {
 	let before: StorageCheckpoint
 	var after: StorageCheckpoint
 	var entries: [Entry]
+	var repairs: [StorageRepairEntry]?
 	func validate(layout: StorageLayout, identity: Data) throws {
-		guard version == 1, entries.count <= layout.files.count else { throw StorageFailure.invalid("operation journal version or count") }
+		guard (version == 1 && repairs == nil) || (version == 2 && repairs != nil && entries.isEmpty), entries.count <= layout.files.count else { throw StorageFailure.invalid("operation journal version or count") }
 		try before.validate(layout: layout, identity: identity); try after.validate(layout: layout, identity: identity)
+		if let repairs {
+			guard !repairs.isEmpty, repairs.count <= layout.files.count, before.paths == after.paths, before.destination == after.destination,
+				before.selected == after.selected, before.spilled == after.spilled else { throw StorageFailure.invalid("repair journal mapping") }
+			var indices: Set<Int> = [], paths: Set<String> = []
+			for entry in repairs {
+				guard layout.files.indices.contains(entry.index), !layout.files[entry.index].pad, indices.insert(entry.index).inserted,
+					entry.root.hasPrefix("/"), !entry.root.utf8.contains(0), entry.digest.count == 32, entry.staged.size == layout.files[entry.index].size,
+					(entry.original == nil && entry.originalHash == nil) || (entry.original != nil && entry.originalHash?.count == 32) else { throw StorageFailure.invalid("repair journal entry") }
+				for path in [entry.path, entry.temporary, entry.backup] {
+					_ = try StorageLayout.components(path)
+					guard paths.insert(StorageLayout.pathKey(entry.root + "/" + path)).inserted else { throw StorageFailure.invalid("duplicate repair path") }
+				}
+				guard (entry.temporary as NSString).deletingLastPathComponent == (entry.path as NSString).deletingLastPathComponent,
+					(entry.backup as NSString).deletingLastPathComponent == (entry.path as NSString).deletingLastPathComponent,
+					(entry.temporary as NSString).lastPathComponent.hasPrefix(".butter-repair-"),
+					(entry.backup as NSString).lastPathComponent.hasPrefix(".butter-backup-") else { throw StorageFailure.invalid("repair staging paths") }
+			}
+			return
+		}
 		var indices: Set<Int> = []
 		for entry in entries {
 			guard layout.files.indices.contains(entry.index), !layout.files[entry.index].pad, indices.insert(entry.index).inserted,
@@ -81,6 +103,7 @@ extension StorageState {
 		guard hasJournal else { return }
 		var journal = try PropertyListDecoder().decode(StorageJournal.self, from: state.read("operation.plist", maximum: 33_554_432))
 		try journal.validate(layout: layout, identity: record.metadataHash)
+		if journal.version == 2 { try recoverRepair(&journal, check: check); return }
 		try claim(extra: futurePaths(journal.after) + journal.entries.flatMap {
 			[URL(fileURLWithPath: $0.sourceRoot).appendingPathComponent($0.source),
 			 URL(fileURLWithPath: $0.sourceRoot).appendingPathComponent($0.claimedSource),

@@ -151,6 +151,17 @@ enum EngineContractCases {
 			try require(row.done == 0 && !row.complete && row.pieces.allSatisfy { $0 == 0 }, "Pending verification advertised unchecked data")
 		}
 		try require(row.files[0].original == "fixture.bin" && row.files[0].path == "fixture.bin", "Import changed file paths")
+		#if !BUTTER_REFERENCE_ENGINE
+		try await reject(engine, "repairFile", ["id": "fixture", "index": 0, "source": source.path])
+		try await reject(engine, "repairFile", ["id": "fixture", "index": -1, "source": source.path])
+		let repairSource = root.appendingPathComponent("repair-copy.bin")
+		try bytes.write(to: repairSource)
+		let repaired = try object(await engine.perform("repairFile", ["id": "fixture", "index": 0, "source": repairSource.path]))
+		try require(repaired["repairedFiles"] as? Int == 1 && repaired["pendingPieces"] as? Int == 0, "Repair command lost its result counts")
+		try require(try Data(contentsOf: repairSource) == bytes, "Repair modified its source")
+		let repairedSnapshot = try await engine.snapshot()
+		try require(repairedSnapshot.transfers[0].complete && repairedSnapshot.transfers[0].state == "Paused", "Repair changed the paused state or lost verified progress")
+		#endif
 		_ = try await engine.perform("select", ["id": "fixture", "selected": [0]])
 		_ = try await wait(engine) { $0.transfers.first?.files.first?.selected == false }
 		_ = try await engine.perform("select", ["id": "fixture", "selected": [1]])

@@ -23,6 +23,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			case "--disk": try await disk(root: URL(fileURLWithPath: args[2]), volume: URL(fileURLWithPath: args[3]))
 			case "--read-only": try await readOnly(volume: URL(fileURLWithPath: args[2]))
 			case "--checkpoint": try await checkpointInterruptions(root: URL(fileURLWithPath: args[2]))
+			case "--repair": try await repairInterruptions(root: URL(fileURLWithPath: args[2]))
 			default: try await interruptions(root: URL(fileURLWithPath: args[1]), volume: URL(fileURLWithPath: args[2]))
 			}
 		} catch { try? FileHandle.standardError.write(contentsOf: Data("FAIL: \(error)\n".utf8)); exit(1) }
@@ -44,6 +45,8 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 	static func label(_ event: StorageEvent) -> String {
 		switch event {
 		case .pieceHashed(let index): "hashed-\(index)"
+		case .repairStaged(let index): "repair-staged-\(index)"
+		case .repairBackup(let index): "repair-backup-\(index)"
 		case .journalDurable: "journal"
 		case .filePublished(let index): "published-\(index)"
 		case .entryDurable(let index): "entry-\(index)"
@@ -104,6 +107,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		case "move": try await storage.move(to: target)
 		case "trash": _ = try await storage.trash(directory: target)
 		case "import": try await storage.importFiles(from: root.appendingPathComponent("seed"))
+		case "repair": _ = try await storage.repairFile(0, from: root.appendingPathComponent("seed/bundle/" + name(0)))
 		case "select": try await storage.select(metadata.inspection.files.map { !$0.pad })
 		case "atomic":
 			for generation in 0..<10000 {
@@ -142,7 +146,25 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		while process.isRunning, ProcessInfo.processInfo.systemUptime < deadline { try await Task.sleep(for: .milliseconds(5)) }
 		try require(!process.isRunning, "Child failed to terminate")
 	}
+	static func repairInterruptions(root: URL) async throws {
+		for boundary in ["journal", "repair-backup-0", "published-0", "entry-0", "checkpoint"] {
+			let work = root.appendingPathComponent(boundary), metadata = try await prepare(work)
+			try Data(repeating: 255, count: 65536).write(to: work.appendingPathComponent("data/bundle/" + name(0)))
+			try await stopChild(work, operation: "repair", boundary: boundary, target: work)
+			try fm.removeItem(at: work.appendingPathComponent("seed"))
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: work.appendingPathComponent("data"), stateDirectory: work.appendingPathComponent("state"))
+			try require(try await storage.snapshot().needsRecovery, "Repair lost its durable journal")
+			try await storage.recover()
+			let snapshot = try await storage.snapshot()
+			try require(!snapshot.needsRecovery && snapshot.verifiedPieces.count == storage.layout.pieceCount, "Repair recovery lost verified progress")
+			for index in 0..<8 { try require(try Data(contentsOf: work.appendingPathComponent("data/bundle/" + name(index))) == contents(index), "Repair recovery changed payload") }
+			try require(try fm.contentsOfDirectory(atPath: work.appendingPathComponent("data/bundle").path).count == 8, "Repair left owned staging files")
+			try await storage.shutdown()
+			print("PASS: killed repair/\(boundary); recovered without source files")
+		}
+	}
 	static func interruptions(root: URL, volume: URL) async throws {
+		try await repairInterruptions(root: root.appendingPathComponent("repair"))
 		let cases: [(String, String, Bool)] = [
 			("rename", "journal", false), ("rename", "claimed-0", false), ("rename", "published-0", false), ("rename", "entry-0", false), ("rename", "checkpoint", false),
 			("move", "claimed-0", false), ("move", "published-0", false), ("move", "entry-0", false),

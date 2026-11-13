@@ -231,7 +231,7 @@ final class StorageState: @unchecked Sendable {
 			corruptBytes: record.corruptBytes ?? 0, redundantBytes: record.redundantBytes ?? 0,
 			trashReceipts: record.receipts.map { URL(fileURLWithPath: $0) }, needsRecovery: hasJournal)
 	}
-	func read(piece: Int, offset: Int, count: Int, verifiedOnly: Bool, check: () throws -> Void) throws -> Data {
+	func read(piece: Int, offset: Int, count: Int, verifiedOnly: Bool, overlay: [Int: (StorageDirectory, String)] = [:], check: () throws -> Void) throws -> Data {
 		try ready()
 		_ = try layout.length(of: piece)
 		let before: [StorageFileObservation]?
@@ -249,7 +249,7 @@ final class StorageState: @unchecked Sendable {
 		for segment in segments {
 			try check()
 			if segment.padding { result.append(Data(repeating: 0, count: segment.count)); continue }
-			let (directory, path) = location(segment.file), file = try directory.openFile(path)
+			let (directory, path) = overlay[segment.file] ?? location(segment.file), file = try directory.openFile(path)
 			defer { close(file) }
 			var done = 0
 			while done < segment.count {
@@ -295,7 +295,7 @@ final class StorageState: @unchecked Sendable {
 		guard try observe(piece: piece) == before else { throw StorageFailure.invalid("payload changed during verification") }
 		return (result.legacyValid && result.root == expected, result.bytes)
 	}
-	func digestPiece(_ piece: Int, range: Range<Int>? = nil, check: () throws -> Void) throws -> (legacyValid: Bool, root: Data?, bytes: Data) {
+	func digestPiece(_ piece: Int, range: Range<Int>? = nil, overlay: [Int: (StorageDirectory, String)] = [:], check: () throws -> Void) throws -> (legacyValid: Bool, root: Data?, bytes: Data) {
 		let length = try layout.length(of: piece)
 		let hashes = metadata.document.root["info"]?["pieces"]?.bytes
 		let mapping = merkle.index.pieces[piece]
@@ -304,7 +304,7 @@ final class StorageState: @unchecked Sendable {
 		if let range { result.reserveCapacity(range.count) }
 		while offset < length {
 			try check(); let count = min(262144, length - offset)
-			let data = try read(piece: piece, offset: offset, count: count, verifiedOnly: false, check: check)
+			let data = try read(piece: piece, offset: offset, count: count, verifiedOnly: false, overlay: overlay, check: check)
 			StorageDiagnostics.count(.bytesHashed, data.count)
 			if hash != nil { StorageDiagnostics.count(.sha1Bytes, data.count) }
 			hash?.update(data: data)

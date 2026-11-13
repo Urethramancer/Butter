@@ -48,6 +48,7 @@ struct AddRequest: Identifiable {
 	private var polling: Task<Void, Never>?
 	private var lastSave = Date.distantPast
 	private var moving = Set<String>()
+	private var repairing = Set<String>()
 	private var refreshing = false
 	private var starting = false
 	private var loadedState = false
@@ -164,7 +165,7 @@ struct AddRequest: Identifiable {
 			for torrent in transfers { await processCompletion(torrent) }
 			var observations = transfers.filter { restoreFailures[$0.id] == nil }.map { torrent in
 				let r = record(torrent.id)
-				return TransferObservation(id: torrent.id, order: records.firstIndex { $0.id == torrent.id } ?? 0, priority: priority(for: torrent), wanted: r?.wanted ?? false, force: r?.force ?? false, complete: torrent.complete, blocked: !torrent.error.isEmpty || moving.contains(torrent.id) || torrent.state == "Moving" || torrent.state == "Renaming", downloadRate: torrent.down, uploadRate: torrent.up, downloadDemand: !torrent.complete && !torrent.peers.isEmpty, uploadDemand: torrent.demand)
+				return TransferObservation(id: torrent.id, order: records.firstIndex { $0.id == torrent.id } ?? 0, priority: priority(for: torrent), wanted: r?.wanted ?? false, force: r?.force ?? false, complete: torrent.complete, blocked: !torrent.error.isEmpty || moving.contains(torrent.id) || repairing.contains(torrent.id) || torrent.state == "Repairing" || torrent.state == "Moving" || torrent.state == "Renaming", downloadRate: torrent.down, uploadRate: torrent.up, downloadDemand: !torrent.complete && !torrent.peers.isEmpty, uploadDemand: torrent.demand)
 			}
 			// Idle clocks count only admitted, running seeds, never queue time.
 			let idleObservations = observations.map { observation in var o = observation; o.blocked = o.blocked || decisions[o.id]?.running != true; return o }
@@ -334,6 +335,28 @@ struct AddRequest: Identifiable {
 		let changes = torrent.files.filter { $0.path == path || $0.path.hasPrefix(path + "/") }.map { ["index": $0.index, "path": replacement + String($0.path.dropFirst(path.count))] as [String: Any] }
 		Task { await command("rename", id: torrent.id, extra: ["changes": changes]) }
 	}
+	func repairFile(_ index: Int, torrent: TransferSnapshot) {
+		let panel = NSOpenPanel(); panel.title = "Repair from local file"
+		panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+		panel.begin { response in
+			guard response == .OK, let url = panel.url else { return }
+			Task { @MainActor in await self.performRepair("repairFile", torrent: torrent, extra: ["index": index, "source": url.path]) }
+		}
+	}
+	private func performRepair(_ command: String, torrent: TransferSnapshot, extra: [String: Any]) async {
+		guard !shuttingDown, repairing.insert(torrent.id).inserted else { return }
+		activeOperations += 1
+		defer { activeOperations -= 1; repairing.remove(torrent.id) }
+		do {
+			var payload = extra; payload["id"] = torrent.id
+			let result = try JSONDecoder().decode(RepairSummary.self, from: await engine.perform(command, payload))
+			decisions[torrent.id] = nil
+			let alert = NSAlert(); alert.messageText = "Repair complete"
+			alert.informativeText = "Repaired files: \(result.repairedFiles)\nVerified pieces: \(result.verifiedPieces)\nPieces still pending: \(result.pendingPieces)"
+			alert.runModal()
+		} catch { report(error) }
+	}
+	private struct RepairSummary: Decodable { let repairedFiles: Int; let verifiedPieces: Int; let pendingPieces: Int }
 	func retryMove(_ torrent: TransferSnapshot) async {
 		guard !preferences.finalFolder.isEmpty else { error = "Choose a completed-download destination in Transfers settings."; return }
 		moving.insert(torrent.id)

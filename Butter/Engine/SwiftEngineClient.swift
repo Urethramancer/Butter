@@ -52,6 +52,7 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 			case "save": try await session.save(id: id)
 			case "retry": try await session.retry(id: id)
 			case "recheck": try await session.recheck(id: id)
+			case "repairFile": return try JSONEncoder().encode(await session.repairFile(id: id, index: input.integer("index"), source: input.absolutePath("source")))
 			case "select": try await session.changeStorage(id: id, change: .select(input.selection(required: true)!))
 			case "rename": try await session.changeStorage(id: id, change: .rename(input.renames()))
 			case "move": try await session.changeStorage(id: id, change: .move(input.absolutePath("destination")))
@@ -142,7 +143,7 @@ actor NativeSnapshotMapper {
 			}
 			let complete = done == wanted
 			let activity: String?
-			switch row.activity { case .checking: activity = "Checking"; case .moving: activity = "Moving"; case .renaming: activity = "Renaming"; case nil: activity = disk.pendingVerificationCount > 0 ? (row.state.running ? "Checking" : "Verification pending") : nil }
+			switch row.activity { case .checking: activity = "Checking"; case .moving: activity = "Moving"; case .renaming: activity = "Renaming"; case .repairing: activity = "Repairing"; case nil: activity = disk.pendingVerificationCount > 0 ? (row.state.running ? "Checking" : "Verification pending") : nil }
 			rows.append(TransferSnapshot(id: row.id, name: metadata.inspection.name, path: disk.destination.path,
 				state: activity ?? (row.state.running ? (complete ? "Seeding" : "Downloading") : "Paused"), error: wire?.storageError ?? row.error, metadata: true,
 				private: metadata.inspection.private, complete: complete, progress: wanted == 0 ? 1 : Double(done) / Double(wanted), wanted: wanted, done: done, total: total,

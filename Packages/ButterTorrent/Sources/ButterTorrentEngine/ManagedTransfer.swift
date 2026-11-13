@@ -139,6 +139,9 @@ public actor ManagedTransfer {
 			try await storage.flush()
 		}
 	}
+	public func repairFile(_ index: Int, from source: URL) async throws -> StorageRepairResult {
+		try await mutate { try await $0.repairFile(index, from: source) }
+	}
 	public func exportMetadata() async throws -> Data {
 		try await serial {
 			// Exporting does not mutate payload or picker state and need not disconnect peers.
@@ -175,12 +178,13 @@ public actor ManagedTransfer {
 		do { try await transfer.shutdown(); self.transfer = nil; pauseFailed = false }
 		catch { pauseFailed = true; throw error }
 	}
-	private func mutate(_ body: (TorrentStorage) async throws -> Void) async throws {
+	private func mutate<T: Sendable>(_ body: (TorrentStorage) async throws -> T) async throws -> T {
 		let recovering = await cancelAutomaticRecovery()
-		try await serial {
+		return try await serial {
 			let wasRunning = self.transfer != nil || recovering
 			try await self.quiesce()
-			do { try Task.checkCancellation(); try await body(self.storage) }
+			let result: T
+			do { try Task.checkCancellation(); result = try await body(self.storage) }
 			catch {
 				// A pending journal keeps the transfer paused. Rejected preflights can
 				// retain the prior running state without hiding the original error.
@@ -188,6 +192,7 @@ public actor ManagedTransfer {
 				throw error
 			}
 			if wasRunning { try await self.resume() }
+			return result
 		}
 	}
 	public func trash(directory: URL? = nil) async throws -> [URL] {

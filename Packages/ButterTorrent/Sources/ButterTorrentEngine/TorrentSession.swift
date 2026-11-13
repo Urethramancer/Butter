@@ -19,7 +19,7 @@ public struct SessionTransferSnapshot: Sendable {
 	public let activity: SessionTransferActivity?
 }
 
-public enum SessionTransferActivity: Sendable, Equatable { case checking, moving, renaming }
+public enum SessionTransferActivity: Sendable, Equatable { case checking, moving, renaming, repairing }
 
 public enum SessionExportFailure: Error, LocalizedError, Sendable {
 	case stopped, timedOut
@@ -268,6 +268,16 @@ public actor TorrentSession {
 				try await entry.owner.changeStorage(change)
 				entry.last = try await entry.owner.snapshot(); entry.error = ""
 				if case .move = change { self.emit(SessionEvent(kind: "moved", id: id, path: entry.last.storage.destination.path)) }
+			} catch { entry.error = error.localizedDescription; throw error }
+		}
+	}
+	public func repairFile(id: String, index: Int, source: URL) async throws -> StorageRepairResult {
+		try await serial(id: id) {
+			let entry = try self.entry(id); entry.activity = .repairing; defer { entry.activity = nil }
+			do {
+				let result = try await entry.owner.repairFile(index, from: source)
+				entry.last = try await entry.owner.snapshot(); entry.error = ""
+				return result
 			} catch { entry.error = error.localizedDescription; throw error }
 		}
 	}

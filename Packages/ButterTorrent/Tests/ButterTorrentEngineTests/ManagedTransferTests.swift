@@ -6,6 +6,26 @@ import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 @Suite struct ManagedTransferTests {
+	@Test func repairDrainsCachedUploadsAndRestoresRunningState() async throws {
+		try await withManagedSeed { fixture, seed, resources in
+			let source = fixture.root.appendingPathComponent("repair-copy")
+			try fixture.bytes.prefix(10003).write(to: source)
+			try await seed.setLimits(download: 0, upload: 1); try await seed.start()
+			let listener = try await fixture.listen(), connecting = Task { try await seed.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port)) }
+			let peer = WirePeer(stream: try await listener.accept(timeout: 3)); _ = try await connecting.value
+			defer { peer.stream.close() }
+			try await peer.hello(hash: fixture.metadata.hashes.v1!, identity: 42)
+			try await peer.send(.interested); try await peer.send(.request(PeerBlock(piece: 0, offset: 0, length: 16384)))
+			try await eventually { await resources.snapshot().cachedBytes > 0 }
+			try Data(repeating: 255, count: 10003).write(to: fixture.root.appendingPathComponent("source/bundle/a"))
+			let repaired = try await engineDeadline { try await seed.repairFile(0, from: source) }
+			#expect(repaired.repairedFiles == 1 && repaired.verifiedPieces == 1 && repaired.pendingPieces == 0)
+			let snapshot = try await seed.snapshot()
+			#expect(snapshot.running && snapshot.transfer?.complete == true && snapshot.transfer?.peers.isEmpty == true)
+			#expect(await resources.snapshot().cachedBytes == 0)
+			#expect(try Data(contentsOf: source) == fixture.bytes.prefix(10003))
+		}
+	}
 	@Test func changedFilesRetireVerifiedAdvertisementsBeforeResuming() async throws {
 		try await withManagedSeed { fixture, seed, _ in
 			try await seed.start(); #expect(try await seed.snapshot().transfer?.complete == true)

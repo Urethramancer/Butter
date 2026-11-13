@@ -101,7 +101,12 @@ struct FileNodeRow: View {
 					Image(systemName: node.isFolder ? "folder" : "doc").foregroundStyle(.secondary).accessibilityHidden(true)
 					VStack(alignment: .leading, spacing: 2) { Text(node.title).lineLimit(1); if node.original != node.path { Text("Original: \((node.original as NSString).lastPathComponent)").font(.caption2).foregroundStyle(.secondary).lineLimit(1) } }
 					Spacer(); Text(bytes(node.files.reduce(0) { $0 + $1.size })).font(.caption2).foregroundStyle(.secondary)
-				}.contextMenu { Button("Rename Local \(node.isFolder ? "Folder" : "File")…") { store.renamePath(node.path, torrent: torrent) }.help("Rename local contents while preserving the original torrent metadata.") }
+				}.contextMenu {
+					Button("Rename Local \(node.isFolder ? "Folder" : "File")…") { store.renamePath(node.path, torrent: torrent) }.help("Rename local contents while preserving the original torrent metadata.")
+					if !node.isFolder, let file = node.files.first, !file.pad {
+						Button("Repair from local file…") { store.repairFile(file.index, torrent: torrent) }.help("Repair this file from a local copy, preserving the source.")
+					}
+				}
 				if expanded && node.isFolder { ForEach(node.children) { child in FileNodeRow(node: child, torrent: torrent, search: search).padding(.leading, 16) } }
 			}.padding(.vertical, 3)
 		}
