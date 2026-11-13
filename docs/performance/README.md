@@ -705,3 +705,8 @@ are insufficient; there are no automatic extra repetitions. The five-rate sweep
 and unrestricted modes remain available. Profile categories use disjoint leaf
 symbols and full calling stacks; inclusive percentages overlap and must not be
 summed. Syscall stacks identify kernel-facing work, not kernel residence time.
+
+The [verification-policy results](verification-policy-results-2026-11-13.md)
+retain explicit clean-launch and upload trust with forced torrent/file checks.
+All three isolated storage candidates were rejected; raw samples and patches
+remain available, and the 500 Mbps CPU target remains outstanding.

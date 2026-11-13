@@ -22,6 +22,10 @@
   [focused 500 Mbps pass](docs/performance/rate500-results-2026-11-13.md) attributes
   the dominant syscall stacks but retains no optimisation; further cache or
   scheduling changes need a distinct, evidence-supported opportunity.
+  The [verification-policy pass](docs/performance/verification-policy-results-2026-11-13.md)
+  retains explicit launch/upload trust and forced validation, but rejects received
+  proofs, the tested kernel path resolver and completed-data watching. No lower
+  CPU at 500 Mbps was established; preserve those rejected patches and samples.
 - Establish reproducible installed-reference compiler/Boost provenance. The
   archive exposes Boost 1.92 ABI while cached Apple-build flags name 1.88;
   preserve archive fingerprints and existing comparisons. See the
