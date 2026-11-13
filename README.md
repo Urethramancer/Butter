@@ -14,8 +14,14 @@ bytes and preserves the source. Pieces awaiting neighbouring files remain
 pending; checkable hash mismatches are rejected. Interrupted publication keeps
 a recovery journal and owned backups until the new checkpoint is durable.
 
-Managed torrents reopen with verification pending and check progressively when
-running. Paused torrents wait for resume or **Verify Local Data**. External file
+After a clean shutdown, Butter trusts checkpointed completion when metadata,
+hashes, paths and file stamps still match. Unfinished torrents are checked on
+every launch, including paused torrents; after an unclean shutdown all restored
+torrents containing payload are checked. One launch worker checks them in saved
+order, keeping each pending torrent stopped. Verified uploads retain filesystem
+checks without hashing their bytes again. **Verify Local Data** always hashes
+storage and is available for whole torrents and inspector file rows. File checks
+include complete shared boundary pieces without changing download selection. External file
 changes detected by normal snapshot polling retire stale advertisements and
 are rechecked after unchanged observations one second apart. Piece sizes up to
 32 MiB are supported; automatic creation sizing and default cache budgets are

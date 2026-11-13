@@ -4,6 +4,38 @@ import ButterTorrentMetadata
 @testable import ButterTorrentStorage
 
 @Suite struct StorageVerificationTests {
+	@Test(arguments: ["complete", "partial", "dirty", "selective"]) func cleanRestorationRequiresAcceptedCompletion(_ scenario: String) async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try storageMetadata(root), destination = root.appendingPathComponent("data"), directory = root.appendingPathComponent("state")
+			let selected = metadata.inspection.files.map { !$0.pad && (scenario != "selective" || $0.path.hasSuffix("/a")) }
+			let original = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: directory, selected: selected)
+			let payload = bytes + Data(repeating: 0, count: 32768 - bytes.count) + Data([1, 2, 3]) + Data(repeating: 0, count: 16381)
+			let count = scenario == "partial" ? 1 : scenario == "selective" ? 2 : original.layout.pieceCount
+			for piece in 0..<count {
+				let length = try original.layout.length(of: piece)
+				try await original.write(piece: piece, offset: 0, data: payload.subdata(in: piece * 16384..<(piece * 16384 + length)))
+				#expect(try await original.verify(piece: piece))
+			}
+			try await original.shutdown()
+			if scenario == "dirty" { try Data(repeating: 255, count: bytes.count).write(to: destination.appendingPathComponent("source/a")) }
+			let counts = PieceHashCounts()
+			let restored = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: directory, verificationPolicy: .trustCompleted, readPolicy: .trustedVerified, event: counts.record)
+			let snapshot = try await restored.snapshot()
+			#expect(counts.pieces.isEmpty)
+			if scenario == "partial" || scenario == "dirty" { #expect(snapshot.verifiedPieces.isEmpty && snapshot.pendingVerificationCount > 0) }
+			else {
+				#expect(snapshot.verifiedPieces == Set(0..<count))
+				#expect(try await restored.readVerifiedPiece(0) == bytes.prefix(16384))
+				#expect(try await restored.read(piece: 0, offset: 3, count: 7) == bytes.subdata(in: 3..<10))
+				#expect(counts.pieces.isEmpty)
+				#expect(try await restored.verify(piece: 0)); #expect(counts.pieces == [0])
+				try Data(repeating: 255, count: bytes.count).write(to: destination.appendingPathComponent("source/a"))
+				await #expect(throws: StorageFailure.self) { try await restored.readVerifiedPiece(0) }
+				#expect(try await restored.verify(piece: 0) == false)
+			}
+			try await restored.shutdown()
+		}
+	}
 	@Test func deferredOpeningDoesNotTrustHistoricalClaimsAndChecksCoalesce() async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try storageMetadata(root), destination = root.appendingPathComponent("data"), directory = root.appendingPathComponent("state")

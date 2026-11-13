@@ -19,6 +19,11 @@ import ButterTorrentEngine
 			"peak_rss": usage.ru_maxrss, "ports": ports, "payload_bytes": bytes, "request_window": TCPTransferConfiguration().pipeline,
 			"upload_admission": ["advertised_reqq": TCPTransferConfiguration.advertisedUploadRequestLimit, "requests_per_peer": 32, "jobs_per_transfer": 64, "output_bytes": 524288, "output_messages": 128], "peer_errors": errors]
 		record["received_payload_bytes"] = received
+		#if BUTTER_VERIFICATION_POLICY_AVAILABLE
+		record["storage_policy"] = ["uploads": "trustedVerified", "restore": "strict eager", "independent_validation": "strict"]
+		#else
+		record["storage_policy"] = ["uploads": "strict (older-parent adapter)", "restore": "strict eager", "independent_validation": "strict"]
+		#endif
 		if let pieces { record["verified_pieces"] = pieces }
 		#if BUTTER_STORAGE_DIAGNOSTICS_AVAILABLE
 		if StorageDiagnostics.enabled { record["storage_diagnostics"] = StorageDiagnostics.snapshot() }
@@ -63,7 +68,12 @@ import ButterTorrentEngine
 		do {
 			for item in job.items {
 				let metadata = try TorrentMetadata(contentsOf: URL(fileURLWithPath: item.torrent))
-				let storage = try await TorrentStorage.open(metadata: metadata, destination: URL(fileURLWithPath: item.destination), stateDirectory: URL(fileURLWithPath: item.state), checkpointPolicy: .managed); stores.append(storage)
+				#if BUTTER_VERIFICATION_POLICY_AVAILABLE
+				let storage = try await TorrentStorage.open(metadata: metadata, destination: URL(fileURLWithPath: item.destination), stateDirectory: URL(fileURLWithPath: item.state), checkpointPolicy: .managed, readPolicy: .trustedVerified)
+				#else
+				let storage = try await TorrentStorage.open(metadata: metadata, destination: URL(fileURLWithPath: item.destination), stateDirectory: URL(fileURLWithPath: item.state), checkpointPolicy: .managed)
+				#endif
+				stores.append(storage)
 				if job.role == "seed" { for piece in 0..<storage.layout.pieceCount { guard try await storage.verify(piece: piece) else { throw PeerFailure.corruptPiece(piece) } } }
 				var configuration = TCPTransferConfiguration(); configuration.encryption = .disabled; configuration.enablePEX = false
 				let engine = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration); engines.append(engine)

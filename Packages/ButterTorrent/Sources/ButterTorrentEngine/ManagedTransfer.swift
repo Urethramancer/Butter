@@ -50,13 +50,13 @@ public actor ManagedTransfer {
 		webClient = WebSeedClient(transport: webSeedTransport ?? native!, clock: clock, maximumBytes: 16384)
 	}
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
-		configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared,
+		verificationPolicy: StorageVerificationPolicy = .deferred, readPolicy: StorageReadPolicy = .strict, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared,
 		budget: TCPPeerBudget? = nil, preparedState: PreparedTransferState? = nil, peerID: Data? = nil, clock: any TransportClock = ContinuousTransportClock(), webSeedTransport: (any HTTPTransport)? = nil, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> ManagedTransfer {
 		try configuration.validate()
 		let identity = peerID ?? Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
 		guard identity.count == 20 else { throw PeerFailure.invalid("peer identifier") }
 		let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: stateDirectory, selected: selected, preparedState: preparedState,
-			checkpointPolicy: .managed, verificationPolicy: .deferred, checkpointClock: TransferCheckpointClock(clock: clock), event: event)
+			checkpointPolicy: .managed, verificationPolicy: verificationPolicy, readPolicy: readPolicy, checkpointClock: TransferCheckpointClock(clock: clock), event: event)
 		return ManagedTransfer(metadata: metadata, storage: storage, configuration: configuration, resources: resources, budget: budget, peerID: identity, clock: clock, webSeedTransport: webSeedTransport)
 	}
 	public func start() async throws {
@@ -127,14 +127,19 @@ public actor ManagedTransfer {
 			}
 		}
 	}
-	public func recheck() async throws {
+	public func recheck(files: [Int]? = nil) async throws {
+		let pieces: [Int]
+		if let files {
+			guard files.allSatisfy({ self.storage.layout.files.indices.contains($0) }) else { throw StorageFailure.invalid("file index") }
+			pieces = try Set(files.flatMap { try storage.layout.pieces(touchingFile: $0) }).sorted()
+		} else { pieces = Array(0..<storage.layout.pieceCount) }
 		try await mutate { storage in
-			for piece in 0..<storage.layout.pieceCount {
-				try Task.checkCancellation()
-				do { _ = try await storage.verify(piece: piece) }
-				catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { }
-				catch StorageFailure.invalid("short payload read") { }
-				catch StorageFailure.missingHashes { }
+			let scope = TransferDiskScope(resources: self.resources)
+			for piece in pieces {
+				try Task.checkCancellation(); try await scope.acquire()
+				do { try await storage.validate(piece: piece) }
+				catch { await scope.release(); throw error }
+				await scope.release()
 			}
 			try await storage.flush()
 		}

@@ -49,7 +49,7 @@ reference=$PWD/.dependencies/reference-build/TCPPeerReference
 scratch=$PWD/.build/benchmark-release
 swift build -c release --package-path Packages/ButterTorrent --scratch-path "$scratch" >> "$out/build.log" 2>&1
 bin=$(swift build -c release --package-path Packages/ButterTorrent --scratch-path "$scratch" --show-bin-path)
-swiftc -O -D BUTTER_STORAGE_DIAGNOSTICS_AVAILABLE -swift-version 6 -parse-as-library -module-cache-path "$work/modules" -I "$bin" -L "$bin" \
+swiftc -O -D BUTTER_STORAGE_DIAGNOSTICS_AVAILABLE -D BUTTER_VERIFICATION_POLICY_AVAILABLE -swift-version 6 -parse-as-library -module-cache-path "$work/modules" -I "$bin" -L "$bin" \
 	-lButterTorrentEngine -lButterTorrentStorage -lButterTorrentNetworking -lButterTorrentMetadata \
 	Tests/TransferBenchmark.swift -o "$work/TransferBenchmark" >> "$out/build.log" 2>&1
 previous_driver=
@@ -63,6 +63,7 @@ if [ "$mode" = --compare-source ] || [ "$mode" = --profile-source ] || [ "$mode"
 	previous_driver=$work/PreviousTransferBenchmark
 	previous_diagnostics=
 	if [ -f "$previous_root/Packages/ButterTorrent/Sources/ButterTorrentStorage/StorageDiagnostics.swift" ]; then previous_diagnostics='-D BUTTER_STORAGE_DIAGNOSTICS_AVAILABLE'; fi
+	if rg -q 'public enum StorageReadPolicy' "$previous_root/Packages/ButterTorrent/Sources/ButterTorrentStorage/StorageVerification.swift"; then previous_diagnostics="$previous_diagnostics -D BUTTER_VERIFICATION_POLICY_AVAILABLE"; fi
 	swiftc -O $previous_diagnostics -swift-version 6 -parse-as-library -module-cache-path "$work/modules" -I "$previous_bin" -L "$previous_bin" \
 		-lButterTorrentEngine -lButterTorrentStorage -lButterTorrentNetworking -lButterTorrentMetadata \
 		Tests/TransferBenchmark.swift -o "$previous_driver" >> "$out/build.log" 2>&1

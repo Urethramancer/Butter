@@ -5,6 +5,7 @@ import Foundation
 	var addFailure = false
 	var holdSnapshot = false
 	var holdShutdown = false
+	var cleanShutdownEligible = true
 	private(set) var gateEntered = false
 	private var gate: CheckedContinuation<Void, Never>?
 	func release() { holdSnapshot = false; holdShutdown = false; gate?.resume(); gate = nil }
@@ -17,6 +18,7 @@ import Foundation
 		if command == "add" && addFailure { throw CocoaError(.fileReadNoPermission) }
 		await Task.yield()
 		if command == "add" { return try JSONSerialization.data(withJSONObject: ["id": payload["id"]!, "duplicate": false]) }
+		if command == "shutdown" { return try JSONSerialization.data(withJSONObject: ["cleanShutdownEligible": cleanShutdownEligible]) }
 		return Data("{}".utf8)
 	}
 	func snapshot() async throws -> EngineSnapshot {
@@ -31,6 +33,8 @@ enum StoreRegressionTests {
 		try fm.createDirectory(at: root, withIntermediateDirectories: true)
 		defer { try? fm.removeItem(at: root) }
 		try await shutdownDeadlines(root)
+		try await cleanMarkers(root)
+		try await interruptedCleanMarker(root)
 		let url = root.appendingPathComponent("state.json"), corrupt = Data("invalid state".utf8)
 		try corrupt.write(to: url)
 		let damaged = TransferStore(root: root, engine: FakeEngine(), automaticPolling: false, allowsSystemIntegration: false)
@@ -76,10 +80,11 @@ enum StoreRegressionTests {
 		try check(selection.selection.isEmpty, "Deferred selection must discard removed IDs")
 		let shutdown = await store.shutdown()
 		try check(shutdown, "Fake store shuts down")
-		let failing = StateStorage(root: root, write: { _, _ in throw CocoaError(.fileWriteOutOfSpace) })
+		let failing = SwitchableStorage(root: root)
 		let rollbackEngine = FakeEngine()
 		let rollback = TransferStore(root: root, engine: rollbackEngine, storage: failing, automaticPolling: false, allowsSystemIntegration: false)
 		await rollback.start()
+		await failing.failWrites()
 		let added = await rollback.add(AddRequest(source: "magnet:?xt=test", destination: root.path, start: false), id: "rollback")
 		try check(!added && rollback.record("rollback") == nil && rollbackEngine.commands.last == "remove", "Failed persistence rolls back imported handle and record")
 		await rollback.remove(["restored"], trash: false)
@@ -88,6 +93,7 @@ enum StoreRegressionTests {
 		let suspending = SuspendingStorage()
 		let serial = TransferStore(root: root, engine: FakeEngine(), storage: suspending, automaticPolling: false, allowsSystemIntegration: false)
 		await serial.start()
+		await suspending.holdNextSave()
 		serial.records = [TransferRecord(id: "first", source: "x", destination: root.path)]
 		let firstSave = Task { await serial.persist() }
 		let deadline = ProcessInfo.processInfo.systemUptime + 5
@@ -124,6 +130,43 @@ enum StoreRegressionTests {
 	@MainActor private static func drainSelectionQueue() async {
 		await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in DispatchQueue.main.async { continuation.resume() } }
 	}
+	@MainActor private static func cleanMarkers(_ root: URL) async throws {
+		for eligible in [false, true] {
+			let location = root.appendingPathComponent("marker-\(eligible)"), storage = StateStorage(root: location)
+			var saved = SavedState(); saved.cleanShutdown = true
+			try await storage.save(saved)
+			let engine = FakeEngine(); engine.cleanShutdownEligible = eligible
+			let store = TransferStore(root: location, engine: engine, automaticPolling: false, allowsSystemIntegration: false)
+			await store.start()
+			let launched = try await storage.load()
+			try check(store.ready && !launched.cleanShutdown && engine.commands.first == "restorePolicy", "Launch clears the marker before engine restoration")
+			let result = await store.shutdown()
+			try check(result, "Ineligible completion does not prevent quitting")
+			let stopped = try await storage.load()
+			try check(stopped.cleanShutdown == eligible, "Shutdown uses fresh engine eligibility")
+		}
+		let location = root.appendingPathComponent("marker-true"), engine = FakeEngine()
+		let failing = StateStorage(root: location, write: { _, _ in throw CocoaError(.fileWriteOutOfSpace) })
+		let store = TransferStore(root: location, engine: engine, storage: failing, automaticPolling: false, allowsSystemIntegration: false)
+		await store.start()
+		try check(!store.ready && store.error != nil && engine.commands.isEmpty, "Marker-clear failure prevents engine operations")
+	}
+	@MainActor private static func interruptedCleanMarker(_ root: URL) async throws {
+		let storage = MarkerRaceStorage(), engine = FakeEngine()
+		let store = TransferStore(root: root, engine: engine, storage: storage, automaticPolling: false, allowsSystemIntegration: false, shutdownTimeout: 0.05)
+		await store.start()
+		let quitting = Task { await store.shutdown() }
+		let deadline = ContinuousClock.now + .seconds(2)
+		while !(await storage.entered) && ContinuousClock.now < deadline { await Task.yield() }
+		let entered = await storage.entered
+		try check(entered, "Quit reached the clean-marker write")
+		let stopped = await quitting.value
+		try check(!stopped, "A suspended clean-marker write times out")
+		await storage.release()
+		while (await storage.history).suffix(2) != [true, false] && ContinuousClock.now < deadline { await Task.yield() }
+		let history = await storage.history
+		try check(history.suffix(2) == [true, false], "Late clean publication is durably cleared before resume")
+	}
 	@MainActor private static func shutdownDeadlines(_ root: URL) async throws {
 		for boundary in ["polling", "save", "engine"] {
 			let engine = FakeEngine(), storage = SuspendingStorage()
@@ -131,6 +174,7 @@ enum StoreRegressionTests {
 			let store = TransferStore(root: root.appendingPathComponent(boundary), engine: engine,
 				storage: boundary == "save" ? storage : nil, automaticPolling: boundary == "polling", allowsSystemIntegration: false, shutdownTimeout: 0.05)
 			await store.start()
+			if boundary == "save" { await storage.holdNextSave() }
 			if boundary == "polling" {
 				let deadline = ContinuousClock.now + .seconds(2)
 				while !engine.gateEntered && ContinuousClock.now < deadline { await Task.yield() }
@@ -161,11 +205,37 @@ actor SuspendingStorage: StatePersisting {
 	private var continuation: CheckedContinuation<Void, Never>?
 	private(set) var entered = 0
 	private(set) var written: [String] = []
+	private var suspend = false
+	func holdNextSave() { entered = 0; written = []; suspend = true }
 	func load() async throws -> SavedState { SavedState() }
 	func save(_ state: SavedState) async throws {
 		entered += 1
-		if entered == 1 { await withCheckedContinuation { continuation = $0 } }
+		if suspend { suspend = false; await withCheckedContinuation { continuation = $0 } }
 		written.append(state.transfers.first?.id ?? "empty")
+	}
+	func release() { continuation?.resume(); continuation = nil }
+}
+
+actor SwitchableStorage: StatePersisting {
+	let storage: StateStorage
+	var failing = false
+	init(root: URL) { storage = StateStorage(root: root) }
+	func failWrites() { failing = true }
+	func load() async throws -> SavedState { try await storage.load() }
+	func save(_ state: SavedState) async throws {
+		if failing { throw CocoaError(.fileWriteOutOfSpace) }
+		try await storage.save(state)
+	}
+}
+
+actor MarkerRaceStorage: StatePersisting {
+	private var continuation: CheckedContinuation<Void, Never>?
+	private(set) var entered = false
+	private(set) var history: [Bool] = []
+	func load() async throws -> SavedState { SavedState() }
+	func save(_ state: SavedState) async throws {
+		if state.cleanShutdown { entered = true; await withCheckedContinuation { continuation = $0 } }
+		history.append(state.cleanShutdown)
 	}
 	func release() { continuation?.resume(); continuation = nil }
 }

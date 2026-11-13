@@ -11,7 +11,7 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 	private let snapshots = NativeSnapshotMapper()
 	init(storage: URL) {
 		var configuration = TCPTransferConfiguration(); configuration.allowSameIP = false
-		session = TorrentSession(storage: storage, configuration: configuration)
+		session = TorrentSession(storage: storage, readPolicy: .trustedVerified, configuration: configuration)
 		creation = TorrentCreationWorker(storage: storage) { try TransferRepository.publishCreatedTorrent($0, id: $1, root: storage) }
 	}
 	var creationProgress: Double { creation.progress }
@@ -21,7 +21,8 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 			let input = NativeCommandPayload(fields: payload)
 			if command == "create" { return try await creation.create(payload) }
 			if command == "inspect" { return try await metadata.inspect(URL(fileURLWithPath: input.text("source"))) }
-			if command == "shutdown" { await creation.waitForCompletion(); try await session.shutdown(); return Data("{}".utf8) }
+			if command == "shutdown" { await creation.waitForCompletion(); let eligible = try await session.shutdownEligibility(); return try JSONEncoder().encode(["cleanShutdownEligible": eligible]) }
+			if command == "restorePolicy" { try await session.setRestorePolicy(input.flag("cleanShutdown") ? .trustCompleted : .validateAll); return Data("{}".utf8) }
 			if command == "settings" {
 				let dht = try input.flag("dht"), lsd = try input.flag("lsd"), mapping = try input.optionalInteger("mapping") ?? 1
 				let port = try input.integer("port"); guard (0...65535).contains(port) else { throw NetworkFailure.invalid("listening port") }
@@ -51,7 +52,7 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 			case "pause": try await session.pause(id: id)
 			case "save": try await session.save(id: id)
 			case "retry": try await session.retry(id: id)
-			case "recheck": try await session.recheck(id: id)
+			case "recheck": try await session.recheck(id: id, files: input.indices())
 			case "repairFile": return try JSONEncoder().encode(await session.repairFile(id: id, index: input.integer("index"), source: input.absolutePath("source")))
 			case "repairFolder": return try JSONEncoder().encode(await session.repairFolder(id: id, folder: input.absolutePath("folder")))
 			case "select": try await session.changeStorage(id: id, change: .select(input.selection(required: true)!))
@@ -103,6 +104,11 @@ private struct NativeCommandPayload {
 	func selection(required: Bool) throws -> [Bool]? {
 		guard let value = fields["selected"] else { if required { throw MetadataError.invalid("selection required") }; return nil }
 		guard let list = value as? [NSNumber], list.allSatisfy({ $0.doubleValue == 0 || $0.doubleValue == 1 }) else { throw MetadataError.invalid("selection") }; return list.map(\.boolValue)
+	}
+	func indices() throws -> [Int]? {
+		guard let value = fields["files"] else { return nil }
+		guard let list = value as? [NSNumber], list.allSatisfy({ $0.doubleValue.isFinite && $0.doubleValue.rounded() == $0.doubleValue && $0.doubleValue >= 0 && $0.doubleValue <= Double(Int32.max) }) else { throw MetadataError.invalid("file indices") }
+		return list.map(\.intValue)
 	}
 	func renames() throws -> [Int: String] {
 		guard let list = fields["changes"] as? [[String: Any]], list.count <= 50_000 else { throw MetadataError.invalid("rename changes") }

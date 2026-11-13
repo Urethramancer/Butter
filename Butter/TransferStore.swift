@@ -57,6 +57,7 @@ struct AddRequest: Identifiable {
 	private var shutdownTask: Task<Void, Never>?
 	private var shutdownResult: Bool?
 	private var shutdownExpired = false
+	private var cleanMarkerMayBeSet = false
 	private var activeOperations = 0
 	private var saving: Task<Bool, Never>?
 	private var notified = Set<String>()
@@ -79,7 +80,10 @@ struct AddRequest: Identifiable {
 		starting = true; defer { starting = false }
 		do {
 			let saved = try await storage.load(); preferences = saved.preferences; records = saved.transfers; watchedImports = saved.watchedImports
+			var launchState = saved; launchState.cleanShutdown = false
+			try await storage.save(launchState)
 			loadedState = true
+			_ = try await engine.perform("restorePolicy", ["cleanShutdown": saved.cleanShutdown])
 			if !allowsSystemIntegration {
 				preferences.incompleteFolder = root.appendingPathComponent("Downloads").path
 				preferences.port = 0
@@ -110,12 +114,13 @@ struct AddRequest: Identifiable {
 			}
 		}
 	}
-	@discardableResult func persist() async -> Bool {
+	@discardableResult func persist(cleanShutdown: Bool = false) async -> Bool {
 		guard loadedState else {
 			report(NSError(domain: "Butter.Storage", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saved state could not be loaded. Restore or repair state.json before saving changes."]))
 			return false
 		}
-		let state = SavedState(preferences: preferences, transfers: records, watchedImports: watchedImports)
+		if cleanShutdown { cleanMarkerMayBeSet = true }
+		let state = SavedState(preferences: preferences, transfers: records, watchedImports: watchedImports, cleanShutdown: cleanShutdown)
 		let previous = saving
 		let task = Task {
 			_ = await previous?.value
@@ -123,7 +128,9 @@ struct AddRequest: Identifiable {
 			catch { report(error); return false }
 		}
 		saving = task
-		return await task.value
+		let success = await task.value
+		if success && !cleanShutdown { cleanMarkerMayBeSet = false }
+		return success
 	}
 	func group(for torrent: TransferSnapshot) -> TorrentGroup? { TransferGrouping.group(for: torrent, groups: preferences.groups) }
 	func selectFromList(_ ids: Set<String>) {
@@ -244,7 +251,7 @@ struct AddRequest: Identifiable {
 	func dismissAdd() { addRequest = nil; Task { await nextAdd() } }
 	func presentPendingAdd() async { await nextAdd() }
 	func add(_ request: AddRequest, creation: Bool = false, id: String = UUID().uuidString) async -> Bool {
-		guard !shuttingDown else { return false }
+		guard loadedState && !shuttingDown else { return false }
 		activeOperations += 1; defer { activeOperations -= 1 }
 		do {
 			var payload: [String: Any] = ["id": id, "source": request.source, "destination": request.destination, "tracker": request.tracker]
@@ -405,16 +412,21 @@ struct AddRequest: Identifiable {
 		Task { do { try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: torrent.id, content: content, trigger: nil)) } catch { report(error) } }
 	}
 	func shutdown() async -> Bool {
+		if shuttingDown, shutdownTask == nil, cleanMarkerMayBeSet {
+			guard await persist() else { return false }
+			shuttingDown = false
+		}
 		guard !shuttingDown else { return false }
 		shuttingDown = true; shutdownResult = nil; shutdownExpired = false
 		let deadline = ProcessInfo.processInfo.systemUptime + shutdownTimeout
 		shutdownTask = Task {
 			let result = await self.finishShutdown()
-			self.shutdownResult = result
-			self.shutdownTask = nil
 			if self.shutdownExpired {
+				if self.cleanMarkerMayBeSet, !(await self.persist()) { self.shutdownTask = nil; return }
 				self.shuttingDown = false; self.decisions = [:]; self.startPolling()
 			}
+			self.shutdownResult = result
+			self.shutdownTask = nil
 		}
 		while shutdownResult == nil {
 			if Task.isCancelled || ProcessInfo.processInfo.systemUptime >= deadline {
@@ -424,8 +436,10 @@ struct AddRequest: Identifiable {
 			}
 			try? await Task.sleep(for: .milliseconds(20))
 		}
+		var result = shutdownResult!
+		if Task.isCancelled { result = false; _ = await persist() }
+		if !result, cleanMarkerMayBeSet, !(await persist()) { return false }
 		shuttingDown = false
-		let result = shutdownResult!
 		if !result { decisions = [:]; startPolling() }
 		return result
 	}
@@ -440,6 +454,13 @@ struct AddRequest: Identifiable {
 			try? await Task.sleep(for: .milliseconds(20))
 		}
 		guard await persist() else { return false }
-		do { _ = try await engine.perform("shutdown"); return true } catch { report(error); return false }
+		do {
+			let response = try JSONSerialization.jsonObject(with: await engine.perform("shutdown")) as? [String: Any]
+			guard !shutdownExpired else { return false }
+			let eligible = response?["cleanShutdownEligible"] as? Bool == true && restoreFailures.isEmpty
+			guard await persist(cleanShutdown: eligible) else { return false }
+			if shutdownExpired { _ = await persist(); return false }
+			return true
+		} catch { report(error); return false }
 	}
 }

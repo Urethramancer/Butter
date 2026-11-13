@@ -19,6 +19,9 @@ public struct SessionTransferSnapshot: Sendable {
 	public let activity: SessionTransferActivity?
 }
 
+/// SessionRestorePolicy selects launch validation without weakening direct storage defaults.
+public enum SessionRestorePolicy: Sendable { case deferred, validateAll, trustCompleted }
+
 public enum SessionTransferActivity: Sendable, Equatable { case checking, moving, renaming, repairing }
 
 public enum SessionExportFailure: Error, LocalizedError, Sendable {
@@ -54,6 +57,7 @@ private final class SessionEntry {
 	var last: ManagedTransferSnapshot
 	var error = ""
 	var closed = false
+	var pendingValidation = false
 	var running = false
 	var activity: SessionTransferActivity?
 	var receipts: [URL] = []
@@ -98,15 +102,18 @@ public actor TorrentSession {
 	private let routing = TransferPermits(1)
 	private let trackerSetup = TransferPermits(1)
 	private let metadataPermits = TransferPermits(4)
+	private var restorePolicy: SessionRestorePolicy = .deferred
+	private let readPolicy: StorageReadPolicy
+	private var launchWorker: Task<Void, Never>?
 	private var entries: [SessionEntry] = []
 	private var pendingMagnets: [SessionPendingMagnet] = []
 	private var events: [SessionEvent] = []
 	private var peerHints: PeerCandidateQueue<SessionPeerHint>?
 	private var exports: [UUID: (id: String, signal: AsyncStream<Void>.Continuation)] = [:]
-	public init(storage: URL, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
+	public init(storage: URL, readPolicy: StorageReadPolicy = .strict, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared, maximumPeers: Int = 200,
 		loopbackOnly: Bool = false, clock: any TransportClock = ContinuousTransportClock(), httpTracker: (any TrackerAnnouncing)? = nil, webSeedTransport: (any HTTPTransport)? = nil, dhtBootstrap: [NetworkEndpoint]? = nil, localDiscoveryFactory: LocalDiscoveryFactory? = nil,
 		routerMappingRoutes: (@Sendable () async throws -> [RouterMappingRoute])? = nil, storageEvent: @escaping @Sendable (String, StorageEvent) -> Void = { _, _ in }) {
-		repository = TransferRepository(root: storage); self.configuration = configuration; self.resources = resources; budget = TCPPeerBudget(limit: maximumPeers)
+		self.readPolicy = readPolicy; repository = TransferRepository(root: storage); self.configuration = configuration; self.resources = resources; budget = TCPPeerBudget(limit: maximumPeers)
 		self.loopbackOnly = loopbackOnly; self.clock = clock
 		let native = httpTracker == nil ? NetworkHTTPTransport(clock: clock, addressFilter: configuration.addressFilter) : nil
 		nativeTrackerTransport = native
@@ -117,6 +124,36 @@ public actor TorrentSession {
 		self.routerMappingRoutes = routerMappingRoutes
 		self.storageEvent = storageEvent
 		peerID = Data("-BT0001-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
+	}
+	/// Configure the launch policy before restoring any transfers.
+	public func setRestorePolicy(_ policy: SessionRestorePolicy) throws {
+		guard entries.isEmpty, pendingMagnets.isEmpty else { throw StorageFailure.invalid("restoration already started") }
+		restorePolicy = policy
+	}
+	private func scheduleLaunchValidation() {
+		guard launchWorker == nil, entries.contains(where: { $0.pendingValidation }) else { return }
+		launchWorker = Task { [weak self] in await self?.validateLaunchQueue() }
+	}
+	private func validateLaunchQueue() async {
+		while let entry = entries.first(where: { $0.pendingValidation }), !Task.isCancelled {
+			do {
+				try await serial(id: entry.id) {
+					guard self.entries.contains(where: { $0 === entry }), entry.pendingValidation else { return }
+					entry.activity = .checking
+					do {
+						try await entry.owner.recheck()
+						entry.last = try await entry.owner.snapshot()
+						entry.pendingValidation = false; entry.activity = nil; entry.error = ""
+						if entry.running { try await entry.owner.start(); try await self.refreshRouting(); await self.startTracker(entry) }
+					} catch {
+						entry.pendingValidation = false; entry.activity = nil; entry.running = false
+						entry.error = error.localizedDescription
+						try? await entry.owner.pause()
+					}
+				}
+			} catch { if Task.isCancelled { break }; entry.pendingValidation = false; entry.activity = nil; entry.error = error.localizedDescription }
+		}
+		launchWorker = nil
 	}
 	public var currentPeerSettings: SessionPeerSettings {
 		if let peerSettings { return peerSettings }
@@ -175,7 +212,7 @@ public actor TorrentSession {
 		}
 		if let tracker, !metadata.inspection.private { metadata = try appending(tracker, to: metadata) }
 		let entry = try await publishMetadata(id: id, metadata: metadata, destination: destination, restore: restore, selected: selected, configuration: configuration)
-		entries.append(entry); try await refreshRouting()
+		entries.append(entry); scheduleLaunchValidation(); try await refreshRouting()
 		return SessionImport(id: id, duplicate: false, hashes: metadata.hashes.hex)
 	}
 	private func publishMetadata(id: String, metadata: TorrentMetadata, destination: URL, restore: Bool, selected: [Bool]? = nil, configuration: TCPTransferConfiguration, pending: PendingMagnetState? = nil) async throws -> SessionEntry {
@@ -183,7 +220,7 @@ public actor TorrentSession {
 		var owner: ManagedTransfer?
 		do {
 			let managed = try await ManagedTransfer.open(metadata: metadata, destination: destination, stateDirectory: prepared.directory,
-				selected: selected, configuration: configuration, resources: resources, budget: budget, preparedState: prepared, peerID: peerID, clock: clock, webSeedTransport: webSeedTransport, event: { [weak self, storageEvent] event in
+				selected: selected, verificationPolicy: restore && restorePolicy == .trustCompleted ? .trustCompleted : .deferred, readPolicy: readPolicy, configuration: configuration, resources: resources, budget: budget, preparedState: prepared, peerID: peerID, clock: clock, webSeedTransport: webSeedTransport, event: { [weak self, storageEvent] event in
 					if event == .pieceLayersChanged { Task { await self?.signalExports(id: id) } }
 					else { storageEvent(id, event) }
 				}); owner = managed
@@ -192,6 +229,10 @@ public actor TorrentSession {
 			try Task.checkCancellation()
 			try await repository.publish(id: id, metadata: metadata, state: prepared)
 			let entry = SessionEntry(id: id, metadata: metadata, prepared: prepared, owner: managed, last: snapshot, configuration: configuration)
+			let progress = TransferProgress(metadata: metadata, storage: snapshot.storage)
+			if restore, restorePolicy != .deferred, (restorePolicy == .trustCompleted ? progress.done != progress.wanted || snapshot.storage.pendingVerificationCount > 0 : snapshot.storage.hasExistingPayload) {
+				entry.pendingValidation = true; entry.activity = .checking
+			}
 			if snapshot.storage.needsRecovery { entry.error = StorageFailure.recoveryRequired("a filesystem operation is pending").localizedDescription }
 			return entry
 		} catch {
@@ -218,6 +259,7 @@ public actor TorrentSession {
 				let down = downloadLimit ?? entry.downloadLimit, up = uploadLimit ?? entry.uploadLimit
 				try await entry.owner.setLimits(download: down, upload: up); entry.downloadLimit = down; entry.uploadLimit = up
 			}
+			if entry.pendingValidation { entry.running = running; return }
 			if running && entry.error.isEmpty {
 				try await entry.owner.start(); entry.running = true
 				do { try await self.refreshRouting() } catch { entry.running = false; try? await entry.owner.pause(); throw error }
@@ -233,10 +275,12 @@ public actor TorrentSession {
 		}
 	}
 	public func save(id: String) async throws { try await serial(id: id) { if self.pending(id) == nil { try await self.entry(id).owner.save() } } }
-	public func recheck(id: String) async throws {
+	public func recheck(id: String, files: [Int]? = nil) async throws {
 		try await serial(id: id) {
-			let entry = try self.entry(id); entry.activity = .checking; defer { entry.activity = nil }
-			try await entry.owner.recheck(); entry.error = ""
+			let entry = try self.entry(id)
+			if let files { guard files.allSatisfy({ entry.metadata.inspection.files.indices.contains($0) }) else { throw StorageFailure.invalid("file index") } }
+			entry.activity = .checking; defer { entry.activity = nil }
+			try await entry.owner.recheck(files: files); entry.error = ""
 		}
 	}
 	public func retry(id: String) async throws {
@@ -246,7 +290,7 @@ public actor TorrentSession {
 			if !entry.closed { try await self.pauseEntry(entry) }
 			if entry.closed {
 				entry.owner = try await ManagedTransfer.open(metadata: entry.metadata, destination: entry.last.storage.destination,
-					stateDirectory: entry.prepared.directory, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: entry.prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport, event: { self.storageEvent(id, $0) })
+					stateDirectory: entry.prepared.directory, readPolicy: self.readPolicy, configuration: self.configuration, resources: self.resources, budget: self.budget, preparedState: entry.prepared, peerID: self.peerID, clock: self.clock, webSeedTransport: self.webSeedTransport, event: { self.storageEvent(id, $0) })
 				await self.observeDiscovery(id: id, owner: entry.owner)
 				entry.closed = false
 			}
@@ -398,8 +442,11 @@ public actor TorrentSession {
 		try TransferRepository.validateID(id)
 		try await serial(id: id, publishing: true) { guard !self.entries.contains(where: { $0.id == id }), self.pending(id) == nil else { throw StorageFailure.invalid("cannot forget a live transfer") }; try await self.repository.discard(id: id) }
 	}
-	public func shutdown() async throws {
-		try await serial {
+	public func shutdown() async throws { _ = try await shutdownEligibility() }
+	/// Drain transfers and report whether completed claims can be trusted on a clean launch.
+	public func shutdownEligibility() async throws -> Bool {
+		await launchWorker?.value
+		return try await serial {
 			self.stopExports()
 			var failure: Error?
 			for pending in self.pendingMagnets { pending.running = false; await self.stopMagnet(pending) }
@@ -412,9 +459,19 @@ public actor TorrentSession {
 			await self.stopTrackers(self.entries)
 			await self.network?.suspendMapping()
 			if let failure { throw failure }
+			var eligible = true
+			for entry in self.entries where !entry.closed {
+				try await entry.owner.save()
+				entry.last = try await entry.owner.snapshot()
+				let disk = entry.last.storage, progress = TransferProgress(metadata: entry.metadata, storage: disk)
+				if entry.pendingValidation || disk.needsRecovery || !entry.error.isEmpty { eligible = false }
+				if progress.done == progress.wanted && disk.pendingVerificationCount > 0 { eligible = false }
+			}
+			return eligible
 		}
 	}
-	public func snapshot() async throws -> TorrentSessionSnapshot {
+	public func snapshot
+() async throws -> TorrentSessionSnapshot {
 		try Task.checkCancellation(); guard !closed else { throw PeerFailure.closed }
 		var snapshots: [SessionTransferSnapshot] = []
 		for entry in self.entries {
@@ -497,6 +554,7 @@ public actor TorrentSession {
 		}
 	}
 	public func close() async throws {
+		launchWorker?.cancel(); await launchWorker?.value
 		let token = try await commands.acquire()
 		do {
 			if !closed {
@@ -527,7 +585,7 @@ public actor TorrentSession {
 	}
 	private func updateRouting() async throws {
 		guard let network else { return }
-		var targets = entries.filter { $0.running && !$0.closed && $0.error.isEmpty }.map {
+		var targets = entries.filter { $0.running && !$0.pendingValidation && !$0.closed && $0.error.isEmpty }.map {
 			SessionPeerTarget(id: $0.id, hashes: Self.wireHashes($0.metadata.hashes), owner: .transfer($0.owner))
 		}
 		if !networkChanging {
@@ -538,7 +596,7 @@ public actor TorrentSession {
 		}
 		do {
 			try await network.setTargets(targets)
-			let publicEntries = networkChanging ? [] : entries.filter { $0.running && !$0.closed && $0.error.isEmpty && !$0.metadata.inspection.private }
+			let publicEntries = networkChanging ? [] : entries.filter { $0.running && !$0.pendingValidation && !$0.closed && $0.error.isEmpty && !$0.metadata.inspection.private }
 			let discovery = publicEntries.map { SessionDHTTarget(id: $0.id, metadata: $0.metadata, owner: $0.owner) }
 			let magnets: [SessionMagnetTarget] = networkChanging ? [] : pendingMagnets.compactMap { pending in
 				guard pending.running, pending.error.isEmpty, pending.verified == nil, let resolver = pending.resolver else { return nil }
@@ -630,7 +688,7 @@ public actor TorrentSession {
 					let stored = try await self.repository.retainedMetadata(id: winner.id)
 					guard stored == nil || stored?.originalInfo == metadata.originalInfo else { throw MetadataError.invalid("retained magnet identity") }
 					entry = try await self.publishMetadata(id: winner.id, metadata: metadata, destination: winner.destination, restore: stored != nil, configuration: configuration, pending: winner.state)
-					if winner.running, entry.error.isEmpty {
+					if winner.running, entry.error.isEmpty, !entry.pendingValidation {
 						do {
 							try await entry.owner.start()
 							entry.last = try await entry.owner.snapshot(); entry.running = true
@@ -643,11 +701,11 @@ public actor TorrentSession {
 					do { try await self.repository.retireMagnet(alias.state) }
 					catch { Self.log.error("Could not retire pending magnet state: \(error.localizedDescription)") }
 				}
-				if existing == nil { self.entries.append(entry) }
+				if existing == nil { entry.running = winner.running; self.entries.append(entry); self.scheduleLaunchValidation() }
 				self.pendingMagnets.removeAll { resolved.contains($0.id) }
 				for alias in aliases where alias.id != entry.id { self.emit(SessionEvent(kind: "duplicate", id: alias.id, existingID: entry.id)) }
 				try await self.refreshRouting()
-				if existing == nil, entry.running {
+				if existing == nil, entry.running, !entry.pendingValidation {
 					await self.startTracker(entry)
 					if !entry.metadata.inspection.private, let endpoint = verified.1 { _ = try? await self.connect(id: entry.id, to: endpoint) }
 				}
@@ -697,7 +755,7 @@ public actor TorrentSession {
 	private func drainPeerHints() async { let previous = peerHints; peerHints = nil; await previous?.stop() }
 	private func pauseForSettings() async throws -> [SessionEntry] {
 		await drainPeerHints()
-		let running = entries.filter { $0.running && !$0.closed && $0.error.isEmpty }
+		let running = entries.filter { $0.running && !$0.pendingValidation && !$0.closed && $0.error.isEmpty }
 		if let network { do { await network.suspendDiscovery(); try await network.setTargets([]) } catch NetworkFailure.closed { } }
 		for pending in pendingMagnets { await stopMagnet(pending) }
 		for entry in entries { await entry.tracker?.halt() }
@@ -732,7 +790,7 @@ public actor TorrentSession {
 		}
 	}
 	private func startTracker(_ entry: SessionEntry) async {
-		guard entry.tracker == nil, entry.running, !entry.closed, !entry.metadata.trackerTiers.isEmpty else { return }
+		guard entry.tracker == nil, entry.running, !entry.pendingValidation, !entry.closed, !entry.metadata.trackerTiers.isEmpty else { return }
 		do {
 			let endpoint = try await trackerEndpoint(), initial = try await entry.owner.snapshot(), id = entry.id
 			let service = try SessionTracker(metadata: entry.metadata, owner: entry.owner, peerID: peerID, port: endpoint.port, preferV2: configuration.preferV2,

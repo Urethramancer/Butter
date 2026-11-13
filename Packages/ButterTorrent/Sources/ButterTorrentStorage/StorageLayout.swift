@@ -46,7 +46,7 @@ public struct StorageLayout: Sendable {
 		guard (0..<pieceCount).contains(piece) else { throw StorageFailure.invalid("piece index") }
 		return Int(min(Int64(pieceLength), totalBytes - Int64(piece) * Int64(pieceLength)))
 	}
-	func pieces(touchingFile index: Int) throws -> Range<Int> {
+	public func pieces(touchingFile index: Int) throws -> Range<Int> {
 		guard files.indices.contains(index) else { throw StorageFailure.invalid("file index") }
 		guard files[index].size > 0 else { return 0..<0 }
 		let first = starts[index] / Int64(pieceLength)

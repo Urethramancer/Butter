@@ -124,10 +124,13 @@ the same harness; the native UI suite is reserved for later integration.
 `ButterTorrentStorage` supplies bounded piece/file mapping, virtual padding,
 skipped-file storage, SHA-1 verification for v1/hybrid data and versioned binary
 property-list checkpoints with compact progress bits. Verification of v2 Merkle
-hashes belongs to phase 8. Opening rehashes cached verified pieces; verified reads
-hash the complete piece while retaining only the requested bytes. These checks
-favour integrity over startup/throughput until transfer benchmarks and immutable
-engine caching are available. Descriptor-relative operations refuse symlinked
+hashes uses authenticated Merkle layers. By default opening rehashes checkpoint
+claims and verified reads hash the complete piece. Applications can explicitly
+select `.trustCompleted` restoration after a durable clean shutdown and
+`.trustedVerified` reads; both retain synchronous filesystem checks. Explicit
+`verify(piece:)` and `validate(piece:)` always read and hash storage. Session
+launch validation is serial and includes paused unfinished transfers.
+Descriptor-relative operations refuse symlinked
 descendants and destructive access to hard-linked files. A shared coordinator
 protects live transfer paths; an OS lock protects each checkpoint directory.
 Opening is asynchronous. Disk/hash commands are serial per storage owner, with

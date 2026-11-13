@@ -19,14 +19,14 @@ public actor TorrentStorage {
 	private init(state: StorageState, worker: StorageWorker, clock: any StorageCheckpointClock) { self.state = state; self.worker = worker; checkpointClock = clock; layout = state.layout; infoHashes = state.metadata.hashes; merkleIndex = state.merkle.index }
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
 		coordinator: StorageCoordinator = .shared, preparedState: PreparedTransferState? = nil, checkpointPolicy: StorageCheckpointPolicy = .immediate,
-		verificationPolicy: StorageVerificationPolicy = .eager,
+		verificationPolicy: StorageVerificationPolicy = .eager, readPolicy: StorageReadPolicy = .strict,
 		checkpointClock: any StorageCheckpointClock = ContinuousStorageCheckpointClock(), event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TorrentStorage {
 		try checkpointPolicy.validate()
 		guard preparedState == nil || preparedState?.directory == stateDirectory else { throw StorageFailure.invalid("prepared checkpoint directory") }
 		let worker = StorageWorker()
 		let state = try await worker.run(bulk: true) { cancellation in
 			let layout = try StorageLayout(metadata: metadata)
-			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, anchoredState: preparedState?.anchor, checkpointPolicy: checkpointPolicy, verificationPolicy: verificationPolicy, checkpointClock: checkpointClock, event: event, check: cancellation.check)
+			let state = try StorageState(metadata: metadata, layout: layout, destination: destination, stateDirectory: stateDirectory, selected: selected, coordinator: coordinator, anchoredState: preparedState?.anchor, checkpointPolicy: checkpointPolicy, verificationPolicy: verificationPolicy, readPolicy: readPolicy, checkpointClock: checkpointClock, event: event, check: cancellation.check)
 			try cancellation.check(); return state
 		}
 		return TorrentStorage(state: state, worker: worker, clock: checkpointClock)
@@ -86,6 +86,7 @@ final class StorageState: @unchecked Sendable {
 	var hasJournal = false
 	var pendingFlush: Set<Int> = []
 	let checkpointPolicy: StorageCheckpointPolicy
+	let readPolicy: StorageReadPolicy
 	let checkpointClock: any StorageCheckpointClock
 	var committedVerified: Data
 	var pendingVerified: Data
@@ -101,8 +102,8 @@ final class StorageState: @unchecked Sendable {
 		set { checkpointFailures.set(newValue) }
 	}
 	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, anchoredState: StorageDirectory? = nil,
-		checkpointPolicy: StorageCheckpointPolicy = .immediate, verificationPolicy: StorageVerificationPolicy = .eager, checkpointClock: any StorageCheckpointClock = ContinuousStorageCheckpointClock(), event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
-		self.metadata = metadata; self.layout = layout; self.coordinator = coordinator; self.event = event
+		checkpointPolicy: StorageCheckpointPolicy = .immediate, verificationPolicy: StorageVerificationPolicy = .eager, readPolicy: StorageReadPolicy = .strict, checkpointClock: any StorageCheckpointClock = ContinuousStorageCheckpointClock(), event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
+		self.readPolicy = readPolicy; self.metadata = metadata; self.layout = layout; self.coordinator = coordinator; self.event = event
 		try checkpointPolicy.validate(); self.checkpointPolicy = checkpointPolicy; self.checkpointClock = checkpointClock
 		committedVerified = Data(repeating: 0, count: (layout.pieceCount + 7) / 8); pendingVerified = committedVerified; recoveryChecked = committedVerified
 		verificationPending = committedVerified; fileGenerations = Array(repeating: 0, count: layout.files.count)
@@ -142,10 +143,13 @@ final class StorageState: @unchecked Sendable {
 				// Stamps are hints: coarse filesystems can conceal same-size edits.
 				let cached = (0..<layout.pieceCount).filter { record.contains($0) }
 				verificationPending = record.verified
-				record.verified = Data(repeating: 0, count: record.verified.count)
 				try invalidateChangedFiles()
+				let required = try Set(layout.files.indices.filter { record.selected[$0] && !layout.files[$0].pad }.flatMap { try layout.pieces(touchingFile: $0) })
+				let trusted = verificationPolicy == .trustCompleted && required.allSatisfy { record.contains($0) && (!merkle.index.enabled || merkle.expected($0) != nil) }
+				if trusted { verificationPending.resetBytes(in: 0..<verificationPending.count) }
+				else { record.verified.resetBytes(in: 0..<record.verified.count) }
 				// Uncheckpointed bytes are candidates too, including unchanged file stamps.
-				for index in layout.files.indices where !layout.files[index].pad && (record.stamps[index]?.size ?? 0) > 0 {
+				for index in layout.files.indices where !trusted && !layout.files[index].pad && (record.stamps[index]?.size ?? 0) > 0 {
 					for piece in try layout.pieces(touchingFile: index) { verificationPending[piece / 8] |= UInt8(128 >> (piece % 8)) }
 				}
 				for piece in verificationPolicy == .eager ? cached : [] {
@@ -240,6 +244,7 @@ final class StorageState: @unchecked Sendable {
 		let segments = try layout.segments(piece: piece, offset: offset, count: count)
 		if let before {
 			do {
+				if readPolicy == .trustedVerified { return try trustedBytes(piece, offset: offset, count: count, before: before, check: check) }
 				let checked = try checkedPiece(piece, range: offset..<(offset + count), before: before, check: check)
 				guard checked.valid else { throw StorageFailure.invalid("verified payload failed its hash") }
 				return checked.bytes
@@ -282,9 +287,19 @@ final class StorageState: @unchecked Sendable {
 		try ready(); let length = try layout.length(of: piece), before = try observe(piece: piece)
 		guard record.contains(piece) else { throw StorageFailure.invalid("piece has not been verified") }
 		do {
+			if readPolicy == .trustedVerified { return try trustedBytes(piece, offset: 0, count: length, before: before, check: check) }
 			let result = try checkedPiece(piece, range: 0..<length, before: before, check: check)
 			guard result.valid else { throw StorageFailure.invalid("verified payload failed its hash") }; return result.bytes
 		} catch { record.set(piece, false); throw error }
+	}
+	private func trustedBytes(_ piece: Int, offset: Int, count: Int, before: [StorageFileObservation], check: () throws -> Void) throws -> Data {
+		var bytes = Data()
+		bytes.reserveCapacity(count)
+		for start in stride(from: 0, to: count, by: 262144) {
+			bytes.append(try read(piece: piece, offset: offset + start, count: min(262144, count - start), verifiedOnly: false, check: check))
+		}
+		guard try observe(piece: piece) == before else { throw StorageFailure.invalid("payload changed during read") }
+		return bytes
 	}
 	private func checkedPiece(_ piece: Int, range: Range<Int>? = nil, before: [StorageFileObservation], check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
 		let expected = merkle.expected(piece)

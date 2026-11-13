@@ -53,6 +53,14 @@ enum CoreRegressionTests {
 		defer { try? FileManager.default.removeItem(at: root) }
 		let storage = StateStorage(root: root)
 		let initial = try await storage.load(); try await storage.save(initial)
+		var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(initial)) as! [String: Any]
+		legacy.removeValue(forKey: "cleanShutdown")
+		let decoded = try JSONDecoder().decode(SavedState.self, from: JSONSerialization.data(withJSONObject: legacy))
+		try require(!decoded.cleanShutdown, "Old state must require unclean-launch validation")
+		var clean = initial; clean.cleanShutdown = true
+		try await storage.save(clean)
+		let cleanReload = try await storage.load()
+		try require(cleanReload.cleanShutdown, "Clean marker survives durable replacement")
 		let url = root.appendingPathComponent("state.json"), original = try Data(contentsOf: url)
 		let failing = StateStorage(root: root, write: { _, _ in throw CocoaError(.fileWriteOutOfSpace) })
 		do { try await failing.save(SavedState()); throw TestFailure(description: "Write failure was swallowed") } catch is TestFailure { throw TestFailure(description: "Write failure was swallowed") } catch { }

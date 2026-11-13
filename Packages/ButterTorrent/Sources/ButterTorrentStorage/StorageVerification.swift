@@ -1,7 +1,10 @@
 import Foundation
 
 /// StorageVerificationPolicy controls checking historical checkpoint claims on open.
-public enum StorageVerificationPolicy: Sendable, Equatable { case eager, deferred }
+public enum StorageVerificationPolicy: Sendable, Equatable { case eager, deferred, trustCompleted }
+
+/// StorageReadPolicy keeps strict stored-byte authentication as the package default.
+public enum StorageReadPolicy: Sendable { case strict, trustedVerified }
 
 struct StorageFileObservation: Equatable {
 	let index: Int

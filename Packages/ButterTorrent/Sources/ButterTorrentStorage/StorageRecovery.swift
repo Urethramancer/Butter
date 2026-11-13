@@ -2,6 +2,19 @@ import Foundation
 import Darwin
 
 extension TorrentStorage {
+	/// Forces stored-byte validation, treating missing payload as downloadable data.
+	public func validate(piece: Int) async throws {
+		let deadline = try await worker.run { [state] cancellation in
+			do { _ = try state.verify(piece: piece, check: cancellation.check) }
+			catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) {
+				state.record.set(piece, false); state.finishVerificationAttempt(piece)
+			}
+			catch StorageFailure.invalid("short payload read") { state.record.set(piece, false); state.finishVerificationAttempt(piece) }
+			catch StorageFailure.missingHashes { state.record.set(piece, false); state.finishVerificationAttempt(piece, pending: true) }
+			return state.checkpointDeadline
+		}
+		armCheckpointTimer(deadline)
+	}
 	/// Lazily checks one existing, unverified piece once per observed file generation.
 	/// Missing/short data is retained for later writes, without a startup payload scan.
 	public func recoverExistingPiece(_ piece: Int) async throws -> Bool {

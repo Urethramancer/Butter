@@ -143,6 +143,18 @@ struct SavedState: Codable {
 	var preferences = Preferences()
 	var transfers: [TransferRecord] = []
 	var watchedImports: Set<String> = []
+	var cleanShutdown = false
+	private enum CodingKeys: String, CodingKey { case preferences, transfers, watchedImports, cleanShutdown }
+	init(preferences: Preferences = Preferences(), transfers: [TransferRecord] = [], watchedImports: Set<String> = [], cleanShutdown: Bool = false) {
+		self.preferences = preferences; self.transfers = transfers; self.watchedImports = watchedImports; self.cleanShutdown = cleanShutdown
+	}
+	init(from decoder: any Decoder) throws {
+		let values = try decoder.container(keyedBy: CodingKeys.self)
+		preferences = try values.decode(Preferences.self, forKey: .preferences)
+		transfers = try values.decode([TransferRecord].self, forKey: .transfers)
+		watchedImports = try values.decodeIfPresent(Set<String>.self, forKey: .watchedImports) ?? []
+		cleanShutdown = try values.decodeIfPresent(Bool.self, forKey: .cleanShutdown) ?? false
+	}
 }
 struct MetadataPreview: Codable {
 	struct File: Codable, Identifiable {
