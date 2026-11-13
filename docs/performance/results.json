@@ -1,0 +1,1137 @@
+{
+  "interval_format": "[median, lower 95%, upper 95%]; paired median bootstrap, 10000 resamples",
+  "full_matrix_2026_11_13": [
+    {
+      "case": "single",
+      "format": "v1",
+      "direction": "download",
+      "pairs": 6,
+      "throughput": [
+        0.660408,
+        0.621343,
+        0.682708
+      ],
+      "cpu_per_gib": [
+        2.059384,
+        1.997647,
+        2.12518
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "single",
+      "format": "v1",
+      "direction": "seed",
+      "pairs": 6,
+      "throughput": [
+        1.293358,
+        1.245229,
+        1.348411
+      ],
+      "cpu_per_gib": [
+        1.510072,
+        1.407179,
+        1.602134
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "single",
+      "format": "v2",
+      "direction": "download",
+      "pairs": 6,
+      "throughput": [
+        0.676945,
+        0.668929,
+        0.683862
+      ],
+      "cpu_per_gib": [
+        2.0728,
+        2.058332,
+        2.161736
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "single",
+      "format": "v2",
+      "direction": "seed",
+      "pairs": 6,
+      "throughput": [
+        1.332278,
+        1.254665,
+        1.377798
+      ],
+      "cpu_per_gib": [
+        1.56117,
+        1.448686,
+        1.64424
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "single",
+      "format": "hybrid",
+      "direction": "download",
+      "pairs": 6,
+      "throughput": [
+        0.590711,
+        0.580362,
+        0.600578
+      ],
+      "cpu_per_gib": [
+        1.737888,
+        1.675614,
+        1.760066
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "single",
+      "format": "hybrid",
+      "direction": "seed",
+      "pairs": 6,
+      "throughput": [
+        1.380395,
+        1.309155,
+        1.445256
+      ],
+      "cpu_per_gib": [
+        1.799036,
+        1.753333,
+        1.910571
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "many",
+      "format": "v1",
+      "direction": "download",
+      "pairs": 6,
+      "throughput": [
+        0.494529,
+        0.483574,
+        0.513222
+      ],
+      "cpu_per_gib": [
+        2.399354,
+        2.357472,
+        2.515147
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "many",
+      "format": "v1",
+      "direction": "seed",
+      "pairs": 6,
+      "throughput": [
+        1.157408,
+        1.144378,
+        1.186158
+      ],
+      "cpu_per_gib": [
+        1.311034,
+        1.258018,
+        1.333328
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "many",
+      "format": "v2",
+      "direction": "download",
+      "pairs": 6,
+      "throughput": [
+        0.512246,
+        0.506255,
+        0.519518
+      ],
+      "cpu_per_gib": [
+        2.489295,
+        2.347912,
+        2.582002
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "many",
+      "format": "v2",
+      "direction": "seed",
+      "pairs": 6,
+      "throughput": [
+        1.177312,
+        1.148016,
+        1.201441
+      ],
+      "cpu_per_gib": [
+        1.473498,
+        1.383613,
+        1.551161
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "many",
+      "format": "hybrid",
+      "direction": "download",
+      "pairs": 6,
+      "throughput": [
+        0.43776,
+        0.429882,
+        0.443857
+      ],
+      "cpu_per_gib": [
+        2.046762,
+        2.018314,
+        2.086739
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "many",
+      "format": "hybrid",
+      "direction": "seed",
+      "pairs": 6,
+      "throughput": [
+        0.814767,
+        0.804084,
+        0.827148
+      ],
+      "cpu_per_gib": [
+        1.675747,
+        1.639946,
+        1.850696
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "concurrent",
+      "format": "v1",
+      "direction": "download",
+      "pairs": 6,
+      "throughput": [
+        1.267674,
+        1.238357,
+        1.302305
+      ],
+      "cpu_per_gib": [
+        2.188416,
+        2.085319,
+        2.886385
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "concurrent",
+      "format": "v1",
+      "direction": "seed",
+      "pairs": 12,
+      "throughput": [
+        1.782278,
+        1.757933,
+        1.798564
+      ],
+      "cpu_per_gib": [
+        1.423047,
+        1.336215,
+        1.510917
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "concurrent",
+      "format": "v2",
+      "direction": "download",
+      "pairs": 6,
+      "throughput": [
+        1.269894,
+        1.239602,
+        1.310497
+      ],
+      "cpu_per_gib": [
+        2.14883,
+        2.112991,
+        2.184407
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "concurrent",
+      "format": "v2",
+      "direction": "seed",
+      "pairs": 6,
+      "throughput": [
+        1.782728,
+        1.576236,
+        1.970793
+      ],
+      "cpu_per_gib": [
+        1.596909,
+        1.551728,
+        1.671312
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "concurrent",
+      "format": "hybrid",
+      "direction": "download",
+      "pairs": 6,
+      "throughput": [
+        1.235383,
+        1.173923,
+        1.312529
+      ],
+      "cpu_per_gib": [
+        1.782063,
+        1.706889,
+        2.187587
+      ],
+      "memory_status": "pass"
+    },
+    {
+      "case": "concurrent",
+      "format": "hybrid",
+      "direction": "seed",
+      "pairs": 6,
+      "throughput": [
+        1.652378,
+        1.29951,
+        1.737429
+      ],
+      "cpu_per_gib": [
+        1.730132,
+        1.629028,
+        1.928581
+      ],
+      "memory_status": "pass"
+    }
+  ],
+  "profiles_2026_11_14": [
+    {
+      "case": "single",
+      "format": "v1",
+      "direction": "download",
+      "purpose_percent": {
+        "download write jobs": 53.3,
+        "peer wire and transport": 21.4,
+        "stored-byte authentication": 13.1,
+        "other runtime or unresolved purpose": 9.8,
+        "piece and request selection": 1.7,
+        "checkpoints and durability": 0.4,
+        "connection deadlines": 0.2,
+        "filesystem guards outside attributed jobs": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 1073741824,
+        "writeBlocks": 65536,
+        "writeBatches": 8538,
+        "diskJobs": 12645,
+        "directoryOpens": 0,
+        "fileOpens": 12698
+      }
+    },
+    {
+      "case": "single",
+      "format": "v1",
+      "direction": "seed",
+      "purpose_percent": {
+        "peer wire and transport": 33.5,
+        "other runtime or unresolved purpose": 24.6,
+        "upload payload reads": 22.7,
+        "upload admission and cache": 18.5,
+        "connection deadlines": 0.5,
+        "piece and request selection": 0.2
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 0,
+        "diskJobs": 4097,
+        "directoryOpens": 0,
+        "fileOpens": 4096,
+        "cacheHits": 3032
+      }
+    },
+    {
+      "case": "single",
+      "format": "v2",
+      "direction": "download",
+      "purpose_percent": {
+        "download write jobs": 58.8,
+        "peer wire and transport": 19.0,
+        "stored-byte authentication": 12.6,
+        "other runtime or unresolved purpose": 7.2,
+        "piece and request selection": 1.7,
+        "checkpoints and durability": 0.4,
+        "connection deadlines": 0.2,
+        "filesystem guards outside attributed jobs": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 1073741824,
+        "writeBlocks": 65536,
+        "writeBatches": 8959,
+        "diskJobs": 13065,
+        "directoryOpens": 0,
+        "fileOpens": 13119
+      }
+    },
+    {
+      "case": "single",
+      "format": "v2",
+      "direction": "seed",
+      "purpose_percent": {
+        "peer wire and transport": 34.7,
+        "other runtime or unresolved purpose": 26.6,
+        "upload payload reads": 21.2,
+        "upload admission and cache": 16.8,
+        "connection deadlines": 0.5,
+        "piece and request selection": 0.1,
+        "checkpoints and durability": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 0,
+        "diskJobs": 4097,
+        "directoryOpens": 0,
+        "fileOpens": 4096,
+        "cacheHits": 3820
+      }
+    },
+    {
+      "case": "single",
+      "format": "hybrid",
+      "direction": "download",
+      "purpose_percent": {
+        "download write jobs": 49.1,
+        "peer wire and transport": 20.9,
+        "stored-byte authentication": 19.4,
+        "other runtime or unresolved purpose": 8.2,
+        "piece and request selection": 1.8,
+        "checkpoints and durability": 0.3,
+        "connection deadlines": 0.2,
+        "filesystem guards outside attributed jobs": 0.0,
+        "snapshot integrity and presentation": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 1073741824,
+        "writeBlocks": 65536,
+        "writeBatches": 8567,
+        "diskJobs": 12673,
+        "directoryOpens": 0,
+        "fileOpens": 12727
+      }
+    },
+    {
+      "case": "single",
+      "format": "hybrid",
+      "direction": "seed",
+      "purpose_percent": {
+        "peer wire and transport": 35.8,
+        "upload payload reads": 23.9,
+        "other runtime or unresolved purpose": 22.5,
+        "upload admission and cache": 17.0,
+        "connection deadlines": 0.7,
+        "checkpoints and durability": 0.1
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 0,
+        "diskJobs": 4097,
+        "directoryOpens": 0,
+        "fileOpens": 4096,
+        "cacheHits": 3154
+      }
+    },
+    {
+      "case": "many",
+      "format": "v1",
+      "direction": "download",
+      "purpose_percent": {
+        "download write jobs": 60.9,
+        "peer wire and transport": 18.5,
+        "stored-byte authentication": 12.0,
+        "other runtime or unresolved purpose": 5.9,
+        "piece and request selection": 1.5,
+        "checkpoints and durability": 1.0,
+        "connection deadlines": 0.2,
+        "filesystem guards outside attributed jobs": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 1073741824,
+        "writeBlocks": 65536,
+        "writeBatches": 8604,
+        "diskJobs": 12710,
+        "directoryOpens": 95918,
+        "fileOpens": 13013
+      }
+    },
+    {
+      "case": "many",
+      "format": "v1",
+      "direction": "seed",
+      "purpose_percent": {
+        "peer wire and transport": 33.3,
+        "upload payload reads": 30.6,
+        "other runtime or unresolved purpose": 20.5,
+        "upload admission and cache": 14.8,
+        "connection deadlines": 0.7,
+        "checkpoints and durability": 0.0,
+        "piece and request selection": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 0,
+        "diskJobs": 4097,
+        "directoryOpens": 12289,
+        "fileOpens": 4096,
+        "cacheHits": 2149
+      }
+    },
+    {
+      "case": "many",
+      "format": "v2",
+      "direction": "download",
+      "purpose_percent": {
+        "download write jobs": 59.9,
+        "peer wire and transport": 17.8,
+        "stored-byte authentication": 13.2,
+        "other runtime or unresolved purpose": 6.5,
+        "piece and request selection": 1.6,
+        "checkpoints and durability": 0.9,
+        "connection deadlines": 0.2,
+        "snapshot integrity and presentation": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 1073741824,
+        "writeBlocks": 65536,
+        "writeBatches": 8611,
+        "diskJobs": 12717,
+        "directoryOpens": 95930,
+        "fileOpens": 13018
+      }
+    },
+    {
+      "case": "many",
+      "format": "v2",
+      "direction": "seed",
+      "purpose_percent": {
+        "peer wire and transport": 32.0,
+        "upload payload reads": 31.3,
+        "other runtime or unresolved purpose": 21.3,
+        "upload admission and cache": 15.0,
+        "connection deadlines": 0.3,
+        "checkpoints and durability": 0.1,
+        "piece and request selection": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 0,
+        "diskJobs": 4097,
+        "directoryOpens": 12289,
+        "fileOpens": 4096,
+        "cacheHits": 2288
+      }
+    },
+    {
+      "case": "many",
+      "format": "hybrid",
+      "direction": "download",
+      "purpose_percent": {
+        "download write jobs": 57.2,
+        "stored-byte authentication": 17.1,
+        "peer wire and transport": 17.0,
+        "other runtime or unresolved purpose": 6.4,
+        "piece and request selection": 1.2,
+        "checkpoints and durability": 0.9,
+        "connection deadlines": 0.2,
+        "snapshot integrity and presentation": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 1073741824,
+        "writeBlocks": 65536,
+        "writeBatches": 8284,
+        "diskJobs": 12391,
+        "directoryOpens": 95273,
+        "fileOpens": 12690
+      }
+    },
+    {
+      "case": "many",
+      "format": "hybrid",
+      "direction": "seed",
+      "purpose_percent": {
+        "peer wire and transport": 32.7,
+        "upload payload reads": 31.7,
+        "other runtime or unresolved purpose": 20.0,
+        "upload admission and cache": 15.0,
+        "connection deadlines": 0.4,
+        "checkpoints and durability": 0.1,
+        "piece and request selection": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 0,
+        "diskJobs": 4097,
+        "directoryOpens": 12289,
+        "fileOpens": 4096,
+        "cacheHits": 2316
+      }
+    },
+    {
+      "case": "concurrent",
+      "format": "v1",
+      "direction": "download",
+      "purpose_percent": {
+        "download write jobs": 68.2,
+        "peer wire and transport": 14.7,
+        "stored-byte authentication": 8.9,
+        "other runtime or unresolved purpose": 6.2,
+        "piece and request selection": 1.5,
+        "checkpoints and durability": 0.4,
+        "connection deadlines": 0.1,
+        "filesystem guards outside attributed jobs": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 1073741824,
+        "writeBlocks": 65536,
+        "writeBatches": 11855,
+        "diskJobs": 15975,
+        "directoryOpens": 0,
+        "fileOpens": 16015
+      }
+    },
+    {
+      "case": "concurrent",
+      "format": "v1",
+      "direction": "seed",
+      "purpose_percent": {
+        "peer wire and transport": 36.0,
+        "upload payload reads": 29.0,
+        "upload admission and cache": 20.3,
+        "other runtime or unresolved purpose": 14.1,
+        "connection deadlines": 0.5,
+        "checkpoints and durability": 0.1,
+        "piece and request selection": 0.1
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 0,
+        "diskJobs": 4100,
+        "directoryOpens": 0,
+        "fileOpens": 4096,
+        "cacheHits": 4017
+      }
+    },
+    {
+      "case": "concurrent",
+      "format": "v2",
+      "direction": "download",
+      "purpose_percent": {
+        "download write jobs": 67.8,
+        "peer wire and transport": 14.5,
+        "stored-byte authentication": 10.2,
+        "other runtime or unresolved purpose": 5.7,
+        "piece and request selection": 1.3,
+        "checkpoints and durability": 0.4,
+        "connection deadlines": 0.1,
+        "snapshot integrity and presentation": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 1073741824,
+        "writeBlocks": 65536,
+        "writeBatches": 11566,
+        "diskJobs": 15686,
+        "directoryOpens": 0,
+        "fileOpens": 15726
+      }
+    },
+    {
+      "case": "concurrent",
+      "format": "v2",
+      "direction": "seed",
+      "purpose_percent": {
+        "peer wire and transport": 31.8,
+        "upload payload reads": 30.4,
+        "upload admission and cache": 19.9,
+        "other runtime or unresolved purpose": 17.1,
+        "connection deadlines": 0.6,
+        "checkpoints and durability": 0.1
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 0,
+        "diskJobs": 4100,
+        "directoryOpens": 0,
+        "fileOpens": 4096,
+        "cacheHits": 3911
+      }
+    },
+    {
+      "case": "concurrent",
+      "format": "hybrid",
+      "direction": "download",
+      "purpose_percent": {
+        "download write jobs": 68.4,
+        "peer wire and transport": 12.5,
+        "stored-byte authentication": 11.7,
+        "other runtime or unresolved purpose": 5.9,
+        "piece and request selection": 1.1,
+        "checkpoints and durability": 0.3,
+        "connection deadlines": 0.1,
+        "filesystem guards outside attributed jobs": 0.0
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 1073741824,
+        "writeBlocks": 65536,
+        "writeBatches": 9483,
+        "diskJobs": 13603,
+        "directoryOpens": 0,
+        "fileOpens": 13643
+      }
+    },
+    {
+      "case": "concurrent",
+      "format": "hybrid",
+      "direction": "seed",
+      "purpose_percent": {
+        "peer wire and transport": 32.8,
+        "upload payload reads": 28.7,
+        "upload admission and cache": 21.8,
+        "other runtime or unresolved purpose": 15.7,
+        "connection deadlines": 0.6,
+        "piece and request selection": 0.3,
+        "checkpoints and durability": 0.1
+      },
+      "counters": {
+        "bytesRead": 1073741824,
+        "bytesHashed": 0,
+        "diskJobs": 4100,
+        "directoryOpens": 0,
+        "fileOpens": 4096,
+        "cacheHits": 3950
+      }
+    }
+  ],
+  "ui_profile_cpu_seconds": [
+    {
+      "workload": "many-files",
+      "role": "download",
+      "inspector": false,
+      "cpu_seconds": 0.543
+    },
+    {
+      "workload": "many-files",
+      "role": "download",
+      "inspector": true,
+      "cpu_seconds": 13.52
+    },
+    {
+      "workload": "many-files",
+      "role": "seed",
+      "inspector": false,
+      "cpu_seconds": 0.899
+    },
+    {
+      "workload": "many-files",
+      "role": "seed",
+      "inspector": true,
+      "cpu_seconds": 13.754
+    },
+    {
+      "workload": "many-torrents",
+      "role": "download",
+      "inspector": false,
+      "cpu_seconds": 1.11
+    },
+    {
+      "workload": "many-torrents",
+      "role": "download",
+      "inspector": true,
+      "cpu_seconds": 5.298
+    },
+    {
+      "workload": "many-torrents",
+      "role": "seed",
+      "inspector": false,
+      "cpu_seconds": 1.222
+    },
+    {
+      "workload": "many-torrents",
+      "role": "seed",
+      "inspector": true,
+      "cpu_seconds": 6.213
+    }
+  ],
+  "contiguous_writes_2026_11_14": {
+    "pairs": 6,
+    "valid_pairs": 6,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 0.7728236260371573,
+        "lower": 0.7504492424615503,
+        "upper": 0.7938612655537446,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.2436979189882655,
+        "lower": 1.2016036412728743,
+        "upper": 1.2844995194982065,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 1.0108876542630412,
+        "lower": 1.0000024458768224,
+        "upper": 1.0159596677068847,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 0.9611158995286142,
+        "lower": 0.9259835861283814,
+        "upper": 1.06300662814669,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_control_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 0.997518441924161,
+        "lower": 0.939099174171363,
+        "upper": 1.0641751477393204,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9987160612445447,
+        "lower": 0.9039460261969291,
+        "upper": 1.1851032311563392,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "status": "Lower CPU established for many-file hybrid full transfers; fixed-rate and focused regressions pending",
+    "retained_baseline": "5039a8dce8165a6a2e9514f43287953a85728526",
+    "candidate_sources_sha256": "9926bcbf127c81058daca4627bca021b0ba0bbc496f1e724c6cea6d8133633af",
+    "trials": [
+      {
+        "source": "previous",
+        "engine": "Swift",
+        "pair": -1,
+        "warmup": true,
+        "validated": true,
+        "cpu_per_gib": 9.359333999999999,
+        "bytes_per_second": 84120127.82596926,
+        "peak_rss": 19857408,
+        "counterpart_cpu_per_gib": 2.61274
+      },
+      {
+        "source": "previous",
+        "engine": "libtorrent",
+        "pair": -1,
+        "warmup": true,
+        "validated": true,
+        "cpu_per_gib": 3.232567,
+        "bytes_per_second": 293078037.46480066,
+        "peak_rss": 190529536,
+        "counterpart_cpu_per_gib": 1.6303459999999999
+      },
+      {
+        "source": "current",
+        "engine": "Swift",
+        "pair": -1,
+        "warmup": true,
+        "validated": true,
+        "cpu_per_gib": 6.89049,
+        "bytes_per_second": 118614806.46057026,
+        "peak_rss": 18644992,
+        "counterpart_cpu_per_gib": 2.32498
+      },
+      {
+        "source": "current",
+        "engine": "libtorrent",
+        "pair": -1,
+        "warmup": true,
+        "validated": true,
+        "cpu_per_gib": 3.104305,
+        "bytes_per_second": 304689385.9398812,
+        "peak_rss": 181944320,
+        "counterpart_cpu_per_gib": 1.548682
+      },
+      {
+        "source": "previous",
+        "engine": "Swift",
+        "pair": 0,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 7.498794999999999,
+        "bytes_per_second": 148059988.15930063,
+        "peak_rss": 18169856,
+        "counterpart_cpu_per_gib": 2.831486
+      },
+      {
+        "source": "previous",
+        "engine": "libtorrent",
+        "pair": 0,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.0958880000000004,
+        "bytes_per_second": 320176029.0938314,
+        "peak_rss": 166674432,
+        "counterpart_cpu_per_gib": 1.479962
+      },
+      {
+        "source": "current",
+        "engine": "Swift",
+        "pair": 0,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 5.885878,
+        "bytes_per_second": 184264153.20614898,
+        "peak_rss": 18137088,
+        "counterpart_cpu_per_gib": 2.5648199999999997
+      },
+      {
+        "source": "current",
+        "engine": "libtorrent",
+        "pair": 0,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.107049,
+        "bytes_per_second": 319863570.7042084,
+        "peak_rss": 172834816,
+        "counterpart_cpu_per_gib": 1.5289420000000002
+      },
+      {
+        "source": "previous",
+        "engine": "libtorrent",
+        "pair": 1,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.057518,
+        "bytes_per_second": 321768328.5653012,
+        "peak_rss": 188071936,
+        "counterpart_cpu_per_gib": 1.553007
+      },
+      {
+        "source": "previous",
+        "engine": "Swift",
+        "pair": 1,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 7.669843999999999,
+        "bytes_per_second": 144752612.81638518,
+        "peak_rss": 18038784,
+        "counterpart_cpu_per_gib": 2.2571719999999997
+      },
+      {
+        "source": "current",
+        "engine": "libtorrent",
+        "pair": 1,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.308936,
+        "bytes_per_second": 331546196.64559114,
+        "peak_rss": 173326336,
+        "counterpart_cpu_per_gib": 1.39967
+      },
+      {
+        "source": "current",
+        "engine": "Swift",
+        "pair": 1,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 5.953362,
+        "bytes_per_second": 177678684.81136206,
+        "peak_rss": 18202624,
+        "counterpart_cpu_per_gib": 2.562935
+      },
+      {
+        "source": "current",
+        "engine": "libtorrent",
+        "pair": 2,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.1859840000000004,
+        "bytes_per_second": 310585394.57341695,
+        "peak_rss": 174833664,
+        "counterpart_cpu_per_gib": 1.502812
+      },
+      {
+        "source": "current",
+        "engine": "Swift",
+        "pair": 2,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 5.839074,
+        "bytes_per_second": 181688868.46569458,
+        "peak_rss": 18235392,
+        "counterpart_cpu_per_gib": 2.561175
+      },
+      {
+        "source": "previous",
+        "engine": "libtorrent",
+        "pair": 2,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.2965929999999997,
+        "bytes_per_second": 326897821.5393386,
+        "peak_rss": 178192384,
+        "counterpart_cpu_per_gib": 1.371568
+      },
+      {
+        "source": "previous",
+        "engine": "Swift",
+        "pair": 2,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 7.6056989999999995,
+        "bytes_per_second": 146184673.36632934,
+        "peak_rss": 17956864,
+        "counterpart_cpu_per_gib": 2.5856079999999997
+      },
+      {
+        "source": "previous",
+        "engine": "Swift",
+        "pair": 3,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 7.5989819999999995,
+        "bytes_per_second": 146629842.60443532,
+        "peak_rss": 18120704,
+        "counterpart_cpu_per_gib": 2.766572
+      },
+      {
+        "source": "previous",
+        "engine": "libtorrent",
+        "pair": 3,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.3257779999999997,
+        "bytes_per_second": 306572168.2764537,
+        "peak_rss": 179224576,
+        "counterpart_cpu_per_gib": 1.579389
+      },
+      {
+        "source": "current",
+        "engine": "Swift",
+        "pair": 3,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 5.8469869999999995,
+        "bytes_per_second": 183857654.30769855,
+        "peak_rss": 18153472,
+        "counterpart_cpu_per_gib": 2.617581
+      },
+      {
+        "source": "current",
+        "engine": "libtorrent",
+        "pair": 3,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.297282,
+        "bytes_per_second": 306084110.9412807,
+        "peak_rss": 170770432,
+        "counterpart_cpu_per_gib": 1.5658470000000002
+      },
+      {
+        "source": "current",
+        "engine": "Swift",
+        "pair": 4,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 5.892536,
+        "bytes_per_second": 179673268.09568173,
+        "peak_rss": 18300928,
+        "counterpart_cpu_per_gib": 2.569967
+      },
+      {
+        "source": "current",
+        "engine": "libtorrent",
+        "pair": 4,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.4047539999999996,
+        "bytes_per_second": 321338381.1638517,
+        "peak_rss": 171147264,
+        "counterpart_cpu_per_gib": 1.5441450000000003
+      },
+      {
+        "source": "previous",
+        "engine": "Swift",
+        "pair": 4,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 8.037012,
+        "bytes_per_second": 136622307.65397838,
+        "peak_rss": 18071552,
+        "counterpart_cpu_per_gib": 2.6338939999999997
+      },
+      {
+        "source": "previous",
+        "engine": "libtorrent",
+        "pair": 4,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.734303,
+        "bytes_per_second": 239837238.71226963,
+        "peak_rss": 170721280,
+        "counterpart_cpu_per_gib": 1.5326330000000001
+      },
+      {
+        "source": "current",
+        "engine": "libtorrent",
+        "pair": 5,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.4995179999999997,
+        "bytes_per_second": 267123556.51968637,
+        "peak_rss": 171376640,
+        "counterpart_cpu_per_gib": 1.605376
+      },
+      {
+        "source": "current",
+        "engine": "Swift",
+        "pair": 5,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 6.154912,
+        "bytes_per_second": 169175948.09455624,
+        "peak_rss": 18268160,
+        "counterpart_cpu_per_gib": 2.679269
+      },
+      {
+        "source": "previous",
+        "engine": "libtorrent",
+        "pair": 5,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 3.345233,
+        "bytes_per_second": 311408039.7415074,
+        "peak_rss": 176160768,
+        "counterpart_cpu_per_gib": 1.6210000000000002
+      },
+      {
+        "source": "previous",
+        "engine": "Swift",
+        "pair": 5,
+        "warmup": false,
+        "validated": true,
+        "cpu_per_gib": 7.666685000000001,
+        "bytes_per_second": 143888563.00457639,
+        "peak_rss": 17973248,
+        "counterpart_cpu_per_gib": 2.830704
+      }
+    ],
+    "maximum_peak_rss_ratio": 1.0072137060414788,
+    "median_cpu_per_gib": {
+      "previous": 7.636192,
+      "current": 5.889207
+    }
+  }
+}

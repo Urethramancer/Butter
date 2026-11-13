@@ -97,12 +97,13 @@ sparse hybrid magnets, discovery, web seeds and impaired TCP-disabled µTP.
 with separate durable-completion, CPU and whole-process memory measurements.
 Use `benchmark --smoke` for a smaller correctness run; see the
 [comparison method and artifacts](docs/performance/README.md).
-The [latest full results](docs/performance/tcp-batching-results-2026-11-12.md)
-record 276 accepted trials, bounded batching improvements and the remaining CPU gap.
+The [current results](docs/performance/README.md) record the remaining CPU gap,
+latest full matrix and measured optimisation candidates.
 `Scripts/verify.sh storage-benchmark` measures many-file storage costs with
 byte and restart checks; it requires no reference-engine installation.
-The [migration record](docs/swift-engine.md) and [audit](docs/audit.md) document
-the measurements, acceptance checks and remaining manual coverage.
+The [engine architecture](docs/swift-engine.md), [audit results](docs/audit.md) and
+[validation scope](docs/validation.md) describe the retained implementation and
+remaining acceptance work.
 
 Verification captures output under `.build/test-logs`. Passing logs are removed
 automatically. Failures and interrupted runs retain their logs and print the
