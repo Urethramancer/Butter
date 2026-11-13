@@ -2,7 +2,8 @@
 
 [Revised request bursts](request-burst-revised-results-2026-11-13.md) reduce
 single-file v1 download CPU 8.3% and raise throughput 3.7%; many-file hybrid
-CPU falls 4.5% and throughput rises 2.0%. All 84 trials across downloads and
+CPU falls 4.5% and throughput rises 2.0%; concurrent hybrid improves 5.8%/3.6%.
+All 112 trials across downloads and
 many-file seeding validate. Download RSS and all seeding changes
 remain inconclusive; the earlier memory cost is not proven resolved. Broader
 revised-source measurements and final validation remain open.
