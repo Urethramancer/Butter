@@ -1,5 +1,10 @@
 # Swift/libtorrent transfer comparison
 
+[Common connection-rate CPU sweep](rate-sweep-results-2026-11-13.md) validates
+all ten partial downloads. Butter uses 6.7–67.5% of one core across
+100–1,000 Mbps. Every sample reaches 90% of its ceiling; this is exploratory
+evidence, separate from full-transfer acceptance.
+
 [Descriptor-focused experiments](descriptor-results-2026-11-13.md) validate all
 84 source trials and eight profile trials. Root borrowing, bounded parent reuse
 and cached file identity all remain inconclusive and are reverted. Directory
@@ -645,3 +650,27 @@ disk-admission actor crossings and Network.framework sends. Those historical
 profiles use the eight-request Swift default; the subsequent window experiment
 above uses sixteen. Swift records its download pipeline and incoming upload
 quotas, and the reference records its native request-queue defaults.
+
+## Quick connection-rate CPU sweep
+
+Run `Scripts/test-benchmark.sh --rate-sweep [OUTPUT]` for one exploratory
+128-file hybrid download per engine at 100, 250, 500, 750 and 1,000 Mbps.
+A reusable 4 GiB fixture uses 256 KiB pieces; every sample has a fresh destination,
+five seconds to settle and ten seconds measured. Rates use a fixed shuffle and
+engine order alternates. There are no repetitions, retries or significance claims.
+
+The common libtorrent seed enforces decimal bytes/second limits, with loopback
+explicitly assigned to its global rate class. Downloaders retain their normal
+unlimited configuration. Counters and profilers must be disabled. Run without
+concurrent builds or tests. This measures local process CPU at a bandwidth ceiling;
+it does not model Internet latency or loss.
+
+The separate `rate-sweep.jsonl`, `rate-sweep-summary.json` and `rate-sweep.md`
+contain raw boundary events, measured payload MB/s, CPU percentage (100% is one
+core), CPU seconds/GiB and counterpart CPU. Throughput below 90% is unsaturated;
+above 110% fails rate enforcement. All samples remain, including failures.
+Traffic is stopped after measurement, writes drained and checkpoints persisted.
+Every claimed verified piece is independently compared with the fixture, and the
+reopened partial checkpoint must restore the same claims. These checks validate
+partial downloads, not full-transfer acceptance. Historical unrestricted matrices
+remain separate.
