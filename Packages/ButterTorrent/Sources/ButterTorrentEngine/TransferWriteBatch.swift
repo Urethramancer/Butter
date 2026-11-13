@@ -10,7 +10,7 @@ struct IncomingPieceBlock: Sendable {
 }
 
 extension TCPTransfer {
-	func prefillBeforeVerification(_ id: UUID) {
+	func prefillDuringDiskWork(_ id: UUID) {
 		guard !Task.isCancelled, configuration.downloadLimit == 0, wantedHashesReady,
 			peers[id]?.session.stream.kind == .tcp else { return }
 		fill(id)
@@ -65,11 +65,11 @@ extension TCPTransfer {
 		} catch {
 			abortBatch(staged); recordUnusablePayload(payload - submitted); await disk.release(); throw error
 		}
+		if !staged.isEmpty { prefillDuringDiskWork(id) }
 		do {
 			if !staged.isEmpty { try await storage.writeBatch(staged.map { StorageWrite(piece: $0.piece, offset: $0.offset, data: $0.bytes) }) }
 		} catch { abortBatch(staged); diskFailed(error); await disk.release(); throw error }
 		let ready = staged.compactMap { picker.written($0.block) ? $0.piece : nil }
-		if !ready.isEmpty { prefillBeforeVerification(id) }
 		var pending = ready[...]
 		do { while let piece = pending.popFirst() { try await verifyReceivedPiece(piece) } }
 		catch {

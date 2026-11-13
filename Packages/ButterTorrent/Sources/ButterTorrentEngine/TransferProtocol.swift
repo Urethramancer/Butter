@@ -145,10 +145,10 @@ extension TCPTransfer {
 	}
 	func receiveBlock(_ id: UUID, block: PeerBlock, bytes: Data, payloadBytes: Int64? = nil) async throws {
 		guard try stageBlock(id, block: block, bytes: bytes, payloadBytes: payloadBytes) else { return }
+		prefillDuringDiskWork(id)
 		do { try await storage.write(piece: block.piece, offset: block.offset, data: bytes) }
 		catch { picker.abortedWrite(block); discardUnretainedPayload(); diskFailed(error); throw error }
 		guard picker.written(block) else { return }
-		prefillBeforeVerification(id)
 		try await verifyReceivedPiece(block.piece)
 	}
 	func verifyReceivedPiece(_ piece: Int) async throws {

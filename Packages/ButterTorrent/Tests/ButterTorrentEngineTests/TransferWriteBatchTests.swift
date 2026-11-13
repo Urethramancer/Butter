@@ -47,6 +47,35 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 }
 
 @Suite struct TransferWriteBatchTests {
+	@Test(arguments: [false, true]) func requestsOverlapAdmittedWritesWithinTheExistingWindow(_ batched: Bool) async throws {
+		try await transferFixture { fixture in
+			let resources = try TransferResources(maximumDiskOperations: 1), clock = EngineClock()
+			var config = plainTransferConfiguration(); config.pipeline = batched ? 2 : 1
+			let down = try await fixture.transfer("download", configuration: config, clock: clock, resources: resources)
+			let peer = try await fixture.scripted(down)
+			try await peer.seed(pieceCount: 3)
+			let requests = try await peer.requests(config.pipeline), id = await down.snapshot().peers[0].id
+			let blocks = requests.map { IncomingPieceBlock(piece: $0.piece, offset: $0.offset, bytes: fixture.bytes.subdata(in: $0.offset..<($0.offset + $0.length))) }
+			let worker = await fixture.stores[0].worker, entered = AsyncStream<Void>.makeStream(), release = DispatchSemaphore(value: 0)
+			let blocker = Task { try await worker.run { _ in entered.continuation.yield(()); _ = release.wait(timeout: .now() + 6) } }
+			defer { release.signal(); peer.stream.close() }
+			try await engineDeadline { for await _ in entered.stream { return }; throw PeerFailure.closed }
+			let writing = Task {
+				if batched { try await down.receivedBlocks(id, blocks: blocks) }
+				else { try await down.received(id, message: .piece(blocks[0].piece, blocks[0].offset, blocks[0].bytes)) }
+			}
+			do {
+				let next = try await peer.requests(config.pipeline)
+				#expect(Set(next).isDisjoint(with: requests))
+				let status = await down.snapshot()
+				#expect(status.writingBlocks == config.pipeline && status.verifiedPieces.isEmpty)
+				#expect(status.peers.first?.pendingRequests == config.pipeline)
+				#expect(await resources.snapshot().diskOperations == 1)
+				release.signal(); try await blocker.value; try await writing.value
+				#expect(await down.snapshot().writingBlocks == 0)
+			} catch { writing.cancel(); release.signal(); _ = try? await blocker.value; _ = try? await writing.value; throw error }
+		}
+	}
 	@Test(arguments: [false, true]) func requestsOverlapVerificationWithinTheExistingWindow(_ batched: Bool) async throws {
 		try await transferFixture { fixture in
 			let gate = BatchVerificationGate(), resources = try TransferResources(maximumDiskOperations: 1), clock = EngineClock()
