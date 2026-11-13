@@ -12,10 +12,10 @@ final class StorageStampScan {
 	func inspect(_ path: String, in directory: StorageDirectory) throws -> FileStamp? {
 		// The parent was validated when this scan opened it. Compare exact UTF-8
 		// bytes before reusing that validation; every new leaf still needs validation.
-		let bytes = path.utf8, slash = bytes.lastIndex(of: 47)
-		let parentEnd = slash ?? bytes.startIndex
-		if bytes.first != 47, root === directory, let parentPath, bytes[..<parentEnd].elementsEqual(parentPath.utf8) {
-			let name = path[(slash.map { bytes.index(after: $0) } ?? bytes.startIndex)...]
+		let slash = path.lastIndex(of: "/")
+		let parentEnd = slash ?? path.startIndex
+		if !path.hasPrefix("/"), root === directory, let parentPath, path[..<parentEnd].utf8.elementsEqual(parentPath.utf8) {
+			let name = path[(slash.map { path.index(after: $0) } ?? path.startIndex)...]
 			guard path.utf8.count <= 4096, StorageLayout.validComponent(name) else { throw StorageFailure.invalid("relative file path") }
 			guard descriptor >= 0 else { return nil }
 			return try directory.inspect(String(name), at: descriptor)
