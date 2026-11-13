@@ -87,7 +87,8 @@ final class PeerSession: @unchecked Sendable {
 		let frames = blocks.indices.map { Outbound(controlBuffer: buffer, range: ($0 * 17)..<(($0 + 1) * 17)) }
 		try lock.withLock {
 			guard !closed else { throw PeerFailure.closed }
-			try checkOutputCapacity(bytes: bytes.count, messages: frames.count)
+			guard queuedBytes + reservedBytes + bytes.count <= Self.outputByteLimit else { throw PeerFailure.limit("peer output bytes") }
+			guard queuedMessages + reservations.count + frames.count <= 128 else { throw PeerFailure.limit("peer output messages") }
 			outgoing.append(contentsOf: frames); queuedBytes += bytes.count; queuedMessages += frames.count
 			outputReady.continuation.yield(())
 		}
@@ -141,10 +142,6 @@ final class PeerSession: @unchecked Sendable {
 		var joined = Data(capacity: items.reduce(0) { $0 + $1.range.count })
 		for item in items { joined.append(item.bytes) }; return joined
 	}
-	private func checkOutputCapacity(bytes: Int, messages: Int, credit: Int = 0, reservationCredit: Int = 0) throws {
-		guard queuedBytes + reservedBytes - credit + bytes <= Self.outputByteLimit else { throw PeerFailure.limit("peer output bytes") }
-		guard queuedMessages + reservations.count - reservationCredit + messages <= 128 else { throw PeerFailure.limit("peer output messages") }
-	}
 	private func enqueue(_ item: Outbound) throws {
 		try lock.withLock {
 			guard !closed else { throw PeerFailure.closed }
@@ -153,7 +150,8 @@ final class PeerSession: @unchecked Sendable {
 				guard tokens.contains(token), let reserved = reservations[token] else { throw PeerFailure.closed }
 				guard reserved == item.range.count else { throw PeerFailure.invalid("upload output reservation") }; credit = reserved
 			} else { credit = 0 }
-			try checkOutputCapacity(bytes: item.range.count, messages: 1, credit: credit, reservationCredit: item.token == nil ? 0 : 1)
+			guard queuedBytes + reservedBytes - credit + item.range.count <= Self.outputByteLimit else { throw PeerFailure.limit("peer output bytes") }
+			guard queuedMessages + reservations.count - (item.token == nil ? 0 : 1) < 128 else { throw PeerFailure.limit("peer output messages") }
 			if let token = item.token { reservations[token] = nil; reservedBytes -= credit }
 			outgoing.append(item); queuedBytes += item.range.count; queuedMessages += 1
 			outputReady.continuation.yield(())

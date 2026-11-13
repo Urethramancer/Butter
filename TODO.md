@@ -2,11 +2,11 @@
 
 ## TCP performance parity
 
-- Validate ready TCP request bursts across other workloads and native suites.
-  The first fixed six-pair case validates all 28 trials: single-file v1 download
-  CPU −8.7%, throughput +4.7%, counterpart CPU −10.1%; RSS is inconclusive.
-  Rerun the full matrix for a retained final candidate. Existing results predate
-  this change and the independent cached Unicode-path correction.
+- Measure the revised request-burst candidate with original scalar admission
+  restored. First form has download CPU gains but is disqualified by 5.0%
+  higher seeding RSS; all 112 trials remain. Keep this failure separate from
+  revised-source evidence, then run native checks and the full matrix for any
+  retained final candidate. Existing results predate the independent Unicode fix.
 
 - Isolate the UTF-8 lookup's RSS cost before further scanner variants. It saves
   6.0% CPU but adds 1.9% peak RSS and remains rejected. Gate heap/VM diagnostics
