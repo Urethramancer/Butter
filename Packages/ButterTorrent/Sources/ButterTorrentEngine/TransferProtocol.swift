@@ -137,6 +137,7 @@ extension TCPTransfer {
 			if segment.padding, bytes[cursor..<(cursor + segment.count)].contains(where: { $0 != 0 }) { recordUnusablePayload(payload, corrupt: true); throw PeerFailure.corruptPiece(block.piece) }; cursor += segment.count
 		}
 		guard let cancellations = picker.begin(id, block: block) else { recordUnusablePayload(payload); return false }
+		ReceiveOrderDiagnostics.accepted(transfer: ObjectIdentifier(self), piece: block.piece, offset: block.offset, count: block.length, length: try picker.layout.length(of: block.piece))
 		activePayloadBytes[block.piece, default: 0] += payload
 		for other in cancellations {
 			if let peer = peers[other] { peer.pending.remove(block); remember(peer, block: block); try? send(other, .cancel(block)) }
