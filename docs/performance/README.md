@@ -1,5 +1,10 @@
 # Swift/libtorrent transfer comparison
 
+[Raw-name bulk inspection](raw-bulk-results-2026-11-13.md) is rejected and
+reverted: CPU rises 1.7%, throughput falls 2.2% and peak RSS rises 1.3% across
+28 validated trials. Removing directory-entry String construction did not make
+bulk inspection worthwhile. Restored production hashes match the full matrix.
+
 [Revised request-burst full matrix](request-burst-revised-full-results-2026-11-13.md)
 validates all 252 trials: throughput passes 9/18, CPU 0/18 and original-baseline
 memory 18/18. CPU/native ranges from 1.51× to 3.84×; parity remains unmet.

@@ -27,6 +27,9 @@
   fstatat/openat/close and 37.0% inclusive scans in many-file hybrid downloads.
   Request selection is 1.4% inclusive; disk-worker ancestry includes filesystem
   and hashing work, so do not attribute its whole weight to scheduling.
+  Raw-name bulk inspection is also rejected/reverted: CPU +1.7%, throughput
+  −2.2%, RSS +1.3% across 28 validated trials. Removing entry String construction
+  is insufficient; require a new measured cause before further bulk variants.
   fresh write-refill profiles show 43.9% flat fstatat/openat/close and 35.5%
   inclusive layout scans in many-file hybrid downloads. Partial syscall captures
   show fuller batches (7.42 versus 3.97 writes per inferred scan section), so
