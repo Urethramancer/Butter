@@ -117,15 +117,16 @@ final class StorageDirectory: @unchecked Sendable {
 	}
 	func parent<T>(_ path: String, create: Bool = false, _ body: (Int32, String) throws -> T) throws -> T {
 		let parts = try StorageLayout.components(path)
-		// Borrow the anchored root; only descendant descriptors belong to this traversal.
-		var directory = fd
-		defer { if directory != fd { close(directory) } }
+		var directory = dup(fd)
+		StorageDiagnostics.count(.descriptorDuplicates)
+		guard directory >= 0 else { throw diskError("Cannot duplicate directory") }
+		defer { close(directory) }
 		for part in parts.dropLast() {
 			if create, mkdirat(directory, part, 0o700) == 0 { try sync(directory) }
 			let next = openat(directory, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
 			StorageDiagnostics.opened(.directoryOpens)
 			guard next >= 0 else { throw diskError("Cannot open managed directory") }
-			if directory != fd { close(directory) }; directory = next
+			close(directory); directory = next
 		}
 		return try body(directory, parts.last!)
 	}
