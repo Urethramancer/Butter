@@ -61,8 +61,8 @@ extension StorageState {
 			try save()
 		}
 		for piece in pieces { try forgetPendingVerification(piece) }
-		var files: [Int: (descriptor: Int32, identity: FileStamp)] = [:], order: [Int] = []
-		defer { for file in files.values { close(file.descriptor) } }
+		var files: [Int: Int32] = [:], order: [Int] = []
+		defer { for file in files.values { close(file) } }
 		for index in writes.indices {
 			if index > 0 { try check() }
 			let write = writes[index], parts = segments[index]
@@ -72,18 +72,14 @@ extension StorageState {
 				if segment.padding { continue }
 				let (directory, path) = location(segment.file)
 				let file: Int32
-				let opened: FileStamp
 				if let cached = files[segment.file] {
-					file = cached.descriptor; opened = cached.identity; StorageDiagnostics.count(.writeDescriptorCacheHits)
+					file = cached; StorageDiagnostics.count(.writeDescriptorCacheHits)
 				} else {
-					if files.count == 8 { let oldest = order.removeFirst(); close(files.removeValue(forKey: oldest)!.descriptor) }
-					file = try directory.openFile(path, write: true)
-					do { opened = try directory.stamp(file) } catch { close(file); throw error }
-					files[segment.file] = (file, opened); order.append(segment.file)
+					if files.count == 8 { let oldest = order.removeFirst(); close(files.removeValue(forKey: oldest)!) }
+					file = try directory.openFile(path, write: true); files[segment.file] = file; order.append(segment.file)
 				}
-				// An owned open descriptor keeps its device/inode identity. The path and
-				// post-write content stamp still require fresh inspection for every block.
 				// Re-check even the first open: replacement can occur after the initial scan.
+				let opened = try directory.stamp(file)
 				guard let current = try directory.inspect(path), current.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
 				if current != record.stamps[segment.file] { try invalidateChangedFiles(external: record.stamps[segment.file] != nil) }
 				pendingFlush.insert(segment.file)
