@@ -18,8 +18,8 @@ The first table describes single-file seeding.
 CPU falls 4.7% [2.8–5.3%]. Throughput, RSS and counterpart CPU remain
 inconclusive; the wide RSS interval includes a substantial cost. Native control
 intervals cross one. This is experimental, with no cost-free or parity claim.
-Broader source comparisons, native interoperability and a final full matrix
-remain open.
+The focused six-case source comparisons and correctness checks are complete;
+the final full matrix remains open.
 
 Many-file seeding independently establishes CPU −4.6% [−5.0% to −3.3%],
 throughput +1.2% [+0.4% to +2.2%] and counterpart CPU −1.9% [−3.1% to −1.0%].
@@ -97,6 +97,14 @@ late cancelled/wrong-size reservations, published-prefix wire order and retained
 unattempted credit. All 363 package tests, 20 focused ownership/admission tests
 under each sanitizer and Release build pass. TCP already has connection-owned
 deadlines; the current profiles do not establish a need for a timer rewrite.
+
+The complete native bidirectional suite passes with 466 PASS records, including
+encryption and µTP. Application contracts/lifecycle, 63 storage unit tests and
+52 real-volume failure/interruption checks pass. Unsigned Debug/Release app
+builds, native linkage, retained licences and unchanged repeat build pass.
+All 94 production-source hashes match the measured candidate; user Xcode edits
+remain untouched. [Validation evidence](upload-publication-validation-2026-11-13.json)
+retains counts and log hashes. These checks do not resolve performance uncertainty.
 
 [Summary, source checks, validation and raw hashes](upload-publication-comparison-2026-11-13.json)
 retain evidence. Raw trials remain in

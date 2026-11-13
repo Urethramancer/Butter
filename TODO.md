@@ -2,15 +2,16 @@
 
 ## TCP performance parity
 
-- Validate grouped upload publication with native interoperability and a full
-  matrix. Single-file v1 CPU falls 4.7%; many-file CPU falls 4.6%, throughput
+- Complete the full matrix for grouped upload publication. Single-file v1 CPU
+  falls 4.7%; many-file CPU falls 4.6%, throughput
   rises 1.2% and counterpart CPU falls 1.9%; concurrent hybrid CPU falls 3.4%
   across 168 validated trials including all three download regression
   checks. Single-file download RSS falls 0.3%; other download changes are
   inconclusive. Preserve
   inconclusive source intervals, especially RSS and the wide single-file memory
-  interval rather than claiming no cost. Package/sanitizer/Release checks pass;
-  complete those remaining checks for any retained candidate.
+  interval rather than claiming no cost. Package/sanitizer checks, native
+  interoperability (466 PASS records), application/recovery and Debug/Release
+  build/linkage/licence/repeat-build checks pass.
 
 - Resolve revised request-burst source RSS/seeding uncertainty and reduce the
   remaining CPU gap. The full matrix validates all 252 trials, passing throughput

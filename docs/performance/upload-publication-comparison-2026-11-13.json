@@ -1,7 +1,7 @@
 {
   "candidate": "afad9d1",
   "previous": "d37ffe5",
-  "status": "experimental; three seeding CPU gains; download/RSS intervals remain inconclusive; native and full-matrix validation pending",
+  "status": "correctness checks pass; full matrix and source throughput/RSS uncertainty remain",
   "trials": [
     {
       "root": ".build/benchmarks/upload-publication-single-v1-seed-source-order",
@@ -984,5 +984,6 @@
     ".build/diagnostics/piece-buffer/upload-publication-asan.log": "aadd66094214f2820571ec59660ca562b0fce1c47c151f3c6a82bc899a10e978",
     ".build/diagnostics/piece-buffer/upload-publication-tsan.log": "532f069b92fa082e080fae40da67a5356cfb84ec48a5548ed070884fd5cfdf36",
     ".build/diagnostics/piece-buffer/upload-publication-release.log": "664212da0e0b18a912bfbbabfeea304eeed665ad76a2c335d1285fe79fccf3d5"
-  }
+  },
+  "validation_evidence": "upload-publication-validation-2026-11-13.json"
 }

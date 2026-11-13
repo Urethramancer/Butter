@@ -5,8 +5,9 @@ single-file v1 seeding CPU 4.7%, many-file CPU 4.6% and concurrent hybrid CPU
 3.4%. All 168 trials across these seeds and three download cases validate.
 Single-file download RSS falls 0.3%; other download changes remain inconclusive.
 Many-file throughput rises 1.2% and counterpart CPU falls 1.9%. RSS remains
-inconclusive, including a wide single-file interval. The candidate is experimental;
-broader comparisons and final validation remain open.
+inconclusive, including a wide single-file interval. Correctness passes native
+interoperability (466 PASS records), application, recovery, sanitizers and build
+checks. The final full performance matrix remains open.
 
 [Raw-name bulk inspection](raw-bulk-results-2026-11-13.md) is rejected and
 reverted: CPU rises 1.7%, throughput falls 2.2% and peak RSS rises 1.3% across
