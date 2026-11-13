@@ -30,10 +30,7 @@ extension StorageState {
 			let (directory, path) = location(index)
 			return (index, try scan.inspect(path, in: directory))
 		}
-		for (index, stamp) in current where stamp != record.stamps[index] {
-			for piece in try layout.pieces(touchingFile: index) { record.set(piece, false) }
-			record.stamps[index] = stamp
-		}
+		for (index, stamp) in current { try reconcileFile(index, stamp: stamp) }
 	}
 	static func validateWrites(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int) throws {
 		guard !writes.isEmpty, writes.count <= maximumCount else { throw StorageFailure.limit("write batch blocks") }

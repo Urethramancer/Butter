@@ -34,7 +34,7 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 			#expect(try Data(contentsOf: outside) == outsideBytes)
 			#expect(try Data(contentsOf: retained) == bytes.prefix(16384))
 			let failure = StorageFailure.invalid("managed path is not a regular file")
-			#expect(throws: failure) { try state.verify(piece: 1, check: {}) }
+			#expect(try state.verify(piece: 1, check: {}) == false)
 			#expect(throws: failure) { try state.snapshot() }
 			#expect(throws: failure) { try state.save() }
 			let checkpoint = try PropertyListDecoder().decode(StorageCheckpoint.self, from: Data(contentsOf: root.appendingPathComponent("state/checkpoint.plist")))
@@ -116,23 +116,29 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 			try await storage.shutdown()
 		}
 	}
-	@Test(arguments: [2, 16]) func verificationSnapshotCoversCheckpointPublicationBeforeHashing(_ fileCount: Int) async throws {
+	@Test(arguments: [2, 16], [false, true]) func verificationSnapshotCoversCheckpointPublicationBeforeHashing(_ fileCount: Int, replaceDependency: Bool) async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: fileCount, fileSize: 16384)
 			let firstPiece = fileCount - 1
-			let file = root.appendingPathComponent("data/bundle/file-\(firstPiece)"), armed = root.appendingPathComponent("armed")
+			let file = root.appendingPathComponent("data/bundle/file-\(replaceDependency ? 0 : firstPiece)"), armed = root.appendingPathComponent("armed")
 			let first = bytes.subdata(in: (firstPiece * 16384)..<((firstPiece + 1) * 16384))
+			let replacement = replaceDependency ? bytes.prefix(16384) : first
 			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), checkpointPolicy: .batched(interval: 3600, bytes: 20000), event: { event in
 				if case .progressCheckpointDurable = event, FileManager.default.fileExists(atPath: armed.path) {
-					do { try FileManager.default.removeItem(at: armed); try FileManager.default.removeItem(at: file); try first.write(to: file) }
+					do { try FileManager.default.removeItem(at: armed); try FileManager.default.removeItem(at: file); try replacement.write(to: file) }
 					catch { Issue.record(error) }
 				}
 			}, check: {})
 			try state.writeOperations([StorageWrite(piece: firstPiece, offset: 0, data: first), StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384))], maximumBytes: 262144, maximumCount: 16, check: {})
 			#expect(try state.verify(piece: firstPiece, check: {})); #expect(state.pendingVerifiedBytes == 16384)
 			try Data([1]).write(to: armed)
-			#expect(throws: StorageFailure.invalid("payload changed during verification")) { try state.verify(piece: 0, check: {}) }
-			#expect(!state.record.contains(0)); #expect(try state.snapshot().verifiedPieces.isEmpty)
+			if replaceDependency {
+				#expect(throws: StorageFailure.invalid("payload changed during verification")) { try state.verify(piece: 0, check: {}) }
+				#expect(!state.record.contains(0)); #expect(try state.snapshot().verifiedPieces == [firstPiece])
+			} else {
+				#expect(try state.verify(piece: 0, check: {}))
+				#expect(try state.snapshot().verifiedPieces == [0])
+			}
 		}
 	}
 	@Test(arguments: [false, true]) func crossesManyFilesAndEvictsDescriptorsWithoutChangingSelectiveStorage(selective: Bool) async throws {

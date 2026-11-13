@@ -15,7 +15,7 @@ extension TorrentStorage {
 
 extension StorageState {
 	func recoverExistingPiece(_ piece: Int, check: () throws -> Void) throws -> Bool {
-		try ready(); let length = try layout.length(of: piece); try check(); try invalidateChangedFiles()
+		try ready(); let length = try layout.length(of: piece); try check(); _ = try observe(piece: piece)
 		let mask = UInt8(128 >> (piece % 8))
 		if recoveryChecked[piece / 8] & mask != 0 { return record.contains(piece) }
 		func checked(_ valid: Bool) -> Bool { recoveryChecked[piece / 8] |= mask; return valid }
@@ -32,9 +32,9 @@ extension StorageState {
 			// A legacy hybrid peer may not supply v2 layers. Check the available v1
 			// hash once, but never advertise it as fully authenticated hybrid data.
 			guard metadata.hashes.v1 != nil else { return false }
-			let before = try stamps()
+			let before = try observe(piece: piece)
 			_ = try digestPiece(piece, check: check)
-			guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
+			guard try observe(piece: piece) == before else { throw StorageFailure.invalid("payload changed during verification") }
 			return checked(false)
 		}
 		catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return checked(false) }

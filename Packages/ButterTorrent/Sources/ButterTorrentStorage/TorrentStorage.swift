@@ -139,7 +139,7 @@ final class StorageState: @unchecked Sendable {
 				record.verified = Data(repeating: 0, count: record.verified.count)
 				for piece in cached {
 					try check()
-					let before = try invalidateChangedFiles()
+					let before = try observe(piece: piece)
 					do { record.set(piece, try checkedPiece(piece, before: before, check: check).valid) }
 					catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { }
 					catch StorageFailure.invalid("short payload read") { }
@@ -180,12 +180,7 @@ final class StorageState: @unchecked Sendable {
 		let current = try stamps()
 		let changed = Set(current.indices.filter { current[$0] != record.stamps[$0] })
 		guard !changed.isEmpty else { return current }
-		for index in changed where !layout.files[index].pad {
-			for piece in try layout.pieces(touchingFile: index) {
-				if record.contains(piece) { StorageDiagnostics.count(.verificationInvalidations) }; record.set(piece, false)
-			}
-		}
-		record.stamps = current
+		for index in changed where !layout.files[index].pad { try reconcileFile(index, stamp: current[index]) }
 		return current
 	}
 	func save() throws {
@@ -226,8 +221,8 @@ final class StorageState: @unchecked Sendable {
 	func read(piece: Int, offset: Int, count: Int, verifiedOnly: Bool, check: () throws -> Void) throws -> Data {
 		try ready()
 		_ = try layout.length(of: piece)
-		let before: [FileStamp?]?
-		if verifiedOnly { before = try invalidateChangedFiles(); guard record.contains(piece) else { throw StorageFailure.invalid("piece has not been verified") } }
+		let before: [StorageFileObservation]?
+		if verifiedOnly { before = try observe(piece: piece); guard record.contains(piece) else { throw StorageFailure.invalid("piece has not been verified") } }
 		else { before = nil }
 		let segments = try layout.segments(piece: piece, offset: offset, count: count)
 		if let before {
@@ -258,7 +253,7 @@ final class StorageState: @unchecked Sendable {
 	func verify(piece: Int, check: () throws -> Void) throws -> Bool {
 		try ready()
 		_ = try layout.length(of: piece)
-		let before = try invalidateChangedFiles()
+		let before = try observe(piece: piece)
 		try prepareVerification(of: piece)
 		let wasVerified = record.contains(piece); record.set(piece, false)
 		let valid = try checkedPiece(piece, before: before, check: check).valid
@@ -267,23 +262,23 @@ final class StorageState: @unchecked Sendable {
 		if case .immediate = checkpointPolicy {
 			do { try save() } catch { record.set(piece, false); throw error }
 		} else if valid && !wasVerified { try newlyVerified(piece) }
-		return valid
+		return record.contains(piece)
 	}
 	func verifiedPiece(_ piece: Int, check: () throws -> Void) throws -> Data {
-		try ready(); let length = try layout.length(of: piece), before = try invalidateChangedFiles()
+		try ready(); let length = try layout.length(of: piece), before = try observe(piece: piece)
 		guard record.contains(piece) else { throw StorageFailure.invalid("piece has not been verified") }
 		do {
 			let result = try checkedPiece(piece, range: 0..<length, before: before, check: check)
 			guard result.valid else { throw StorageFailure.invalid("verified payload failed its hash") }; return result.bytes
 		} catch { record.set(piece, false); throw error }
 	}
-	private func checkedPiece(_ piece: Int, range: Range<Int>? = nil, before: [FileStamp?], check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
+	private func checkedPiece(_ piece: Int, range: Range<Int>? = nil, before: [StorageFileObservation], check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
 		let expected = merkle.expected(piece)
 		if merkle.index.enabled && expected == nil { throw StorageFailure.missingHashes }
 		// The invalidation scan is also the verification baseline. Keep it across
 		// checkpoint work so replacements in that interval cannot escape detection.
 		let result = try digestPiece(piece, range: range, check: check)
-		guard try stamps() == before else { throw StorageFailure.invalid("payload changed during verification") }
+		guard try observe(piece: piece) == before else { throw StorageFailure.invalid("payload changed during verification") }
 		return (result.legacyValid && result.root == expected, result.bytes)
 	}
 	func digestPiece(_ piece: Int, range: Range<Int>? = nil, check: () throws -> Void) throws -> (legacyValid: Bool, root: Data?, bytes: Data) {

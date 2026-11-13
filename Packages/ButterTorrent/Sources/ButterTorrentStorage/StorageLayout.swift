@@ -53,6 +53,17 @@ public struct StorageLayout: Sendable {
 		let last = (starts[index] + files[index].size - 1) / Int64(pieceLength)
 		return Int(first)..<(Int(last) + 1)
 	}
+	func files(touchingPiece piece: Int) throws -> Range<Int> {
+		let length = try self.length(of: piece), start = Int64(piece) * Int64(pieceLength)
+		var lower = 0, upper = files.count
+		while lower < upper {
+			let middle = (lower + upper) / 2
+			if starts[middle] + files[middle].size <= start { lower = middle + 1 } else { upper = middle }
+		}
+		var end = lower
+		while end < files.count, starts[end] < start + Int64(length) { end += 1 }
+		return lower..<end
+	}
 	public func segments(piece: Int, offset: Int = 0, count: Int) throws -> [Segment] {
 		let size = try length(of: piece)
 		guard offset >= 0, count > 0, count <= 1_048_576, offset <= size, count <= size - offset else { throw StorageFailure.invalid("piece block range") }

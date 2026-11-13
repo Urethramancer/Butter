@@ -30,9 +30,9 @@ extension TorrentStorage {
 	public func verifyLegacyCandidate(piece: Int) async throws -> Bool {
 		try await worker.run { [state] cancellation in
 			try state.ready(); _ = try state.hybridFile(containing: piece)
-			let stamps = try state.stamps()
+			let stamps = try state.observe(piece: piece)
 			let valid = try state.digestPiece(piece, check: cancellation.check).legacyValid
-			guard try state.stamps() == stamps else { throw StorageFailure.invalid("payload changed during verification") }
+			guard try state.observe(piece: piece) == stamps else { throw StorageFailure.invalid("payload changed during verification") }
 			return valid
 		}
 	}
