@@ -2,7 +2,7 @@
   "candidate": "cd68e8f",
   "previous": "9b08091",
   "matching_source_files": 94,
-  "decision": "Provisional: CPU/throughput reductions in all three source cases, no established cost; native validation and full matrix pending. RSS remains inconclusive in many/concurrent cases.",
+  "decision": "Provisional: CPU/throughput reductions in all three source cases and full regression/build checks pass. No established source cost, but many/concurrent RSS remain inconclusive; full matrix pending.",
   "source_comparisons": [
     {
       "case": "many",
@@ -523,5 +523,42 @@
       "sha256": "9cf9afe5d563b16a56f9a4a1d9c9c99ebef015298cf4ba69ec7a189b7fe61b92"
     }
   ],
-  "validation_note": "Both new write-overlap cases intentionally fail before production edits. Candidate passes 357 package tests, 9 focused tests under each sanitizer, and Release build."
+  "validation_note": "Both new write-overlap cases intentionally fail before production edits. Candidate passes 357 package tests, 9 focused tests under each sanitizer, and Release build.",
+  "additional_validation": [
+    {
+      "name": "native",
+      "exit_status": 0,
+      "pass_records": 466,
+      "path": ".build/diagnostics/piece-buffer/write-prefill-native.log",
+      "sha256": "063d1ec56761f16a811c6f2f27cce9a3b2a50ffcfb318d7b3cf618dd0a566b92"
+    },
+    {
+      "name": "contract",
+      "exit_status": 0,
+      "pass_records": 1,
+      "path": ".build/diagnostics/piece-buffer/write-prefill-contract.log",
+      "sha256": "753636613de6205e5d8b086215bddd0b7eccb9088d77937e93cddb22712fb299"
+    },
+    {
+      "name": "lifecycle",
+      "exit_status": 0,
+      "pass_records": 3,
+      "path": ".build/diagnostics/piece-buffer/write-prefill-lifecycle.log",
+      "sha256": "d2e8c43ebd7a832ca7b0f8e0cd26a20592664db97aa7d96f03f80d4e4212481b"
+    },
+    {
+      "name": "native-storage",
+      "exit_status": 0,
+      "pass_records": 52,
+      "path": ".build/diagnostics/piece-buffer/write-prefill-native-storage.log",
+      "sha256": "de332a3928cf9450f76a9637ee84708291db7d0fa96f0aa8d4d78cec3db1f549"
+    },
+    {
+      "name": "app-build",
+      "exit_status": 0,
+      "pass_records": 1,
+      "path": ".build/diagnostics/piece-buffer/write-prefill-app-build.log",
+      "sha256": "be1c5e6f36fcfb3e60e7bea90e3481b3f0712dca06e7b6849186fcbb60288fa4"
+    }
+  ]
 }

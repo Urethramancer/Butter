@@ -4,7 +4,9 @@
 CPU/throughput versus the preceding refill candidate: many-file hybrid
 10.9%/16.7%, concurrent hybrid 4.1%/12.3%, single-file v1 10.4%/19.4%.
 All 84 source trials validate. Single-file RSS falls 1.1%; other RSS changes
-remain inconclusive. Native validation and a refreshed full matrix are pending.
+remain inconclusive. Native validation passes (466 PASS records), as do
+application, recovery, sanitizer and Debug/Release build checks. A refreshed full
+matrix remains pending.
 The candidate remains provisional; the full matrix below predates both refill changes.
 
 [Refilling the existing window before verification](verification-prefill-results-2026-11-13.md)

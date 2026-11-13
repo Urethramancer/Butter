@@ -35,9 +35,19 @@ hashes and filesystem checks still precede verified completion.
 The new scalar/batched test holds the storage worker while checking requests
 overlap admitted writes within the existing window, with no piece published as
 verified. Both cases fail before the production edit and pass afterward. All
-357 package tests, nine focused tests under each sanitizer and Release build
-pass. Native interoperability, application checks and the full matrix remain
-pending. The candidate is provisional; this is not release acceptance.
+357 package tests, nine focused tests under each sanitizer and Release build pass.
+
+The full native interoperability suite passes with 466 PASS records, including
+bidirectional TCP/µTP, encryption, fragmentation, selective storage, discovery
+and web seeds. The historical µTP timeout passes with unchanged deadlines;
+its original cause remains unexplained. Application contract and lifecycle
+suites pass. Native storage records 52 passes covering killed-process recovery,
+actual ENOSPC, failed checkpoint publication and read-only volumes. Unsigned
+Debug/Release application builds, linkage/licence checks and the unchanged
+repeat build pass. The user's Xcode edits remain untouched; no tag is created.
+
+The full matrix remains pending. The candidate is provisional; this is not
+release acceptance.
 
 [Measurements, validation and raw hashes](write-prefill-comparison-2026-11-13.json)
 retain the evidence. Raw trials remain in the three

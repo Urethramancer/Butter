@@ -2,10 +2,10 @@
 
 ## TCP performance parity
 
-- Validate the provisional write-prefill candidate's native interoperability,
-  application checks and full matrix. Three source cases validate 84 trials with
+- Complete the provisional write-prefill candidate's full matrix. Three source cases validate 84 trials with
   CPU/throughput gains in every case; many/concurrent RSS remain inconclusive.
-  The existing full matrix predates both refill changes. Fresh profiles of the
+  Native interoperability, application/recovery checks and Debug/Release builds
+  pass. The existing full matrix predates both refill changes. Fresh profiles of the
   preceding refill candidate still identify filesystem work as the largest gap.
 
 - Reduce the revised candidate's remaining CPU gap: its full matrix validates
