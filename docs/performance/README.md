@@ -1,5 +1,11 @@
 # Swift/libtorrent transfer comparison
 
+[Refilling the existing window before verification](verification-prefill-results-2026-11-13.md)
+reduces many-file hybrid download CPU by 9.9% [5.1–14.8%] in six balanced
+source pairs. All 28 trials validate; throughput and RSS changes remain
+inconclusive. Broader comparisons and native interoperability are pending.
+The full matrix below describes the preceding production source.
+
 [Current revised-buffer full matrix](wire-raw-full-results-2026-11-13.md) validates
 252/252 trials: throughput passes 9/18, CPU 0/18 and memory 18/18. CPU/native
 ranges from 1.53× to 5.19×. Many-file downloads remain the largest gap; parity

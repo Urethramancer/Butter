@@ -1,0 +1,194 @@
+{
+  "case": "many",
+  "format": "hybrid",
+  "direction": "download",
+  "order_seed": 11131,
+  "status": "source-comparison-only",
+  "pairs": 6,
+  "valid_pairs": 6,
+  "variants": {
+    "previous": {
+      "status": "target-unmet",
+      "requires_more_pairs": false,
+      "pairs": 6,
+      "ratios": {
+        "verified_bytes_per_second": {
+          "median": 0.22960723841002012,
+          "lower": 0.22051734223237313,
+          "upper": 0.23552377113799258,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "durable_bytes_per_second": {
+          "median": 0.23066410692832928,
+          "lower": 0.22148981509905447,
+          "upper": 0.23667178106963319,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "cpu_seconds_per_gib": {
+          "median": 4.183534554506527,
+          "lower": 3.9871647017602028,
+          "upper": 4.515162399638545,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "medians": {
+        "Swift": {
+          "verified_bytes_per_second": 99709421.65695104,
+          "durable_bytes_per_second": 99661924.93781087,
+          "cpu_seconds_per_gib": 11.4755305
+        },
+        "libtorrent": {
+          "verified_bytes_per_second": 443640910.8035525,
+          "durable_bytes_per_second": 441651218.242591,
+          "cpu_seconds_per_gib": 2.7292224999999997
+        }
+      },
+      "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+    },
+    "current": {
+      "status": "target-unmet",
+      "requires_more_pairs": false,
+      "pairs": 6,
+      "ratios": {
+        "verified_bytes_per_second": {
+          "median": 0.23903836137326684,
+          "lower": 0.22035603950767346,
+          "upper": 0.24416703988228594,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "durable_bytes_per_second": {
+          "median": 0.24016580198719034,
+          "lower": 0.221524476377445,
+          "upper": 0.24523280249127505,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "cpu_seconds_per_gib": {
+          "median": 3.753477407215068,
+          "lower": 3.6924150489742846,
+          "upper": 3.9975839584092023,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "medians": {
+        "Swift": {
+          "verified_bytes_per_second": 107648081.37046552,
+          "durable_bytes_per_second": 107604845.2356534,
+          "cpu_seconds_per_gib": 10.192635
+        },
+        "libtorrent": {
+          "verified_bytes_per_second": 450157582.6044662,
+          "durable_bytes_per_second": 448080586.3693942,
+          "cpu_seconds_per_gib": 2.703097
+        }
+      },
+      "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+    }
+  },
+  "source_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 0.9007156674519268,
+      "lower": 0.852406032479728,
+      "upper": 0.9493623936752675,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 1.0594039979001098,
+      "lower": 0.999278860696925,
+      "upper": 1.11564723059296,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "peak_rss": {
+      "median": 0.9549718574108819,
+      "lower": 0.9163025948392066,
+      "upper": 1.044978967328524,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "counterpart_cpu_seconds_per_gib": {
+      "median": 0.913662145766859,
+      "lower": 0.8107672270573889,
+      "upper": 0.9239876015711923,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "native_control_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 0.990698369948837,
+      "lower": 0.9777425931634885,
+      "upper": 1.0225302623570167,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 1.0108426975431086,
+      "lower": 1.0017206452536576,
+      "upper": 1.0820900005654313,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "method": "Current/previous within balanced source-order pairs; fixed six pairs; diagnostic only, no acceptance inference or uncertainty-driven retries",
+  "baseline_memory": {
+    "previous": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.26184597295708406,
+      "lower": 0.24820393974507532,
+      "upper": 0.27325102880658436,
+      "maximum_peak_rss_ratio": 0.2687801516195727,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "current": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.25138154027042914,
+      "lower": 0.24484356894553883,
+      "upper": 0.26360424028268553,
+      "maximum_peak_rss_ratio": 0.26671261199172985,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    }
+  },
+  "candidate": "e9aa57e",
+  "previous": "49841a7",
+  "decision": "Promising focused CPU reduction; broader comparisons and native interoperability pending.",
+  "raw": [
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-source-order/environment.json",
+      "sha256": "0942b0ff4eea5f3ed854079d17e3d7057b90c7ce80abd23149ff4a70be81e96c"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-source-order/fixtures.json",
+      "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-source-order/trials.jsonl",
+      "sha256": "31dd61fc639ec6634c19b4ebe80016a55d9ebaad65c1bc9bcf9c99d571a0c8b1"
+    },
+    {
+      "path": ".build/benchmarks/verification-prefill-many-hybrid-source-order/summary.json",
+      "sha256": "46ceee8975b2cdefb1c975359378589192ad044f271c5da4096636078eb32cb7"
+    }
+  ],
+  "validation": [
+    {
+      "path": ".build/diagnostics/piece-buffer/verification-prefill-before.log",
+      "sha256": "21e59531e0c49003329c98a928d1ee57b3bd3e435c1dce1cd826a941fb690be9"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/verification-prefill-focused.log",
+      "sha256": "7dae2e1b07d2ff19b428168be2cf50475019ddc1d8ee2cde5f3385b30f38f6d8"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/verification-prefill-package.log",
+      "sha256": "dc61589efc3e3c8f2b049563feb4295c5bee1f4f14d4fa5ca21975614202a92a"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/verification-prefill-asan.log",
+      "sha256": "b2243470f3c3e07f3f1ff50ee93d2ff3d791ab2645c97f56aff677398052da51"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/verification-prefill-tsan.log",
+      "sha256": "563a8279be614a8c12b2872405c3d7662a58b23f554c5457ceb3fd643cc6e1c8"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/verification-prefill-release.log",
+      "sha256": "002325c93058eea3ac33324c521a9887d22bffa0874af08ac81a6f01485b96bb"
+    }
+  ],
+  "validation_note": "Before log intentionally fails both new overlap cases on unchanged production; candidate passes 356 package tests, 8 focused tests under each sanitizer and Release build."
+}
