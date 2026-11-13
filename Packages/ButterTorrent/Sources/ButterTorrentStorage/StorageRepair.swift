@@ -39,10 +39,10 @@ extension StorageState {
 	func repairFiles(_ sources: [Int: URL], check: () throws -> Void) throws -> StorageRepairResult {
 		try ready(); try check(); try invalidateChangedFiles()
 		guard !sources.isEmpty else { throw StorageFailure.invalid("no matching files to repair") }
-		let managed = layout.files.indices.filter { !layout.files[$0].pad }.map { index in
+		let managed = Set(layout.files.indices.filter { !layout.files[$0].pad }.map { index in
 			let (directory, path) = location(index); return StorageLayout.pathKey(directory.url.appendingPathComponent(path).path)
-		}
-		var candidates: [(Int, StorageDirectory, String, FileStamp)] = []
+		})
+		var candidates: [(Int, URL, FileStamp, FileStamp)] = []
 		for index in sources.keys.sorted() {
 			guard layout.files.indices.contains(index), !layout.files[index].pad else { throw StorageFailure.invalid("repair file index") }
 			let url = sources[index]!
@@ -51,22 +51,24 @@ extension StorageState {
 			guard let stamp = try source.inspect(path), stamp.size == layout.files[index].size else { throw StorageFailure.invalid("repair source length for \(layout.files[index].path)") }
 			let key = StorageLayout.pathKey(source.url.appendingPathComponent(path).path), stateKey = StorageLayout.pathKey(state.url.path)
 			guard !managed.contains(key), key != stateKey, !key.hasPrefix(stateKey + "/") else { throw StorageFailure.invalid("repair source overlaps managed storage; choose a separate copy") }
-			if try needsRepair(index) { candidates.append((index, source, path, stamp)) }
+			if try needsRepair(index) { candidates.append((index, source.url.appendingPathComponent(path), stamp, try source.identity())) }
 		}
 		if candidates.isEmpty { return StorageRepairResult(repairedFiles: 0, verifiedPieces: 0, pendingPieces: 0) }
-		try claim(extra: candidates.map { $0.1.url.appendingPathComponent($0.2) })
+		try claim(extra: candidates.map { $0.1 })
 		var entries: [StorageRepairEntry] = [], temporaryFiles: [(StorageDirectory, String, FileStamp)] = []
 		defer { if !hasJournal { try? claim() } }
 		do {
-			for (index, source, path, original) in candidates {
+			for (index, url, original, sourceRoot) in candidates {
 				try check()
+				let source = try StorageDirectory(url.deletingLastPathComponent(), create: false), path = url.lastPathComponent
+				guard try source.identity().sameFile(sourceRoot) else { throw StorageFailure.invalid("repair source directory changed before copying") }
 				let (target, destination) = location(index)
 				let parent = (destination as NSString).deletingLastPathComponent
 				let prefix = parent.isEmpty ? "" : parent + "/", token = UUID().uuidString
 				let temporary = prefix + ".butter-repair-" + token, backup = prefix + ".butter-backup-" + token
 				let old = try target.inspect(destination)
 				let oldHash = try old.map { _ in try target.digest(destination, check: check) }
-				let input = try source.openFile(path), sourceRoot = try source.identity()
+				let input = try source.openFile(path)
 				defer { close(input) }
 				guard try source.stamp(input) == original else { throw StorageFailure.invalid("repair source changed before copying") }
 				let output = try target.openFile(temporary, write: true, exclusive: true)

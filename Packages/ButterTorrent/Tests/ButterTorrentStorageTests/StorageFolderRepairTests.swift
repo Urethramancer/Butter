@@ -1,8 +1,26 @@
 import Foundation
 import Testing
+import ButterTorrentMetadata
 @testable import ButterTorrentStorage
 
 @Suite struct StorageFolderRepairTests {
+	@Test func manySourcesKeepDescriptorUseBounded() async throws {
+		try await storageFixture { root in
+			let source = root.appendingPathComponent("copies")
+			try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+			for index in 0..<128 { try Data([UInt8(index)]).write(to: source.appendingPathComponent(String(index))) }
+			let metadata = try TorrentMetadata(TorrentCreator.create(source: source, trackers: [], isPrivate: false, pieceLength: 16384))
+			let before = try FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count
+			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { event in
+				if case .repairStaged = event {
+					#expect((try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count) ?? .max < before + 32)
+				}
+			}, check: {})
+			let sources = Dictionary(uniqueKeysWithValues: metadata.inspection.files.enumerated().filter { !$0.element.pad }.map { ($0.offset, source.deletingLastPathComponent().appendingPathComponent($0.element.path)) })
+			let result = try state.repairFiles(sources, check: {})
+			#expect(result.repairedFiles == 128 && result.pendingPieces == 0)
+		}
+	}
 	@Test(arguments: [false, true], [false, true]) func matchesBothRootChoicesAndStagesBoundaryFilesTogether(parent: Bool, selective: Bool) async throws {
 		try await storageFixture { root in
 			let folder = root.appendingPathComponent("copies/bundle")
