@@ -9,7 +9,7 @@ import ButterTorrentEngine
 // Line-delimited JSON over bounded OS pipes. Only phase boundaries are emitted.
 @main struct TransferBenchmark {
 	struct Item: Codable { let torrent: String; let destination: String; let state: String }
-	struct Job: Codable { let role: String; let items: [Item]; let partial: Bool?; let profileHoldAfterStop: Bool? }
+	struct Job: Codable { let role: String; let items: [Item]; let partial: Bool?; let profileHoldAfterStop: Bool?; let applicationInspector: Bool? }
 	struct Command: Decodable { let command: String; let ports: [UInt16]? }
 	static func emit(_ phase: String, ports: [UInt16] = [], bytes: Int64 = 0, errors: [String] = [], received: Int64 = 0, pieces: [Int]? = nil) throws {
 		var usage = rusage(); guard getrusage(RUSAGE_SELF, &usage) == 0 else { throw CocoaError(.fileReadUnknown) }
@@ -52,6 +52,9 @@ import ButterTorrentEngine
 		guard args.count == 3, ["--benchmark", "--verify"].contains(args[1]) else { throw PeerFailure.invalid("expected fixture ROOT [--small] or --benchmark/--verify JOB") }
 		let job = try JSONDecoder().decode(Job.self, from: Data(contentsOf: URL(fileURLWithPath: args[2])))
 		guard ["seed", "download"].contains(job.role), (1...4).contains(job.items.count) else { throw PeerFailure.invalid("benchmark job") }
+		#if BUTTER_APPLICATION_BENCHMARK
+		if job.applicationInspector != nil { try await application(job, verify: args[1] == "--verify"); return }
+		#endif
 		if args[1] == "--verify" {
 			for item in job.items {
 				let metadata = try TorrentMetadata(contentsOf: URL(fileURLWithPath: item.torrent))
@@ -77,7 +80,7 @@ import ButterTorrentEngine
 				if job.role == "seed" { for piece in 0..<storage.layout.pieceCount { guard try await storage.verify(piece: piece) else { throw PeerFailure.corruptPiece(piece) } } }
 				var configuration = TCPTransferConfiguration(); configuration.encryption = .disabled; configuration.enablePEX = false
 				let engine = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration); engines.append(engine)
-				if job.role == "seed" { listeners.append(try await TCPListener.listen(address: IPAddress("127.0.0.1"))) }
+				if job.role == "seed" { listeners.append(try await TCPListener.listen(address: ButterTorrentNetworking.IPAddress("127.0.0.1"))) }
 			}
 			// The controller requests diagnostics only after rejecting a failed trial.
 			signal(SIGUSR1, SIG_IGN)
@@ -146,7 +149,11 @@ import ButterTorrentEngine
 	static func fixture(_ root: URL, small: Bool, sweep: Bool = false) throws {
 		let fm = FileManager.default
 		var manifest: [[String: Any]] = []
-		for name in (sweep ? ["many"] : ["single", "many", "concurrent"]) {
+		var cases = sweep ? ["many"] : ["single", "many", "concurrent"]
+		if let selected = ProcessInfo.processInfo.environment["BUTTER_BENCHMARK_FIXTURE_CASE"] {
+			guard cases.contains(selected) else { throw PeerFailure.invalid("unknown benchmark fixture case") }; cases = [selected]
+		}
+		for name in cases {
 			let folder = root.appendingPathComponent(name), seed = folder.appendingPathComponent("seed")
 			try fm.createDirectory(at: seed, withIntermediateDirectories: true)
 			let count = name == "many" ? 128 : name == "concurrent" ? 4 : 1

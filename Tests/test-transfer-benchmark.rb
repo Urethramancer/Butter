@@ -4,6 +4,49 @@ require_relative 'TransferBenchmarkHarness'
 
 class TransferBenchmarkHarnessTests < Minitest::Test
 	H = TransferBenchmarkHarness
+	def test_profile_environment_excludes_unrelated_secrets_and_redacts_toc_metadata
+		Dir.mktmpdir do |root|
+			secret_key = 'BUTTER_TEST_UNRELATED_SECRET'
+			old_secret = ENV[secret_key]; old_diagnostics = ENV['BUTTER_STORAGE_DIAGNOSTICS']
+			begin
+				ENV[secret_key] = 'synthetic-test-value'; ENV['BUTTER_STORAGE_DIAGNOSTICS'] = '1'
+				refute H.process_environment.key?(secret_key)
+				assert_equal '1', H.process_environment['BUTTER_STORAGE_DIAGNOSTICS']
+				output = File.join(root, 'output')
+				assert H.run_bounded([RbConfig.ruby, '-e', 'puts [ENV.key?("BUTTER_TEST_UNRELATED_SECRET"), ENV["BUTTER_STORAGE_DIAGNOSTICS"]].join(" ")'], File.join(root, 'errors'), output: output)
+				assert_equal "false 1\n", File.read(output)
+				path = File.join(root, 'toc.xml')
+				File.write(path, '<trace-toc><environment><item key="SECRET" value="synthetic-test-value"/></environment><table schema="time-profile"/></trace-toc>')
+				H.redact_profile_environment(path)
+				refute_includes File.read(path), 'synthetic-test-value'
+				assert_includes File.read(path), 'schema="time-profile"'
+				assert_equal 0600, File.stat(path).mode & 0777
+			ensure
+				ENV[secret_key] = old_secret; ENV['BUTTER_STORAGE_DIAGNOSTICS'] = old_diagnostics
+			end
+		end
+	end
+	def test_all_case_profiles_run_each_engine_once_without_warmups_or_repetitions
+		Dir.mktmpdir do |root|
+			previous = ENV['BUTTER_BENCHMARK_PROFILE_ALL']; ENV['BUTTER_BENCHMARK_PROFILE_ALL'] = '1'
+			begin
+				owner = self
+				runner = H::Runner.new('/swift', '/reference', root, root, profile: true, baseline: nil)
+				runner.define_singleton_method(:trial) do |fixture, format, direction, engine, pair, warmup, **_options|
+					row = owner.source_trial(nil, engine, pair, warmup: warmup)
+					@trials << row.merge(case: fixture.fetch('case'), format: format, direction: direction)
+				end
+				runner.run(%w[single many concurrent].map { |name| {'case'=>name} })
+				rows = runner.instance_variable_get(:@trials)
+				assert_equal 36, rows.size
+				assert_equal 18, rows.group_by { |row| row.values_at(:case, :format, :direction) }.size
+				assert rows.none? { |row| row[:warmup] }
+				assert rows.all? { |row| row[:pair] == 0 }
+			ensure
+				ENV['BUTTER_BENCHMARK_PROFILE_ALL'] = previous
+			end
+		end
+	end
 	def test_memory_profile_cli_rejects_timing_and_missing_source_revision_before_building
 		Dir.mktmpdir('butter-profile-cli') do |root|
 			[['--full', 'with --profile'], ['--profile-source', 'PREVIOUS_REVISION']].each do |mode, message|

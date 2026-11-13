@@ -11,6 +11,7 @@ module TransferBenchmarkHarness
 	PROFILE_CASES = [['single', 'v1', 'download'], ['single', 'hybrid', 'download'], ['many', 'hybrid', 'download'], ['single', 'v1', 'seed']].freeze
 	SOURCE_CASES = [['many', 'v1', 'seed'], ['concurrent', 'v2', 'seed']].freeze
 	def self.profile_case?(workload, format, direction, filters = ENV)
+		return true if filters['BUTTER_BENCHMARK_PROFILE_ALL'] == '1'
 		selected_case?(workload, format, direction, PROFILE_CASES, filters)
 	end
 	def self.selected_case?(workload, format, direction, defaults, filters = ENV)
@@ -19,6 +20,16 @@ module TransferBenchmarkHarness
 	end
 	def self.now
 		Process.clock_gettime(Process::CLOCK_MONOTONIC)
+	end
+	# Instruments records the target environment. Do not propagate unrelated credentials.
+	def self.process_environment
+		keys = %w[PATH HOME TMPDIR LANG LC_ALL LC_CTYPE USER LOGNAME DEVELOPER_DIR SDKROOT BUTTER_STORAGE_DIAGNOSTICS BUTTER_RECEIVE_ORDER_TRACE]
+		ENV.to_h.select { |key, _| keys.include?(key) }
+	end
+	def self.redact_profile_environment(path)
+		text = File.read(path)
+		File.write(path, text.gsub(/<environment(?:\s[^>]*)?>.*?<\/environment>/m, '<environment redacted="true"/>'))
+		File.chmod(0600, path)
 	end
 	def self.terminate(pid)
 		return if Process.waitpid(pid, Process::WNOHANG)
@@ -33,7 +44,7 @@ module TransferBenchmarkHarness
 	rescue Errno::ESRCH, Errno::ECHILD
 	end
 	def self.run_bounded(command, log, timeout: 600, output: File::NULL)
-		pid = Process.spawn(*command, out: output, err: log, pgroup: true)
+		pid = Process.spawn(process_environment, *command, out: output, err: log, pgroup: true, unsetenv_others: true)
 		deadline = now + timeout
 		loop do
 			if (result = Process.waitpid2(pid, Process::WNOHANG))
@@ -81,16 +92,18 @@ module TransferBenchmarkHarness
 
 	class TimeProfiler
 		attr_reader :pid
-		def initialize(target, prefix, command: nil, notification: nil, filesystem: false)
+		def initialize(target, prefix, command: nil, notification: nil, filesystem: false, kind: nil)
 			@prefix = prefix; @filesystem = filesystem
+			@kind = kind || (filesystem ? 'file-activity' : 'time-profiler')
 			name = "org.butter.profile.#{Process.pid}.#{target}"
 			@notification = notification || TraceNotification.new(name)
 			unless command
-				command = ['xcrun', 'xctrace', 'record', '--template', filesystem ? 'File Activity' : 'Time Profiler']
-				command += ['--instrument', 'Time Profiler', '--window', '1s'] if filesystem
+				template = {'time-profiler'=>'Time Profiler', 'file-activity'=>'File Activity', 'allocations'=>'Allocations', 'system-trace'=>'System Trace', 'concurrency'=>'Swift Concurrency'}.fetch(@kind)
+				command = ['xcrun', 'xctrace', 'record', '--template', template]
+				command += ['--instrument', 'Time Profiler', '--window', filesystem ? '1s' : '2s'] unless @kind == 'time-profiler'
 				command += ['--attach', target.to_s, '--notify-tracing-started', name, '--time-limit', '600s', '--output', "#{prefix}.trace"]
 			end
-			@pid = Process.spawn(*command, out: "#{prefix}.profiler.log", err: [:child, :out], pgroup: true)
+			@pid = Process.spawn(TransferBenchmarkHarness.process_environment, *command, out: "#{prefix}.profiler.log", err: [:child, :out], pgroup: true, unsetenv_others: true)
 		rescue Exception
 			@notification.close if @notification
 			raise
@@ -129,7 +142,23 @@ module TransferBenchmarkHarness
 			queries.each do |suffix, query|
 				command = ['xcrun', 'xctrace', 'export', '--input', "#{@prefix}.trace", *query, '--output', "#{@prefix}.#{suffix}.xml"]
 				raise 'Profiler export failed' unless TransferBenchmarkHarness.run_bounded(command, "#{@prefix}.export.log", timeout: 60)
+				TransferBenchmarkHarness.redact_profile_environment("#{@prefix}.toc.xml") if suffix == 'toc'
 			end
+			export_extra_tables if %w[allocations system-trace concurrency].include?(@kind)
+		end
+		def export_extra_tables
+			require 'rexml/document'
+			pattern = {'allocations'=>/alloc|heap|vm/i, 'system-trace'=>/thread|syscall|sched|cswitch|system-call/i, 'concurrency'=>/swift|task|actor|executor/i}.fetch(@kind)
+			document = REXML::Document.new(File.read("#{@prefix}.toc.xml"))
+			schemas = document.get_elements('//table').map { |table| table.attributes['schema'] }.compact.uniq.select { |name| name.match?(pattern) }
+			manifest = schemas.map do |schema|
+				suffix = schema.gsub(/[^a-zA-Z0-9_-]/, '_')
+				path = "#{@prefix}.#{suffix}.xml"
+				query = "/trace-toc/run[@number=\"1\"]/data/table[@schema=\"#{schema}\"]"
+				raise "Profiler table export failed: #{schema}" unless TransferBenchmarkHarness.run_bounded(['xcrun', 'xctrace', 'export', '--input', "#{@prefix}.trace", '--xpath', query, '--output', path], "#{path}.log", timeout: 60)
+				{schema: schema, file: File.basename(path), bytes: File.size(path)}
+			end
+			File.write("#{@prefix}.tables.json", JSON.pretty_generate(manifest))
 		end
 		def cleanup
 			TransferBenchmarkHarness.terminate(@pid) if @pid && !@reaped
@@ -194,13 +223,15 @@ module TransferBenchmarkHarness
 
 	class Child
 		attr_reader :events, :pid, :log, :job_path, :whole
-		def initialize(command, job_path, log)
+		def initialize(command, job_path, log, allocation_logging: false)
 			@phases = JSON.parse(File.read(job_path))['partial'] ? %w[prepare ready start measurement-start measurement-end verified persistence durable shutdown stopped] : PHASES
 			@job_path, @log, @events, @buffer = job_path, log, [], ''.b
 			input, @control = IO.pipe
 			@output, output = IO.pipe
-			@pid = Process.spawn('/usr/bin/time', '-l', *command, '--benchmark', job_path,
-				in: input, out: output, err: log, pgroup: true)
+			environment = TransferBenchmarkHarness.process_environment
+			environment['MallocStackLogging'] = '1' if allocation_logging
+			@pid = Process.spawn(environment, '/usr/bin/time', '-l', *command, '--benchmark', job_path,
+				in: input, out: output, err: log, pgroup: true, unsetenv_others: true)
 			input.close; output.close
 		end
 		def send_command(command, fields = {})
@@ -377,7 +408,7 @@ module TransferBenchmarkHarness
 			raise 'Source comparison cannot use smoke' if @source_comparison && smoke
 			@output, @work, @smoke, @profile = output, work, smoke, profile
 			@profiler = ENV.fetch('BUTTER_BENCHMARK_PROFILER', 'sample')
-			raise 'Unknown benchmark profiler' unless %w[sample time-profiler file-activity heap].include?(@profiler)
+			raise 'Unknown benchmark profiler' unless %w[sample counts time-profiler file-activity heap allocations system-trace concurrency].include?(@profiler)
 			raise 'Instrumented profiling requires --profile' if !profile && @profiler != 'sample'
 			@trials = []
 			if baseline
@@ -399,7 +430,11 @@ module TransferBenchmarkHarness
 			end
 			seed_items = items.each_with_index.map { |item, index| item.merge(destination: File.join(root, 'seed'), state: File.join(folder, "seed-state-#{index}")) }
 			jobs = { 'seed' => { role: 'seed', items: seed_items }, 'download' => { role: 'download', items: items } }
+			if (inspector = ENV['BUTTER_BENCHMARK_APPLICATION_INSPECTOR'])
+				jobs.each_value { |job| job[:applicationInspector] = inspector == 'visible' }
+			end
 			record = { id: id, case: fixture['case'], format: format, direction: direction, engine: engine, pair: pair, warmup: warmup, bytes: fixture['bytes'], accepted: false }
+			record[:application_inspector] = inspector if inspector
 			record[:source_variant] = source if source
 			children = []; profilers = []; trace = nil
 			begin
@@ -415,7 +450,8 @@ module TransferBenchmarkHarness
 				jobs.each do |role, job|
 					job_path = File.join(folder, "#{role}.json"); File.write(job_path, JSON.generate(job))
 					selected = (direction == 'download' ? role == 'download' : role == 'seed') ? engine : 'libtorrent'
-					roles[role] = Child.new(command_for(selected, source), job_path, File.join(log_dir, "#{role}.log")); children << roles[role]
+					tested_role = direction == 'download' ? role == 'download' : role == 'seed'
+					roles[role] = Child.new(command_for(selected, source), job_path, File.join(log_dir, "#{role}.log"), allocation_logging: @profile && @profiler == 'allocations' && tested_role); children << roles[role]
 				end
 				seed, down = roles.values_at('seed', 'download')
 				timeout = @smoke ? 30 : 600
@@ -423,14 +459,17 @@ module TransferBenchmarkHarness
 				raise 'Metadata payload byte count mismatch' unless children.all? { |child| child.phase('ready').fetch('payload_bytes') == fixture['bytes'] }
 				if @profile && @profiler != 'sample'
 					tested = direction == 'download' ? down : seed
-					if @profiler == 'heap'
+					if @profiler == 'counts'
+						record[:profiler] = { name: 'Operation counters', sampling: false, timing_acceptance: false }
+					elsif @profiler == 'heap'
 						record[:profiler] = { name: 'Heap and VM snapshots', target: engine, target_pid: tested.phase('ready').fetch('pid'), counterpart_instrumented: false,
 							method: 'Ready, verified and durable gate snapshots; intrusive diagnostics, not peak RSS, allocation churn or timing acceptance', snapshots: {} }
 						record[:profiler][:snapshots][:ready] = TransferBenchmarkHarness.memory_snapshot(tested.phase('ready').fetch('pid'), File.join(@output, id), 'ready')
 					else
-						trace = TimeProfiler.new(tested.phase('ready').fetch('pid'), File.join(@output, id), filesystem: @profiler == 'file-activity')
+						trace = TimeProfiler.new(tested.phase('ready').fetch('pid'), File.join(@output, id), filesystem: @profiler == 'file-activity', kind: @profiler)
 						trace.wait_ready(children)
-						record[:profiler] = { name: @profiler == 'file-activity' ? 'File Activity + Time Profiler' : 'Time Profiler', target: engine, attached_before_start: true, counterpart_instrumented: false, capture_window: @profiler == 'file-activity' ? 'requested trailing 1s before durable completion' : 'whole transfer through durable completion' }
+						record[:profiler] = { name: @profiler, target: engine, attached_before_start: true, counterpart_instrumented: false, capture_window: @profiler == 'time-profiler' ? 'whole transfer through durable completion' : @profiler == 'file-activity' ? 'requested trailing 1s before durable completion' : 'requested trailing 2s before durable completion; intrusive diagnostic, not timing acceptance' }
+						record[:profiler][:allocation_logging] = 'MallocStackLogging=1 from target process launch' if @profiler == 'allocations'
 					end
 				end
 				seed.send_command('start'); down.send_command('start', ports: seed.phase('ready').fetch('ports'))
@@ -438,7 +477,7 @@ module TransferBenchmarkHarness
 					TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'start'] }, timeout: timeout)
 					roles.each do |role, child|
 						path = File.join(@output, "#{id}-#{role}.sample.txt")
-						profilers << Process.spawn('/usr/bin/sample', child.phase('start').fetch('pid').to_s, '2', '-file', path, out: File::NULL, err: File.join(log_dir, "#{role}-profile.log"), pgroup: true)
+						profilers << Process.spawn(TransferBenchmarkHarness.process_environment, '/usr/bin/sample', child.phase('start').fetch('pid').to_s, '2', '-file', path, out: File::NULL, err: File.join(log_dir, "#{role}-profile.log"), pgroup: true, unsetenv_others: true)
 					end
 				end
 				TransferBenchmarkHarness.wait(children, [[down, 'verified']], timeout: timeout)

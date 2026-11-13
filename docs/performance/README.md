@@ -1,5 +1,10 @@
 # Swift/libtorrent transfer comparison
 
+[Comprehensive CPU profiles](comprehensive-profiles-2026-11-14.md) cover all
+18 transfer cases with separate exact counters, plus native rendering fixtures.
+Write jobs dominate downloads. Eight-reader probes confirm existing shared
+reads; an ageing popularity candidate increased reloads and was reverted.
+
 [Focused 500 Mbps CPU work](rate500-results-2026-11-13.md) separates kernel-facing
 filesystem, payload I/O, networking, scheduling and copying stacks from user
 hashing/allocation. Six diagnostics and all 28 direct-leaf source
