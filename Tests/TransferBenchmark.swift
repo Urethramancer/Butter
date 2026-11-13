@@ -171,7 +171,7 @@ import ButterTorrentEngine
 				let source = seed.appendingPathComponent(name == "many" ? "bundle" : "payload-\(index).bin")
 				let hybrid = try TorrentCreator.create(source: source, trackers: [], isPrivate: false, pieceLength: 262144)
 				let document = try BencodeDocument(hybrid)
-				for format in (sweep ? ["hybrid"] : ["v1", "v2", "hybrid"]) {
+				for format in (sweep ? ["hybrid", "v2"] : ["v1", "v2", "hybrid"]) {
 					var info = document.root["info"]!.dictionary!, root = document.root.dictionary!
 					for key in format == "v1" ? ["meta version", "file tree"] : format == "v2" ? ["pieces", "files", "length"] : [] { info[Data(key.utf8)] = nil }
 					root[Data("info".utf8)] = .dictionary(info)

@@ -60,6 +60,8 @@ module RateSweep
 	end
 	def self.comparison_summary(samples)
 		return {status: 'failed', reason: 'Diagnostic samples cannot be compared'} if samples.any? { |s| s[:diagnostic] }
+		formats = samples.map { |s| s.fetch(:format, 'hybrid') }.uniq
+		return {status: 'failed', reason: 'Mixed torrent formats'} unless formats.size == 1 && %w[hybrid v2].include?(formats.first)
 		expected = %w[previous current].product(%w[Swift libtorrent]).sort
 		warmups = samples.select { |r| r[:warmup] }
 		pairs = samples.reject { |r| r[:warmup] }.group_by { |r| r[:pair] }.values
@@ -73,7 +75,7 @@ module RateSweep
 				current.to_f / previous
 			end)
 		end
-		result = {status: 'rate-source-comparison-only', pairs: 6, valid_pairs: 6,
+		result = {status: 'rate-source-comparison-only', format: formats.first, pairs: 6, valid_pairs: 6,
 			source_ratios: specs.transform_values { |path| paired.call('Swift', path) },
 			native_control_ratios: specs.transform_values { |path| paired.call('libtorrent', path) }}
 		r = result[:source_ratios]
@@ -92,6 +94,8 @@ module RateSweep
 		def initialize(swift, reference, output, work, mode = '--rate-sweep', previous = nil)
 			@commands = { 'Swift' => [swift], 'libtorrent' => [reference] }
 			@output, @work, @samples = output, work, []
+			@format = ENV.fetch('BUTTER_BENCHMARK_RATE_FORMAT', 'hybrid')
+			raise 'Rate format must be hybrid or v2' unless %w[hybrid v2].include?(@format)
 			@mode = mode
 			@previous = previous
 			raise 'Rate comparison needs a previous driver' if mode == '--rate-compare' && (previous.nil? || previous.empty?)
@@ -104,13 +108,13 @@ module RateSweep
 			folder = File.join(@work, id); logs = File.join(@output, id)
 			FileUtils.mkdir_p(folder); FileUtils.mkdir_p(logs)
 			root = File.join(@work, 'fixtures', 'many')
-			item = { torrent: File.join(root, fixture.fetch('torrents').fetch('hybrid').fetch(0)), destination: File.join(folder, 'download'), state: File.join(folder, 'download-state') }
+			item = { torrent: File.join(root, fixture.fetch('torrents').fetch(@format).fetch(0)), destination: File.join(folder, 'download'), state: File.join(folder, 'download-state') }
 			jobs = { 'seed' => {role: 'seed', partial: true, upload_bytes_per_second: RateSweep.bytes_per_second(rate), items: [item.merge(destination: File.join(root, 'seed'), state: File.join(folder, 'seed-state'))]},
 				'download' => {role: 'download', partial: true, items: [item]} }
 			jobs['download'][:profileHoldAfterStop] = true if @profile && !@counters
 			children = []; roles = {}; trace = nil
 			commands = @commands.merge('Swift' => source == 'previous' ? [@previous] : @commands.fetch('Swift'))
-			record = {id: id, engine: engine, mbps: rate, validated: false, exploratory: true, pair: sequence, warmup: warmup, source_variant: source, diagnostic: @profile}
+			record = {id: id, engine: engine, format: @format, mbps: rate, validated: false, exploratory: true, pair: sequence, warmup: warmup, source_variant: source, diagnostic: @profile}
 			begin
 				fixture.fetch('files').each do |file|
 					path = File.join(root, 'seed', file.fetch('path'))

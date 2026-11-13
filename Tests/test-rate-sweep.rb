@@ -42,6 +42,11 @@ class RateSweepTests < Minitest::Test
 		result = RateSweep.comparison_summary(rows)
 		assert_equal 'eligible', result[:retention]
 		assert_in_delta 0.8, result[:source_ratios][:system_cpu_seconds_per_gib][:median]
+		rows.each { |row| row[:format] = 'v2' }
+		assert_equal 'v2', RateSweep.comparison_summary(rows)[:format]
+		rows[0][:format] = 'hybrid'
+		assert_equal 'failed', RateSweep.comparison_summary(rows)[:status]
+		rows[0][:format] = 'v2'
 		rows.select { |r| r[:engine] == %q[Swift] && r[:source_variant] == %q[current] }.each { |r| r[:engine_metrics][:whole][:peak_rss] = 2000 }
 		refute_equal 'eligible', RateSweep.comparison_summary(rows)[:retention]
 		rows[4][:validated] = false
@@ -67,6 +72,7 @@ class RateSweepTests < Minitest::Test
 	end
 	def test_rate_modes_reject_invalid_configuration_before_build
 		cases = [
+			['--rate-profile', {'BUTTER_BENCHMARK_RATE_FORMAT'=>'v1'}, /format/],
 			['--rate-compare', {'BUTTER_BENCHMARK_PREVIOUS_REVISION'=>nil}, /PREVIOUS_REVISION/],
 			['--rate-compare', {'BUTTER_BENCHMARK_PREVIOUS_REVISION'=>'HEAD', 'BUTTER_STORAGE_DIAGNOSTICS'=>'1'}, /diagnostic/i],
 			['--rate-profile', {'BUTTER_BENCHMARK_PROFILER'=>'heap'}, /Time Profiler/],

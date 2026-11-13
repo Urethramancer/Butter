@@ -38,3 +38,36 @@ there are no focused follow-up comparisons for this rejected candidate.
 [Raw results, source fingerprints, validation results and candidate patch](raw/cpu-phases/)
 are retained. Full build/test logs and the original receive trace remain in
 `.build/experiments/cpu-phases/`. User Xcode edits were preserved.
+
+## 2. Offset-indexed pure-v2 proofs — rejected
+
+The independent candidate retained complete 16 KiB SHA-256 leaf digests by
+offset, including short final leaves and virtual padding. Its charged bitmap
+prevented evicted/rejected attempts from restarting midway through a piece.
+Eight contexts and 1 MiB were shared across session transfers. Unsupported
+fragmentation, overlaps, failed operations, changed observations and missing
+authenticated roots selected stored-byte verification. V1 and hybrid transfers
+kept ordinary writes and strict stored-byte checks. Leaf geometry follows
+[BEP 52](https://www.bittorrent.org/beps/bep_0052.html).
+
+The matching pure-v2 diagnostic authenticated all 3,139 completed pieces with
+no readback fallback. Serial checks passed 85 storage and 189 engine tests,
+48 native TCP fixtures, focused ASan/TSan suites and 11 further transfer/resource
+tests under TSan. Coverage includes 32 MiB pieces, short files, padding,
+corruption, partial leaves, cancellation, failed checkpoints, missing hashes,
+shared ceilings and conservative fallback. Benchmark-controller checks passed
+80 assertions; the controller now supports separate v2/hybrid rate fixtures and
+rejects mixed-format source comparisons.
+
+All 28 pure-v2 samples passed independent payload/checkpoint validation and
+saturation. CPU/GiB ratio was 0.961 (95% paired interval 0.912–1.102): lower CPU
+was not established. Throughput ratio was 1.006 (0.979–1.030), peak RSS 0.971
+(0.953–1.020), and counterpart CPU/GiB 0.952 (0.870–0.991). The maximum RSS ratio
+was 0.981. The candidate was rejected without additional timing repetitions.
+
+The subsequent hybrid regression run was interrupted after the user prioritised
+comprehensive profiling over further small optimisations. Its completed samples,
+interrupted sample and logs are preserved; it is incomplete and supports no
+acceptance inference. No focused follow-up comparison was warranted. Production
+proof changes were reverted. Snapshot/staging experiments have not yet run;
+profiling the retained baseline is the current priority.

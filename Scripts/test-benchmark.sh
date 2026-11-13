@@ -4,6 +4,10 @@ set -eu
 cd "$(dirname "$0")/.."
 mode=${1:---full}
 case "$mode" in --full|--smoke|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare] [OUTPUT]' >&2; exit 2 ;; esac
+case "${BUTTER_BENCHMARK_RATE_FORMAT:-hybrid}" in
+	hybrid|v2) ;;
+	*) echo 'Rate format must be hybrid or v2.' >&2; exit 2 ;;
+esac
 if [ "${BUTTER_STORAGE_DIAGNOSTICS:-0}" = 1 ]; then
 	case "$mode" in --profile|--profile-source|--rate-profile) ;; *) echo 'Storage counters are diagnostic only; use --profile or --profile-source.' >&2; exit 2 ;; esac
 fi
