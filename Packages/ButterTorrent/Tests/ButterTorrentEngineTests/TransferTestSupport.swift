@@ -27,12 +27,14 @@ final class TransferFixture {
 	let root: URL
 	let metadata: TorrentMetadata
 	let bytes: Data
-	let lengths = [10003, 50019, 30000, 0]
+	let lengths: [Int]
 	let names = ["a", "skip", "c", "empty"]
 	var engines: [TCPTransfer] = []
 	var stores: [TorrentStorage] = []
 	var listeners: [TCPListener] = []
-	init() throws {
+	init(lengths: [Int] = [10003, 50019, 30000, 0]) throws {
+		precondition(lengths.count == names.count && lengths.allSatisfy { $0 >= 0 })
+		self.lengths = lengths
 		root = FileManager.default.temporaryDirectory.appendingPathComponent("butter-peer-" + UUID().uuidString).resolvingSymlinksInPath()
 		try FileManager.default.createDirectory(at: root.appendingPathComponent("source/bundle"), withIntermediateDirectories: true)
 		let total: Int = lengths.reduce(0, +)
@@ -47,8 +49,8 @@ final class TransferFixture {
 		let info: [Data: BencodeValue] = [Data("name".utf8): .bytes(Data("bundle".utf8)), Data("files".utf8): .list(files), Data("piece length".utf8): .integer(32768), Data("pieces".utf8): .bytes(hashes)]
 		metadata = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
 	}
-	func transfer(_ name: String, seed: Bool = false, selected: [Bool]? = nil, configuration: TCPTransferConfiguration = plainTransferConfiguration(), clock: any TransportClock = ContinuousTransportClock(), peerID: Data? = nil, resources: TransferResources = .shared, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TCPTransfer {
-		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent(name), stateDirectory: root.appendingPathComponent(name + "-state"), selected: selected, event: event)
+	func transfer(_ name: String, seed: Bool = false, selected: [Bool]? = nil, configuration: TCPTransferConfiguration = plainTransferConfiguration(), clock: any TransportClock = ContinuousTransportClock(), peerID: Data? = nil, resources: TransferResources = .shared, readPolicy: StorageReadPolicy = .strict, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TCPTransfer {
+		let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent(name), stateDirectory: root.appendingPathComponent(name + "-state"), selected: selected, readPolicy: readPolicy, event: event)
 		stores.append(storage)
 		if seed { try await storage.importFiles(from: root.appendingPathComponent("source")); for piece in 0..<storage.layout.pieceCount { #expect(try await storage.verify(piece: piece)) } }
 		let engine = try await TCPTransfer.open(metadata: metadata, storage: storage, configuration: configuration, peerID: peerID, resources: resources, clock: clock)

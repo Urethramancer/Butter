@@ -7,6 +7,7 @@ public enum StorageDiagnostics {
 	public enum Counter: String, Sendable {
 		case scans, filesInspected, descriptorOpens, diskJobs, bytesRead, bytesWritten
 		case bytesHashed, sha1Bytes, sha256Bytes, cacheHits, verificationInvalidations
+		case cacheLoads, cacheLoadJoins, cacheEvictions, cacheLoadedBytes, cacheEvictedBytes
 		case descriptorDuplicates, writeBatches, writeBlocks, writeDescriptorCacheHits
 		case fileDescriptorInspections
 	}

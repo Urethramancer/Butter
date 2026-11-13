@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import ButterTorrentMetadata
 import ButterTorrentNetworking
+import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 final class EngineClock: TransportClock, @unchecked Sendable {
@@ -40,6 +41,35 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 }
 
 @Suite struct TransferResourceTests {
+	@Test func concurrentUploadReadersShareOneLoadAndRetainItsBytes() async throws {
+		try await transferFixture { fixture in
+			_ = try await fixture.transfer("seed", seed: true)
+			let gate = TransferPermits(1); try await gate.acquire()
+			actor Reads {
+				var count = 0
+				func started() { count += 1 }
+			}
+			let reads = Reads(), storage = fixture.stores[0], owner = PieceCacheOwner()
+			let pool = SharedPieceCache(limit: 65536) { storage, index in
+				await reads.started(); try await gate.acquire()
+				do { let bytes = try await storage.readVerifiedPiece(index); await gate.release(); return bytes }
+				catch { await gate.release(); throw error }
+			}
+			let before = StorageDiagnostics.snapshot()
+			let callers = (0..<8).map { _ in Task { try await pool.piece(0, storage: storage, owner: owner) } }
+			try await eventually { await reads.count == 1 }
+			if StorageDiagnostics.enabled {
+				try await eventually { StorageDiagnostics.snapshot()["cacheLoadJoins", default: 0] - before["cacheLoadJoins", default: 0] == 7 }
+			}
+			await gate.release()
+			for caller in callers { #expect(try await caller.value == fixture.bytes.prefix(32768)) }
+			#expect(await reads.count == 1)
+			#expect(try await pool.piece(0, storage: storage, owner: owner) == fixture.bytes.prefix(32768))
+			#expect(await reads.count == 1)
+			await pool.close(owner)
+			let (cached, loading) = await pool.usage; #expect(cached == 0 && loading == 0)
+		}
+	}
 	@Test func cachedUploadsAvoidDiskAdmissionWhileMissesRemainBounded() async throws {
 		try await transferFixture { fixture in
 			let resources = try TransferResources(maximumDiskOperations: 1)
