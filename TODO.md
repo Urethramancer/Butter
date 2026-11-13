@@ -2,9 +2,10 @@
 
 ## TCP performance parity
 
-- Measure grouped upload publication on concurrent seeding, then download
+- Measure grouped upload publication on download
   regressions. Single-file v1 CPU falls 4.7%; many-file CPU falls 4.6%, throughput
-  rises 1.2% and counterpart CPU falls 1.9% across 56 validated trials. Preserve
+  rises 1.2% and counterpart CPU falls 1.9%; concurrent hybrid CPU falls 3.4%
+  across 84 validated trials. Preserve
   inconclusive source intervals, especially RSS and the wide single-file memory
   interval rather than claiming no cost. Package/sanitizer/Release checks pass;
   native interoperability and a full matrix remain open for any retained candidate.
