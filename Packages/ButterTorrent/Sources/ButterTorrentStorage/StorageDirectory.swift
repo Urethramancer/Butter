@@ -140,6 +140,7 @@ final class StorageDirectory: @unchecked Sendable {
 		}
 	}
 	func stamp(_ file: Int32, shared: Bool = false) throws -> FileStamp {
+		StorageDiagnostics.count(.fileDescriptorInspections)
 		var value = stat()
 		guard fstat(file, &value) == 0 else { throw diskError("Cannot inspect managed file") }
 		return try regularStamp(value, shared: shared)
