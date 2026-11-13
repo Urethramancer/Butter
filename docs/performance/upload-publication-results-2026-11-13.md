@@ -3,8 +3,8 @@
 Candidate `afad9d1` versus `d37ffe5`: single-file/128-file 1 GiB v1 TCP seeding
 and four simultaneous 256 MiB hybrid seeds, 256 KiB pieces and production
 request windows. Each case uses four warm-ups followed by six balanced
-source/engine pairs. Two further cases check many-file hybrid and single-file
-v1 download regressions. All 140 trials validate
+source/engine pairs. Three further cases check many-file hybrid, single-file
+v1 and concurrent hybrid download regressions. All 168 trials validate
 independent payload digests and saved-state reopening; none is retried or omitted.
 The first table describes single-file seeding.
 
@@ -69,6 +69,18 @@ production source/package hashes; all 28 trials validate.
 | Verified throughput | 1.005 | 0.995–1.014 |
 | Peak RSS | 0.997 | 0.976–0.999 |
 | Counterpart CPU seconds/GiB | 0.979 | 0.877–1.023 |
+
+Concurrent hybrid download CPU, throughput, RSS and counterpart CPU remain
+inconclusive; native controls also cross one. No regression is established,
+but absence of costs is unproven. Measured revision `9eab123` has matching
+production source/package hashes; all 28 trials validate.
+
+| Concurrent hybrid download candidate/previous | Paired median | 95% interval |
+| --- | ---: | ---: |
+| CPU seconds/GiB | 1.008 | 0.998–1.020 |
+| Verified throughput | 1.029 | 0.974–1.062 |
+| Peak RSS | 0.988 | 0.939–1.001 |
+| Counterpart CPU seconds/GiB | 0.974 | 0.888–1.049 |
 
 The existing encoded upload buffer still contains at most sixteen frames and
 256 KiB. Its already-reserved frames now publish under one lock with one writer
