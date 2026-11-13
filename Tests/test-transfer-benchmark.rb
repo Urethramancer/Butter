@@ -177,6 +177,7 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 			assert_equal 100.0, summary[:stacks].first[:percent]
 			assert_equal [{ symbol: 'leaf', weight_ns: 2000000, percent: 100.0 }], summary[:flat]
 			assert_in_delta 100.0, summary[:categories].sum { |r| r[:percent] }
+			assert_equal 'kernel-facing copying', H.profile_category(['mach_msg2_trap', 'vm_copy', 'Data.append'])
 			assert_equal 'filesystem metadata/open/close', H.profile_category(['__openat', 'StorageDirectory.inspect'])
 			assert_equal 'other user processing or unresolved execution', H.profile_category(['processing', 'StorageWorker.run'])
 			assert_equal [100.0, 100.0], summary[:inclusive].map { |row| row[:percent] }

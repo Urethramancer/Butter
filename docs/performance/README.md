@@ -1,5 +1,9 @@
 # Swift/libtorrent transfer comparison
 
+[Focused 500 Mbps CPU work](rate500-results-2026-11-13.md) separates kernel-facing
+filesystem, payload I/O, networking, scheduling and copying stacks from user
+hashing/allocation. Four baseline diagnostic trials validate.
+
 [Common connection-rate CPU sweep](rate-sweep-results-2026-11-13.md) validates
 all ten partial downloads. Butter uses 6.7–67.5% of one core across
 100–1,000 Mbps. Every sample reaches 90% of its ceiling; this is exploratory

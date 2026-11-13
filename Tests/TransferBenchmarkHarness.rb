@@ -141,6 +141,7 @@ module TransferBenchmarkHarness
 	# for attribution; worker ancestry alone does not identify scheduling overhead.
 	def self.profile_category(frames)
 		leaf = frames.first
+		return 'kernel-facing copying' if frames.any? { |frame| frame == 'vm_copy' }
 		case leaf
 		when /\A(?:__)?(?:openat|open|close|fstatat|fstat|stat|lstat|dup|fcntl|fsync|rename|unlink|mkdir|faccessat)(?:\z|_)/ then 'filesystem metadata/open/close'
 		when /\A(?:__)?(?:pread|pwrite|read|write)(?:\z|_)/ then 'payload I/O'
