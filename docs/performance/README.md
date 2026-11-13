@@ -1,5 +1,11 @@
 # Swift/libtorrent transfer comparison
 
+[Descriptor-focused experiments](descriptor-results-2026-11-13.md) validate all
+84 source trials and eight profile trials. Root borrowing, bounded parent reuse
+and cached file identity all remain inconclusive and are reverted. Directory
+reuse cuts opens and cached identity cuts stamp calls, but neither establishes
+a transfer benefit. The new aggregate diagnostics remain; no speed-up is claimed.
+
 [Lazy verification and repair full matrix](repair-final-full-results-2026-11-13.md)
 validates all 264 trials: throughput passes 11/18, CPU 0/18 and original-baseline
 memory 18/18. Many-file downloads remain the priority; parity is unmet.

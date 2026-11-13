@@ -17,6 +17,9 @@
   weakening integrity or increasing request/cache limits. Keep rejected UTF-8
   lookup, character-index, raw-name bulk scan, vector-write and autorelease
   experiments rejected unless new measurements explain their costs.
+  Three further [descriptor experiments](docs/performance/descriptor-results-2026-11-13.md)
+  validate all 84 source trials but remain inconclusive and reverted. Obtain
+  stronger CPU attribution before adding further cache machinery.
 - Establish reproducible installed-reference compiler/Boost provenance. The
   archive exposes Boost 1.92 ABI while cached Apple-build flags name 1.88;
   preserve archive fingerprints and existing comparisons. See the
