@@ -2,7 +2,7 @@
 
 ## TCP performance parity
 
-- Resolve revised request-burst source RSS/seeding uncertainty and profile the
+- Resolve revised request-burst source RSS/seeding uncertainty and reduce the
   remaining CPU gap. The full matrix validates all 252 trials, passing throughput
   9/18, CPU 0/18 and original-baseline memory 18/18. Revised single-file download
   saves 8.3% CPU and raises throughput 3.7%; RSS and seeding remain inconclusive
@@ -23,6 +23,10 @@
   also remains reverted: seeding throughput falls 2.4% despite lower CPU.
 
 - Reduce filesystem inspection/opening and remaining disk scheduling costs:
+  revised request-burst profiles validate eight captures, showing 46.0% flat
+  fstatat/openat/close and 37.0% inclusive scans in many-file hybrid downloads.
+  Request selection is 1.4% inclusive; disk-worker ancestry includes filesystem
+  and hashing work, so do not attribute its whole weight to scheduling.
   fresh write-refill profiles show 43.9% flat fstatat/openat/close and 35.5%
   inclusive layout scans in many-file hybrid downloads. Partial syscall captures
   show fuller batches (7.42 versus 3.97 writes per inferred scan section), so

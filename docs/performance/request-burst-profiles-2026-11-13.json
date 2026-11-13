@@ -1,0 +1,1041 @@
+{
+  "candidate": "93a41c8",
+  "production_source_hashes_match_full_matrix": true,
+  "accepted": 8,
+  "method": "Separate Release Time Profiler trials, tested process only, from before start through durable completion; Running sample weights, not function CPU durations. Missing backtraces remain in denominators. No acceptance inference.",
+  "profiles": [
+    {
+      "case": "many-hybrid-download",
+      "engine": "Swift",
+      "accepted": true,
+      "root": ".build/benchmarks/request-burst-profile-many-hybrid-download",
+      "running_samples": 8095,
+      "unavailable_backtrace_samples": 18,
+      "weight_ns": 8095000000,
+      "flat_fstatat_openat_close_percent": 46.016059295861645,
+      "flat_top": [
+        {
+          "symbol": "fstatat",
+          "weight_ns": 1872000000,
+          "percent": 23.125386040765903
+        },
+        {
+          "symbol": "__openat",
+          "weight_ns": 1280000000,
+          "percent": 15.812229771463867
+        },
+        {
+          "symbol": "close",
+          "weight_ns": 573000000,
+          "percent": 7.0784434836318715
+        },
+        {
+          "symbol": "AccelerateCrypto_SHA1_compress",
+          "weight_ns": 426000000,
+          "percent": 5.262507720815318
+        },
+        {
+          "symbol": "pwrite",
+          "weight_ns": 425000000,
+          "percent": 5.250154416306362
+        },
+        {
+          "symbol": "AccelerateCrypto_SHA256_compress",
+          "weight_ns": 412000000,
+          "percent": 5.089561457689932
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 225000000,
+          "percent": 2.7794935145151327
+        },
+        {
+          "symbol": "start_wqthread",
+          "weight_ns": 195000000,
+          "percent": 2.4088943792464486
+        },
+        {
+          "symbol": "mach_msg2_trap",
+          "weight_ns": 154000000,
+          "percent": 1.9024088943792465
+        },
+        {
+          "symbol": "__recvmsg",
+          "weight_ns": 141000000,
+          "percent": 1.7418159357628165
+        },
+        {
+          "symbol": "__workq_kernreturn",
+          "weight_ns": 105000000,
+          "percent": 1.2970969734403952
+        },
+        {
+          "symbol": "String.subscript.getter",
+          "weight_ns": 87000000,
+          "percent": 1.0747374922791846
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 83000000,
+          "percent": 1.0253242742433601
+        },
+        {
+          "symbol": "fstat",
+          "weight_ns": 76000000,
+          "percent": 0.938851142680667
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 69000000,
+          "percent": 0.8523780111179741
+        }
+      ],
+      "selected_inclusive": [
+        {
+          "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 3851000000,
+          "percent": 47.572575663990115
+        },
+        {
+          "symbol": "StorageState.stamps()",
+          "weight_ns": 2996000000,
+          "percent": 37.01050030883261
+        },
+        {
+          "symbol": "closure #1 in StorageState.stamps()",
+          "weight_ns": 2961000000,
+          "percent": 36.57813465101915
+        },
+        {
+          "symbol": "StorageState.digestPiece(_:range:check:)",
+          "weight_ns": 1229000000,
+          "percent": 15.182211241507103
+        },
+        {
+          "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+          "weight_ns": 703000000,
+          "percent": 8.68437306979617
+        },
+        {
+          "symbol": "$defer #1 () in StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 506000000,
+          "percent": 6.25077208153181
+        },
+        {
+          "symbol": "TCPTransfer.fill(_:)",
+          "weight_ns": 110000000,
+          "percent": 1.358863495985176
+        }
+      ],
+      "whole_process": {
+        "wall": 17.43,
+        "user": 3.28,
+        "system": 4.96,
+        "peak_rss": 17252352
+      },
+      "counterpart_whole_process": {
+        "wall": 17.43,
+        "user": 1.32,
+        "system": 2.06,
+        "peak_rss": 31113216
+      },
+      "raw_sha256": {
+        "environment.json": "94935d3ceae836d0719627975d7761f8b5fefcd40bb7c54af2e95884d1f9322d",
+        "fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+        "trials.jsonl": "18892c4db89189e915631ebd753265b2281b47ab32efe74977245228ab8aff60",
+        "summary.json": "e7f2966486e8b1e8f9482a570b40306f659c081b7ca5a74b47c093742ccc972c",
+        "many-hybrid-download-0-Swift-measured.cpu.json": "1c0735ce2026b6fcede707a6011a5cdd51fd410f56b1158e35920e28f2cf1985",
+        "many-hybrid-download-0-Swift-measured.samples.xml": "9a5cdf3a0bbd83135384bb3e387ee827165804aa8903c00d47309505118276c3",
+        "many-hybrid-download-0-Swift-measured.toc.xml": "f54e25e49db8cbedcb838e53fbc92d1f89e9147caa875239e1aff7b554f64378"
+      },
+      "measured_revision": "2a0b87db726922727c68dfc12202b5d45d2e4270"
+    },
+    {
+      "case": "many-hybrid-download",
+      "engine": "libtorrent",
+      "accepted": true,
+      "root": ".build/benchmarks/request-burst-profile-many-hybrid-download",
+      "running_samples": 2646,
+      "unavailable_backtrace_samples": 117,
+      "weight_ns": 2646000000,
+      "flat_fstatat_openat_close_percent": 10.92214663643235,
+      "flat_top": [
+        {
+          "symbol": "sha1_block_armv8",
+          "weight_ns": 474000000,
+          "percent": 17.913832199546484
+        },
+        {
+          "symbol": "sha256_block_armv8",
+          "weight_ns": 474000000,
+          "percent": 17.913832199546484
+        },
+        {
+          "symbol": "close",
+          "weight_ns": 289000000,
+          "percent": 10.92214663643235
+        },
+        {
+          "symbol": "__recvfrom",
+          "weight_ns": 184000000,
+          "percent": 6.953892668178383
+        },
+        {
+          "symbol": "pwritev",
+          "weight_ns": 125000000,
+          "percent": 4.72411186696901
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 118000000,
+          "percent": 4.459561602418745
+        },
+        {
+          "symbol": "[unavailable backtrace]",
+          "weight_ns": 117000000,
+          "percent": 4.421768707482993
+        },
+        {
+          "symbol": "kevent",
+          "weight_ns": 81000000,
+          "percent": 3.061224489795918
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 58000000,
+          "percent": 2.1919879062736207
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 53000000,
+          "percent": 2.00302343159486
+        },
+        {
+          "symbol": "__open",
+          "weight_ns": 51000000,
+          "percent": 1.927437641723356
+        },
+        {
+          "symbol": "libtorrent::aux::request_a_block(libtorrent::aux::torrent&, libtorrent::aux::peer_connection&)",
+          "weight_ns": 50000000,
+          "percent": 1.8896447467876039
+        },
+        {
+          "symbol": "libtorrent::aux::hash_picker::pick_hashes(libtorrent::typed_bitfield<libtorrent::aux::strong_typedef<int, libtorrent::aux::piece_index_tag, void>> const&)",
+          "weight_ns": 38000000,
+          "percent": 1.436130007558579
+        },
+        {
+          "symbol": "libtorrent::merkle_num_leafs(int)",
+          "weight_ns": 36000000,
+          "percent": 1.3605442176870748
+        },
+        {
+          "symbol": "__psynch_cvwait",
+          "weight_ns": 30000000,
+          "percent": 1.1337868480725624
+        }
+      ],
+      "selected_inclusive": [
+
+      ],
+      "whole_process": {
+        "wall": 9.65,
+        "user": 1.56,
+        "system": 1.19,
+        "peak_rss": 167886848
+      },
+      "counterpart_whole_process": {
+        "wall": 9.67,
+        "user": 1.34,
+        "system": 1.77,
+        "peak_rss": 31653888
+      },
+      "raw_sha256": {
+        "environment.json": "94935d3ceae836d0719627975d7761f8b5fefcd40bb7c54af2e95884d1f9322d",
+        "fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+        "trials.jsonl": "18892c4db89189e915631ebd753265b2281b47ab32efe74977245228ab8aff60",
+        "summary.json": "e7f2966486e8b1e8f9482a570b40306f659c081b7ca5a74b47c093742ccc972c",
+        "many-hybrid-download-0-libtorrent-measured.cpu.json": "88cab939b44188cb01f9d08f2b1abd1f8afd4bc6c416296f7883cf54e8617dda",
+        "many-hybrid-download-0-libtorrent-measured.samples.xml": "1eccaa7a32ec7ae1996cc794fed3f14a81febac98293fa2a97b8e7b27ab730e7",
+        "many-hybrid-download-0-libtorrent-measured.toc.xml": "50e089413fe01ce1c4d1a12fdeddbb687a5d59867a279c697fd47c87181ac122"
+      },
+      "measured_revision": "2a0b87db726922727c68dfc12202b5d45d2e4270"
+    },
+    {
+      "case": "single-v1-download",
+      "engine": "Swift",
+      "accepted": true,
+      "root": ".build/benchmarks/request-burst-profile-single-v1-download",
+      "running_samples": 3543,
+      "unavailable_backtrace_samples": 26,
+      "weight_ns": 3543000000,
+      "flat_fstatat_openat_close_percent": 22.212813999435507,
+      "flat_top": [
+        {
+          "symbol": "AccelerateCrypto_SHA1_compress",
+          "weight_ns": 476000000,
+          "percent": 13.434942139429861
+        },
+        {
+          "symbol": "close",
+          "weight_ns": 399000000,
+          "percent": 11.26164267569856
+        },
+        {
+          "symbol": "pwrite",
+          "weight_ns": 341000000,
+          "percent": 9.624611910810048
+        },
+        {
+          "symbol": "__openat",
+          "weight_ns": 272000000,
+          "percent": 7.677109793959921
+        },
+        {
+          "symbol": "start_wqthread",
+          "weight_ns": 254000000,
+          "percent": 7.169065763477279
+        },
+        {
+          "symbol": "mach_msg2_trap",
+          "weight_ns": 131000000,
+          "percent": 3.6974315551792265
+        },
+        {
+          "symbol": "fstatat",
+          "weight_ns": 116000000,
+          "percent": 3.274061529777025
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 99000000,
+          "percent": 2.79424216765453
+        },
+        {
+          "symbol": "__workq_kernreturn",
+          "weight_ns": 97000000,
+          "percent": 2.7377928309342363
+        },
+        {
+          "symbol": "__recvmsg",
+          "weight_ns": 93000000,
+          "percent": 2.6248941574936495
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 84000000,
+          "percent": 2.3708721422523285
+        },
+        {
+          "symbol": "kevent_id",
+          "weight_ns": 82000000,
+          "percent": 2.314422805532035
+        },
+        {
+          "symbol": "fstat",
+          "weight_ns": 64000000,
+          "percent": 1.8063787750493931
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 56000000,
+          "percent": 1.5805814281682191
+        },
+        {
+          "symbol": "dup",
+          "weight_ns": 33000000,
+          "percent": 0.9314140558848434
+        }
+      ],
+      "selected_inclusive": [
+        {
+          "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 1229000000,
+          "percent": 34.68811741462038
+        },
+        {
+          "symbol": "StorageState.digestPiece(_:range:check:)",
+          "weight_ns": 727000000,
+          "percent": 20.5193338978267
+        },
+        {
+          "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+          "weight_ns": 606000000,
+          "percent": 17.10414902624894
+        },
+        {
+          "symbol": "$defer #1 () in StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 370000000,
+          "percent": 10.443127293254305
+        },
+        {
+          "symbol": "TCPTransfer.fill(_:)",
+          "weight_ns": 111000000,
+          "percent": 3.132938187976291
+        },
+        {
+          "symbol": "StorageState.stamps()",
+          "weight_ns": 91000000,
+          "percent": 2.568444820773356
+        },
+        {
+          "symbol": "closure #1 in StorageState.stamps()",
+          "weight_ns": 89000000,
+          "percent": 2.5119954840530623
+        }
+      ],
+      "whole_process": {
+        "wall": 10.22,
+        "user": 1.51,
+        "system": 2.12,
+        "peak_rss": 15204352
+      },
+      "counterpart_whole_process": {
+        "wall": 10.22,
+        "user": 0.83,
+        "system": 1.99,
+        "peak_rss": 16941056
+      },
+      "raw_sha256": {
+        "environment.json": "770e10c686b4b674166e95ab4b057307cd178cba878764e65656636d5c16fb0e",
+        "fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+        "trials.jsonl": "fc26f9f8a6f09fc35455e1a97bfc2b38276191a509f4985dd6612f92a4e7df21",
+        "summary.json": "3f5c2a8bbf2628f52b9b27462bcce4965b0d8b3ff7de70c1ee5ab17902127ad8",
+        "single-v1-download-0-Swift-measured.cpu.json": "87ba027deb452652ded2eddc206a554ec37590c876c004618e8a1fa2e665dd74",
+        "single-v1-download-0-Swift-measured.samples.xml": "1f1cb23c7e5920194a7632da0d3514401c7318a64c3472014a183cfc62322975",
+        "single-v1-download-0-Swift-measured.toc.xml": "c5478334130393707c0235f58958111db76356270ff8a5e8f119e1d1e0c53ae4"
+      },
+      "measured_revision": "2a0b87db726922727c68dfc12202b5d45d2e4270"
+    },
+    {
+      "case": "single-v1-download",
+      "engine": "libtorrent",
+      "accepted": true,
+      "root": ".build/benchmarks/request-burst-profile-single-v1-download",
+      "running_samples": 1693,
+      "unavailable_backtrace_samples": 285,
+      "weight_ns": 1693000000,
+      "flat_fstatat_openat_close_percent": 0.05906674542232723,
+      "flat_top": [
+        {
+          "symbol": "sha1_block_armv8",
+          "weight_ns": 482000000,
+          "percent": 28.470171293561723
+        },
+        {
+          "symbol": "[unavailable backtrace]",
+          "weight_ns": 285000000,
+          "percent": 16.83402244536326
+        },
+        {
+          "symbol": "__recvfrom",
+          "weight_ns": 186000000,
+          "percent": 10.986414648552865
+        },
+        {
+          "symbol": "pwritev",
+          "weight_ns": 132000000,
+          "percent": 7.796810395747194
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 87000000,
+          "percent": 5.138806851742469
+        },
+        {
+          "symbol": "kevent",
+          "weight_ns": 70000000,
+          "percent": 4.134672179562906
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 50000000,
+          "percent": 2.9533372711163617
+        },
+        {
+          "symbol": "libtorrent::aux::request_a_block(libtorrent::aux::torrent&, libtorrent::aux::peer_connection&)",
+          "weight_ns": 42000000,
+          "percent": 2.4808033077377436
+        },
+        {
+          "symbol": "__psynch_mutexwait",
+          "weight_ns": 24000000,
+          "percent": 1.4176018901358536
+        },
+        {
+          "symbol": "libtorrent::aux::peer_connection::on_send_data(boost::system::error_code const&, unsigned long)",
+          "weight_ns": 22000000,
+          "percent": 1.299468399291199
+        },
+        {
+          "symbol": "__psynch_cvwait",
+          "weight_ns": 21000000,
+          "percent": 1.2404016538688718
+        },
+        {
+          "symbol": "__psynch_cvsignal",
+          "weight_ns": 19000000,
+          "percent": 1.1222681630242173
+        },
+        {
+          "symbol": "mach_continuous_time",
+          "weight_ns": 15000000,
+          "percent": 0.8860011813349085
+        },
+        {
+          "symbol": "_xzm_xzone_malloc_small_freelist",
+          "weight_ns": 13000000,
+          "percent": 0.7678676904902539
+        },
+        {
+          "symbol": "__gettimeofday",
+          "weight_ns": 10000000,
+          "percent": 0.5906674542232723
+        }
+      ],
+      "selected_inclusive": [
+
+      ],
+      "whole_process": {
+        "wall": 9.16,
+        "user": 0.86,
+        "system": 0.9,
+        "peak_rss": 148471808
+      },
+      "counterpart_whole_process": {
+        "wall": 9.16,
+        "user": 0.83,
+        "system": 1.42,
+        "peak_rss": 18022400
+      },
+      "raw_sha256": {
+        "environment.json": "770e10c686b4b674166e95ab4b057307cd178cba878764e65656636d5c16fb0e",
+        "fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+        "trials.jsonl": "fc26f9f8a6f09fc35455e1a97bfc2b38276191a509f4985dd6612f92a4e7df21",
+        "summary.json": "3f5c2a8bbf2628f52b9b27462bcce4965b0d8b3ff7de70c1ee5ab17902127ad8",
+        "single-v1-download-0-libtorrent-measured.cpu.json": "3ba392d81e0f9a94d9132950d05e3f2b6770e1199c14cdde5674a90191d9ab54",
+        "single-v1-download-0-libtorrent-measured.samples.xml": "67434773419479b3c875f83ba19368d31bc03f8d59bb15b8711281b69873d676",
+        "single-v1-download-0-libtorrent-measured.toc.xml": "3843822e3bdd70b7120fabf5f5626bc52fc40f5eb5cb644fac2129866f6f1b5f"
+      },
+      "measured_revision": "2a0b87db726922727c68dfc12202b5d45d2e4270"
+    },
+    {
+      "case": "single-hybrid-download",
+      "engine": "Swift",
+      "accepted": true,
+      "root": ".build/benchmarks/request-burst-profile-single-hybrid-download",
+      "running_samples": 4498,
+      "unavailable_backtrace_samples": 25,
+      "weight_ns": 4498000000,
+      "flat_fstatat_openat_close_percent": 20.25344597598933,
+      "flat_top": [
+        {
+          "symbol": "AccelerateCrypto_SHA256_compress",
+          "weight_ns": 482000000,
+          "percent": 10.715873721654068
+        },
+        {
+          "symbol": "close",
+          "weight_ns": 457000000,
+          "percent": 10.160071142730102
+        },
+        {
+          "symbol": "AccelerateCrypto_SHA1_compress",
+          "weight_ns": 454000000,
+          "percent": 10.093374833259226
+        },
+        {
+          "symbol": "pwrite",
+          "weight_ns": 353000000,
+          "percent": 7.847932414406403
+        },
+        {
+          "symbol": "__openat",
+          "weight_ns": 318000000,
+          "percent": 7.06980880391285
+        },
+        {
+          "symbol": "start_wqthread",
+          "weight_ns": 291000000,
+          "percent": 6.469542018674967
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 210000000,
+          "percent": 4.668741662961316
+        },
+        {
+          "symbol": "__recvmsg",
+          "weight_ns": 149000000,
+          "percent": 3.3125833703868386
+        },
+        {
+          "symbol": "fstatat",
+          "weight_ns": 136000000,
+          "percent": 3.023566029346376
+        },
+        {
+          "symbol": "mach_msg2_trap",
+          "weight_ns": 112000000,
+          "percent": 2.4899955535793685
+        },
+        {
+          "symbol": "__workq_kernreturn",
+          "weight_ns": 110000000,
+          "percent": 2.4455313472654514
+        },
+        {
+          "symbol": "kevent_id",
+          "weight_ns": 96000000,
+          "percent": 2.1342819030680302
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 72000000,
+          "percent": 1.6007114273010228
+        },
+        {
+          "symbol": "fstat",
+          "weight_ns": 72000000,
+          "percent": 1.6007114273010228
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 64000000,
+          "percent": 1.4228546020453534
+        }
+      ],
+      "selected_inclusive": [
+        {
+          "symbol": "StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 1372000000,
+          "percent": 30.502445531347266
+        },
+        {
+          "symbol": "StorageState.digestPiece(_:range:check:)",
+          "weight_ns": 1286000000,
+          "percent": 28.590484659848823
+        },
+        {
+          "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+          "weight_ns": 677000000,
+          "percent": 15.051133837261006
+        },
+        {
+          "symbol": "$defer #1 () in StorageState.writeOperations(_:maximumBytes:maximumCount:check:)",
+          "weight_ns": 428000000,
+          "percent": 9.515340151178302
+        },
+        {
+          "symbol": "TCPTransfer.fill(_:)",
+          "weight_ns": 148000000,
+          "percent": 3.29035126722988
+        },
+        {
+          "symbol": "StorageState.stamps()",
+          "weight_ns": 103000000,
+          "percent": 2.289906625166741
+        },
+        {
+          "symbol": "closure #1 in StorageState.stamps()",
+          "weight_ns": 93000000,
+          "percent": 2.0675855935971543
+        }
+      ],
+      "whole_process": {
+        "wall": 12.27,
+        "user": 2.26,
+        "system": 2.37,
+        "peak_rss": 17186816
+      },
+      "counterpart_whole_process": {
+        "wall": 12.27,
+        "user": 1.35,
+        "system": 2.19,
+        "peak_rss": 31506432
+      },
+      "raw_sha256": {
+        "environment.json": "e984d4eff66741cac60ac9f93ba5035684c92d44b3d920a235d2565bb121690a",
+        "fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+        "trials.jsonl": "d29865647412a763de5b448f79d71ba257fa2b6e63e7817415ddbaf3c58fb3c8",
+        "summary.json": "2056aeceeb17767f8a88ce5f07246bcb501b465ca1f9eefa60ed3b0beb932f17",
+        "single-hybrid-download-0-Swift-measured.cpu.json": "0b2c45302533e5d119f1e61bb25c36ed8a0779917083ec0eee539d55e4d167ea",
+        "single-hybrid-download-0-Swift-measured.samples.xml": "5fea59a80e2ddc2a879459cef628a58a74ee7696925227fbebf19123265a5c0a",
+        "single-hybrid-download-0-Swift-measured.toc.xml": "a83a94109aa069f9ec91e3fba13b35e9c57384e5d809578170775986c1eb33e0"
+      },
+      "measured_revision": "2a0b87db726922727c68dfc12202b5d45d2e4270"
+    },
+    {
+      "case": "single-hybrid-download",
+      "engine": "libtorrent",
+      "accepted": true,
+      "root": ".build/benchmarks/request-burst-profile-single-hybrid-download",
+      "running_samples": 2238,
+      "unavailable_backtrace_samples": 159,
+      "weight_ns": 2238000000,
+      "flat_fstatat_openat_close_percent": 0,
+      "flat_top": [
+        {
+          "symbol": "sha256_block_armv8",
+          "weight_ns": 475000000,
+          "percent": 21.22430741733691
+        },
+        {
+          "symbol": "sha1_block_armv8",
+          "weight_ns": 458000000,
+          "percent": 20.464700625558535
+        },
+        {
+          "symbol": "__recvfrom",
+          "weight_ns": 170000000,
+          "percent": 7.596067917783736
+        },
+        {
+          "symbol": "[unavailable backtrace]",
+          "weight_ns": 159000000,
+          "percent": 7.10455764075067
+        },
+        {
+          "symbol": "pwritev",
+          "weight_ns": 151000000,
+          "percent": 6.747095621090259
+        },
+        {
+          "symbol": "kevent",
+          "weight_ns": 103000000,
+          "percent": 4.602323503127793
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 93000000,
+          "percent": 4.1554959785522785
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 73000000,
+          "percent": 3.261840929401251
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 62000000,
+          "percent": 2.770330652368186
+        },
+        {
+          "symbol": "libtorrent::aux::request_a_block(libtorrent::aux::torrent&, libtorrent::aux::peer_connection&)",
+          "weight_ns": 48000000,
+          "percent": 2.1447721179624666
+        },
+        {
+          "symbol": "__psynch_mutexwait",
+          "weight_ns": 27000000,
+          "percent": 1.2064343163538873
+        },
+        {
+          "symbol": "__psynch_cvsignal",
+          "weight_ns": 23000000,
+          "percent": 1.0277033065236818
+        },
+        {
+          "symbol": "__psynch_cvwait",
+          "weight_ns": 21000000,
+          "percent": 0.938337801608579
+        },
+        {
+          "symbol": "mach_continuous_time",
+          "weight_ns": 18000000,
+          "percent": 0.8042895442359249
+        },
+        {
+          "symbol": "libtorrent::aux::disk_cache::flush_to_disk(std::__1::function<int (libtorrent::bitfield&, libtorrent::span<libtorrent::aux::disk_job* const>)>, int, std::__1::function<void (libtorrent::aux::tailqueue<libtorrent::aux::disk_job>, libtorrent::aux::disk_job*)>, bool)",
+          "weight_ns": 15000000,
+          "percent": 0.6702412868632708
+        }
+      ],
+      "selected_inclusive": [
+
+      ],
+      "whole_process": {
+        "wall": 10.18,
+        "user": 1.43,
+        "system": 0.89,
+        "peak_rss": 155336704
+      },
+      "counterpart_whole_process": {
+        "wall": 10.18,
+        "user": 1.32,
+        "system": 1.34,
+        "peak_rss": 33193984
+      },
+      "raw_sha256": {
+        "environment.json": "e984d4eff66741cac60ac9f93ba5035684c92d44b3d920a235d2565bb121690a",
+        "fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+        "trials.jsonl": "d29865647412a763de5b448f79d71ba257fa2b6e63e7817415ddbaf3c58fb3c8",
+        "summary.json": "2056aeceeb17767f8a88ce5f07246bcb501b465ca1f9eefa60ed3b0beb932f17",
+        "single-hybrid-download-0-libtorrent-measured.cpu.json": "82c98a8aca5a710c158b96f04fe7c064535b3a482cb29ff746dcd1f38f751046",
+        "single-hybrid-download-0-libtorrent-measured.samples.xml": "fd834606bb9112302300f3b947008c399f496e7d7e28f2ef8ad39ed26c5110f5",
+        "single-hybrid-download-0-libtorrent-measured.toc.xml": "ad4309a76063845998d8c5b43ac8376af960a2f71a7df0a69ba9f80368f17557"
+      },
+      "measured_revision": "2a0b87db726922727c68dfc12202b5d45d2e4270"
+    },
+    {
+      "case": "single-v1-seed",
+      "engine": "Swift",
+      "accepted": true,
+      "root": ".build/benchmarks/request-burst-profile-single-v1-seed",
+      "running_samples": 2498,
+      "unavailable_backtrace_samples": 0,
+      "weight_ns": 2498000000,
+      "flat_fstatat_openat_close_percent": 3.562850280224179,
+      "flat_top": [
+        {
+          "symbol": "AccelerateCrypto_SHA1_compress",
+          "weight_ns": 493000000,
+          "percent": 19.735788630904725
+        },
+        {
+          "symbol": "start_wqthread",
+          "weight_ns": 247000000,
+          "percent": 9.88791032826261
+        },
+        {
+          "symbol": "mach_msg2_trap",
+          "weight_ns": 231000000,
+          "percent": 9.247397918334668
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 173000000,
+          "percent": 6.925540432345877
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 95000000,
+          "percent": 3.803042433947158
+        },
+        {
+          "symbol": "pread",
+          "weight_ns": 89000000,
+          "percent": 3.5628502802241795
+        },
+        {
+          "symbol": "__workq_kernreturn",
+          "weight_ns": 75000000,
+          "percent": 3.00240192153723
+        },
+        {
+          "symbol": "kevent_id",
+          "weight_ns": 74000000,
+          "percent": 2.9623698959167335
+        },
+        {
+          "symbol": "__openat",
+          "weight_ns": 55000000,
+          "percent": 2.2017614091273017
+        },
+        {
+          "symbol": "__recvmsg",
+          "weight_ns": 44000000,
+          "percent": 1.7614091273018415
+        },
+        {
+          "symbol": "__psynch_mutexwait",
+          "weight_ns": 32000000,
+          "percent": 1.2810248198558847
+        },
+        {
+          "symbol": "__psynch_mutexdrop",
+          "weight_ns": 31000000,
+          "percent": 1.2409927942353882
+        },
+        {
+          "symbol": "mach_absolute_time",
+          "weight_ns": 31000000,
+          "percent": 1.2409927942353882
+        },
+        {
+          "symbol": "getsockopt",
+          "weight_ns": 29000000,
+          "percent": 1.1609287429943955
+        },
+        {
+          "symbol": "__bzero",
+          "weight_ns": 26000000,
+          "percent": 1.0408326661329064
+        }
+      ],
+      "selected_inclusive": [
+        {
+          "symbol": "StorageState.digestPiece(_:range:check:)",
+          "weight_ns": 974000000,
+          "percent": 38.99119295436349
+        },
+        {
+          "symbol": "PeerSession.readInput(_:id:engine:download:idleTimeout:)",
+          "weight_ns": 211000000,
+          "percent": 8.446757405924739
+        },
+        {
+          "symbol": "PeerSession.sendPieces(_:piece:)",
+          "weight_ns": 154000000,
+          "percent": 6.164931945556445
+        },
+        {
+          "symbol": "PeerSession.enqueue(_:)",
+          "weight_ns": 102000000,
+          "percent": 4.083266613290633
+        },
+        {
+          "symbol": "PeerSession.nextOutput(upload:)",
+          "weight_ns": 83000000,
+          "percent": 3.322658126501201
+        },
+        {
+          "symbol": "closure #1 in PeerSession.enqueue(_:)",
+          "weight_ns": 65000000,
+          "percent": 2.602081665332266
+        },
+        {
+          "symbol": "StorageState.stamps()",
+          "weight_ns": 52000000,
+          "percent": 2.0816653322658127
+        }
+      ],
+      "whole_process": {
+        "wall": 9.81,
+        "user": 2.03,
+        "system": 1.36,
+        "peak_rss": 25411584
+      },
+      "counterpart_whole_process": {
+        "wall": 9.81,
+        "user": 0.72,
+        "system": 0.88,
+        "peak_rss": 112967680
+      },
+      "raw_sha256": {
+        "environment.json": "b600ee60106cd3c7617a2baa4f03c490bc0eebd081e8920d7520e1fa6b13e1d1",
+        "fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+        "trials.jsonl": "f8c180abfa3b366cfee8f5fd3be3245e1b13f2dca11e1d85238977888a26e2e8",
+        "summary.json": "2963a1dac2377311222e9a3c448c04c3b1e14018c0cf2316fd04f124379287a3",
+        "single-v1-seed-0-Swift-measured.cpu.json": "f7a019714d0abdac508226cfc51050f8108aa8b5ffb08ba4720bd728c2b3f5dc",
+        "single-v1-seed-0-Swift-measured.samples.xml": "ec84cd38c1da4ef5d510953517b5b909a94d7b4d5c5d535f9b8ae3ebc3610ab6",
+        "single-v1-seed-0-Swift-measured.toc.xml": "39d4ec150b4af5b0b821f595712d73ae870ca3d20aefdd9609bf7298b45189e4"
+      },
+      "measured_revision": "2a0b87db726922727c68dfc12202b5d45d2e4270"
+    },
+    {
+      "case": "single-v1-seed",
+      "engine": "libtorrent",
+      "accepted": true,
+      "root": ".build/benchmarks/request-burst-profile-single-v1-seed",
+      "running_samples": 1555,
+      "unavailable_backtrace_samples": 0,
+      "weight_ns": 1555000000,
+      "flat_fstatat_openat_close_percent": 0,
+      "flat_top": [
+        {
+          "symbol": "pread",
+          "weight_ns": 282000000,
+          "percent": 18.135048231511256
+        },
+        {
+          "symbol": "__psynch_mutexwait",
+          "weight_ns": 272000000,
+          "percent": 17.491961414790996
+        },
+        {
+          "symbol": "__sendmsg",
+          "weight_ns": 241000000,
+          "percent": 15.4983922829582
+        },
+        {
+          "symbol": "__psynch_cvwait",
+          "weight_ns": 141000000,
+          "percent": 9.067524115755628
+        },
+        {
+          "symbol": "__psynch_mutexdrop",
+          "weight_ns": 137000000,
+          "percent": 8.810289389067524
+        },
+        {
+          "symbol": "kevent",
+          "weight_ns": 68000000,
+          "percent": 4.372990353697749
+        },
+        {
+          "symbol": "_platform_memmove",
+          "weight_ns": 50000000,
+          "percent": 3.215434083601286
+        },
+        {
+          "symbol": "__recvfrom",
+          "weight_ns": 48000000,
+          "percent": 3.0868167202572345
+        },
+        {
+          "symbol": "mach_continuous_time",
+          "weight_ns": 39000000,
+          "percent": 2.508038585209003
+        },
+        {
+          "symbol": "__psynch_cvbroad",
+          "weight_ns": 38000000,
+          "percent": 2.4437299035369775
+        },
+        {
+          "symbol": "pthread_mutex_lock",
+          "weight_ns": 25000000,
+          "percent": 1.607717041800643
+        },
+        {
+          "symbol": "__gettimeofday",
+          "weight_ns": 18000000,
+          "percent": 1.157556270096463
+        },
+        {
+          "symbol": "pthread_mutex_unlock",
+          "weight_ns": 10000000,
+          "percent": 0.6430868167202572
+        },
+        {
+          "symbol": "<deduplicated_symbol>",
+          "weight_ns": 7000000,
+          "percent": 0.45016077170418006
+        },
+        {
+          "symbol": "libtorrent::aux::disk_io_thread_pool::wait_for_job(std::__1::unique_lock<std::__1::mutex>&)",
+          "weight_ns": 5000000,
+          "percent": 0.3215434083601286
+        }
+      ],
+      "selected_inclusive": [
+
+      ],
+      "whole_process": {
+        "wall": 9.2,
+        "user": 0.84,
+        "system": 1.43,
+        "peak_rss": 17383424
+      },
+      "counterpart_whole_process": {
+        "wall": 9.2,
+        "user": 0.88,
+        "system": 0.98,
+        "peak_rss": 125681664
+      },
+      "raw_sha256": {
+        "environment.json": "b600ee60106cd3c7617a2baa4f03c490bc0eebd081e8920d7520e1fa6b13e1d1",
+        "fixtures.json": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+        "trials.jsonl": "f8c180abfa3b366cfee8f5fd3be3245e1b13f2dca11e1d85238977888a26e2e8",
+        "summary.json": "2963a1dac2377311222e9a3c448c04c3b1e14018c0cf2316fd04f124379287a3",
+        "single-v1-seed-0-libtorrent-measured.cpu.json": "7eb48469570a0a35ab2cb9f5bd32313803baefe5bb9379fc3fecb8c583c91cf3",
+        "single-v1-seed-0-libtorrent-measured.samples.xml": "163c65dfa35c4aa15e7a3b07d031ffa1de3ba4c88b12ba786514c7c803bf8f45",
+        "single-v1-seed-0-libtorrent-measured.toc.xml": "38d4a8cb5e9f58370c98999b4535793e66771ad3e4cfdd3d204bffc340eb124f"
+      },
+      "measured_revision": "2a0b87db726922727c68dfc12202b5d45d2e4270"
+    }
+  ],
+  "comparison_full_matrix_revision": "6b5d1c0c52723dd4d144ed311706d3daa4a2a14f"
+}

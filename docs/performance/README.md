@@ -6,6 +6,11 @@ memory 18/18. CPU/native ranges from 1.51× to 3.84×; parity remains unmet.
 Source RSS/seeding uncertainty and cross-run seeding differences remain open.
 Earlier full matrices describe preceding production sources.
 
+[Fresh revised-source profiles](request-burst-profiles-2026-11-13.md) validate
+all eight diagnostic trials. Filesystem calls remain 46.0% flat in many-file
+hybrid downloads, with full-layout scans 37.0% inclusive. Request selection is
+1.4% inclusive; worker ancestry is not a measure of scheduling overhead.
+
 [Revised request bursts](request-burst-revised-results-2026-11-13.md) reduce
 single-file v1 download CPU 8.3% and raise throughput 3.7%; many-file hybrid
 CPU falls 4.5% and throughput rises 2.0%; concurrent hybrid improves 5.8%/3.6%.

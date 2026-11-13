@@ -68,8 +68,9 @@ validation passes 362 package tests, 25 focused tests under each sanitizer,
 52 real-volume storage checks, application contracts/lifecycle, Debug/Release
 builds, linkage/licences and unchanged repeat build. User Xcode edits remain
 untouched. [Validation evidence](request-burst-revised-validation-2026-11-13.json)
-retains log hashes. Earlier profiles predate this candidate; fresh profiles are
-required before choosing the next CPU change.
+retains log hashes. [Fresh profiles of both engines](request-burst-profiles-2026-11-13.md)
+validate eight diagnostic trials and still identify filesystem calls and scans
+as the largest download cost.
 
 [Absolute medians and intervals](request-burst-revised-full-comparison-2026-11-13.csv),
 [complete summary](request-burst-revised-full-summary-2026-11-13.json) and
