@@ -142,6 +142,9 @@ public actor ManagedTransfer {
 	public func repairFile(_ index: Int, from source: URL) async throws -> StorageRepairResult {
 		try await mutate { try await $0.repairFile(index, from: source) }
 	}
+	public func repairFolder(from folder: URL) async throws -> StorageRepairResult {
+		try await mutate { try await $0.repairFolder(from: folder) }
+	}
 	public func exportMetadata() async throws -> Data {
 		try await serial {
 			// Exporting does not mutate payload or picker state and need not disconnect peers.

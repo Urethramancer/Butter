@@ -5,6 +5,28 @@ import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 @Suite struct LazyVerificationTests {
+	@Test func passingPiecesAreAdvertisedBeforeTheNextCheckCompletes() async throws {
+		try await transferFixture { fixture in
+			let entered = AsyncStream<Void>.makeStream(), release = DispatchSemaphore(value: 0)
+			defer { release.signal() }
+			let storage = try await TorrentStorage.open(metadata: fixture.metadata, destination: fixture.root.appendingPathComponent("source"), stateDirectory: fixture.root.appendingPathComponent("progressive-state"), checkpointPolicy: .managed, event: { event in
+				if event == .pieceHashed(1) { entered.continuation.yield(()); _ = release.wait(timeout: .now() + 6) }
+			})
+			fixture.stores.append(storage)
+			let transfer = try await TCPTransfer.open(metadata: fixture.metadata, storage: storage, configuration: plainTransferConfiguration())
+			fixture.engines.append(transfer)
+			try await engineDeadline { for await _ in entered.stream { return }; throw PeerFailure.closed }
+			let partial = await transfer.snapshot()
+			#expect(partial.verifiedPieces == [0] && !partial.complete)
+			let peer = try await fixture.scripted(transfer); defer { peer.stream.close() }
+			while true {
+				if case .bitfield(let bytes) = try await peer.next() { #expect(bytes[0] == 128); break }
+			}
+			release.signal()
+			try await engineDeadline { try await transfer.waitUntilComplete() }
+			#expect(await transfer.snapshot().downloaded == 0)
+		}
+	}
 	@Test(arguments: [false, true]) func incrementalExternalCopiesWaitForStabilityAndRespectPause(pause: Bool) async throws {
 		try await transferFixture { fixture in
 			let clock = EngineClock(), destination = fixture.root.appendingPathComponent("external")

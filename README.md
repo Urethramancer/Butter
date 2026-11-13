@@ -1,7 +1,11 @@
 # Butter
 
 The inspector's **Repair from local file…** action can replace a missing or
-damaged file from a separate local copy. Butter pauses peer I/O, checks staged
+damaged file from a separate local copy. **Repair from Folder…** in a torrent's
+context menu repairs that torrent, independently of the selection. Choose its
+original root folder or the parent; partial folders are accepted, unrelated
+files are ignored and ambiguous root matches are rejected. Renamed destinations
+and file selection are preserved. Butter pauses peer I/O, checks staged
 bytes and preserves the source. Pieces awaiting neighbouring files remain
 pending; checkable hash mismatches are rejected. Interrupted publication keeps
 a recovery journal and owned backups until the new checkpoint is durable.

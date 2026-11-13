@@ -3,7 +3,7 @@ import Testing
 import ButterTorrentMetadata
 @testable import ButterTorrentStorage
 
-private func repairMetadata() throws -> TorrentMetadata {
+func repairMetadata() throws -> TorrentMetadata {
 	let bytes = Data(0..<12)
 	let files: [BencodeValue] = [("a", 5), ("b", 7)].map { name, size in
 		.dictionary([Data("path".utf8): .list([.bytes(Data(name.utf8))]), Data("length".utf8): .integer(Int64(size))])
@@ -46,7 +46,7 @@ private func repairMetadata() throws -> TorrentMetadata {
 			try await storage.shutdown()
 		}
 	}
-	@Test(arguments: ["v1", "v2", "hybrid"]) func repairAuthenticatesEveryFormat(_ format: String) async throws {
+	@Test(arguments: ["v1", "v2", "hybrid", "hybrid-missing-layers"]) func repairAuthenticatesEveryFormat(_ format: String) async throws {
 		try await storageFixture { root in
 			let source = root.appendingPathComponent("payload"), bytes = Data(repeating: 31, count: 32771)
 			try bytes.write(to: source)
@@ -54,11 +54,11 @@ private func repairMetadata() throws -> TorrentMetadata {
 			var document = hybrid.document.root.dictionary!, info = hybrid.document.root["info"]!.dictionary!
 			for key in format == "v1" ? ["meta version", "file tree"] : format == "v2" ? ["pieces", "length"] : [] { info[Data(key.utf8)] = nil }
 			document[Data("info".utf8)] = .dictionary(info)
-			if format == "v1" { document[Data("piece layers".utf8)] = nil }
+			if format == "v1" || format == "hybrid-missing-layers" { document[Data("piece layers".utf8)] = nil }
 			let metadata = try TorrentMetadata(BencodeValue.dictionary(document).encoded())
 			let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"))
 			let result = try await storage.repairFile(0, from: source)
-			#expect(result.verifiedPieces == 3 && result.pendingPieces == 0)
+			#expect(result.verifiedPieces == (format == "hybrid-missing-layers" ? 0 : 3) && result.pendingPieces == (format == "hybrid-missing-layers" ? 3 : 0))
 			#expect(try Data(contentsOf: source) == bytes)
 			try await storage.shutdown()
 		}

@@ -2,7 +2,7 @@
 # Headless native storage, including real volume failures and killed child processes.
 set -eu
 cd "$(dirname "$0")/.."
-swift test --package-path Packages/ButterTorrent --scratch-path .build/ButterTorrent --filter ButterTorrentStorageTests
+swift test --no-parallel --package-path Packages/ButterTorrent --scratch-path .build/ButterTorrent --filter ButterTorrentStorageTests
 bin=$(swift build --package-path Packages/ButterTorrent --scratch-path .build/ButterTorrent --show-bin-path)
 work=$(mktemp -d /tmp/butter-native-storage.XXXXXX)
 mounted=false

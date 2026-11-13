@@ -108,6 +108,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		case "trash": _ = try await storage.trash(directory: target)
 		case "import": try await storage.importFiles(from: root.appendingPathComponent("seed"))
 		case "repair": _ = try await storage.repairFile(0, from: root.appendingPathComponent("seed/bundle/" + name(0)))
+		case "repair-folder": _ = try await storage.repairFolder(from: root.appendingPathComponent("seed"))
 		case "select": try await storage.select(metadata.inspection.files.map { !$0.pad })
 		case "atomic":
 			for generation in 0..<10000 {
@@ -147,10 +148,12 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 		try require(!process.isRunning, "Child failed to terminate")
 	}
 	static func repairInterruptions(root: URL) async throws {
-		for boundary in ["journal", "repair-backup-0", "published-0", "entry-0", "checkpoint"] {
-			let work = root.appendingPathComponent(boundary), metadata = try await prepare(work)
-			try Data(repeating: 255, count: 65536).write(to: work.appendingPathComponent("data/bundle/" + name(0)))
-			try await stopChild(work, operation: "repair", boundary: boundary, target: work)
+		let boundaries = ["journal", "repair-backup-0", "published-0", "entry-0", "checkpoint"]
+		let cases = boundaries.map { ("repair", $0) } + (boundaries + ["repair-backup-1", "published-1", "entry-1"]).map { ("repair-folder", $0) }
+		for (operation, boundary) in cases {
+			let work = root.appendingPathComponent(operation + "-" + boundary), metadata = try await prepare(work)
+			for index in 0..<(operation == "repair" ? 1 : 8) { try Data(repeating: 255, count: 65536).write(to: work.appendingPathComponent("data/bundle/" + name(index))) }
+			try await stopChild(work, operation: operation, boundary: boundary, target: work)
 			try fm.removeItem(at: work.appendingPathComponent("seed"))
 			let storage = try await TorrentStorage.open(metadata: metadata, destination: work.appendingPathComponent("data"), stateDirectory: work.appendingPathComponent("state"))
 			try require(try await storage.snapshot().needsRecovery, "Repair lost its durable journal")
@@ -160,7 +163,7 @@ private func name(_ index: Int) -> String { String(format: "file-%02d", index) }
 			for index in 0..<8 { try require(try Data(contentsOf: work.appendingPathComponent("data/bundle/" + name(index))) == contents(index), "Repair recovery changed payload") }
 			try require(try fm.contentsOfDirectory(atPath: work.appendingPathComponent("data/bundle").path).count == 8, "Repair left owned staging files")
 			try await storage.shutdown()
-			print("PASS: killed repair/\(boundary); recovered without source files")
+			print("PASS: killed \(operation)/\(boundary); recovered without source files")
 		}
 	}
 	static func interruptions(root: URL, volume: URL) async throws {

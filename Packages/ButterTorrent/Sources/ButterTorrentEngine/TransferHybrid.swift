@@ -39,7 +39,14 @@ extension TCPTransfer {
 
 	func refreshAuthenticatedPieces() async throws {
 		let available = try await storage.availableHashes()
+		let added = available.subtracting(hashReady)
 		hashReady.formUnion(available)
+		if !added.isEmpty {
+			for piece in added { locallyChecked.remove(piece) }
+			let snapshot = try await storage.snapshot()
+			pendingLocalChecks = try PieceBitfield(count: storage.layout.pieceCount, bytes: snapshot.uncheckedPieces)
+			backgroundRecoveryCursor = 0; scheduleBackgroundRecovery()
+		}
 		// Wanted pieces are fixed and authenticated hashes only accumulate.
 		if !wantedHashesReady { wantedHashesReady = picker.wanted.isSubset(of: hashReady) }
 		for piece in picker.staged.intersection(available).sorted() where picker.staged.contains(piece) {

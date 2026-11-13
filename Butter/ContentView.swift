@@ -142,6 +142,7 @@ struct TransferMenu: View {
 		Menu("Priority") { PriorityMenu(ids: ids) }
 		Divider(); Button("Rename…") { store.renameTorrent(torrent) }.help("Change this transfer’s display name.")
 		Button("Verify Local Data") { Task { for id in ids { await store.command("recheck", id: id) } } }.disabled(!torrent.metadata).help("Hash local data again and retry damaged or missing pieces.")
+		Button("Repair from Folder…") { store.repairFolder(torrent) }.disabled(!torrent.metadata).help("Repair this torrent from matching local files, preserving the source folder.")
 		Button("Retry Completion Move") { Task { await store.retryMove(torrent) } }.disabled(!torrent.complete).help("Retry moving completed data to the final destination.")
 		Button("Copy Magnet Link") { Task { await store.copyMagnet(torrent.id) } }.disabled(!torrent.metadata).help("Copy this torrent’s magnet link to the clipboard.")
 		Button("Export Torrent…") { store.export(torrent) }.disabled(!torrent.metadata).help("Save a torrent file with its original swarm identity.")

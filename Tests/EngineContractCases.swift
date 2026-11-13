@@ -161,6 +161,13 @@ enum EngineContractCases {
 		try require(try Data(contentsOf: repairSource) == bytes, "Repair modified its source")
 		let repairedSnapshot = try await engine.snapshot()
 		try require(repairedSnapshot.transfers[0].complete && repairedSnapshot.transfers[0].state == "Paused", "Repair changed the paused state or lost verified progress")
+		try Data(repeating: 255, count: bytes.count).write(to: source)
+		let repairFolder = root.appendingPathComponent("repair-folder")
+		try fm.createDirectory(at: repairFolder, withIntermediateDirectories: true)
+		try bytes.write(to: repairFolder.appendingPathComponent("fixture.bin"))
+		let folderResult = try object(await engine.perform("repairFolder", ["id": "fixture", "folder": repairFolder.path]))
+		try require(folderResult["repairedFiles"] as? Int == 1 && folderResult["pendingPieces"] as? Int == 0, "Folder repair command lost its result counts")
+		try require(try Data(contentsOf: repairFolder.appendingPathComponent("fixture.bin")) == bytes, "Folder repair modified its source")
 		#endif
 		_ = try await engine.perform("select", ["id": "fixture", "selected": [0]])
 		_ = try await wait(engine) { $0.transfers.first?.files.first?.selected == false }

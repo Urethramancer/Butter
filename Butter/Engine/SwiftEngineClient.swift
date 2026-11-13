@@ -53,6 +53,7 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 			case "retry": try await session.retry(id: id)
 			case "recheck": try await session.recheck(id: id)
 			case "repairFile": return try JSONEncoder().encode(await session.repairFile(id: id, index: input.integer("index"), source: input.absolutePath("source")))
+			case "repairFolder": return try JSONEncoder().encode(await session.repairFolder(id: id, folder: input.absolutePath("folder")))
 			case "select": try await session.changeStorage(id: id, change: .select(input.selection(required: true)!))
 			case "rename": try await session.changeStorage(id: id, change: .rename(input.renames()))
 			case "move": try await session.changeStorage(id: id, change: .move(input.absolutePath("destination")))
@@ -141,7 +142,7 @@ actor NativeSnapshotMapper {
 				let sample = Sample(time: now, down: seed.downloaded, up: 0), rates = speed(sample, after: peers[seed.id]); nextPeers[seed.id] = sample
 				mappedPeers.append(PeerSnapshot(address: URL(string: seed.url)?.host ?? "", client: "Web seed", down: rates.0, up: 0, utp: false))
 			}
-			let complete = done == wanted
+			let complete = done == wanted && (wire?.complete ?? true) && row.activity != .checking && row.activity != .repairing
 			let activity: String?
 			switch row.activity { case .checking: activity = "Checking"; case .moving: activity = "Moving"; case .renaming: activity = "Renaming"; case .repairing: activity = "Repairing"; case nil: activity = disk.pendingVerificationCount > 0 ? (row.state.running ? "Checking" : "Verification pending") : nil }
 			rows.append(TransferSnapshot(id: row.id, name: metadata.inspection.name, path: disk.destination.path,

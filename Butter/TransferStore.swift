@@ -336,11 +336,18 @@ struct AddRequest: Identifiable {
 		Task { await command("rename", id: torrent.id, extra: ["changes": changes]) }
 	}
 	func repairFile(_ index: Int, torrent: TransferSnapshot) {
-		let panel = NSOpenPanel(); panel.title = "Repair from local file"
-		panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+		chooseRepair(torrent, index: index)
+	}
+	func repairFolder(_ torrent: TransferSnapshot) { chooseRepair(torrent, index: nil) }
+	private func chooseRepair(_ torrent: TransferSnapshot, index: Int?) {
+		let panel = NSOpenPanel(); panel.title = index == nil ? "Repair from Folder" : "Repair from local file"
+		panel.canChooseFiles = index != nil; panel.canChooseDirectories = index == nil; panel.allowsMultipleSelection = false
 		panel.begin { response in
 			guard response == .OK, let url = panel.url else { return }
-			Task { @MainActor in await self.performRepair("repairFile", torrent: torrent, extra: ["index": index, "source": url.path]) }
+			Task { @MainActor in
+				if let index { await self.performRepair("repairFile", torrent: torrent, extra: ["index": index, "source": url.path]) }
+				else { await self.performRepair("repairFolder", torrent: torrent, extra: ["folder": url.path]) }
+			}
 		}
 	}
 	private func performRepair(_ command: String, torrent: TransferSnapshot, extra: [String: Any]) async {

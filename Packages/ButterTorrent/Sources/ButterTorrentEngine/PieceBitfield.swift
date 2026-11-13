@@ -15,5 +15,6 @@ struct PieceBitfield: Sendable {
 	}
 	func contains(_ piece: Int) -> Bool { (0..<count).contains(piece) && bytes[piece / 8] & (128 >> (piece % 8)) != 0 }
 	mutating func insert(_ piece: Int) { bytes[piece / 8] |= UInt8(128 >> (piece % 8)) }
+	mutating func remove(_ piece: Int) { bytes[piece / 8] &= ~UInt8(128 >> (piece % 8)) }
 	var pieces: [Int] { (0..<count).filter(contains) }
 }

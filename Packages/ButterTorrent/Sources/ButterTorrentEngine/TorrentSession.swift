@@ -272,10 +272,16 @@ public actor TorrentSession {
 		}
 	}
 	public func repairFile(id: String, index: Int, source: URL) async throws -> StorageRepairResult {
+		try await repair(id: id) { try await $0.repairFile(index, from: source) }
+	}
+	public func repairFolder(id: String, folder: URL) async throws -> StorageRepairResult {
+		try await repair(id: id) { try await $0.repairFolder(from: folder) }
+	}
+	private func repair(id: String, operation: (ManagedTransfer) async throws -> StorageRepairResult) async throws -> StorageRepairResult {
 		try await serial(id: id) {
 			let entry = try self.entry(id); entry.activity = .repairing; defer { entry.activity = nil }
 			do {
-				let result = try await entry.owner.repairFile(index, from: source)
+				let result = try await operation(entry.owner)
 				entry.last = try await entry.owner.snapshot(); entry.error = ""
 				return result
 			} catch { entry.error = error.localizedDescription; throw error }
