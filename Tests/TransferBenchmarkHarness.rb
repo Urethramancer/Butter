@@ -32,18 +32,27 @@ module TransferBenchmarkHarness
 		Process.waitpid(pid)
 	rescue Errno::ESRCH, Errno::ECHILD
 	end
-	def self.run_bounded(command, log, timeout: 600)
-		pid = Process.spawn(*command, out: File::NULL, err: log, pgroup: true)
+	def self.run_bounded(command, log, timeout: 600, output: File::NULL)
+		pid = Process.spawn(*command, out: output, err: log, pgroup: true)
 		deadline = now + timeout
 		loop do
 			if (result = Process.waitpid2(pid, Process::WNOHANG))
 				return result[1].success?
 			end
-			raise "Reopen deadline: #{log}" if now >= deadline
+			raise "Command deadline: #{log}" if now >= deadline
 			sleep 0.01
 		end
 	ensure
 		terminate(pid) if pid
+	end
+
+	def self.memory_snapshot(target, prefix, phase)
+		[['vmmap', ['-summary'], 'REGION TYPE'], ['heap', ['-s'], 'All zones:']].to_h do |tool, arguments, marker|
+			path = "#{prefix}.#{phase}.#{tool}.txt"
+			raise "Memory snapshot failed: #{phase}/#{tool}" unless run_bounded(["/usr/bin/#{tool}", *arguments, target.to_s], "#{path}.err", timeout: 10, output: path)
+			raise "Incomplete memory snapshot: #{phase}/#{tool}" unless File.read(path).include?(marker)
+			[tool, path]
+		end
 	end
 
 	# Register before starting Instruments, so its start notification cannot be lost.
@@ -209,7 +218,10 @@ module TransferBenchmarkHarness
 			loop do
 				if (result = Process.waitpid2(@pid, Process::WNOHANG))
 					@reaped = true
-					raise "Child failed (#{result[1]}): #{@log}" unless result[1].success?
+					unless result[1].success?
+						tail = File.binread(@log, 4096, [File.size(@log) - 4096, 0].max)
+						raise "Child failed (#{result[1]}): #{@log}\n#{tail}"
+					end
 					break
 				end
 				raise "Child shutdown deadline: #{@log}" if TransferBenchmarkHarness.now >= finish_by
@@ -337,10 +349,10 @@ module TransferBenchmarkHarness
 			@commands = { 'Swift' => [swift], 'libtorrent' => [reference] }
 			@source_commands = { 'current' => [swift] }; @source_commands['previous'] = [previous] if previous
 			@source_comparison = !previous.nil?
-			raise 'Source comparison cannot use smoke/profiling' if @source_comparison && (smoke || profile)
+			raise 'Source comparison cannot use smoke' if @source_comparison && smoke
 			@output, @work, @smoke, @profile = output, work, smoke, profile
 			@profiler = ENV.fetch('BUTTER_BENCHMARK_PROFILER', 'sample')
-			raise 'Unknown benchmark profiler' unless %w[sample time-profiler file-activity].include?(@profiler)
+			raise 'Unknown benchmark profiler' unless %w[sample time-profiler file-activity heap].include?(@profiler)
 			raise 'Instrumented profiling requires --profile' if !profile && @profiler != 'sample'
 			@trials = []
 			if baseline
@@ -386,9 +398,15 @@ module TransferBenchmarkHarness
 				raise 'Metadata payload byte count mismatch' unless children.all? { |child| child.phase('ready').fetch('payload_bytes') == fixture['bytes'] }
 				if @profile && @profiler != 'sample'
 					tested = direction == 'download' ? down : seed
-					trace = TimeProfiler.new(tested.phase('ready').fetch('pid'), File.join(@output, id), filesystem: @profiler == 'file-activity')
-					trace.wait_ready(children)
-					record[:profiler] = { name: @profiler == 'file-activity' ? 'File Activity + Time Profiler' : 'Time Profiler', target: engine, attached_before_start: true, counterpart_instrumented: false, capture_window: @profiler == 'file-activity' ? 'requested trailing 1s before durable completion' : 'whole transfer through durable completion' }
+					if @profiler == 'heap'
+						record[:profiler] = { name: 'Heap and VM snapshots', target: engine, target_pid: tested.phase('ready').fetch('pid'), counterpart_instrumented: false,
+							method: 'Ready, verified and durable gate snapshots; intrusive diagnostics, not peak RSS, allocation churn or timing acceptance', snapshots: {} }
+						record[:profiler][:snapshots][:ready] = TransferBenchmarkHarness.memory_snapshot(tested.phase('ready').fetch('pid'), File.join(@output, id), 'ready')
+					else
+						trace = TimeProfiler.new(tested.phase('ready').fetch('pid'), File.join(@output, id), filesystem: @profiler == 'file-activity')
+						trace.wait_ready(children)
+						record[:profiler] = { name: @profiler == 'file-activity' ? 'File Activity + Time Profiler' : 'Time Profiler', target: engine, attached_before_start: true, counterpart_instrumented: false, capture_window: @profiler == 'file-activity' ? 'requested trailing 1s before durable completion' : 'whole transfer through durable completion' }
+					end
 				end
 				seed.send_command('start'); down.send_command('start', ports: seed.phase('ready').fetch('ports'))
 				if @profile && @profiler == 'sample'
@@ -401,8 +419,14 @@ module TransferBenchmarkHarness
 				TransferBenchmarkHarness.wait(children, [[down, 'verified']], timeout: timeout)
 				seed.send_command('verified')
 				TransferBenchmarkHarness.wait(children, [[seed, 'verified']], timeout: timeout)
+				if @profile && @profiler == 'heap'
+					record[:profiler][:snapshots][:verified] = TransferBenchmarkHarness.memory_snapshot(tested.phase('ready').fetch('pid'), File.join(@output, id), 'verified')
+				end
 				children.each { |child| child.send_command('persist') }
 				TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'durable'] }, timeout: timeout)
+				if @profile && @profiler == 'heap'
+					record[:profiler][:snapshots][:durable] = TransferBenchmarkHarness.memory_snapshot(tested.phase('ready').fetch('pid'), File.join(@output, id), 'durable')
+				end
 				trace.finish if trace
 				children.each { |child| child.send_command('stop') }
 				TransferBenchmarkHarness.wait(children, children.map { |child| [child, 'stopped'] }, timeout: timeout)
@@ -461,6 +485,13 @@ module TransferBenchmarkHarness
 			end
 			result
 		end
+		def profile_source_case(fixture, format, direction, seed)
+			order = %w[previous current].shuffle(random: Random.new(seed))
+			order.each { |source| %w[Swift libtorrent].each { |engine| trial(fixture, format, direction, engine, 0, false, source: source) } }
+			rows = @trials.select { |r| r.values_at(:case, :format, :direction) == [fixture['case'], format, direction] }
+			{ status: rows.size == 4 && rows.all? { |r| r[:accepted] } ? 'profile-source-only' : 'failed', profiled: true, source_order: order,
+				method: 'One diagnostic capture per engine/source; no acceptance or source-ratio inference' }
+		end
 		def run(fixtures)
 			Signal.trap('TERM') { raise Interrupt, 'Benchmark terminated' }
 			results = []
@@ -476,6 +507,10 @@ module TransferBenchmarkHarness
 						seed = 11011 + index * 100 + format_index * 10 + direction_index
 						key = { case: fixture['case'], format: format, direction: direction, order_seed: seed }
 						if @source_comparison
+							if @profile
+								results << key.merge(profile_source_case(fixture, format, direction, seed))
+								File.write(File.join(@output, 'summary.json'), JSON.pretty_generate(results)); next
+							end
 							next unless TransferBenchmarkHarness.selected_case?(fixture['case'], format, direction, SOURCE_CASES)
 							results << key.merge(source_case(fixture, format, direction, seed))
 							File.write(File.join(@output, 'summary.json'), JSON.pretty_generate(results)); next
@@ -514,9 +549,9 @@ end
 
 if $PROGRAM_NAME == __FILE__
 	swift, reference, output, work, mode, previous = ARGV
-	raise 'Previous source driver required' if mode == '--compare-source' && previous.nil?
+	raise 'Previous source driver required' if %w[--compare-source --profile-source].include?(mode) && previous.nil?
 	FileUtils.mkdir_p(output)
 	manifest = JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
 	FileUtils.cp(File.join(work, 'fixtures', 'manifest.json'), File.join(output, 'fixtures.json'))
-	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: mode == '--profile', previous: mode == '--compare-source' ? previous : nil).run(manifest)
+	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: %w[--profile --profile-source].include?(mode), previous: %w[--compare-source --profile-source].include?(mode) ? previous : nil).run(manifest)
 end

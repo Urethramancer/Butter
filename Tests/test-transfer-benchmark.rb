@@ -1,8 +1,67 @@
 require 'minitest/autorun'
+require 'open3'
 require_relative 'TransferBenchmarkHarness'
 
 class TransferBenchmarkHarnessTests < Minitest::Test
 	H = TransferBenchmarkHarness
+	def test_memory_profile_cli_rejects_timing_and_missing_source_revision_before_building
+		Dir.mktmpdir('butter-profile-cli') do |root|
+			[['--full', 'with --profile'], ['--profile-source', 'PREVIOUS_REVISION']].each do |mode, message|
+				output = File.join(root, mode)
+				text, status = Open3.capture2e({ 'BUTTER_BENCHMARK_PROFILER' => 'heap', 'BUTTER_BENCHMARK_PREVIOUS_REVISION' => nil }, File.expand_path('../Scripts/test-benchmark.sh', __dir__), mode, output)
+				assert_equal 2, status.exitstatus
+				assert_includes text, message
+				refute File.exist?(output)
+			end
+		end
+	end
+	def test_bounded_commands_capture_stdout_separately_from_errors
+		Dir.mktmpdir('butter-command-output') do |root|
+			output, log = File.join(root, 'stdout'), File.join(root, 'stderr')
+			assert H.run_bounded([RbConfig.ruby, '-e', 'puts "report"; warn "diagnostic"'], log, timeout: 2, output: output)
+			assert_equal "report\n", File.read(output)
+			assert_equal "diagnostic\n", File.read(log)
+		end
+	end
+	def test_memory_snapshots_use_bounded_tools_and_reject_incomplete_or_failed_reports
+		Dir.mktmpdir('butter-memory-snapshots') do |root|
+			[:success, :incomplete, :failed].each do |mode|
+				calls = []
+				capture = lambda do |command, log, timeout:, output:|
+					calls << [command, timeout, output]
+					File.write(output, mode == :incomplete ? '' : 'REGION TYPE; All zones:')
+					mode != :failed
+				end
+				H.stub(:run_bounded, capture) do
+					if mode == :success
+						result = H.memory_snapshot(42, File.join(root, 'target'), 'verified')
+						assert_equal %w[vmmap heap], result.keys
+						assert_equal [['/usr/bin/vmmap', '-summary', '42'], ['/usr/bin/heap', '-s', '42']], calls.map(&:first)
+						assert calls.all? { |_, timeout, output| timeout == 10 && output.include?('.verified.') }
+					else
+						assert_raises(RuntimeError) { H.memory_snapshot(42, File.join(root, 'target'), 'ready') }
+						assert_equal 1, calls.size
+					end
+				end
+			end
+		end
+	end
+	def test_source_profiles_capture_both_engines_without_acceptance_statistics
+		owner = self
+		[true, false].each do |accepted|
+			runner = H::Runner.new('/current', '/reference', '/unused', '/unused', profile: true, previous: '/previous', baseline: nil)
+			runner.define_singleton_method(:trial) do |fixture, format, direction, engine, pair, warmup, source: nil|
+				row = owner.source_trial(source, engine, pair, warmup: warmup)
+				row[:direction] = direction; row[:accepted] = accepted || source != 'previous' || engine != 'Swift'; @trials << row
+			end
+			result = runner.profile_source_case({ 'case' => 'many' }, 'v1', 'download', 17)
+			assert_equal accepted ? 'profile-source-only' : 'failed', result[:status]
+			refute result.key?(:source_ratios)
+			rows = runner.instance_variable_get(:@trials)
+			assert_equal %w[previous current].product(%w[Swift libtorrent]).sort, rows.map { |r| r.values_at(:source_variant, :engine) }.sort
+			assert rows.none? { |r| r[:warmup] }
+		end
+	end
 	def source_trial(source, engine, pair, warmup: false)
 		current = source == 'current'
 		{ case: 'many', format: 'v1', direction: 'seed', source_variant: source, engine: engine, pair: pair, warmup: warmup, accepted: true,
@@ -244,6 +303,7 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 				  puts JSON.generate(phase: phase, time: index + 1, user: index * 0.1, system: index * 0.2, peak_rss: 1000)
 				  STDOUT.flush
 				end
+				if mode == 'exit-after-stopped'; abort 'fixture failed after stopped'; end
 			RUBY
 			children = programs.each_with_index.map do |mode, index|
 				job = File.join(root, "job-#{index}.json"); File.write(job, JSON.generate(mode: mode))
@@ -260,6 +320,13 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 			H.wait(children, [[children[0], 'stopped']], timeout: 3)
 			children[0].finish
 			assert children[0].whole[:peak_rss] > 0
+		end
+	end
+	def test_child_exit_failure_retains_stderr_after_stopped
+		with_children(['exit-after-stopped']) do |children|
+			H.wait(children, [[children[0], 'stopped']], timeout: 3)
+			error = assert_raises(RuntimeError) { children[0].finish }
+			assert_match(/fixture failed after stopped/, error.message)
 		end
 	end
 	def test_deadline_counterpart_failure_and_cleanup

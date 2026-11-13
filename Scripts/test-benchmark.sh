@@ -3,10 +3,13 @@
 set -eu
 cd "$(dirname "$0")/.."
 mode=${1:---full}
-case "$mode" in --full|--smoke|--profile|--compare-source) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--profile|--compare-source] [OUTPUT]' >&2; exit 2 ;; esac
+case "$mode" in --full|--smoke|--profile|--compare-source|--profile-source) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--profile|--compare-source|--profile-source] [OUTPUT]' >&2; exit 2 ;; esac
+if [ "$mode" = --profile-source ] && [ -z "${BUTTER_BENCHMARK_PREVIOUS_REVISION:-}" ]; then
+	echo 'Set BUTTER_BENCHMARK_PREVIOUS_REVISION for --profile-source.' >&2; exit 2
+fi
 case "${BUTTER_BENCHMARK_PROFILER:-sample}:$mode" in
-	sample:*|time-profiler:--profile|file-activity:--profile) ;;
-	*) echo 'Use sample, or time-profiler/file-activity with --profile.' >&2; exit 2 ;;
+	sample:*|time-profiler:--profile|file-activity:--profile|heap:--profile|time-profiler:--profile-source|file-activity:--profile-source|heap:--profile-source) ;;
+	*) echo 'Use sample, or time-profiler/file-activity/heap with --profile or --profile-source.' >&2; exit 2 ;;
 esac
 out=${2:-$PWD/.build/benchmarks/$(date -u +%Y%m%dT%H%M%SZ)}
 mkdir -p "$out"
@@ -34,7 +37,7 @@ swiftc -O -swift-version 6 -parse-as-library -module-cache-path "$work/modules" 
 	Tests/TransferBenchmark.swift -o "$work/TransferBenchmark" >> "$out/build.log" 2>&1
 previous_driver=
 previous_root=
-if [ "$mode" = --compare-source ]; then
+if [ "$mode" = --compare-source ] || [ "$mode" = --profile-source ]; then
 	previous_revision=$(git rev-parse --verify --end-of-options "${BUTTER_BENCHMARK_PREVIOUS_REVISION:-1931e70}^{commit}")
 	previous_root=$work/previous-source
 	git worktree add --detach "$previous_root" "$previous_revision" >> "$out/build.log" 2>&1
@@ -48,6 +51,9 @@ fi
 ruby -rjson -rdigest -ropen3 -rrbconfig -e '
   capture = ->(*cmd) { output, status = Open3.capture2e(*cmd); raise output unless status.success?; output.strip }
   root, out, mode, reference, swift_driver, previous_driver, previous_root = ARGV
+  profiled = %w[--profile --profile-source].include?(mode)
+  profiler = ENV.fetch("BUTTER_BENCHMARK_PROFILER", "sample")
+  profile_window = {"heap" => "ready/verified/durable gate snapshots; intrusive diagnostics, not peak RSS or allocation churn", "file-activity" => "requested trailing 1s before durable completion; diagnostic only", "time-profiler" => "whole transfer through durable completion"}.fetch(profiler, "2s samples after start")
   record = {schema: 1, mode: mode, revision: capture.call("git", "rev-parse", "HEAD"), dirty: capture.call("git", "status", "--short"),
     libtorrent_revision: "6da363d2994f17c0b3c0450d124cf73a31a73847", swift: capture.call("swift", "--version"), clang: capture.call("clang++", "--version"),
     os: capture.call("sw_vers"), machine: capture.call("sysctl", "-n", "hw.model", "hw.memsize", "hw.logicalcpu"),
@@ -57,15 +63,15 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
     transport: "loopback TCP, encryption disabled, PEX/discovery disabled; production request windows",
     cache: "fresh processes and destinations; sources streamed and SHA256 checked before every trial; explicitly warm, no cold-cache claim",
     durability: "Swift native payload fsync then atomic state fsync/rename/directory fsync; its forced completion checkpoint is inside the verified interval. Libtorrent finished precedes pause/flush_cache fence plus explicit payload/directory fsync then resume fsync/rename/directory fsync. Through-durable metrics include both placements.",
-    sampling: mode == "--compare-source" ? "one warm-up per engine/source; fixed six balanced source-order pairs, each with a balanced Swift/native engine-order pair per source; source-comparison-only, no acceptance inference or uncertainty-driven retries" : mode == "--profile" ? "one instrumented pair per selected case; no warm-ups; profile-only, excluded from timing acceptance" : "one warm-up per engine per case, six balanced shuffled pairs; extend inconclusive cases to twelve pairs; smoke uses one pair and 32 MiB",
-    profiler: mode == "--profile" ? {name: ENV.fetch("BUTTER_BENCHMARK_PROFILER", "sample"), capture_window: ENV["BUTTER_BENCHMARK_PROFILER"] == "file-activity" ? "requested trailing 1s before durable completion; diagnostic only" : ENV["BUTTER_BENCHMARK_PROFILER"] == "time-profiler" ? "whole transfer through durable completion" : "2s samples after start", time_profiler_method: "attach tested process before start using Instruments notification; Running samples only; stop after durable; counterpart phase CPU retained, not instrumented"} : nil,
+    sampling: mode == "--compare-source" ? "one warm-up per engine/source; fixed six balanced source-order pairs, each with a balanced Swift/native engine-order pair per source; source-comparison-only, no acceptance inference or uncertainty-driven retries" : profiled ? "one diagnostic trial per engine and source variant per selected case; no warm-ups; excluded from timing acceptance" : "one warm-up per engine per case, six balanced shuffled pairs; extend inconclusive cases to twelve pairs; smoke uses one pair and 32 MiB",
+    profiler: profiled ? {name: profiler, capture_window: profile_window, time_profiler_method: %w[time-profiler file-activity].include?(profiler) ? "attach tested process before start using Instruments notification; Running samples only; stop after durable; counterpart phase CPU retained, not instrumented" : nil} : nil,
     timing: "phase wall/user/system from each driver; CPU/GiB through durable completion; whole process wall/user/system/peak RSS from /usr/bin/time -l, including teardown"}
   files = %w[Tests/TransferBenchmark.swift Tests/TransferBenchmarkReference.hpp Tests/TCPPeerReference.mm Tests/TransferBenchmarkHarness.rb Tests/Reference/CMakeLists.txt Scripts/test-benchmark.sh Scripts/bootstrap-engine.sh]
   record[:harness_sha256] = files.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }
   record[:swift_source_sha256] = Dir.glob("Packages/ButterTorrent/Sources/**/*.swift").sort.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }
   record[:package_sha256] = Digest::SHA256.file("Packages/ButterTorrent/Package.swift").hexdigest
   record[:driver_sha256] = {swift: Digest::SHA256.file(swift_driver).hexdigest, reference: Digest::SHA256.file(reference).hexdigest}
-  if mode == "--compare-source"
+  if %w[--compare-source --profile-source].include?(mode)
     record[:source_comparison] = {previous_revision: capture.call("git", "-C", previous_root, "rev-parse", "HEAD"), current_revision: record[:revision], driver_source: "same current Tests/TransferBenchmark.swift for both engines", native_counterpart: "one identical pinned binary for all sources, engines and counterparts"}
     record[:previous_swift_source_sha256] = Dir.glob(File.join(previous_root, "Packages/ButterTorrent/Sources/**/*.swift")).sort.to_h { |path| [path.delete_prefix(previous_root + "/"), Digest::SHA256.file(path).hexdigest] }
     record[:previous_package_sha256] = Digest::SHA256.file(File.join(previous_root, "Packages/ButterTorrent/Package.swift")).hexdigest
@@ -83,7 +89,7 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
 rm -f "$out/build.log"
 if [ "$mode" = --smoke ]; then "$work/TransferBenchmark" fixture "$work/fixtures" --small
 else "$work/TransferBenchmark" fixture "$work/fixtures"; fi
-if [ "$mode" = --compare-source ]; then
+if [ "$mode" = --compare-source ] || [ "$mode" = --profile-source ]; then
 	ruby Tests/TransferBenchmarkHarness.rb "$work/TransferBenchmark" "$reference" "$out" "$work" "$mode" "$previous_driver"
 else
 	ruby Tests/TransferBenchmarkHarness.rb "$work/TransferBenchmark" "$reference" "$out" "$work" "$mode"

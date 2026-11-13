@@ -364,6 +364,14 @@ costs; CPU parity remains open.
 Setting all three case/format/direction filters with `--profile` selects that
 exact workload, including cases outside the default four-profile set.
 
+Set `BUTTER_BENCHMARK_PROFILER=heap` with `--profile` for bounded `vmmap` then
+`heap` snapshots at ready, verified and durable gates. These intrusive snapshots
+show live heap/VM categories at the gates, not peak RSS or allocation churn.
+They are excluded from timing acceptance. To inspect two source revisions, use
+`--profile-source [OUTPUT]` with an explicit `BUTTER_BENCHMARK_PREVIOUS_REVISION`;
+each selected case captures both engines once for each source with the same
+native counterpart. All ordinary digest/reopen validation and child cleanup remain.
+
 `Scripts/test-benchmark.sh --compare-source [OUTPUT]` diagnoses source changes
 using the same controller and pinned native binary. Set
 `BUTTER_BENCHMARK_PREVIOUS_REVISION` to a compatible commit (default `1931e70`).
