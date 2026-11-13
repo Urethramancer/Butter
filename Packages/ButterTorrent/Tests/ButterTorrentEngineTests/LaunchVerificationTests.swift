@@ -1,10 +1,32 @@
 import Foundation
 import Testing
 import ButterTorrentMetadata
-import ButterTorrentStorage
+@testable import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 extension NativeSessionTests { @Suite struct LaunchVerificationTests {
+	@Test func pendingJournalMakesShutdownIneligibleWithoutBlockingQuit() async throws {
+		try await transferFixture { fixture in
+			let library = fixture.root.appendingPathComponent("library"), source = fixture.root.appendingPathComponent("input.torrent")
+			try fixture.metadata.document.original.write(to: source)
+			let session = TorrentSession(storage: library, configuration: plainTransferConfiguration())
+			do {
+				_ = try await session.add(id: "torrent", source: source, destination: fixture.root.appendingPathComponent("source"))
+				try await session.recheck(id: "torrent")
+				_ = try await session.remove(id: "torrent", retainState: true)
+				let directory = try #require(FileManager.default.contentsOfDirectory(at: library, includingPropertiesForKeys: nil).first { $0.lastPathComponent.hasPrefix(".native-") })
+				let record = try PropertyListDecoder().decode(StorageCheckpoint.self, from: Data(contentsOf: directory.appendingPathComponent("checkpoint.plist")))
+				let journal = StorageJournal(before: record, after: record, entries: [])
+				try journal.encoded().write(to: directory.appendingPathComponent("operation.plist"))
+				try await session.setRestorePolicy(.validateAll)
+				_ = try await session.add(id: "torrent", source: source, destination: fixture.root.appendingPathComponent("source"), restore: true)
+				#expect(try await session.shutdownEligibility() == false)
+				#expect(try await session.snapshot().transfers[0].state.storage.needsRecovery)
+				try await session.retry(id: "torrent")
+				try await session.close()
+			} catch { try? await session.close(); throw error }
+		}
+	}
 	@Test(arguments: ["clean", "unclean", "partial", "dirty"]) func restoredPausedTransfersUseTheLaunchQueue(_ scenario: String) async throws {
 		try await transferFixture { fixture in
 			let source = fixture.root.appendingPathComponent("input.torrent"), library = fixture.root.appendingPathComponent("library")

@@ -459,13 +459,14 @@ public actor TorrentSession {
 			await self.stopTrackers(self.entries)
 			await self.network?.suspendMapping()
 			if let failure { throw failure }
-			var eligible = true
+			var eligible = self.entries.allSatisfy { !$0.closed }
 			for entry in self.entries where !entry.closed {
+				entry.last = try await entry.owner.snapshot()
+				if entry.last.storage.needsRecovery { eligible = false; continue }
 				try await entry.owner.save()
 				entry.last = try await entry.owner.snapshot()
-				let disk = entry.last.storage, progress = TransferProgress(metadata: entry.metadata, storage: disk)
-				if entry.pendingValidation || disk.needsRecovery || !entry.error.isEmpty { eligible = false }
-				if progress.done == progress.wanted && disk.pendingVerificationCount > 0 { eligible = false }
+				let disk = entry.last.storage
+				if entry.pendingValidation || disk.needsRecovery || disk.pendingVerificationCount > 0 || !entry.error.isEmpty { eligible = false }
 			}
 			return eligible
 		}

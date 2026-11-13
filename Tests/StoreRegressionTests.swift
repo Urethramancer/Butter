@@ -144,6 +144,8 @@ enum StoreRegressionTests {
 			try check(result, "Ineligible completion does not prevent quitting")
 			let stopped = try await storage.load()
 			try check(stopped.cleanShutdown == eligible, "Shutdown uses fresh engine eligibility")
+			let added = await store.add(AddRequest(source: "magnet:?xt=test", destination: location.path, start: true))
+			try check(!added && !engine.commands.contains("add"), "Successful shutdown keeps new transfers stopped until termination")
 		}
 		let location = root.appendingPathComponent("marker-true"), engine = FakeEngine()
 		let failing = StateStorage(root: location, write: { _, _ in throw CocoaError(.fileWriteOutOfSpace) })

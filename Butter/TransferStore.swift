@@ -439,8 +439,7 @@ struct AddRequest: Identifiable {
 		var result = shutdownResult!
 		if Task.isCancelled { result = false; _ = await persist() }
 		if !result, cleanMarkerMayBeSet, !(await persist()) { return false }
-		shuttingDown = false
-		if !result { decisions = [:]; startPolling() }
+		if !result { shuttingDown = false; decisions = [:]; startPolling() }
 		return result
 	}
 	private func finishShutdown() async -> Bool {
