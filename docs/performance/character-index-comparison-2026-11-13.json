@@ -1,0 +1,185 @@
+{
+  "case": "many",
+  "format": "hybrid",
+  "direction": "download",
+  "order_seed": 11131,
+  "status": "source-comparison-only",
+  "pairs": 6,
+  "valid_pairs": 6,
+  "variants": {
+    "previous": {
+      "status": "target-unmet",
+      "requires_more_pairs": false,
+      "pairs": 6,
+      "ratios": {
+        "verified_bytes_per_second": {
+          "median": 0.29119302812513254,
+          "lower": 0.2889062627244855,
+          "upper": 0.2987513769557353,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "durable_bytes_per_second": {
+          "median": 0.2925189662906172,
+          "lower": 0.29014805903997687,
+          "upper": 0.30008368006977054,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "cpu_seconds_per_gib": {
+          "median": 3.216213911312651,
+          "lower": 3.0941291621353733,
+          "upper": 3.2651812116580214,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "medians": {
+        "Swift": {
+          "verified_bytes_per_second": 132589421.83981653,
+          "durable_bytes_per_second": 132551234.31272504,
+          "cpu_seconds_per_gib": 8.682813499999998
+        },
+        "libtorrent": {
+          "verified_bytes_per_second": 452821579.3332226,
+          "durable_bytes_per_second": 450729904.0818749,
+          "cpu_seconds_per_gib": 2.70871
+        }
+      },
+      "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+    },
+    "current": {
+      "status": "target-unmet",
+      "requires_more_pairs": false,
+      "pairs": 6,
+      "ratios": {
+        "verified_bytes_per_second": {
+          "median": 0.30391098777861425,
+          "lower": 0.2994120551657426,
+          "upper": 0.3130552722814238,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "durable_bytes_per_second": {
+          "median": 0.3053143520111776,
+          "lower": 0.30071911508085597,
+          "upper": 0.3144813341278044,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "cpu_seconds_per_gib": {
+          "median": 3.0952049665507437,
+          "lower": 3.0422168247930452,
+          "upper": 3.1475283128313425,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "medians": {
+        "Swift": {
+          "verified_bytes_per_second": 137772573.60960326,
+          "durable_bytes_per_second": 137728626.8389814,
+          "cpu_seconds_per_gib": 8.4057125
+        },
+        "libtorrent": {
+          "verified_bytes_per_second": 452860811.4060298,
+          "durable_bytes_per_second": 450585842.3613027,
+          "cpu_seconds_per_gib": 2.705165
+        }
+      },
+      "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+    }
+  },
+  "source_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 0.959057581570534,
+      "lower": 0.9504308685033429,
+      "upper": 0.985953422959746,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 1.0477638020922888,
+      "lower": 1.0194110504599845,
+      "upper": 1.0583678327252504,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "peak_rss": {
+      "median": 0.9966461320314595,
+      "lower": 0.959255690177264,
+      "upper": 1.0004775443628122,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "counterpart_cpu_seconds_per_gib": {
+      "median": 1.0005960232172346,
+      "lower": 0.9661734115480112,
+      "upper": 1.0417418581816176,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "native_control_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 1.0040379807734277,
+      "lower": 0.9692275893158289,
+      "upper": 1.012500313873244,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 1.0023968146478042,
+      "lower": 0.976993288050456,
+      "upper": 1.018765133390916,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "method": "Current/previous within balanced source-order pairs; fixed six pairs; diagnostic only, no acceptance inference or uncertainty-driven retries",
+  "baseline_memory": {
+    "previous": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.24538506760728984,
+      "lower": 0.24125144843568946,
+      "upper": 0.25409546258102533,
+      "maximum_peak_rss_ratio": 0.24856420859177578,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "current": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.24456202233980012,
+      "lower": 0.23996308260267651,
+      "upper": 0.24541176470588236,
+      "maximum_peak_rss_ratio": 0.24029405008040433,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    }
+  },
+  "candidate": "0264db9",
+  "previous": "5148f4b",
+  "decision": "Promising focused CPU/throughput gain; no established RSS/counterpart cost in this case. Broader cases and native validation pending; not acceptance.",
+  "raw": [
+    {
+      "path": ".build/benchmarks/character-index-many-hybrid-source-order/environment.json",
+      "sha256": "8661388eaefc7dfbd954845bb9d49f7a399c4115a32a50931e3e697ac30bc593"
+    },
+    {
+      "path": ".build/benchmarks/character-index-many-hybrid-source-order/fixtures.json",
+      "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+    },
+    {
+      "path": ".build/benchmarks/character-index-many-hybrid-source-order/trials.jsonl",
+      "sha256": "9821ef12096abddc8f31fc03d9d81d49fc5b198ce5f8a838550f0dd225ccb3c5"
+    },
+    {
+      "path": ".build/benchmarks/character-index-many-hybrid-source-order/summary.json",
+      "sha256": "e6ad322d19e2bb07195c71f93e025e532400747fcb7183616eec1e39e25a40f2"
+    }
+  ],
+  "validation": [
+    {
+      "path": ".build/diagnostics/piece-buffer/character-index-package.log",
+      "sha256": "9bc06a5c17162fd6e85cae4e12b7ae0ef68dc427ccb7ef882ebeb3a0c526b34d"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/character-index-corrected-asan.log",
+      "sha256": "37f967692f1f179d93dccce09c70cbff06abeececbc0dac7d1ff4f693b6e7741"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/character-index-corrected-tsan.log",
+      "sha256": "30b75d4e316fa06547c3a99af4d13d83dc8281de2b4788832d4876fe3d00ba1e"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/character-index-corrected-release.log",
+      "sha256": "7f15b05fd5dcf3856c821021d8fb21b687b19fd096ba77168dcc2b504fdc24d8"
+    }
+  ]
+}

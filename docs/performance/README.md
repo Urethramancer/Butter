@@ -1,5 +1,11 @@
 # Swift/libtorrent transfer comparison
 
+[Validated character-index lookup](character-index-results-2026-11-13.md) shows
+CPU −4.1% and throughput +4.8% in many-file hybrid downloads, with no established
+RSS increase. All 28 trials validate; broader/native checks remain pending.
+Both sources include the independently tested cached Unicode-path correction.
+The full matrix below predates these scanner changes.
+
 [Source memory diagnostics](byte-split-memory-profile-2026-11-13.md) validate
 four trials and 24 gate snapshots. Retained/rejected live heap is nearly equal;
 the rejected capture has more dirty empty malloc arenas and stack residency.
@@ -8,7 +14,7 @@ Bounded heap/VM source profiling is now available in the existing harness.
 
 [Per-job autorelease scope](disk-autorelease-results-2026-11-13.md) is rejected
 and reverted: six balanced source pairs establish no CPU, throughput or RSS
-benefit. All 28 trials validate; current production still matches the full matrix.
+benefit. All 28 trials validate; the then-restored source matches the full matrix.
 
 [Isolated UTF-8 separator lookup](byte-split-results-2026-11-13.md) is rejected
 and reverted: six balanced source pairs show CPU −6.0% and throughput +6.3%,
