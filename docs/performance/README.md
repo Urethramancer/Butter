@@ -2,8 +2,8 @@
 
 [Grouped upload publication](upload-publication-results-2026-11-13.md) reduces
 single-file v1 seeding CPU 4.7%, many-file CPU 4.6% and concurrent hybrid CPU
-3.4%. All 112 trials across these seeds and many-file hybrid downloads validate;
-download CPU/throughput/RSS/counterpart CPU remain inconclusive.
+3.4%. All 140 trials across these seeds and many/single-file downloads validate.
+Single-file download RSS falls 0.3%; other download changes remain inconclusive.
 Many-file throughput rises 1.2% and counterpart CPU falls 1.9%. RSS remains
 inconclusive, including a wide single-file interval. The candidate is experimental;
 broader comparisons and final validation remain open.
