@@ -1,5 +1,9 @@
 # Swift/libtorrent transfer comparison
 
+[Per-job autorelease scope](disk-autorelease-results-2026-11-13.md) is rejected
+and reverted: six balanced source pairs establish no CPU, throughput or RSS
+benefit. All 28 trials validate; current production still matches the full matrix.
+
 [Isolated UTF-8 separator lookup](byte-split-results-2026-11-13.md) is rejected
 and reverted: six balanced source pairs show CPU −6.0% and throughput +6.3%,
 but RSS +1.9% [0.8–5.2%]. All 28 trials validate. Lookup alone still has a memory

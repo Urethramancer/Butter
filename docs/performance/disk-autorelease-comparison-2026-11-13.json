@@ -1,0 +1,206 @@
+{
+  "case": "many",
+  "format": "hybrid",
+  "direction": "download",
+  "order_seed": 11131,
+  "status": "source-comparison-only",
+  "pairs": 6,
+  "valid_pairs": 6,
+  "variants": {
+    "previous": {
+      "status": "target-unmet",
+      "requires_more_pairs": false,
+      "pairs": 6,
+      "ratios": {
+        "verified_bytes_per_second": {
+          "median": 0.29233398607584404,
+          "lower": 0.2859734517303174,
+          "upper": 0.30033898576408946,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "durable_bytes_per_second": {
+          "median": 0.29357661303733046,
+          "lower": 0.28745849866302065,
+          "upper": 0.3016784197818435,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "cpu_seconds_per_gib": {
+          "median": 3.2717426385139143,
+          "lower": 3.140837174737916,
+          "upper": 3.3831900598709037,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "medians": {
+        "Swift": {
+          "verified_bytes_per_second": 133721828.86328763,
+          "durable_bytes_per_second": 133678888.467935,
+          "cpu_seconds_per_gib": 8.714747
+        },
+        "libtorrent": {
+          "verified_bytes_per_second": 456191365.1737846,
+          "durable_bytes_per_second": 453977068.6310652,
+          "cpu_seconds_per_gib": 2.6755424999999997
+        }
+      },
+      "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+    },
+    "current": {
+      "status": "target-unmet",
+      "requires_more_pairs": false,
+      "pairs": 6,
+      "ratios": {
+        "verified_bytes_per_second": {
+          "median": 0.29473784754911037,
+          "lower": 0.28453991505374543,
+          "upper": 0.2993707507952909,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "durable_bytes_per_second": {
+          "median": 0.2962016784905279,
+          "lower": 0.28582167354645405,
+          "upper": 0.3006383218308547,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "cpu_seconds_per_gib": {
+          "median": 3.239775086985566,
+          "lower": 3.1893457975536754,
+          "upper": 3.413928344665555,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "medians": {
+        "Swift": {
+          "verified_bytes_per_second": 133905582.54368073,
+          "durable_bytes_per_second": 133864538.43919867,
+          "cpu_seconds_per_gib": 8.748664
+        },
+        "libtorrent": {
+          "verified_bytes_per_second": 457477205.721773,
+          "durable_bytes_per_second": 455284745.7859879,
+          "cpu_seconds_per_gib": 2.6558815
+        }
+      },
+      "memory": "Compare whole-process Swift peak RSS with the fresh baseline; no memory acceptance inferred."
+    }
+  },
+  "source_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 1.000139117137459,
+      "lower": 0.98921513070172,
+      "upper": 1.015953972260391,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 0.9996963422458447,
+      "lower": 0.986918081544616,
+      "upper": 1.0219497434595566,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "peak_rss": {
+      "median": 0.9906035223367697,
+      "lower": 0.948467691209079,
+      "upper": 1.0119753582918982,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "counterpart_cpu_seconds_per_gib": {
+      "median": 0.9943773995945917,
+      "lower": 0.9762901582913401,
+      "upper": 1.0839632209148298,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "native_control_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 0.9983723492911595,
+      "lower": 0.9731868264379749,
+      "upper": 1.019601381336805,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 1.0011212872143216,
+      "lower": 0.9914233994332871,
+      "upper": 1.0159443260213161,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "method": "Current/previous within balanced source-order pairs; fixed six pairs; diagnostic only, no acceptance inference or uncertainty-driven retries",
+  "baseline_memory": {
+    "previous": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.248559670781893,
+      "lower": 0.24380069524913095,
+      "upper": 0.25837264150943395,
+      "maximum_peak_rss_ratio": 0.2602802664828854,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "current": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.2472663139329806,
+      "lower": 0.24209912536443148,
+      "upper": 0.24914555097230406,
+      "maximum_peak_rss_ratio": 0.24351022283482657,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    }
+  },
+  "candidate": "9aa0aa6",
+  "previous": "18ef13e",
+  "decision": "Rejected and reverted: CPU/throughput ratios are effectively one; RSS and counterpart CPU also inconclusive. No null extension or retry.",
+  "restored_source_files_match_full_matrix": 94,
+  "raw": [
+    {
+      "path": ".build/benchmarks/disk-autorelease-many-hybrid-source-order/environment.json",
+      "sha256": "b54e3685ea561c1caccb077ec96ca6f9ddbd19a9f9ffdeb9f954f797b220b6d8"
+    },
+    {
+      "path": ".build/benchmarks/disk-autorelease-many-hybrid-source-order/fixtures.json",
+      "sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e"
+    },
+    {
+      "path": ".build/benchmarks/disk-autorelease-many-hybrid-source-order/trials.jsonl",
+      "sha256": "9621ed6000556057a5d4f65e8e33d3745d3c40716ca113775d7ad3b1862799cb"
+    },
+    {
+      "path": ".build/benchmarks/disk-autorelease-many-hybrid-source-order/summary.json",
+      "sha256": "ff35d61cbe1f503138f4801872fe582e2829d7564014d665fd282820a8914a59"
+    }
+  ],
+  "validation": [
+    {
+      "path": ".build/diagnostics/piece-buffer/disk-autorelease-package.log",
+      "sha256": "e5879d09bf07dde1a2bc6e2ac17cee18d2d3ce99313388883c772a19f1653aa0"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/disk-autorelease-asan.log",
+      "sha256": "e97560a6c75cbd3bfb4d06f2abf40c5a55ebc319b102acbba61898e077b1562b"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/disk-autorelease-tsan.log",
+      "sha256": "75828d5ba11972f1e7e4e53fbf54287d6f2a7a41a8cdfb48991bd801cda3855c"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/disk-autorelease-release.log",
+      "sha256": "57c94238b3c044ac94c0ce88c9cbb3b7ecfbdf40d4d926d0a2574f468c2c7e23"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/disk-autorelease-restored-storage.log",
+      "sha256": "a5d84ebc6d7c2f04d9a1e0e8abe2ab1539839cb706eba4ccd3ee3b9da02ff28f"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/disk-autorelease-restored-release.log",
+      "sha256": "a78b3cd21b70b0363ef355ec40814ce57fd34dad151e6fc5d7dfee973ddb88d1"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/disk-autorelease-restored-benchmark-release.log",
+      "sha256": "1486e02041cf0decbac9a86c93bdec37eeb8dfcb05fc0de61aa277c64bea4d94"
+    },
+    {
+      "path": ".build/diagnostics/piece-buffer/disk-autorelease-restored-bridge.log",
+      "sha256": "fb2532234379f86523c346c3b9945cf3d26215d815dc50d4d99a51a7304fb0d1"
+    }
+  ],
+  "rejected_patch": {
+    "path": ".build/diagnostics/piece-buffer/disk-autorelease-rejected.patch",
+    "sha256": "21b5b9799556e437ea973b8de6f8331e46d37b9c517da09dbe237663e2a02a9f"
+  }
+}
