@@ -8,7 +8,6 @@ public enum StorageDiagnostics {
 		case scans, filesInspected, descriptorOpens, diskJobs, bytesRead, bytesWritten
 		case bytesHashed, sha1Bytes, sha256Bytes, cacheHits, verificationInvalidations
 		case descriptorDuplicates, writeBatches, writeBlocks, writeDescriptorCacheHits
-		case writeParentCacheHits, writeParentInspections, writeParentAccessChecks
 	}
 	enum OpenKind: String { case directoryOpens, fileOpens, atomicStateOpens }
 	private static let totals = Totals()
