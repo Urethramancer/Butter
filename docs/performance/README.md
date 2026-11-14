@@ -110,6 +110,69 @@ hashing. The earlier 18-case profile matrix predates coalescing and remains
 labelled separately in the measurements. Samples describe execution ancestry,
 not measured CPU savings or kernel residence.
 
+## Download write pipeline
+
+The `--write-profile` run at revision `90c48b3` validates **36/36 trials**:
+1 GiB each, one warm-up per mode, then **off, counts, timed, timed, counts, off**
+for each workload below. All modes use one Release binary, production windows,
+the pinned native counterpart, fresh destinations, independent SHA256 validation
+and strict checkpoint reopening. Source and binary fingerprints stayed unchanged.
+Numeric aggregates and trial records remain under ignored output
+`.build/benchmarks/write-profile-20261114`.
+
+Exclusive thread CPU **milliseconds/GiB**, averaged over two timed transfers per
+column. Thread CPU combines user and kernel execution. Elapsed phase totals,
+scope-entry counts, per-entry/job costs, process user/system CPU, counterpart CPU
+and bounded distributions are retained in each workload's `summary.json` report.
+
+| Phase | Single v1 | Many hybrid | Concurrent v2 | Concurrent hybrid |
+| --- | ---: | ---: | ---: | ---: |
+| Setup | 11.0 | 12.2 | 36.9 | 28.9 |
+| Target inspection | 61.7 | 229.6 | 150.1 | 114.3 |
+| Progress invalidation/checkpoint | 9.4 | 10.6 | 19.9 | 16.2 |
+| Packing | 0 | 54.2 | 97.1 | 89.6 |
+| Descriptor acquisition | 259.0 | 356.8 | 530.5 | 412.6 |
+| Prewrite checks | 298.6 | 203.0 | 145.6 | 110.7 |
+| Full-scan fallback | 0.5 | 38.5 | 0.5 | 0.6 |
+| Payload `pwrite` | 371.2 | 204.1 | 375.1 | 308.9 |
+| Postwrite stamping | 52.6 | 9.7 | 26.4 | 19.6 |
+| Cleanup | 168.2 | 309.2 | 511.6 | 433.7 |
+| Unassigned/instrumentation remainder | 384.7 | 149.4 | 295.3 | 231.7 |
+| Total write jobs | 1,616.8 | 1,577.3 | 2,188.9 | 1,766.9 |
+
+Write-job CPU shares of process CPU are **37.2%, 29.9%, 32.0%, 28.0%**, in column
+order. The investigation ranking across these four equally sized workloads is:
+
+1. **Descriptor acquisition and cleanup:** 26–48% of write-job CPU,
+   0.43–1.04 CPU seconds/GiB. Guarded traversal/open/close work is the first target.
+2. **Filesystem observations:** target inspection, prewrite checks and stamping
+   add 14–28%, or 0.24–0.44 seconds/GiB. Preserve their identity, link, permission
+   and replacement guarantees when proposing changes.
+3. **Payload syscalls:** 13–23%, or 0.20–0.38 seconds/GiB. Mean syscall sizes are
+   16, 96, 65 and 81 KiB; mean blocks/job are 7.01, 6.98, 4.34 and 5.53.
+4. **Packing and scans:** packing is at most 5.1%; in-job full scans at most 2.4%.
+   Many-file creation causes 128 mismatch scans/GiB, visiting 16,384 files;
+   another 8,576 file visits/GiB occur outside writes. Every measured mismatch
+   follows an absent stamp. No recorded-file mismatch, in-write checkpoint scan,
+   overlap, budget fallback, syscall retry, short write or failed job is observed.
+
+Counts/off process CPU ratios are **1.063, 1.035, 1.053, 1.035**; timed/off ratios
+are **1.161, 0.991, 1.037, 1.033**. Timed/off transfer-duration ratios are
+**1.229, 1.002, 0.939, 1.069**. Two measurements per mode cannot establish a speedup
+or isolate instrumentation cost from run variation. These are diagnostic ratios,
+with no acceptance inference or timer-cost subtraction. Counters also contribute
+to phase costs; final aggregation/merge lies outside job timers. Exclusive phase
+CPU/elapsed totals plus the explicit remainder reconcile exactly to job totals.
+Summed parallel job elapsed time is not transfer duration.
+
+Before traffic, 10,000-read calibrations report 42 ns resolution for both clocks,
+about 9–10 ns/read for monotonic time and 125–130 ns/read for thread CPU. Histogram
+percentiles are power-of-two upper bounds; individual-job traces are not retained.
+All 91 storage tests, 28 controller tests and focused Address/Thread Sanitizer
+checks pass. Temporary fixtures, drivers and sanitizer/compiler caches are removed.
+Descriptor caching, larger batches, verification and scheduling changes need a
+subsequent plan; these measurements establish costs, not achievable savings.
+
 ## Reproduction
 
 After `Scripts/bootstrap-engine.sh`:
@@ -129,6 +192,10 @@ For separate diagnostics, use `--profile` with `BUTTER_BENCHMARK_PROFILER=time-p
 or `BUTTER_STORAGE_DIAGNOSTICS=1 BUTTER_BENCHMARK_PROFILER=counts`. UI comparisons
 use `Scripts/test-ui-profile.sh`, `BUTTER_UI_COMPARE_SOURCE=1` and
 `BUTTER_UI_PROFILE_PREVIOUS_REVISION`; add `BUTTER_UI_COMPARE_SMOKE=1` for layout checks.
+Use `Scripts/test-benchmark.sh --write-profile OUTPUT` for the fixed write-pipeline
+protocol; it selects off/counts/timed child environments automatically. Separate
+phase timing runs require `BUTTER_STORAGE_WRITE_TIMINGS=1` together with
+`BUTTER_STORAGE_DIAGNOSTICS=1` and a diagnostic command; acceptance runs reject it.
 Instrumented runs supply no timing acceptance evidence. Raw traces/XML are deleted
 after compact extraction unless `BUTTER_PROFILE_KEEP_RAW=1` is explicitly set.
 Fixtures, drivers and temporary compiler caches are removed after each run.
