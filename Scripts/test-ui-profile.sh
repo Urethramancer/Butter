@@ -2,7 +2,7 @@
 # Profiles disposable native views; never opens the user's Butter state.
 set -eu
 cd "$(dirname "$0")/.."
-case "${BUTTER_UI_PROFILE_TREE:-source}" in source|lazy) ;; *) echo 'UI tree must be source or lazy.' >&2; exit 2 ;; esac
+case "${BUTTER_UI_COMPARE_SOURCE:-0}" in 0|1) ;; *) echo 'UI comparison must be 0 or 1.' >&2; exit 2 ;; esac
 ui_profile_out=${1:-$PWD/.build/experiments/cpu-profiles/application-ui}
 mkdir -p "$ui_profile_out"
 ui_profile_out=$(cd "$ui_profile_out" && pwd)
@@ -11,11 +11,21 @@ ui_profile_work=$(mktemp -d "${TMPDIR:-/tmp}/butter-ui-profile.XXXXXX")
 trap 'rm -rf "$ui_profile_work"' EXIT HUP INT TERM
 swift build -c release --package-path Packages/ButterTorrent --scratch-path .build/benchmark-release > "$ui_profile_out/build.log" 2>&1
 ui_profile_bin=$(swift build -c release --package-path Packages/ButterTorrent --scratch-path .build/benchmark-release --show-bin-path)
-cp Butter/UI/TorrentInspector.swift "$ui_profile_work/TorrentInspector.swift"
-if [ "${BUTTER_UI_PROFILE_TREE:-source}" = lazy ]; then
-	ruby -e 'path = ARGV.fetch(0); source = File.read(path); before = "if node.matches(search) {\n\t\t\tVStack(alignment: .leading, spacing: 4)"; raise "File row not found" unless source.include?(before); File.write(path, source.sub(before, before.sub("VStack", "LazyVStack")))' "$ui_profile_work/TorrentInspector.swift"
+ui_profile_variants=current
+ui_profile_previous=
+if [ "${BUTTER_UI_COMPARE_SOURCE:-0}" = 1 ]; then
+	ui_profile_variants='previous current'
+	ui_profile_previous=$(git rev-parse --verify --end-of-options "${BUTTER_UI_PROFILE_PREVIOUS_REVISION:-HEAD}^{commit}")
 fi
-cat >> "$ui_profile_work/TorrentInspector.swift" <<'SWIFT'
+for ui_profile_variant in $ui_profile_variants; do
+mkdir -p "$ui_profile_work/$ui_profile_variant"
+ui_profile_inspector=$ui_profile_work/$ui_profile_variant/TorrentInspector.swift
+if [ "$ui_profile_variant" = previous ]; then
+	git show "$ui_profile_previous:Butter/UI/TorrentInspector.swift" > "$ui_profile_inspector"
+else
+	cp Butter/UI/TorrentInspector.swift "$ui_profile_inspector"
+fi
+cat >> "$ui_profile_inspector" <<'SWIFT'
 
 // Test-only initial selection; production layout and defaults remain unchanged.
 extension TorrentInspector {
@@ -26,24 +36,33 @@ extension TorrentInspector {
 }
 SWIFT
 set --
+if rg -q '^struct FileTreeEntry:' "$ui_profile_inspector"; then set -- -D BUTTER_FILE_TREE_AVAILABLE; fi
 for ui_profile_source in Butter/UI/*.swift; do
 	[ "$ui_profile_source" = Butter/UI/TorrentInspector.swift ] || set -- "$@" "$ui_profile_source"
 done
 swiftc -O -swift-version 5 -parse-as-library -module-cache-path "$ui_profile_work/modules" \
-	Butter/Core/*.swift Butter/Engine/*.swift Butter/TransferStore.swift Butter/ContentView.swift "$@" "$ui_profile_work/TorrentInspector.swift" Tests/ApplicationUIProfile.swift \
+	Butter/Core/*.swift Butter/Engine/*.swift Butter/TransferStore.swift Butter/ContentView.swift "$@" "$ui_profile_inspector" Tests/ApplicationUIProfile.swift Tests/FileTreeTests.swift \
 	-I "$ui_profile_bin" -L "$ui_profile_bin" -lButterTorrentEngine -lButterTorrentStorage -lButterTorrentNetworking -lButterTorrentMetadata \
-	-framework AppKit -framework SystemConfiguration -o "$ui_profile_work/ApplicationUIProfile" >> "$ui_profile_out/build.log" 2>&1
+	-framework AppKit -framework SystemConfiguration -o "$ui_profile_work/ApplicationUIProfile-$ui_profile_variant" >> "$ui_profile_out/build.log" 2>&1
+done
+if rg -q '^struct FileTreeEntry:' Butter/UI/TorrentInspector.swift; then "$ui_profile_work/ApplicationUIProfile-current" --test-file-tree >> "$ui_profile_out/build.log" 2>&1; fi
+if [ "${BUTTER_UI_PROFILE_VALIDATE_ONLY:-0}" = 1 ]; then exit; fi
 ruby -rjson -rdigest -ropen3 -e '
  capture = ->(*args) { value, status = Open3.capture2e(*args); raise value unless status.success?; value.strip }
- files = Dir.glob("Butter/{Core,Engine,UI}/*.swift") + %w[Butter/ContentView.swift Butter/TransferStore.swift Tests/ApplicationUIProfile.swift Scripts/test-ui-profile.sh Tests/TransferBenchmarkHarness.rb]
+ files = Dir.glob("Butter/{Core,Engine,UI}/*.swift") + %w[Butter/ContentView.swift Butter/TransferStore.swift Tests/ApplicationUIProfile.swift Tests/FileTreeTests.swift Tests/ApplicationUIComparison.rb Scripts/test-ui-profile.sh Tests/TransferBenchmarkHarness.rb Tests/ProfileAttribution.rb]
  files += Dir.glob("Packages/ButterTorrent/Sources/**/*.swift")
  puts JSON.pretty_generate({revision: capture.call("git", "rev-parse", "HEAD"), dirty: capture.call("git", "status", "--short"), swift: capture.call("swift", "--version"), os: capture.call("sw_vers"),
-  scope: "Synthetic models rendered by production ContentView and optional adjacent TorrentInspector, with test-only Files initial selection; includes window creation and 12 updates one second apart; 2000 files or 200 torrents with 512 files each; no payload or networking; not timing acceptance",
+  scope: "Synthetic models rendered by production ContentView and optional adjacent TorrentInspector, with test-only Files initial selection; includes window creation and 12 updates one second apart; 2000 files or 200 torrents with 512 files each; no payload or networking",
+  sampling: ENV["BUTTER_UI_COMPARE_SMOKE"] == "1" ? "Two uninstrumented functional checks with final frames; no timing acceptance" : ENV["BUTTER_UI_COMPARE_SOURCE"] == "1" ? "Uninstrumented fixed workload: four warm-ups and six balanced ABBA/BAAB blocks (24 measured samples), no repetitions" : "Single instrumented diagnostics, not timing acceptance",
   visible_only: ENV["BUTTER_UI_PROFILE_VISIBLE_ONLY"] == "1",
-  selected_case: ENV["BUTTER_UI_PROFILE_CASE"], tree: ENV.fetch("BUTTER_UI_PROFILE_TREE", "source"), keep_raw: ENV["BUTTER_PROFILE_KEEP_RAW"] == "1",
-  test_inspector_sha256: Digest::SHA256.file(ARGV[1]).hexdigest,
-  source_sha256: files.sort.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }, driver_sha256: Digest::SHA256.file(ARGV[0]).hexdigest, flags: "Release package; application swiftc -O -swift-version 5"})
-' "$ui_profile_work/ApplicationUIProfile" "$ui_profile_work/TorrentInspector.swift" > "$ui_profile_out/environment.json"
+  selected_case: ENV["BUTTER_UI_PROFILE_CASE"], previous_inspector_revision: ARGV[1], keep_raw: ENV["BUTTER_PROFILE_KEEP_RAW"] == "1",
+  test_inspector_sha256: Dir.glob(ARGV[0] + "/*/TorrentInspector.swift").to_h { |path| [File.basename(File.dirname(path)), Digest::SHA256.file(path).hexdigest] },
+  source_sha256: files.sort.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }, driver_sha256: Dir.glob(ARGV[0] + "/ApplicationUIProfile-*").to_h { |path| [File.basename(path), Digest::SHA256.file(path).hexdigest] }, flags: "Release package; application swiftc -O -swift-version 5"})
+' "$ui_profile_work" "$ui_profile_previous" > "$ui_profile_out/environment.json"
+if [ "${BUTTER_UI_COMPARE_SOURCE:-0}" = 1 ]; then
+	ruby Tests/ApplicationUIComparison.rb "$ui_profile_work/ApplicationUIProfile-previous" "$ui_profile_work/ApplicationUIProfile-current" "$ui_profile_out"
+	exit
+fi
 ruby -I Tests -rTransferBenchmarkHarness -rProfileAttribution -e '
  h = TransferBenchmarkHarness; driver, out = ARGV; results = []
  %w[many-files many-torrents].product(%w[download seed], [false, true]).each do |workload, role, inspector|
@@ -75,4 +94,4 @@ ruby -I Tests -rTransferBenchmarkHarness -rProfileAttribution -e '
  File.write(File.join(out,"summary.json"),JSON.pretty_generate(results.map { |row| row.reject { |key,_| key == :events } }))
  raise "No UI workload matched" if results.empty?
  raise "UI profiling contains failed captures" if results.any? { |row| !row[:accepted] }
-' "$ui_profile_work/ApplicationUIProfile" "$ui_profile_out"
+' "$ui_profile_work/ApplicationUIProfile-current" "$ui_profile_out"

@@ -74,6 +74,28 @@ coalescer remains enabled for v2/hybrid and multiple-file v1 transfers. The
 coalescer itself is unchanged by this eligibility restriction. Full-matrix parity
 and absence of all costs remain unproven.
 
+## File inspector
+
+The file tree now presents visible rows in one lazy stack, preserving folder
+collapse state, search, indentation and the nested layout's spacing. In the fixed
+2,000-file model workload, four warm-ups and 24 measurements all pass model and
+saved-state checks, with a real file checkbox required to be visible.
+
+| Metric | Current/previous ratio | 95% interval |
+| --- | ---: | ---: |
+| CPU over window creation and twelve updates | 0.112 | 0.109–0.118 |
+| Wall time | 0.565 | 0.554–0.570 |
+| Peak RSS | 0.159 | 0.158–0.159 |
+
+Median CPU falls from 13.63 to 1.57 seconds and peak memory from 798 to 127 MB.
+The twelve updates alone fall from 4.32 to 1.00 CPU seconds; initial rendering
+falls from 9.30 to 0.56. This is a synthetic rendering result, with no payload or
+network traffic, and establishes no transfer CPU gain. Native checkbox coordinates
+match exactly in separate many-file download and many-torrent seeding checks.
+Early NSView bitmaps are unreliable for the original nested tree; visible native
+controls and settled coordinates provide the layout checks. Debug/Release app
+builds and search/collapse/spacing tests pass.
+
 ## Full matrix
 
 The last complete matrix predates write coalescing. All 264 trials validated.
@@ -133,6 +155,9 @@ operation-count run. Never use instrumented measurements for timing acceptance.
 Profiler runs retain compact attribution reports and delete traces and raw XML,
 including failed captures. Set `BUTTER_PROFILE_KEEP_RAW=1` only when those raw
 exports are needed; retained allocation-table manifests mark whether exports remain.
+For the fixed UI comparison, set `BUTTER_UI_COMPARE_SOURCE=1` and
+`BUTTER_UI_PROFILE_PREVIOUS_REVISION` before running `Scripts/test-ui-profile.sh`.
+Adding `BUTTER_UI_COMPARE_SMOKE=1` checks settled layout without timing acceptance.
 
 The native anchor is libtorrent revision
 `6da363d2994f17c0b3c0450d124cf73a31a73847`. Installed archive ABI indicates

@@ -45,19 +45,43 @@ import AppKit
 			}
 		}
 	}
-	struct Job: Decodable { let workload: String; let role: String; let inspector: Bool; let screenshot: String }
-	static func emit(_ phase: String) throws {
+	struct Job: Decodable { let workload: String; let role: String; let inspector: Bool; let screenshot: String; let captureFinal: Bool? }
+	static func cpu() throws -> Double {
 		var usage = rusage(); guard getrusage(RUSAGE_SELF, &usage) == 0 else { throw CocoaError(.fileReadUnknown) }
-		let record: [String: Any] = ["phase": phase, "pid": getpid(), "time": ProcessInfo.processInfo.systemUptime,
+		return Double(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) + Double(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1e6
+	}
+	static func emit(_ phase: String, renderCPU: Double? = nil, updateCPU: Double? = nil, fileFrame: [Double]? = nil) throws {
+		var usage = rusage(); guard getrusage(RUSAGE_SELF, &usage) == 0 else { throw CocoaError(.fileReadUnknown) }
+		var record: [String: Any] = ["phase": phase, "pid": getpid(), "time": ProcessInfo.processInfo.systemUptime,
 			"user": Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6,
 			"system": Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6, "peak_rss": usage.ru_maxrss]
+		if let renderCPU { record["initial_render_cpu_seconds"] = renderCPU }
+		if let updateCPU { record["update_cpu_seconds"] = updateCPU }
+		if let fileFrame { record["first_file_frame"] = fileFrame }
 		var bytes = try JSONSerialization.data(withJSONObject: record); bytes.append(10); try FileHandle.standardOutput.write(contentsOf: bytes)
 	}
 	static func command(_ expected: String) async throws {
 		let line = await Task.detached { readLine() }.value
 		guard let line, let bytes = line.data(using: .utf8), let object = try JSONSerialization.jsonObject(with: bytes) as? [String: Any], object["command"] as? String == expected else { throw CocoaError(.fileReadCorruptFile) }
 	}
+	@MainActor static func visibleFileCheckbox(_ view: NSView) -> NSButton? {
+		if let button = view as? NSButton, button.accessibilityLabel() == "Download file-00000.bin", !button.visibleRect.isEmpty { return button }
+		for child in view.subviews { if let button = visibleFileCheckbox(child) { return button } }
+		return nil
+	}
+	@MainActor static func capture(_ view: NSView, path: String) throws {
+		guard let image = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.fileReadUnknown) }
+		view.cacheDisplay(in: view.bounds, to: image)
+		guard let data = image.representation(using: .png, properties: [:]) else { throw CocoaError(.fileReadUnknown) }
+		try data.write(to: URL(fileURLWithPath: path))
+	}
 	@MainActor static func main() {
+		#if BUTTER_FILE_TREE_AVAILABLE
+		if CommandLine.arguments.dropFirst().first == "--test-file-tree" {
+			do { try FileTreeTests.run(); print("PASS: file tree order, search, collapse, indentation and nested padding"); exit(0) }
+			catch { fputs("FAIL: \(error)\n", stderr); exit(1) }
+		}
+		#endif
 		let app = NSApplication.shared; app.setActivationPolicy(.accessory)
 		Task { @MainActor in
 			do { try await run(); exit(0) }
@@ -99,22 +123,43 @@ import AppKit
 		guard store.transfers.count == count, store.transfers.allSatisfy({ $0.files.count == files }) else { throw NSError(domain: "UIProfile", code: 3, userInfo: [NSLocalizedDescriptionKey: "Rendering fixture was not populated before profiling"]) }
 		store.selection = [records[0].id]; store.showInspector = false
 		try emit("ready"); try await command("start"); try emit("start")
+		let renderStart = try cpu()
 		let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 1540, height: 740), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
 		window.title = "Butter profiling fixture"; window.contentViewController = NSHostingController(rootView: Scene(inspector: job.inspector).environmentObject(store)); window.makeKeyAndOrderFront(nil)
 		try await Task.sleep(for: .milliseconds(700))
 		guard store.selection == [records[0].id] else { throw NSError(domain: "UIProfile", code: 4, userInfo: [NSLocalizedDescriptionKey: "Rendering fixture selection changed before profiling"]) }
-		if let view = window.contentView, let image = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
-			view.cacheDisplay(in: view.bounds, to: image)
-			if let data = image.representation(using: .png, properties: [:]) { try data.write(to: URL(fileURLWithPath: job.screenshot)) }
+		guard let view = window.contentView else { throw CocoaError(.fileReadUnknown) }
+		try capture(view, path: job.screenshot)
+		guard !job.inspector || visibleFileCheckbox(view) != nil else {
+			throw NSError(domain: "UIProfile", code: 5, userInfo: [NSLocalizedDescriptionKey: "The visible file inspector did not render its first file checkbox"])
 		}
+		let rendered = try cpu()
 		for tick in 0..<12 {
 			engine.advance(tick, seeding: seeding); await store.refresh()
 			try await Task.sleep(for: .seconds(1))
 		}
-		try emit("verified"); try await command("persist"); try emit("persistence")
+		var fileFrame: [Double]?
+		if job.captureFinal == true {
+			view.layoutSubtreeIfNeeded(); window.displayIfNeeded()
+			try await Task.sleep(for: .milliseconds(100))
+			try capture(view, path: job.screenshot)
+			if job.inspector {
+				guard let button = visibleFileCheckbox(view) else { throw CocoaError(.fileReadCorruptFile) }
+				let frame = button.convert(button.bounds, to: view)
+				fileFrame = [frame.origin.x, frame.origin.y, frame.width, frame.height]
+			}
+		}
+		try emit("verified", renderCPU: rendered - renderStart, updateCPU: try cpu() - rendered, fileFrame: fileFrame)
+		try await command("persist"); try emit("persistence")
+		guard store.error == nil, store.transfers.count == count,
+			zip(store.transfers, engine.rows).allSatisfy({ shown, expected in
+				shown.id == expected.id && shown.done == expected.done && shown.uploaded == expected.uploaded && shown.files.map(\.done) == expected.files.map(\.done)
+			}) else { throw CocoaError(.fileReadCorruptFile) }
 		guard await store.persist() else { throw CocoaError(.fileWriteUnknown) }
 		try emit("durable"); try await command("stop"); try emit("shutdown")
 		guard await store.shutdown() else { throw CocoaError(.fileWriteUnknown) }
+		let reopened = try await StateStorage(root: root).load()
+		guard reopened.cleanShutdown, reopened.transfers.map(\.id) == records.map(\.id) else { throw CocoaError(.fileReadCorruptFile) }
 		window.orderOut(nil); try emit("stopped")
 	}
 }

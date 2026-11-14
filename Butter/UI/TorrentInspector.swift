@@ -58,7 +58,7 @@ struct TorrentInspector: View {
 		VStack {
 			TextField("Search current or original names", text: $search).textFieldStyle(.roundedBorder).padding(.horizontal).accessibilityLabel("Search files").help("Filter files by their current or original names.")
 			if torrent.metadata {
-				ScrollView { LazyVStack(alignment: .leading, spacing: 4) { ForEach(FileNode.tree(torrent.files.filter { !$0.pad })) { node in FileNodeRow(node: node, torrent: torrent, search: search) } }.padding(.horizontal) }
+				ScrollView { FileTree(torrent: torrent, search: search).padding(.horizontal) }
 			} else { ContentUnavailableView("Resolving metadata", systemImage: "hourglass", description: Text("File selection becomes available when metadata arrives.")) }
 		}.padding(.bottom)
 	}
@@ -83,12 +83,49 @@ struct FileNode: Identifiable {
 		}
 	}
 }
+private struct FileTree: View {
+	var torrent: TransferSnapshot
+	var search: String
+	@State private var collapsed = Set<String>()
+	var body: some View {
+		LazyVStack(alignment: .leading, spacing: 4) {
+			ForEach(FileTreeEntry.visible(FileNode.tree(torrent.files.filter { !$0.pad }), search: search, collapsed: collapsed)) { entry in
+				FileNodeRow(node: entry.node, torrent: torrent, search: search, expanded: Binding(
+					get: { !collapsed.contains(entry.id) },
+					set: { if $0 { collapsed.remove(entry.id) } else { collapsed.insert(entry.id) } }))
+					.padding(.leading, CGFloat(entry.depth) * 16)
+					.padding(.top, 3).padding(.bottom, CGFloat(entry.bottom))
+			}
+		}
+	}
+}
+struct FileTreeEntry: Identifiable {
+	var node: FileNode
+	var depth: Int
+	var bottom = 3
+	var id: String { node.id }
+	static func visible(_ nodes: [FileNode], search: String, collapsed: Set<String>, depth: Int = 0) -> [Self] {
+		var rows: [Self] = []
+		for node in nodes where node.matches(search) {
+			rows.append(Self(node: node, depth: depth))
+			if node.isFolder, !collapsed.contains(node.id) {
+				let children = visible(node.children, search: search, collapsed: collapsed, depth: depth + 1)
+				if !children.isEmpty {
+					// Preserve the original nested stacks' outer padding at subtree ends.
+					rows[rows.count - 1].bottom = 0; rows.append(contentsOf: children)
+					rows[rows.count - 1].bottom += 3
+				}
+			}
+		}
+		return rows
+	}
+}
 struct FileNodeRow: View {
 	@EnvironmentObject private var store: TransferStore
 	var node: FileNode
 	var torrent: TransferSnapshot
 	var search: String
-	@State private var expanded = true
+	@Binding var expanded: Bool
 	var body: some View {
 		if node.matches(search) {
 			VStack(alignment: .leading, spacing: 4) {
@@ -108,8 +145,7 @@ struct FileNodeRow: View {
 						Button("Repair from local file…") { store.repairFile(file.index, torrent: torrent) }.help("Repair this file from a local copy, preserving the source.")
 					}
 				}
-				if expanded && node.isFolder { ForEach(node.children) { child in FileNodeRow(node: child, torrent: torrent, search: search).padding(.leading, 16) } }
-			}.padding(.vertical, 3)
+			}
 		}
 	}
 }
