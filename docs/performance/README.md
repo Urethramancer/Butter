@@ -74,6 +74,21 @@ coalescer remains enabled for v2/hybrid and multiple-file v1 transfers. The
 coalescer itself is unchanged by this eligibility restriction. Full-matrix parity
 and absence of all costs remain unproven.
 
+## Snapshot experiment
+
+Summary/detail projection and revision-based progress caching were tested and
+reverted. Fixed polling workloads reduced CPU in seven of eight cases, but the
+live transfer comparison established no CPU gain. The initial 500 Mbps check had
+an unsaturated native warm-up; a revised candidate restricted aggregation to
+presentation requests, but its fixed check had two unsaturated native controls.
+All 56 partial transfers validated. Neither run supplies a qualified regression
+result, and unchanged runs were not repeated. Tested candidates are preserved on
+`experiment/snapshot-unconditional` and `experiment/snapshot-projection`.
+
+Package, lifecycle, sanitizer, native interoperability and app-build checks passed.
+The independently qualified file-tree improvement below remains retained. The
+bounded staging experiment is the remaining approved phase.
+
 ## File inspector
 
 The file tree now presents visible rows in one lazy stack, preserving folder

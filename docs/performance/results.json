@@ -1778,5 +1778,146 @@
         4.2554300000000005
       ]
     ]
+  },
+  "snapshot_projection_2026_11_14": {
+    "outcome": "Archived and reverted: no fully qualified fixed-rate regression comparison; no transfer CPU gain established. UI file-tree rendering retained independently.",
+    "unconditional_candidate": "2142202f993ee170a10f41f2e43a612b536eaf16",
+    "scoped_candidate": "d27759cf9324f501b0a60eebdb35016a27b66a94",
+    "polling_scope": "24 burst polls, one 2048-file torrent or 32 torrents of 64 files; idle downloads or complete seeds, hidden/visible inspector; 4 warm-ups and 24 measured samples per case. Pre-scoping candidate.",
+    "polling": [
+      {
+        "case": "many-files-download-hidden",
+        "samples": 28,
+        "cpu": [
+          0.3175533787305533,
+          0.2943448178378263,
+          0.3210310205765362
+        ],
+        "maximum_rss_ratio": 0.9735563950350783
+      },
+      {
+        "case": "many-files-download-visible",
+        "samples": 28,
+        "cpu": [
+          0.31037697874551895,
+          0.3016017712069097,
+          0.32823098323719857
+        ],
+        "maximum_rss_ratio": 0.9770788912579957
+      },
+      {
+        "case": "many-files-seed-hidden",
+        "samples": 28,
+        "cpu": [
+          0.8814654388848815,
+          0.785684816476603,
+          0.9416244763967956
+        ],
+        "maximum_rss_ratio": 0.9376915219611849
+      },
+      {
+        "case": "many-files-seed-visible",
+        "samples": 28,
+        "cpu": [
+          0.8876294426382605,
+          0.8281112072254961,
+          0.9117765485395852
+        ],
+        "maximum_rss_ratio": 0.9633642930856553
+      },
+      {
+        "case": "many-torrents-download-hidden",
+        "samples": 28,
+        "cpu": [
+          0.921870033323544,
+          0.8935634555011686,
+          0.9457782467266194
+        ],
+        "maximum_rss_ratio": 0.9648074369189907
+      },
+      {
+        "case": "many-torrents-download-visible",
+        "samples": 28,
+        "cpu": [
+          0.9385091387000966,
+          0.894158437457548,
+          0.9569678846429455
+        ],
+        "maximum_rss_ratio": 0.9680638722554891
+      },
+      {
+        "case": "many-torrents-seed-hidden",
+        "samples": 28,
+        "cpu": [
+          0.9304361719203051,
+          0.8456608395500634,
+          0.9692834558931676
+        ],
+        "maximum_rss_ratio": 0.9635036496350365
+      },
+      {
+        "case": "many-torrents-seed-visible",
+        "samples": 28,
+        "cpu": [
+          0.9501264289683686,
+          0.8504486560138593,
+          1.0185901399091177
+        ],
+        "maximum_rss_ratio": 0.9662475181998676
+      }
+    ],
+    "live_hidden": {
+      "cpu_seconds_per_gib": {
+        "median": 1.024980324507589,
+        "lower": 0.9802857290820564,
+        "upper": 1.07077308776553,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9908272834093164,
+        "lower": 0.8281363555114488,
+        "upper": 1.0205925634011277,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 0.9897746026613565,
+        "lower": 0.9760933470102429,
+        "upper": 1.0233099551302929,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 1.0187596168047466,
+        "lower": 0.9626596183185456,
+        "upper": 1.1933657383994576,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "rate_attempts": {
+      "unconditional": {
+        "validated": 28,
+        "samples": 28,
+        "unsaturated": [
+          {
+            "id": "previous--1-500-libtorrent-warmup",
+            "mb_per_second": 55.61172812554464
+          }
+        ]
+      },
+      "presentation_only": {
+        "validated": 28,
+        "samples": 28,
+        "unsaturated": [
+          {
+            "id": "current-0-500-libtorrent-measured",
+            "mb_per_second": 55.33207145257524
+          },
+          {
+            "id": "previous-2-500-libtorrent-measured",
+            "mb_per_second": 54.88373108007802
+          }
+        ]
+      }
+    },
+    "checks": "403 package tests, selection and lifecycle tests, focused Address/Thread Sanitizer checks, 48 native TCP fixtures, Debug/Release builds; no automatic retries of an unchanged candidate."
   }
 }

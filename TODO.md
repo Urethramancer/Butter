@@ -2,8 +2,8 @@
 
 ## Performance
 
-- Complete the approved summary/detail snapshot and bounded private staging
-  experiments. Preserve integrity observations, filesystem guards, the 1 MiB
+- Complete the approved bounded private staging experiment. Preserve integrity
+  observations, filesystem guards, the 1 MiB
   transient budget and 64 MiB staging ceiling.
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU/GiB through durable completion, and peak RSS within 10% of
