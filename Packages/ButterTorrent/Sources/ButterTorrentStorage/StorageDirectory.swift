@@ -67,6 +67,8 @@ struct FileStamp: Codable, Equatable, Sendable {
 final class StorageDirectory: @unchecked Sendable {
 	let url: URL
 	let fd: Int32
+	private let pathLock = NSLock()
+	private var validatedPath: (path: String, parts: [String])?
 	private init(url: URL, descriptor: Int32) { self.url = url; fd = descriptor }
 	init(_ url: URL, create: Bool = true) throws {
 		guard url.isFileURL, url.path.hasPrefix("/") else { throw StorageFailure.invalid("absolute storage root") }
@@ -115,8 +117,22 @@ final class StorageDirectory: @unchecked Sendable {
 		guard fstat(fd, &value) == 0 else { throw diskError("Cannot inspect storage root") }
 		return FileStamp(value)
 	}
+	private func components(_ path: String) throws -> [String] {
+		try pathLock.withLock {
+			// Cache immutable syntax only. Exact bytes matter for POSIX names;
+			// filesystem observations and descriptors are refreshed by parent().
+			if let validatedPath, validatedPath.path.utf8.elementsEqual(path.utf8) {
+				StorageDiagnostics.count(.pathValidationCacheHits)
+				return validatedPath.parts
+			}
+			StorageDiagnostics.count(.pathValidationCacheMisses)
+			let parts = try StorageLayout.components(path)
+			validatedPath = (path, parts)
+			return parts
+		}
+	}
 	func parent<T>(_ path: String, create: Bool = false, _ body: (Int32, String) throws -> T) throws -> T {
-		let parts = try StorageLayout.components(path)
+		let parts = try components(path)
 		var directory = dup(fd)
 		StorageDiagnostics.count(.descriptorDuplicates)
 		guard directory >= 0 else { throw diskError("Cannot duplicate directory") }

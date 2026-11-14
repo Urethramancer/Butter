@@ -18,6 +18,32 @@ private func layoutMetadata(_ sizes: [Int], pieces: Data? = nil) throws -> Torre
 private enum ParentProbeError: Error, Equatable { case stopped }
 
 @Suite struct StorageLayoutTests {
+	@Test func repeatedPathParsingPreservesExactUnicodeBytesAndRejectsInvalidPaths() async throws {
+		try await storageFixture { root in
+			let directory = try StorageDirectory(root)
+			let paths = ["caf\u{00e9}", "cafe\u{0301}", "caf\u{00e9}", "caf\u{00e9}"]
+			for path in paths {
+				try directory.parent(path) { _, name in #expect(Array(name.utf8) == Array(path.utf8)) }
+			}
+			for path in ["", ".", "..", "/caf\u{00e9}", "caf\u{00e9}/", "caf\u{00e9}//leaf", "caf\u{00e9}/../leaf", "caf\u{00e9}\0", String(repeating: "a", count: 256)] {
+				#expect(throws: StorageFailure.invalid("relative file path")) { try directory.parent(path) { _, _ in Issue.record("Invalid path reached the callback") } }
+			}
+		}
+	}
+	@Test func concurrentPathParsingKeepsEachCallersComponents() async throws {
+		try await storageFixture { root in
+			let directory = try StorageDirectory(root)
+			try await withThrowingTaskGroup(of: Void.self) { group in
+				for index in 0..<16 {
+					group.addTask {
+						let path = index.isMultiple(of: 2) ? "caf\u{00e9}" : "cafe\u{0301}"
+						for _ in 0..<32 { try directory.parent(path) { _, name in #expect(Array(name.utf8) == Array(path.utf8)) } }
+					}
+				}
+				try await group.waitForAll()
+			}
+		}
+	}
 	@Test(arguments: ["\u{0301}folder", "\u{FE0F}folder"], [false, true])
 	func byteSeparatorsKeepUnicodePathsAnchored(_ child: String, _ linked: Bool) async throws {
 		try await storageFixture { root in
