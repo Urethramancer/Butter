@@ -32,16 +32,27 @@ actor TransferPermits {
 	}
 }
 
+// Publish unrestricted admission synchronously; token accounting stays on the
+// limiter actor. A setter publishes only after updating its actor-owned state.
+private final class TransferRateAccess: @unchecked Sendable {
+	private let lock = NSLock()
+	private var value: Bool
+	init(rate: Int) { value = rate == 0 }
+	var unrestricted: Bool { lock.withLock { value } }
+	func set(rate: Int) { lock.withLock { value = rate == 0 } }
+}
+
 /// TransferRateLimiter bounds payload bytes with a one-second burst and cancellable waits.
 actor TransferRateLimiter {
 	private var rate: Int
 	private var tokens: Double
 	private var updated: TimeInterval
 	private let clock: any TransportClock
-	init(rate: Int, clock: any TransportClock) { self.rate = rate; tokens = Double(rate); self.clock = clock; updated = clock.now() }
-	func set(_ rate: Int) { self.rate = rate; tokens = min(tokens, Double(rate)); updated = clock.now() }
+	private nonisolated let access: TransferRateAccess
+	init(rate: Int, clock: any TransportClock) { self.rate = rate; tokens = Double(rate); self.clock = clock; updated = clock.now(); access = TransferRateAccess(rate: rate) }
+	func set(_ rate: Int) { self.rate = rate; tokens = min(tokens, Double(rate)); updated = clock.now(); access.set(rate: rate) }
 	// Grant only currently unrestricted work; later limit changes apply to the next batch.
-	func consumeUnrestrictedBatch() -> Bool { rate == 0 }
+	nonisolated func consumeUnrestrictedBatch() -> Bool { access.unrestricted }
 	func consume(_ bytes: Int, isCancelled: @Sendable () -> Bool = { false }) async throws {
 		var remaining = Double(bytes)
 		while remaining > 0 {

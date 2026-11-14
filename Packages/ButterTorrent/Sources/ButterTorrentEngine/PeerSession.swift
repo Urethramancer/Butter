@@ -204,7 +204,7 @@ final class PeerSession: @unchecked Sendable {
 	private func nextOutput(upload: TransferRateLimiter) async throws -> (bytes: Data, receipts: [OutputReceipt])? {
 		while true {
 			try Task.checkCancellation()
-			let unrestricted = await upload.consumeUnrestrictedBatch()
+			let unrestricted = upload.consumeUnrestrictedBatch()
 			// µTP retains each write against a shared transport budget; keep its frame-sized admission.
 			let items = takeOutgoing(maximumCount: unrestricted && stream.kind == .tcp ? 16 : 1, maximumBytes: 262144)
 			if items.isEmpty { return nil }
@@ -236,7 +236,7 @@ final class PeerSession: @unchecked Sendable {
 			let cycleStarted = ReceivePipelineDiagnostics.tick()
 			let admissionStarted = ReceivePipelineDiagnostics.tick()
 			var maximum = 65536
-			if stream.kind == .tcp, await download.consumeUnrestrictedBatch() { maximum = 262144 }
+			if stream.kind == .tcp, download.consumeUnrestrictedBatch() { maximum = 262144 }
 			let admissionEnded = ReceivePipelineDiagnostics.tick()
 			let readStarted = ReceivePipelineDiagnostics.tick()
 			let bytes: Data
