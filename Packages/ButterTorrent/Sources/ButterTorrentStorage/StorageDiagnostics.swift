@@ -16,6 +16,7 @@ public enum StorageDiagnostics {
 	enum OpenKind: String { case directoryOpens, fileOpens, atomicStateOpens }
 	private static let totals = Totals()
 	static func mergeWriteQueue(_ values: [String: Int64]) { totals.merge(values, prefix: "writeQueue.") }
+	static func mergeSynchronous(_ values: [String: Int64], kind: String) { totals.merge(values, prefix: "storageSync." + kind + ".") }
 	static func mergeWriteProfile(_ values: [String: Int64]) { totals.merge(values, prefix: "writeProfile.") }
 	static func opened(_ kind: OpenKind) {
 		guard enabled else { return }; totals.opened(kind.rawValue)

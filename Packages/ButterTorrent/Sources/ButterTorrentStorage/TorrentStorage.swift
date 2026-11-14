@@ -83,6 +83,7 @@ final class StorageState: @unchecked Sendable {
 	let event: @Sendable (StorageEvent) -> Void
 	let lease: StorageLease
 	var writeProfile: StorageWriteProfile?
+	var diagnosticVerificationDepth = 0
 	var closed = false
 	var hasJournal = false
 	var pendingFlush: Set<Int> = []
@@ -224,6 +225,8 @@ final class StorageState: @unchecked Sendable {
 		return current
 	}
 	func save() throws {
+		let synchronous = StorageSynchronousProfile.make(diagnosticVerificationDepth > 0 ? .checkpointInVerification : .checkpointOther)
+		defer { synchronous?.finish() }
 		let previous = writeProfile?.enter(.progressInvalidation)
 		defer { writeProfile?.enter(previous) }
 		do {
@@ -295,6 +298,7 @@ final class StorageState: @unchecked Sendable {
 	}
 
 	func verify(piece: Int, check: () throws -> Void) throws -> Bool {
+		let profile = beginVerificationProfile(); defer { finishVerificationProfile(profile) }
 		try ready()
 		_ = try layout.length(of: piece)
 		let before = try observe(piece: piece)

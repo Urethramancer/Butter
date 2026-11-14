@@ -229,6 +229,45 @@ The candidates pass storage tests (97 and 98), focused Address/Thread Sanitizers
 checks. Compact evidence remains under ignored `.build/benchmarks/descriptor-cache-*`;
 the refined results use `descriptor-cache-refined-many-hybrid-20261114`.
 
+## Receive-pipeline follow-up
+
+The diagnostic comparison of baseline `ec7d226` and retained-descriptor experiment
+`d5a7636` validates **18/18 trials**. Each source has one warm-up per mode, then
+off/counts/timed/timed/counts/off with alternating source order. Every transfer is
+1 GiB, many-file hybrid, with the pinned native counterpart, independent SHA256
+checks, strict checkpoint reopening and unchanged source/binary fingerprints.
+
+Elapsed seconds/GiB below average two timed trials per source. These are nested
+budgets: write execution and queue time are inside the storage await, which is
+inside payload dispatch. Do not add all rows together or interpret them as CPU.
+
+| Measurement | Baseline | Retained descriptors |
+| --- | ---: | ---: |
+| Verified transfer duration | 4.931 | 5.252 |
+| Positive stream-read awaits | 0.386 | 0.443 |
+| Payload dispatch awaits | 3.998 | 4.225 |
+| Storage-write awaits | 1.860 | 1.811 |
+| Synchronous write jobs | 1.600 | 1.428 |
+| Worker admission/submission/queue | 0.045 | 0.156 |
+| Verification/publication awaits | 1.709 | 1.961 |
+
+Both sources perform 4,096 verifications and read/hash the same 1 GiB per transfer.
+Mean blocks/dispatch fall from 7.25 to 6.92, but extra call counts alone do not
+explain the slowdown: actor-entry/admission/release costs remain small. Verification
+awaits grow 0.252 seconds/GiB and worker waits 0.111 seconds/GiB, offsetting faster
+write execution. Verification p99 upper bounds rise from 2.10 to 8.39 ms; roughly
+64 calls/GiB occupy the longer tail, matching the 16 MiB checkpoint cadence.
+Checkpoint involvement is a hypothesis until its execution is timed directly.
+
+Timed/counts CPU overhead against off is 6.0%/0.5% for the baseline and 8.5%/4.4%
+for the cache. Timed mode also changes batch geometry. The off-mode cache is 6.3%
+slower here, but two measurements per mode provide diagnostics, not acceptance.
+Clock calibration, bounded distributions, positive-read/dispatch remainders and
+post-durable tail counts are retained under ignored
+`.build/benchmarks/receive-pipeline-20261114`. No payload traces are retained.
+Main retains opt-in diagnostics, not the descriptor cache. Both sanitizers pass
+62 focused tests, alongside the package and benchmark-controller suites.
+
 ## Reproduction
 
 After `Scripts/bootstrap-engine.sh`:
@@ -255,6 +294,14 @@ phase timing runs require `BUTTER_STORAGE_WRITE_TIMINGS=1` together with
 Instrumented runs supply no timing acceptance evidence. Raw traces/XML are deleted
 after compact extraction unless `BUTTER_PROFILE_KEEP_RAW=1` is explicitly set.
 Fixtures, drivers and temporary compiler caches are removed after each run.
+
+Use `--receive-profile` with `BUTTER_BENCHMARK_PREVIOUS_REVISION` pointing to an
+instrumented comparison source; both sources must contain matching diagnostic
+helpers. It defaults to many-file hybrid downloads and selects off/counts/timed
+child environments automatically. `BUTTER_RECEIVE_PIPELINE_TIMINGS=1` requires
+`BUTTER_STORAGE_DIAGNOSTICS=1` and a diagnostic command; acceptance runs reject it.
+Async spans measure elapsed time only. Terminal/empty reads are excluded from
+positive-read budgets; final histogram/merge work is outside sample timers.
 
 The pinned libtorrent reference is `6da363d2994f17c0b3c0450d124cf73a31a73847`.
 Archive ABI indicates Boost 1.92 while cached flags name 1.88; compiler/header

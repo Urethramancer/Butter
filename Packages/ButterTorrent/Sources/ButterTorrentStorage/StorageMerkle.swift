@@ -29,6 +29,7 @@ extension TorrentStorage {
 	/// Checks a fully received hybrid piece against v1 without recording verified progress.
 	public func verifyLegacyCandidate(piece: Int) async throws -> Bool {
 		try await worker.run { [state] cancellation in
+			let profile = state.beginVerificationProfile(); defer { state.finishVerificationProfile(profile) }
 			try state.ready(); _ = try state.hybridFile(containing: piece)
 			let stamps = try state.observe(piece: piece)
 			let valid = try state.digestPiece(piece, check: cancellation.check).legacyValid
@@ -39,6 +40,7 @@ extension TorrentStorage {
 	/// Reconstructs one full v2 file layer from v1-verified bytes and publishes progress only after both checks.
 	public func reconstructHybridLayer(containing piece: Int) async throws -> HybridLayerVerification {
 		let result = try await worker.run(bulk: true) { [state] cancellation in
+			let profile = state.beginVerificationProfile(); defer { state.finishVerificationProfile(profile) }
 			let result = try state.reconstructHybridLayer(containing: piece, check: cancellation.check); return (result, state.checkpointDeadline)
 		}
 		armCheckpointTimer(result.1); return result.0

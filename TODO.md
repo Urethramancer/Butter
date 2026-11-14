@@ -8,8 +8,8 @@
   ≤1.25× CPU/GiB and peak RSS within 10% of the original Butter baseline.
 - Investigate guarded path opens/closes and peer transport overhead while
   preserving fresh filesystem observations and production resource limits.
-- Measure receive sizes and time waiting for disk admission, storage and
-  verification to explain the descriptor-cache throughput regression.
+- Separate verification/checkpoint execution from worker/actor waits; the
+  receive profile locates most of the descriptor-cache regression there.
 - Resolve grouped-upload/request-burst uncertainty with matched source comparisons.
 - Establish reference compiler/Boost provenance: archive ABI indicates Boost 1.92,
   while cached flags name 1.88. Retain archive fingerprints.
