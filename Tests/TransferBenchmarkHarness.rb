@@ -434,11 +434,13 @@ module TransferBenchmarkHarness
 		{ status: 'source-comparison-only', pairs: pairs.size, valid_pairs: valid.size, variants: variants,
 			source_ratios: specs.transform_values { |path| paired.call('Swift', path) },
 			native_control_ratios: %i[cpu_seconds_per_gib verified_bytes_per_second].to_h { |key| [key, paired.call('libtorrent', [:engine_metrics, key])] },
-			method: 'Current/previous within balanced source-order pairs; fixed six pairs; diagnostic only, no acceptance inference or uncertainty-driven retries' }
+			method: "Current/previous within balanced source-order pairs; fixed #{pairs.size} pairs; diagnostic only, no acceptance inference or uncertainty-driven retries" }
 	end
 
 	class Runner
-		def initialize(swift, reference, output, work, smoke: false, profile: false, write_profile: false, receive_profile: false, previous: nil, baseline: ENV['BUTTER_BENCHMARK_BASELINE'])
+		def initialize(swift, reference, output, work, smoke: false, profile: false, write_profile: false, receive_profile: false, previous: nil, baseline: ENV['BUTTER_BENCHMARK_BASELINE'], source_pairs: 6)
+			raise ArgumentError, 'Source pairs must be 6, 12 or 24' unless [6, 12, 24].include?(source_pairs)
+			@source_pairs = source_pairs
 			@commands = { 'Swift' => [swift], 'libtorrent' => [reference] }
 			@source_commands = { 'current' => [swift] }; @source_commands['previous'] = [previous] if previous
 			@source_comparison = !previous.nil?
@@ -579,8 +581,8 @@ module TransferBenchmarkHarness
 		end
 		def source_case(fixture, format, direction, seed)
 			%w[previous current].each { |source| %w[Swift libtorrent].each { |engine| trial(fixture, format, direction, engine, -1, true, source: source) } }
-			engines = TransferBenchmarkHarness.orders(6, seed)
-			TransferBenchmarkHarness.orders(6, seed + 2000, labels: %w[previous current]).each_with_index do |sources, pair|
+			engines = TransferBenchmarkHarness.orders(@source_pairs, seed)
+			TransferBenchmarkHarness.orders(@source_pairs, seed + 2000, labels: %w[previous current]).each_with_index do |sources, pair|
 				sources.each { |source| engines[pair].each { |engine| trial(fixture, format, direction, engine, pair, false, source: source) } }
 			end
 			selected = @trials.select { |r| r.values_at(:case, :format, :direction) == [fixture['case'], format, direction] }
@@ -689,5 +691,5 @@ if $PROGRAM_NAME == __FILE__
 	FileUtils.mkdir_p(output)
 	manifest = JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
 	FileUtils.cp(File.join(work, 'fixtures', 'manifest.json'), File.join(output, 'fixtures.json'))
-	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: %w[--profile --profile-source].include?(mode), write_profile: mode == '--write-profile', receive_profile: mode == '--receive-profile', previous: %w[--compare-source --profile-source --receive-profile].include?(mode) ? previous : nil).run(manifest)
+	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: %w[--profile --profile-source].include?(mode), write_profile: mode == '--write-profile', receive_profile: mode == '--receive-profile', previous: %w[--compare-source --profile-source --receive-profile].include?(mode) ? previous : nil, source_pairs: Integer(ENV.fetch('BUTTER_BENCHMARK_SOURCE_PAIRS', '6'))).run(manifest)
 end

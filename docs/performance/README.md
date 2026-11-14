@@ -370,6 +370,10 @@ Use a fresh output directory and the retained complete baseline for memory check
 `--compare-source` and `--rate-compare` accept `BUTTER_BENCHMARK_PREVIOUS_REVISION`;
 select workloads with `BUTTER_BENCHMARK_CASE`, `BUTTER_BENCHMARK_FORMAT` and
 `BUTTER_BENCHMARK_DIRECTION`. `--rate-sweep` is exploratory.
+For `--compare-source`, predeclare `BUTTER_BENCHMARK_SOURCE_PAIRS=12` or `24`
+for a larger fixed comparison (52 or 100 trials including four warm-ups).
+The default remains six pairs. Source comparisons never extend or repeat samples
+in response to their results.
 
 For separate diagnostics, use `--profile` with `BUTTER_BENCHMARK_PROFILER=time-profiler`,
 or `BUTTER_STORAGE_DIAGNOSTICS=1 BUTTER_BENCHMARK_PROFILER=counts`. UI comparisons

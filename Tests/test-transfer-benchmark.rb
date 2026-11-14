@@ -166,6 +166,37 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 		assert H.selected_case?('many', 'v1', 'seed', H::SOURCE_CASES, {})
 		refute H.selected_case?('single', 'v1', 'download', H::SOURCE_CASES, {})
 	end
+	def test_larger_source_schedules_are_fixed_and_balanced
+		[12, 24].each do |count|
+			runner = H::Runner.new('/current', '/reference', '/unused', '/unused', previous: '/previous', baseline: nil, source_pairs: count)
+			owner = self
+			runner.define_singleton_method(:trial) do |fixture, format, direction, engine, pair, warmup, source: nil|
+				@trials << owner.source_trial(source, engine, pair, warmup: warmup)
+			end
+			result = runner.source_case({ 'case' => 'many' }, 'v1', 'seed', 17)
+			rows = runner.instance_variable_get(:@trials)
+			assert_equal 4, rows.count { |row| row[:warmup] }
+			assert_equal count, result[:valid_pairs]
+			assert_includes result[:method], "fixed #{count} pairs"
+			measured = rows.reject { |row| row[:warmup] }.group_by { |row| row[:pair] }.values
+			assert_equal count, measured.size
+			assert_equal count / 2, measured.count { |pair| pair.first[:source_variant] == 'previous' }
+			%w[previous current].each do |source|
+				assert_equal count / 2, measured.count { |pair| pair.find { |row| row[:source_variant] == source }[:engine] == 'Swift' }
+			end
+		end
+		assert_raises(ArgumentError) { H::Runner.new('/current', '/reference', '/unused', '/unused', source_pairs: 7) }
+	end
+	def test_source_pair_options_reject_invalid_values_and_other_modes_before_building
+		Dir.mktmpdir do |root|
+			[['7', '--compare-source'], ['12', '--smoke']].each do |count, mode|
+				output, status = Open3.capture2e({'BUTTER_BENCHMARK_SOURCE_PAIRS'=>count}, '/bin/sh', File.expand_path('../Scripts/test-benchmark.sh', __dir__), mode, File.join(root, 'output'))
+				assert_equal 2, status.exitstatus
+				assert_includes output, 'Source pair'
+				refute File.exist?(File.join(root, 'output'))
+			end
+		end
+	end
 	def test_failed_source_variants_keep_distinct_raw_records
 		Dir.mktmpdir('butter-source-variants') do |root|
 			out, work = File.join(root, 'out'), File.join(root, 'work')
