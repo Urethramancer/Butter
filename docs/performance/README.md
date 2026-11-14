@@ -1,12 +1,12 @@
 # Transfer performance
 
-The current full matrix validates **264/264 trials**. All nine seeding cases meet
+The last complete matrix validates **264/264 trials**. All nine seeding cases meet
 the agreed targets. Downloads use **2.02–3.55× libtorrent's CPU/GiB**; single/many-file
 downloads also miss the throughput target.
 
 ## Current matrix
 
-14 November 2026, retained engine revision `e1be93b`. Values are Butter/libtorrent;
+14 November 2026, engine revision `e1be93b`, before worker fusion. Values are Butter/libtorrent;
 speed is verified throughput, CPU is seconds/GiB through durable completion.
 Higher speed and lower CPU are better. Layouts are one file, 128 files or four
 concurrent transfers.
@@ -49,6 +49,41 @@ the reference changes more; the native binary hashes match. Matched source
 comparisons below establish the retained optimisation's effect.
 
 ## Retained optimisations
+
+Worker fusion (`047dcfc`) writes a payload batch and verifies at most one ready
+piece in the same storage job. Picker completion, publication, corruption handling
+and remaining-piece verification follow the successful write result. Unauthenticated
+legacy-hybrid candidates keep their existing path. Hashing and filesystem checks
+are unchanged; disk admission, request windows and write-buffer limits remain intact.
+
+Fixed source comparisons against `b8d477d` validate **100/100 many-file hybrid**
+trials (24 balanced pairs) and **52/52 concurrent-v2** trials (12 pairs). Each has
+four warm-ups, counters disabled, the pinned native counterpart, independent SHA256
+checks, strict checkpoint reopening and unchanged source/binary fingerprints.
+No trials are repeated or discarded. Ratios are fused/baseline Butter with paired
+95% bootstrap intervals.
+
+| Download workload | CPU/GiB | Verified throughput | Peak RSS |
+| --- | ---: | ---: | ---: |
+| Many hybrid | 0.993 (0.972–1.001) | 1.007 (0.996–1.029) | 0.998 (0.969–1.022) |
+| Concurrent v2 | 0.991 (0.977–0.997) | 1.045 (1.013–1.061) | 1.014 (0.991–1.053) |
+
+This establishes **0.95% lower CPU/GiB and 4.5% more throughput for concurrent v2**.
+The many-file result remains inconclusive. Native-control CPU and throughput
+intervals include one in both comparisons; counterpart CPU intervals also include
+one. These focused results do not replace the full matrix or establish the overall
+download targets. The full matrix must be rerun before release.
+
+A separate four-trial counts diagnostic removes all 4,096 standalone verification
+jobs/GiB: total disk jobs fall from 13,791 to 9,410, with the same 65,536 blocks and
+1 GiB hashed. These are diagnostic counts, not timing acceptance. Storage-await
+reports separate synchronous verification inside a fused job from write execution,
+queue time and actor/completion overhead.
+
+All 425 package tests, 98 tests under each sanitizer, native recovery/real-ENOSPC/
+read-only checks and 33 benchmark-controller tests pass. Evidence remains under
+ignored `.build/benchmarks/fused-write-verify-{many-hybrid-24pairs,concurrent-v2-12pairs}-20261114`
+and `.build/benchmarks/fused-counts-many-hybrid-20261114`.
 
 Contiguous download writes use a shared 1 MiB transient budget, fresh filesystem
 checks and strict verification. They apply to v2/hybrid and multiple-file v1;

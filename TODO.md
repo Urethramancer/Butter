@@ -8,6 +8,9 @@
   ≤1.25× CPU/GiB and peak RSS within 10% of the original Butter baseline.
 - Investigate guarded path opens/closes and peer transport overhead while
   preserving fresh filesystem observations and production resource limits.
+- Rerun the full performance matrix with fused write/verification jobs before release.
+- Investigate bounded receive aggregation that preserves batch size during disk
+  work; single-prefetch read-ahead reduced batch size and increased CPU.
 - Locate the remaining verification/worker delay in descriptor-cache experiments;
   direct baseline timing shows checkpoint execution is a small target.
 - Resolve grouped-upload/request-burst uncertainty with matched source comparisons.
