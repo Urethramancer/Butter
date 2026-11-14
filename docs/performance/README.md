@@ -3,8 +3,8 @@
 CPU parity remains unmet. The latest many-file hybrid write-coalescing candidate
 uses **22.7% less CPU** than the retained implementation, with **24.4% more
 throughput**, across six balanced source pairs. A matching fixed-rate comparison
-also qualifies; focused regressions remain outstanding. This is not a release-wide
-improvement claim.
+also qualifies, and focused checks are complete. Single-file v1 retains ordinary
+writes after a measured counterpart cost. This is not a release-wide improvement claim.
 
 [Current measurements](results.json) contain the latest full matrix, compact
 profile summaries, native rendering observations and all 28 write-comparison
@@ -58,6 +58,21 @@ cost is not established. RSS remains within the 10% allowance. A preceding run
 was invalidated by kernel-confirmed ENOSPC affecting both engines (22/28 validated);
 it is excluded from inference. Obsolete build/profile artefacts were removed and
 the harness now checks temporary disk capacity before creating fixtures.
+
+Focused comparisons each validate 28 samples:
+
+| Case | CPU ratio (95% interval) | Outcome |
+| --- | --- | --- |
+| Concurrent hybrid download | 0.932 (0.889–0.972) | Lower CPU; other checked intervals include no change |
+| Many-file v1 seeding | 1.007 (0.999–1.038) | Neither gain nor regression established |
+| Single-file v1, ordinary-write fallback | 0.996 (0.968–1.031) | Neither gain nor regression established |
+
+Unrestricted single-file v1 coalescing increased counterpart CPU 11.2%
+(1.073–1.163) without establishing a Swift CPU benefit. That case now uses the
+original write path; its new counterpart interval is 0.908–1.031. The qualified
+coalescer remains enabled for v2/hybrid and multiple-file v1 transfers. The
+coalescer itself is unchanged by this eligibility restriction. Full-matrix parity
+and absence of all costs remain unproven.
 
 ## Full matrix
 

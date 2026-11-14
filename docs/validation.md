@@ -12,7 +12,9 @@ focused Address/Thread Sanitizer checks, 48 bidirectional native TCP fixtures,
 and unsigned Debug/Release app builds with native linkage, retained licences and
 an unchanged repeat build. Its 28 comparison samples independently checked payload
 bytes and reopened checkpoints. A further 28 fixed-rate samples validate and meet
-saturation; focused regression checks remain pending. See
+saturation. Three focused cases and the single-file v1 fallback check each
+validate 28 samples; the fallback removes that case's established counterpart cost.
+The scoped path also passes batch tests and Debug/Release builds. See
 [performance](performance/README.md).
 
 Repair tests cover individual files and folders while network writes are queued:

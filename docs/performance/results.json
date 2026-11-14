@@ -815,7 +815,7 @@
         "method": "paired median percentile bootstrap, 10000 resamples, 95%"
       }
     },
-    "status": "Retained after full-transfer and fixed-rate qualification; focused regressions pending",
+    "status": "Retained for v2/hybrid and multiple-file v1; single-file v1 uses ordinary writes; focused checks complete",
     "retained_baseline": "5039a8dce8165a6a2e9514f43287953a85728526",
     "candidate_sources_sha256": "9926bcbf127c81058daca4627bca021b0ba0bbc496f1e724c6cea6d8133633af",
     "trials": [
@@ -1285,6 +1285,153 @@
           0.9734917958792576
         ]
       ]
-    }
+    },
+    "focused": {
+      "single_v1_download": {
+        "source_ratios": {
+          "cpu_seconds_per_gib": {
+            "median": 0.9964976704090922,
+            "lower": 0.9678476719648602,
+            "upper": 1.0306088788192227,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "verified_bytes_per_second": {
+            "median": 0.9973984775487339,
+            "lower": 0.9590679942826551,
+            "upper": 1.0299263038682347,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "peak_rss": {
+            "median": 0.9979486834229425,
+            "lower": 0.9963410981842666,
+            "upper": 1.026124824929972,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "counterpart_cpu_seconds_per_gib": {
+            "median": 0.9785061069165404,
+            "lower": 0.908277880407222,
+            "upper": 1.0310351231913986,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          }
+        },
+        "native_control_ratios": {
+          "cpu_seconds_per_gib": {
+            "median": 1.002625795570015,
+            "lower": 0.9781074499479555,
+            "upper": 1.017834239488864,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "verified_bytes_per_second": {
+            "median": 0.9906940386419256,
+            "lower": 0.97851307762146,
+            "upper": 1.0090689331457585,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          }
+        },
+        "validated_samples": 28
+      },
+      "concurrent_hybrid_download": {
+        "source_ratios": {
+          "cpu_seconds_per_gib": {
+            "median": 0.932473297995265,
+            "lower": 0.8886623366772466,
+            "upper": 0.9715090521450784,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "verified_bytes_per_second": {
+            "median": 1.02084761133289,
+            "lower": 0.9296921271599512,
+            "upper": 1.165077468729852,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "peak_rss": {
+            "median": 0.9784499005049581,
+            "lower": 0.9246201193039673,
+            "upper": 1.0133945386618897,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "counterpart_cpu_seconds_per_gib": {
+            "median": 0.9578670457307721,
+            "lower": 0.8795225146134257,
+            "upper": 1.0730040763266309,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          }
+        },
+        "native_control_ratios": {
+          "cpu_seconds_per_gib": {
+            "median": 0.997650588771933,
+            "lower": 0.9517657414454881,
+            "upper": 1.038026560176638,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "verified_bytes_per_second": {
+            "median": 1.005951738708163,
+            "lower": 0.9521316472982981,
+            "upper": 1.057654733547471,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          }
+        },
+        "validated_samples": 28
+      },
+      "many_v1_seed": {
+        "source_ratios": {
+          "cpu_seconds_per_gib": {
+            "median": 1.0070094245741665,
+            "lower": 0.9987990000068045,
+            "upper": 1.0380340152096055,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "verified_bytes_per_second": {
+            "median": 0.9914504876153826,
+            "lower": 0.9299832859778578,
+            "upper": 1.0326444059283082,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "peak_rss": {
+            "median": 0.9867512858802058,
+            "lower": 0.9245020399587942,
+            "upper": 1.021399422024024,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "counterpart_cpu_seconds_per_gib": {
+            "median": 1.012528459767655,
+            "lower": 0.9944692122341579,
+            "upper": 1.0466967419228779,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          }
+        },
+        "native_control_ratios": {
+          "cpu_seconds_per_gib": {
+            "median": 0.9447303171185344,
+            "lower": 0.8485431373790882,
+            "upper": 1.08252672906193,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          },
+          "verified_bytes_per_second": {
+            "median": 1.0032323828107945,
+            "lower": 0.993999196447686,
+            "upper": 1.0283530273723847,
+            "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+          }
+        },
+        "validated_samples": 28
+      }
+    },
+    "single_file_v1_restriction": {
+      "reason": "Unrestricted coalescing increased counterpart CPU; ordinary writes restored for this case",
+      "rejected_counterpart_ratio": {
+        "median": 1.1116119206047226,
+        "lower": 1.0734928268651802,
+        "upper": 1.1625655479958044,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "rejected_swift_cpu_ratio": {
+        "median": 0.973542147324679,
+        "lower": 0.9439821125732951,
+        "upper": 1.0232700754988024,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "scoped_sources_sha256": "c65b244758899142df97f85f291642439f8f56ebd81bd3011da18647dd5aa0ff"
   }
 }

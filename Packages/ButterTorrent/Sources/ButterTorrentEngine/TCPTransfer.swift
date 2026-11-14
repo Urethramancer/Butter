@@ -118,6 +118,7 @@ public actor TCPTransfer {
 	let budget: TCPPeerBudget
 	let disk: TransferDiskScope
 	let writeBuffers: DownloadWriteBufferBudget
+	let coalesceWrites: Bool
 	let uploadRate: TransferRateLimiter
 	let downloadRate: TransferRateLimiter
 	let cache: VerifiedPieceCache
@@ -182,6 +183,8 @@ public actor TCPTransfer {
 		uploadRate = TransferRateLimiter(rate: configuration.uploadLimit, clock: clock); downloadRate = TransferRateLimiter(rate: configuration.downloadLimit, clock: clock)
 		let disk = TransferDiskScope(resources: resources)
 		self.disk = disk; writeBuffers = resources.writeBuffers; cache = VerifiedPieceCache(storage: storage, resources: resources, disk: disk)
+		// Single-file v1 coalescing increased counterpart CPU in paired comparisons.
+		coalesceWrites = metadata.hashes.v2 != nil || metadata.inspection.files.lazy.filter { !$0.pad }.prefix(2).count > 1
 		var offset: Int64 = 0, wanted: Set<Int> = []
 		for file in storage.layout.files {
 			if !file.pad, initial.selected[file.index], file.size > 0 {
