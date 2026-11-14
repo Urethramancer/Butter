@@ -231,6 +231,14 @@ final class PeerSession: @unchecked Sendable {
 		}
 	}
 	private func readInput(_ channel: PeerStream, id: UUID, engine: TCPTransfer, download: TransferRateLimiter, idleTimeout: TimeInterval) async throws {
+		let readAhead = PeerReadAhead()
+		try await withTaskCancellationHandler {
+			do { try await readInput(channel, id: id, engine: engine, download: download, idleTimeout: idleTimeout, readAhead: readAhead) }
+			catch { await readAhead.drain(); throw error }
+			await readAhead.drain()
+		} onCancel: { readAhead.cancel() }
+	}
+	private func readInput(_ channel: PeerStream, id: UUID, engine: TCPTransfer, download: TransferRateLimiter, idleTimeout: TimeInterval, readAhead: PeerReadAhead) async throws {
 		var decoder = PeerWireDecoder(), ready = false, frames = 0
 		while true {
 			let cycleStarted = ReceivePipelineDiagnostics.tick()
@@ -240,7 +248,12 @@ final class PeerSession: @unchecked Sendable {
 			let admissionEnded = ReceivePipelineDiagnostics.tick()
 			let readStarted = ReceivePipelineDiagnostics.tick()
 			let bytes: Data
-			do { bytes = try await channel.read(maximumBytes: maximum, timeout: ready ? idleTimeout : 10) }
+			let prefetched = readAhead.take()
+			do {
+				if let prefetched {
+					bytes = try await withTaskCancellationHandler { try await prefetched.value } onCancel: { prefetched.cancel() }
+				} else { bytes = try await channel.read(maximumBytes: maximum, timeout: ready ? idleTimeout : 10) }
+			}
 			catch {
 				let failed = ReceivePipelineDiagnostics.sample(.terminalRead, started: readStarted)
 				failed?.finish(error is CancellationError ? "cancelled" : "failed"); throw error
@@ -256,12 +269,17 @@ final class PeerSession: @unchecked Sendable {
 			let cycle = ReceivePipelineDiagnostics.sample(.reader, started: cycleStarted)
 			cycle?.end(.readAdmission, since: admissionStarted, until: admissionEnded)
 			cycle?.end(.streamRead, since: readStarted, until: readEnded); cycle?.histogram("readBytes", bytes.count)
+			if prefetched != nil { cycle?.count("prefetchedReads") }
 			var cycleOutcome = "failed"
 			defer { cycle?.finish(cycleOutcome) }
 			var firstBlock: IncomingPieceBlock?, blocks: [IncomingPieceBlock] = [], blockBytes = 0
 			func flushBlocks(_ reason: ReceivePipelineSample.Flush) async throws {
 				guard let first = firstBlock else { return }
 				let batch = blocks, payloadBytes = blockBytes; blocks = []; firstBlock = nil; blockBytes = 0
+				if maximum == PeerReadAhead.maximumBytes, reason != .error,
+					let capacity = readAhead.prefetch(retainedBytes: bytes.count, read: { size in try await channel.read(maximumBytes: size, timeout: idleTimeout) }) {
+					cycle?.count("prefetchStarted"); cycle?.histogram("prefetchCapacityBytes", capacity)
+				}
 				let sample = ReceivePipelineDiagnostics.sample(.dispatch)
 				sample?.histogram("blocks", batch.isEmpty ? 1 : batch.count); sample?.histogram("payloadBytes", payloadBytes)
 				sample?.count("reason." + reason.rawValue)

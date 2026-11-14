@@ -28,10 +28,12 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 	private let lock = NSLock()
 	private var target: Int?
 	private var largest = 0
+	private var completedBytes = 0
 	init(_ raw: TCPStream) { self.raw = raw }
 	var remoteEndpoint: NetworkEndpoint? { raw.remoteEndpoint }
 	var kind: PeerTransportKind { .tcp }
 	var largestRead: Int { lock.withLock { largest } }
+	var readBytes: Int { lock.withLock { completedBytes } }
 	func coalesce(_ count: Int) { lock.withLock { target = count } }
 	func read(maximumBytes: Int, timeout: TimeInterval) async throws -> Data {
 		var bytes = try await raw.read(maximumBytes: maximumBytes, timeout: timeout)
@@ -40,13 +42,50 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 			let next = try await raw.read(maximumBytes: goal - bytes.count, timeout: timeout)
 			if next.isEmpty { break }; bytes.append(next)
 		}
-		lock.withLock { largest = max(largest, bytes.count) }; return bytes
+		lock.withLock { largest = max(largest, bytes.count); completedBytes += bytes.count }; return bytes
 	}
 	func write(_ bytes: Data, timeout: TimeInterval) async throws { try await raw.write(bytes, timeout: timeout) }
 	func close() { raw.close() }
 }
 
 @Suite struct TransferWriteBatchTests {
+	@Test(arguments: [false, true]) func readsAheadWithoutDispatchingPastABlockedWrite(_ encrypted: Bool) async throws {
+		try await transferFixture { fixture in
+			var config = plainTransferConfiguration(); config.pipeline = 2
+			if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
+			let down = try await fixture.transfer("download", configuration: config), listener = try await fixture.listen()
+			let endpoint = try NetworkEndpoint("127.0.0.1", port: listener.port), hash = fixture.metadata.hashes.v1!, encryption = config.encryption
+			let connecting = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption) }
+			let worker = await fixture.stores[0].worker, entered = AsyncStream<Void>.makeStream(), release = DispatchSemaphore(value: 0)
+			var blocker: Task<Void, Error>?
+			do {
+				let stream = CoalescingPeerStream(try await listener.accept(timeout: 3)); _ = try await down.attach(stream)
+				let channel = try await connecting.value; defer { release.signal(); channel.close() }
+				let peer = WirePeer(channel: channel)
+				try await peer.hello(hash: hash, identity: 42); try await peer.seed(pieceCount: 3)
+				let requests = try await peer.requests(2)
+				blocker = Task { try await worker.run { _ in entered.continuation.yield(()); _ = release.wait(timeout: .now() + 6) } }
+				try await engineDeadline { for await _ in entered.stream { return }; throw PeerFailure.closed }
+				func frame(_ block: PeerBlock) throws -> Data {
+					let start = block.piece * 32768 + block.offset
+					return try PeerMessage.piece(block.piece, block.offset, fixture.bytes.subdata(in: start..<(start + block.length))).encoded()
+				}
+				try await channel.write(frame(requests[0]))
+				try await eventually { await down.snapshot().writingBlocks == 1 }
+				let previous = stream.readBytes
+				try await channel.write(frame(requests[1]) + PeerMessage.choke.encoded())
+				try await eventually { stream.readBytes > previous }
+				let blocked = await down.snapshot()
+				#expect(blocked.writingBlocks == 1 && blocked.downloaded == Int64(requests[0].length))
+				#expect(blocked.verifiedPieces.isEmpty && blocked.peers.first?.remoteChoking == false)
+				release.signal(); try await blocker?.value
+				try await eventually { let status = await down.snapshot(); return status.verifiedPieces == [0] && status.peers.first?.remoteChoking == true }
+			} catch {
+				release.signal(); _ = try? await blocker?.value; connecting.cancel()
+				if let channel = try? await connecting.value { channel.close() }; throw error
+			}
+		}
+	}
 	@Test(arguments: [false, true]) func requestsOverlapAdmittedWritesWithinTheExistingWindow(_ batched: Bool) async throws {
 		try await transferFixture { fixture in
 			let resources = try TransferResources(maximumDiskOperations: 1), clock = EngineClock()
