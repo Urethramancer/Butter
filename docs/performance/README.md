@@ -92,6 +92,7 @@ payload traffic; it establishes no transfer CPU gain.
 | Last-path syntax memoization | No established CPU or throughput benefit in 28 single-file v1 trials. Reverted. |
 | Merkle leaf slices | Removed per-leaf `subdata` copies, but 28 many-file hybrid trials establish no CPU or throughput gain. Reverted. |
 | Direct payload read buffers | Removed intermediate chunk buffers/copies, but neither many-file hybrid nor concurrent v2 establishes a CPU or throughput gain. Reverted. |
+| Parent reuse within verification | Revalidated one parent during each piece check, but 28 many-file hybrid trials establish no CPU or throughput gain. Reverted. |
 
 Snapshots are preserved on `experiment/snapshot-unconditional` and
 `experiment/snapshot-projection`; staging is on `experiment/private-staging`.
@@ -133,11 +134,27 @@ reads, padding, large hybrid/v2 pieces, repair and corruption detection. The
 candidate remains on `experiment/direct-payload-read-buffer`, with results under
 ignored `.build/benchmarks/direct-read-{many-hybrid,concurrent-v2}-20261114`.
 
+Scoped-parent candidate `71c9c87` against `4b01057` validates 28/28 many-file
+hybrid trials with counters disabled and unchanged fingerprints. CPU/GiB ratio
+is 0.995 (paired 95% interval 0.974–1.077), verified throughput 1.012
+(0.937–1.036), and peak RSS 1.002 (0.941–1.013). Native-control intervals include
+one. No samples were repeated or discarded. The candidate passes 101 storage
+tests, 27 tests under each sanitizer, and native recovery/ENOSPC/read-only checks.
+It remains on `experiment/scoped-verification-parent`; the four-case parent-change
+regression remains on main, which passes 99 storage tests. Results remain under
+ignored `.build/benchmarks/verification-parent-many-hybrid-20261114`.
+
 ## Profiling targets
 
-Final many-file hybrid download samples attribute 31.3% to stored-byte verification,
-30.6% to write jobs and 24.9% to peer transport. Metadata/open/close accounts for
-27.8% of executing leaves. Seeding samples attribute 33.5% to payload reads,
+A fresh running-thread profile of cache-free `4d004b1` validates both transfers
+and retains 4,993 Swift running samples. Disjoint sampled purposes attribute 31.9%
+to stored-byte verification, 30.8% to write jobs and 24.5% to peer transport.
+Metadata/open/close accounts for 28.6% of executing leaves and hashing for 19.9%.
+Verification copying is only 1.1%, compared with 4.0% in peer transport. These are
+sample weights, not measured CPU durations or kernel residence; intrusive captures
+do not establish performance acceptance. Results and unchanged fingerprints remain
+under ignored `.build/benchmarks/running-cpu-many-hybrid-20261114`.
+Seeding samples attribute 33.5% to payload reads,
 31.4% to transport and 15.2% to upload admission/cache.
 
 Guarded path opens/closes and transport are the next targets. Separate counters
@@ -285,6 +302,14 @@ awaits grow 0.252 seconds/GiB and worker waits 0.111 seconds/GiB, offsetting fas
 write execution. Verification p99 upper bounds rise from 2.10 to 8.39 ms; roughly
 64 calls/GiB occupy the longer tail, matching the 16 MiB checkpoint cadence.
 Checkpoint involvement is a hypothesis until its execution is timed directly.
+
+A separate baseline execution diagnostic at `4b01057` validates both transfers.
+Its 4,096 synchronous verifications use 1.645 CPU seconds/GiB and 1.654 elapsed
+seconds/GiB, including 64 checkpoints using 0.077 CPU and 0.079 elapsed seconds.
+Four other checkpoints add 0.005 CPU seconds. Thus baseline checkpoint execution
+is a small target; this single diagnostic does not explain the cache regression.
+Nested verification/checkpoint budgets must not be added. Compact evidence is in
+ignored `.build/benchmarks/checkpoint-execution-many-hybrid-20261114`.
 
 Timed/counts CPU overhead against off is 6.0%/0.5% for the baseline and 8.5%/4.4%
 for the cache. Timed mode also changes batch geometry. The off-mode cache is 6.3%
