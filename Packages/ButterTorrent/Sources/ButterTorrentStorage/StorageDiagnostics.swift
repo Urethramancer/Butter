@@ -12,6 +12,7 @@ public enum StorageDiagnostics {
 		case descriptorDuplicates, writeBatches, writeBlocks, writeDescriptorCacheHits
 		case fileDescriptorInspections
 		case contiguousWriteRanges
+		case verificationParentInspections, verificationParentAccessChecks, verificationParentHits
 	}
 	enum OpenKind: String { case directoryOpens, fileOpens, atomicStateOpens }
 	private static let totals = Totals()

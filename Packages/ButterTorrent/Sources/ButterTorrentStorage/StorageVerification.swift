@@ -13,12 +13,15 @@ struct StorageFileObservation: Equatable {
 }
 
 extension StorageState {
-	func observe(piece: Int) throws -> [StorageFileObservation] {
-		let scan = StorageStampScan()
+	func observe(piece: Int, paths: StorageVerificationPaths? = nil) throws -> [StorageFileObservation] {
+		let scan = paths == nil ? StorageStampScan() : nil
 		let observations = try layout.files(touchingPiece: piece).compactMap { index -> StorageFileObservation? in
 			guard !layout.files[index].pad, layout.files[index].size > 0 else { return nil }
 			let (directory, path) = location(index)
-			return StorageFileObservation(index: index, stamp: try scan.inspect(path, in: directory))
+			let stamp: FileStamp?
+			if let paths { stamp = try paths.inspect(path, in: directory) }
+			else { stamp = try scan!.inspect(path, in: directory) }
+			return StorageFileObservation(index: index, stamp: stamp)
 		}
 		for observation in observations { try reconcileFile(observation.index, stamp: observation.stamp) }
 		return observations.map { StorageFileObservation(index: $0.index, stamp: $0.stamp, generation: fileGenerations[$0.index]) }
