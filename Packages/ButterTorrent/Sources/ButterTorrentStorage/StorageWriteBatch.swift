@@ -107,7 +107,7 @@ extension StorageState {
 					file = cached; profile?.count("descriptorHits"); StorageDiagnostics.count(.writeDescriptorCacheHits)
 				} else {
 					if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!); profile?.count("descriptorCloses"); StorageDiagnostics.count(.writeDescriptorCloses); profile?.enter(.descriptorAcquisition) }
-					file = try writeDescriptors.take(segment.file, directory: directory, path: path, profile: profile) ?? directory.openFile(path, write: true); files[segment.file] = file; order.append(segment.file)
+					file = try writeDescriptors.take(segment.file, directory: directory, path: path, expected: record.stamps[segment.file], profile: profile) ?? directory.openFile(path, write: true); files[segment.file] = file; order.append(segment.file)
 				}
 				profile?.enter(.prewriteChecks)
 				// Re-check even the first open: replacement can occur after the initial scan.

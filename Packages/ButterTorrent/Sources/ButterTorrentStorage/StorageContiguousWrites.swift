@@ -54,7 +54,7 @@ extension StorageState {
 			if let cached = files[range.file] { file = cached; profile?.count("descriptorHits"); StorageDiagnostics.count(.writeDescriptorCacheHits) }
 			else {
 				if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!); profile?.count("descriptorCloses"); StorageDiagnostics.count(.writeDescriptorCloses); profile?.enter(.descriptorAcquisition) }
-				file = try writeDescriptors.take(range.file, directory: directory, path: path, profile: profile) ?? directory.openFile(path, write: true); files[range.file] = file; order.append(range.file)
+				file = try writeDescriptors.take(range.file, directory: directory, path: path, expected: record.stamps[range.file], profile: profile) ?? directory.openFile(path, write: true); files[range.file] = file; order.append(range.file)
 			}
 			pendingFlush.insert(range.file)
 			try StorageDirectory.write(buffer[range.bytes], to: file, offset: range.offset, maximumChunk: 1_048_576, profile: profile) {

@@ -227,6 +227,7 @@ final class StorageState: @unchecked Sendable {
 		return current
 	}
 	func save() throws {
+		writeDescriptors.removeAll(profile: writeProfile)
 		let previous = writeProfile?.enter(.progressInvalidation)
 		defer { writeProfile?.enter(previous) }
 		do {

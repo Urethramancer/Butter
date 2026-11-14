@@ -70,18 +70,18 @@ import ButterTorrentMetadata
 			var descriptors: [Int32] = []
 			for index in 0..<9 {
 				let file = try directory.openFile("file-\(index)", write: true); descriptors.append(file)
-				cache.put(index, file: file, directory: directory, path: "file-\(index)", profile: nil)
+				cache.put(index, file: file, directory: directory, path: "file-\(index)", stamp: try directory.stamp(file), profile: nil)
 			}
 			#expect(cache.count == 8)
 			#expect(fcntl(descriptors[0], F_GETFD) == -1)
 			let overflow = try directory.openFile("overflow", write: true)
-			other.put(0, file: overflow, directory: directory, path: "overflow", profile: nil)
+			other.put(0, file: overflow, directory: directory, path: "overflow", stamp: try directory.stamp(overflow), profile: nil)
 			#expect(other.count == 0 && fcntl(overflow, F_GETFD) == -1)
-			let cached = try cache.take(8, directory: directory, path: "file-8", profile: nil)
+			let cached = try cache.take(8, directory: directory, path: "file-8", expected: try directory.inspect("file-8"), profile: nil)
 			let taken = try #require(cached)
 			#expect(taken == descriptors[8])
 			let available = try directory.openFile("available", write: true)
-			other.put(0, file: available, directory: directory, path: "available", profile: nil)
+			other.put(0, file: available, directory: directory, path: "available", stamp: try directory.stamp(available), profile: nil)
 			#expect(other.count == 1)
 			cache.removeAll(); other.removeAll(); close(taken)
 			for file in descriptors.dropFirst() { #expect(fcntl(file, F_GETFD) == -1) }
@@ -97,6 +97,9 @@ import ButterTorrentMetadata
 			try await storage.flush()
 			#expect(try await worker.run { _ in state.writeDescriptors.count } == 0)
 			try await storage.write(piece: 0, offset: 0, data: Data([2]))
+			try await storage.checkpoint(downloaded: 0, uploaded: 0)
+			#expect(try await worker.run { _ in state.writeDescriptors.count } == 0)
+			try await storage.write(piece: 0, offset: 0, data: Data([3]))
 			try await worker.run { _ in try state.claim(); #expect(state.writeDescriptors.count == 0) }
 			try await storage.write(piece: 0, offset: 0, data: Data([3]))
 			try await storage.shutdown()
@@ -111,6 +114,22 @@ import ButterTorrentMetadata
 			#expect(throws: CancellationError.self) { try state.write(piece: 0, offset: 0, data: Data([2]), check: { throw CancellationError() }) }
 			#expect(state.writeDescriptors.count == 0)
 			#expect(try Data(contentsOf: root.appendingPathComponent("data/source/a")) == Data([1]))
+		}
+	}
+	@Test func replacementAfterTheTargetScanNeverWritesThroughTheOldHandle() async throws {
+		try await storageFixture { root in
+			let state = try makeState(root), file = root.appendingPathComponent("data/source/a"), old = root.appendingPathComponent("old")
+			try state.write(piece: 0, offset: 0, data: Data([1]), check: {})
+			var checks = 0
+			#expect(throws: StorageFailure.invalid("payload replaced during write batch")) {
+				try state.writeOperations([StorageWrite(piece: 0, offset: 0, data: Data([2]))], maximumBytes: 1, maximumCount: 1, coalescing: true, check: {
+					checks += 1
+					if checks == 2 { try FileManager.default.moveItem(at: file, to: old); try Data([9]).write(to: file) }
+				})
+			}
+			#expect(try Data(contentsOf: old) == Data([1]))
+			#expect(try Data(contentsOf: file) == Data([9]))
+			#expect(state.writeDescriptors.count == 0)
 		}
 	}
 	private func makeState(_ root: URL) throws -> StorageState {
