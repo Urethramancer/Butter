@@ -580,4 +580,15 @@ class ReceivePipelineProfileTests < Minitest::Test
 			ENV['BUTTER_RECEIVE_PIPELINE_TIMINGS'] = previous
 		end
 	end
+	def test_fused_verification_is_separate_from_actor_and_completion_time
+		rows = %w[previous current].flat_map do |source|
+			%w[off counts timed].map { |mode| row(source, mode, true) } + %w[off counts timed timed counts off].map { |mode| row(source, mode, false) }
+		end
+		rows.select { |item| item[:source_variant] == 'current' && item[:pipeline_mode] == 'timed' }.each do |item|
+			item[:events]['download'].last['storage_diagnostics']['storageSync.verificationInWrite.elapsedNs'] = 3
+		end
+		timed = H.receive_pipeline_report(rows)[:modes]['current/timed'][:storage_await_breakdown_seconds]
+		assert_in_delta 6e-9, timed[:synchronous_verification_in_write], 1e-15
+		assert_in_delta 14e-9, timed[:actor_and_completion_remainder], 1e-15
+	end
 end

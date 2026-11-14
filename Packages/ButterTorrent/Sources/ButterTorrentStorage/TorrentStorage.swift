@@ -297,8 +297,8 @@ final class StorageState: @unchecked Sendable {
 		try writeOperations([StorageWrite(piece: piece, offset: offset, data: data)], maximumBytes: 1_048_576, maximumCount: 1, check: check)
 	}
 
-	func verify(piece: Int, check: () throws -> Void) throws -> Bool {
-		let profile = beginVerificationProfile(); defer { finishVerificationProfile(profile) }
+	func verify(piece: Int, profileKind: StorageSynchronousProfile.Kind = .verification, check: () throws -> Void) throws -> Bool {
+		let profile = beginVerificationProfile(profileKind); defer { finishVerificationProfile(profile) }
 		try ready()
 		_ = try layout.length(of: piece)
 		let before = try observe(piece: piece)

@@ -5,6 +5,23 @@ import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 @Suite struct PeerWireTests {
+	@Test func completionPredictionPreservesOrderAndWaitsForOtherWrites() throws {
+		let layout = try pickerLayout(pieces: 3), peer = UUID()
+		var picker = PiecePicker(layout: layout, wanted: [0, 1, 2], completed: [])
+		picker.update(peer, bits: try PieceBitfield(count: 3, pieces: [0, 1, 2]))
+		let blocks = picker.allocate(peer, limit: 6, now: 0)
+		try #require(blocks.count == 6)
+		for block in blocks { let accepted = picker.begin(peer, block: block); #expect(accepted != nil) }
+		let batch = [blocks[0], blocks[2], blocks[3], blocks[1]]
+		#expect(picker.firstCompletedPiece(afterWriting: batch) == 1)
+		#expect(picker.active.values.allSatisfy { $0.received.isEmpty && !$0.verifying })
+		let ready = batch.compactMap { picker.written($0) ? $0.piece : nil }
+		#expect(ready == [1, 0])
+		#expect(picker.firstCompletedPiece(afterWriting: [blocks[4]]) == nil)
+		let incomplete = picker.written(blocks[5]); #expect(!incomplete)
+		#expect(picker.firstCompletedPiece(afterWriting: [blocks[4], blocks[4]]) == 2)
+		let complete = picker.written(blocks[4]); #expect(complete)
+	}
 	@Test(arguments: [1, 16384], [false, true]) func decodedPieceOwnsItsPayloadAcrossCompaction(_ count: Int, _ fragmented: Bool) throws {
 		var parser = PeerWireDecoder()
 		try parser.feed(PeerHandshake(infoHash: Data(repeating: 0, count: 20), peerID: Data(repeating: 1, count: 20)).encoded)

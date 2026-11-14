@@ -159,17 +159,26 @@ extension TCPTransfer {
 	func receiveBlock(_ id: UUID, block: PeerBlock, bytes: Data, payloadBytes: Int64? = nil, profile: ReceivePipelineSample? = nil) async throws {
 		guard try stageBlock(id, block: block, bytes: bytes, payloadBytes: payloadBytes) else { return }
 		prefillDuringDiskWork(id)
-		do { let started = profile?.tick(); defer { profile?.end(.storageWrite, since: started) }; try await storage.write(piece: block.piece, offset: block.offset, data: bytes) }
+		let combined = picker.firstCompletedPiece(afterWriting: [block]) != nil && (!legacyHybrid || hashReady.contains(block.piece))
+		var verified: Result<Bool, Error>?
+		do {
+			let started = profile?.tick(); defer { profile?.end(.storageWrite, since: started) }
+			if combined {
+				profile?.count("combinedVerificationAttempts")
+				verified = try await storage.writeAndVerifyBatch([StorageWrite(piece: block.piece, offset: block.offset, data: bytes)], piece: block.piece, bufferBudget: coalesceWrites ? writeBuffers : nil)
+			} else { try await storage.write(piece: block.piece, offset: block.offset, data: bytes) }
+		}
 		catch { picker.abortedWrite(block); discardUnretainedPayload(); diskFailed(error); throw error }
 		guard picker.written(block) else { return }
-		try await verifyReceivedPiece(block.piece, profile: profile)
+		try await verifyReceivedPiece(block.piece, storedVerification: verified, profile: profile)
 	}
-	func verifyReceivedPiece(_ piece: Int, profile: ReceivePipelineSample? = nil) async throws {
+	func verifyReceivedPiece(_ piece: Int, storedVerification: Result<Bool, Error>? = nil, profile: ReceivePipelineSample? = nil) async throws {
 		let started = profile?.tick(); defer { profile?.end(.verification, since: started) }
 		var staged = legacyHybrid && !hashReady.contains(piece)
 		let valid: Bool
 		do {
-			if staged {
+			if let storedVerification { staged = false; valid = try storedVerification.get() }
+			else if staged {
 				let candidate = try await storage.verifyLegacyCandidate(piece: piece)
 				if candidate, hashReady.contains(piece) { staged = false; valid = try await storage.verify(piece: piece) }
 				else { valid = candidate }

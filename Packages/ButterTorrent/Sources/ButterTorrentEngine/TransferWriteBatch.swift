@@ -75,11 +75,17 @@ extension TCPTransfer {
 			throw error
 		}
 		if !staged.isEmpty { prefillDuringDiskWork(id) }
+		let predicted = picker.firstCompletedPiece(afterWriting: staged.map(\.block))
+		let combinedPiece = predicted.flatMap { !legacyHybrid || hashReady.contains($0) ? $0 : nil }
+		var combinedVerification: Result<Bool, Error>?
 		do {
 			if !staged.isEmpty {
 				let writes = staged.map { StorageWrite(piece: $0.piece, offset: $0.offset, data: $0.bytes) }
 				let started = profile?.tick(); defer { profile?.end(.storageWrite, since: started) }
-				if coalesceWrites { try await storage.writeDownloadBatch(writes, bufferBudget: writeBuffers) }
+				if let piece = combinedPiece {
+					profile?.count("combinedVerificationAttempts")
+					combinedVerification = try await storage.writeAndVerifyBatch(writes, piece: piece, bufferBudget: coalesceWrites ? writeBuffers : nil)
+				} else if coalesceWrites { try await storage.writeDownloadBatch(writes, bufferBudget: writeBuffers) }
 				else { try await storage.writeBatch(writes) }
 			}
 		} catch {
@@ -89,7 +95,7 @@ extension TCPTransfer {
 		}
 		let ready = staged.compactMap { picker.written($0.block) ? $0.piece : nil }
 		var pending = ready[...]
-		do { while let piece = pending.popFirst() { try await verifyReceivedPiece(piece, profile: profile) } }
+		do { while let piece = pending.popFirst() { try await verifyReceivedPiece(piece, storedVerification: piece == combinedPiece ? combinedVerification : nil, profile: profile) } }
 		catch {
 			// The attempted piece owns its cleanup. Later pieces were marked ready
 			// together, but have no verification task to release them after an error.

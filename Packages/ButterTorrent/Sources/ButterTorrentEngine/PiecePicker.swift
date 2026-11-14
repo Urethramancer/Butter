@@ -127,6 +127,19 @@ struct PiecePicker {
 		item.owners[block.offset] = nil; item.writing.insert(block.offset); item.contributors.insert(peer); active[block.piece] = item
 		return Array(cancel)
 	}
+	// Predict only from accepted, staged blocks; do not advance picker state before
+	// their disk job succeeds. Other in-flight writes must finish separately.
+	func firstCompletedPiece(afterWriting blocks: [PeerBlock]) -> Int? {
+		var written: [Int: Set<Int>] = [:]
+		for block in blocks {
+			guard let item = active[block.piece], item.writing.contains(block.offset) else { continue }
+			written[block.piece, default: []].insert(block.offset)
+			let offsets = written[block.piece]!
+			let length = lengths[block.piece] ?? ((try? layout.length(of: block.piece)) ?? 0)
+			if offsets == item.writing, item.received.count + offsets.count == (length + 16383) / 16384 { return block.piece }
+		}
+		return nil
+	}
 	mutating func written(_ block: PeerBlock) -> Bool {
 		guard var item = active[block.piece] else { return false }
 		item.writing.remove(block.offset); item.received.insert(block.offset)

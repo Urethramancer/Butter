@@ -12,19 +12,30 @@ public struct StorageWrite: Sendable {
 extension TorrentStorage {
 	/// Writes at most sixteen blocks and 256 KiB in one admitted disk job.
 	public func writeBatch(_ writes: [StorageWrite]) async throws {
-		try StorageState.validateWrites(writes, maximumBytes: 262144, maximumCount: 16)
-		try await worker.run(write: true) { [state] cancellation in
-			try state.writeOperations(writes, maximumBytes: 262144, maximumCount: 16, check: cancellation.check)
-		}
+		try await performWriteBatch(writes, bufferBudget: nil) { _, _ in () }
 	}
 	/// Writes received blocks using contiguous file ranges within a shared 1 MiB buffer budget.
 	public func writeDownloadBatch(_ writes: [StorageWrite], bufferBudget: DownloadWriteBufferBudget) async throws {
-		try StorageState.validateWrites(writes, maximumBytes: 1_048_576, maximumCount: 64)
-		let size = writes.reduce(0) { $0 + $1.data.count }
-		let reserved = writes.count > 1 && bufferBudget.reserve(size)
-		defer { if reserved { bufferBudget.release(size) } }
-		try await worker.run(write: true) { [state] cancellation in
-			try state.writeOperations(writes, maximumBytes: 1_048_576, maximumCount: 64, coalescing: reserved, budgetFallback: writes.count > 1 && !reserved, check: cancellation.check)
+		try await performWriteBatch(writes, bufferBudget: bufferBudget) { _, _ in () }
+	}
+	/// Writes a batch and verifies one completed piece in the same disk job.
+	/// Write failures throw; verification failures are returned after successful writes.
+	public func writeAndVerifyBatch(_ writes: [StorageWrite], piece: Int, bufferBudget: DownloadWriteBufferBudget? = nil) async throws -> Result<Bool, Error> {
+		let result = try await performWriteBatch(writes, bufferBudget: bufferBudget) { state, cancellation in
+			let verified = Result { try state.verify(piece: piece, profileKind: .verificationInWrite, check: cancellation.check) }
+			return (verified, state.checkpointDeadline)
+		}
+		armCheckpointTimer(result.1); return result.0
+	}
+	private func performWriteBatch<Output: Sendable>(_ writes: [StorageWrite], bufferBudget: DownloadWriteBufferBudget?, afterWrite: @escaping @Sendable (StorageState, DiskCancellation) throws -> Output) async throws -> Output {
+		let maximumBytes = bufferBudget == nil ? 262144 : 1_048_576, maximumCount = bufferBudget == nil ? 16 : 64
+		try StorageState.validateWrites(writes, maximumBytes: maximumBytes, maximumCount: maximumCount)
+		let size = bufferBudget == nil ? 0 : writes.reduce(0) { $0 + $1.data.count }
+		let reserved = writes.count > 1 && bufferBudget?.reserve(size) == true
+		defer { if reserved { bufferBudget?.release(size) } }
+		return try await worker.run(write: true) { [state] cancellation in
+			try state.writeOperations(writes, maximumBytes: maximumBytes, maximumCount: maximumCount, coalescing: reserved, budgetFallback: bufferBudget != nil && writes.count > 1 && !reserved, check: cancellation.check)
+			return try afterWrite(state, cancellation)
 		}
 	}
 }

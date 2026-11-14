@@ -27,7 +27,7 @@ struct StorageWriteQueueProfile: Sendable {
 // These scopes never cross an await: thread CPU is meaningful alongside elapsed
 // time. Verification includes nested checkpoints; report them as nested budgets.
 struct StorageSynchronousProfile {
-	enum Kind: String { case verification, checkpointInVerification, checkpointOther }
+	enum Kind: String { case verification, verificationInWrite, checkpointInVerification, checkpointOther }
 	let kind: Kind
 	let started: StorageWriteProfile.Tick?
 	static func make(_ kind: Kind) -> StorageSynchronousProfile? {
@@ -52,9 +52,9 @@ struct StorageSynchronousProfile {
 }
 
 extension StorageState {
-	func beginVerificationProfile() -> StorageSynchronousProfile? {
+	func beginVerificationProfile(_ kind: StorageSynchronousProfile.Kind = .verification) -> StorageSynchronousProfile? {
 		guard diagnosticVerificationDepth == 0 else { return nil }
-		let profile = StorageSynchronousProfile.make(.verification)
+		let profile = StorageSynchronousProfile.make(kind)
 		if profile != nil { diagnosticVerificationDepth += 1 }
 		return profile
 	}

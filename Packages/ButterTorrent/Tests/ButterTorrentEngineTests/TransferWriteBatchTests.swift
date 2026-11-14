@@ -101,7 +101,9 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 				try await engineDeadline { for await _ in gate.entered.stream { return }; throw PeerFailure.closed }
 				let next = try await peer.requests(config.pipeline)
 				#expect(next.allSatisfy { $0.piece == 1 })
-				#expect(await down.verifyingPiecesForTesting() == [0])
+				// A fused job has not yet returned its write result to the picker.
+				// The checkpoint gate proves verification is running; publication waits.
+				#expect(await down.snapshot().verifiedPieces.isEmpty)
 				#expect(await resources.snapshot().diskOperations == 1)
 				gate.release.signal(); try await writing.value
 				let status = await down.snapshot()
