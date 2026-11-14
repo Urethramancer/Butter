@@ -82,6 +82,7 @@ final class StorageState: @unchecked Sendable {
 	let owner = UUID()
 	let event: @Sendable (StorageEvent) -> Void
 	let lease: StorageLease
+	var writeProfile: StorageWriteProfile?
 	var closed = false
 	var hasJournal = false
 	var pendingFlush: Set<Int> = []
@@ -193,21 +194,38 @@ final class StorageState: @unchecked Sendable {
 	func location(_ index: Int) -> (StorageDirectory, String) {
 		record.spilled[index] ? (state, "unwanted/\(index)") : (payload, record.paths[index])
 	}
-	func stamps() throws -> [FileStamp?] {
+	func stamps(scanProfile: StorageWriteProfile? = nil, origin: String = "outside") throws -> [FileStamp?] {
 		let scan = StorageStampScan()
 		return try record.paths.indices.map { index in
 			if layout.files[index].pad { return nil }
+			scanProfile?.count("scan.\(origin).filesVisited")
 			let (directory, path) = location(index); return try scan.inspect(path, in: directory)
 		}
 	}
-	@discardableResult func invalidateChangedFiles(external: Bool = true) throws -> [FileStamp?] {
-		let current = try stamps()
+	@discardableResult func invalidateChangedFiles(external: Bool = true, origin: String = "checkpoint") throws -> [FileStamp?] {
+		let profile = writeProfile ?? StorageWriteProfile.make()
+		let origin = writeProfile == nil ? "outside" : origin
+		let previous = profile?.enter(.fullScan)
+		let before = (cpu: profile?.values["phase.fullScan.cpuNs"] ?? 0, elapsed: profile?.values["phase.fullScan.elapsedNs"] ?? 0)
+		profile?.count("scan.\(origin).calls")
+		defer {
+			profile?.enter(previous)
+			if let profile {
+				profile.valuesForScan(origin, suffix: "cpuNs", before: before)
+				profile.valuesForScan(origin, suffix: "elapsedNs", before: before)
+			}
+			if writeProfile == nil { profile?.finishScan() }
+		}
+		let current = try stamps(scanProfile: profile, origin: origin)
 		let changed = Set(current.indices.filter { current[$0] != record.stamps[$0] })
+		profile?.count("scan.\(origin).filesChanged", changed.count)
 		guard !changed.isEmpty else { return current }
 		for index in changed where !layout.files[index].pad { try reconcileFile(index, stamp: current[index], external: external) }
 		return current
 	}
 	func save() throws {
+		let previous = writeProfile?.enter(.progressInvalidation)
+		defer { writeProfile?.enter(previous) }
 		do {
 			// Flush payload before publishing any progress record.
 			for index in pendingFlush.sorted() {

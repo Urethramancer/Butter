@@ -9,6 +9,8 @@ extension StorageState {
 	}
 	// Validation and durable invalidation have completed before allocating this buffer.
 	func writeContiguousRanges(_ writes: [StorageWrite], segments: [[StorageLayout.Segment]], check: () throws -> Void) throws {
+		let profile = writeProfile
+		profile?.enter(.packing)
 		let sorted = writes.indices.sorted {
 			writes[$0].piece == writes[$1].piece ? writes[$0].offset < writes[$1].offset : writes[$0].piece < writes[$1].piece
 		}
@@ -16,6 +18,7 @@ extension StorageState {
 			writes[first].piece == writes[second].piece && writes[first].offset + writes[first].data.count > writes[second].offset
 		}
 		// Preserve last-write-wins semantics for callers supplying overlapping bytes.
+		if overlaps { profile?.count("overlapJobs") }
 		let indices = overlaps ? Array(writes.indices) : sorted
 		var buffer = Data(count: writes.reduce(0) { $0 + $1.data.count })
 		var ranges: [WriteRange] = [], cursor = 0
@@ -37,25 +40,34 @@ extension StorageState {
 			}
 		}
 		StorageDiagnostics.count(.contiguousWriteRanges, ranges.count)
+		profile?.count("contiguousRanges", ranges.count)
+		for range in ranges { profile?.histogram("contiguousBytes", range.bytes.count) }
 		var files: [Int: Int32] = [:], order: [Int] = []
-		defer { for file in files.values { close(file) } }
+		defer { profile?.enter(.cleanup); for file in files.values { close(file); profile?.count("descriptorCloses") } }
 		for range in ranges {
+			profile?.enter(.prewriteChecks)
 			try check()
+			profile?.enter(.descriptorAcquisition)
+			profile?.count("descriptorAcquisitions")
 			let (directory, path) = location(range.file)
 			let file: Int32
-			if let cached = files[range.file] { file = cached; StorageDiagnostics.count(.writeDescriptorCacheHits) }
+			if let cached = files[range.file] { file = cached; profile?.count("descriptorHits"); StorageDiagnostics.count(.writeDescriptorCacheHits) }
 			else {
-				if files.count == 8 { let oldest = order.removeFirst(); close(files.removeValue(forKey: oldest)!) }
+				if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!); profile?.count("descriptorCloses"); profile?.enter(.descriptorAcquisition) }
 				file = try directory.openFile(path, write: true); files[range.file] = file; order.append(range.file)
 			}
 			pendingFlush.insert(range.file)
-			try StorageDirectory.write(buffer[range.bytes], to: file, offset: range.offset, maximumChunk: 1_048_576) {
+			try StorageDirectory.write(buffer[range.bytes], to: file, offset: range.offset, maximumChunk: 1_048_576, profile: profile) {
 				// Refresh path, identity, link and permission observations on every retry.
 				try check()
 				let opened = try directory.stamp(file)
 				guard let current = try directory.inspect(path), current.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
-				if current != record.stamps[range.file] { try invalidateChangedFiles(external: record.stamps[range.file] != nil) }
+				if current != record.stamps[range.file] {
+					profile?.count(record.stamps[range.file] == nil ? "coalescedMismatchAbsent" : "coalescedMismatchRecorded")
+					try invalidateChangedFiles(external: record.stamps[range.file] != nil, origin: "coalesced")
+				}
 			}
+			profile?.enter(.postwriteStamping)
 			record.stamps[range.file] = try directory.stamp(file)
 		}
 	}

@@ -186,14 +186,21 @@ final class StorageDirectory: @unchecked Sendable {
 			return bytes
 		}
 	}
-	static func write(_ data: Data, to file: Int32, offset: Int64, maximumChunk: Int = 65536, check: () throws -> Void) throws {
+	static func write(_ data: Data, to file: Int32, offset: Int64, maximumChunk: Int = 65536, profile: StorageWriteProfile? = nil, check: () throws -> Void) throws {
 		try data.withUnsafeBytes { bytes in
 			var written = 0
 			while written < bytes.count {
+				profile?.enter(.prewriteChecks)
 				try check()
-				let count = pwrite(file, bytes.baseAddress!.advanced(by: written), min(maximumChunk, bytes.count - written), off_t(offset) + off_t(written))
-				if count < 0, errno == EINTR { continue }
+				let requested = min(maximumChunk, bytes.count - written)
+				profile?.count("syscallAttempts"); profile?.histogram("syscallBytes", requested)
+				profile?.enter(.payloadSyscall)
+				let count = pwrite(file, bytes.baseAddress!.advanced(by: written), requested, off_t(offset) + off_t(written))
+				profile?.enter(.prewriteChecks)
+				if count < 0, errno == EINTR { profile?.count("syscallRetries"); continue }
 				guard count > 0 else { throw diskError("Cannot write file") }; written += count
+				profile?.count("physicalBytes", count)
+				if count < requested { profile?.count("shortWrites") }
 				StorageDiagnostics.io(read: false, bytes: count)
 			}
 		}

@@ -429,3 +429,61 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 		with_children(['bad-order']) { |children| assert_raises(RuntimeError) { H.wait(children, [[children[0], 'ready']], timeout: 3) } }
 	end
 end
+
+class WriteProfileTests < Minitest::Test
+	H = TransferBenchmarkHarness
+	def profile_trial(mode, warmup: false)
+		diagnostics = {'writeProfile.jobs'=>2, 'writeProfile.job.cpuNs'=>1_000_000_000, 'writeProfile.phase.payloadSyscall.cpuNs'=>500_000_000, 'writeProfile.phase.payloadSyscall.elapsedNs'=>750_000_000, 'writeProfile.phase.payloadSyscall.calls'=>4,
+			'writeProfile.blocksPerJobCount'=>2, 'writeProfile.blocksPerJobSum'=>6, 'writeProfile.blocksPerJobPower2_1'=>1, 'writeProfile.blocksPerJobPower2_2'=>1}
+		diagnostics = {} if mode == 'off'
+		{accepted: true, warmup: warmup, write_mode: mode, engine_metrics: {cpu_seconds: 2.0, user_cpu_seconds: 1.5, system_cpu_seconds: 0.5, through_durable: {wall: 3.0}}, counterpart_metrics: {cpu_seconds: 1.0},
+			events: {'download'=>[{'phase'=>'ready', 'storage_diagnostics'=>{'clock.cpu.resolutionNs'=>1}}, {'phase'=>'start', 'storage_diagnostics'=>{}}, {'phase'=>'durable', 'storage_diagnostics'=>diagnostics}]}}
+	end
+	def test_fixed_protocol_uses_four_workloads_and_exactly_36_trials
+		Dir.mktmpdir do |root|
+			owner = self
+			runner = H::Runner.new('/swift', '/reference', root, root, write_profile: true, baseline: nil)
+			runner.define_singleton_method(:trial) do |fixture, format, direction, engine, pair, warmup, write_mode:|
+				@trials << owner.profile_trial(write_mode, warmup: warmup).merge(case: fixture['case'], format: format, direction: direction, engine: engine, pair: pair)
+			end
+			runner.run(%w[single many concurrent].map { |name| {'case'=>name} })
+			rows = runner.instance_variable_get(:@trials)
+			assert_equal 36, rows.size
+			groups = rows.group_by { |row| row.values_at(:case, :format) }
+			assert_equal [['single', 'v1'], ['many', 'hybrid'], ['concurrent', 'v2'], ['concurrent', 'hybrid']], groups.keys
+			groups.each_value do |trials|
+				assert_equal %w[off counts timed off counts timed timed counts off], trials.map { |row| row[:write_mode] }
+				assert_equal [true] * 3 + [false] * 6, trials.map { |row| row[:warmup] }
+				assert trials.all? { |row| row[:engine] == 'Swift' && row[:direction] == 'download' }
+			end
+		end
+	end
+	def test_report_keeps_cpu_elapsed_and_histogram_upper_bounds_distinct
+		rows = %w[off counts timed].map { |mode| profile_trial(mode, warmup: true) } + %w[off counts timed timed counts off].map { |mode| profile_trial(mode) }
+		report = H.aggregate_write_profile(rows)
+		timed = report[:modes]['timed']
+		assert_equal 4, timed[:totals]['jobs']
+		assert_equal 1.0, timed[:phases]['payloadSyscall'][:cpu_seconds]
+		assert_equal 1.5, timed[:phases]['payloadSyscall'][:elapsed_seconds_sum]
+		assert_equal 0.5, timed[:write_job_cpu_share]
+		assert_equal 3.0, timed[:distributions]['blocksPerJob'][:mean]
+		assert_equal 2, timed[:distributions]['blocksPerJob'][:p50_upper]
+		assert_equal 4, timed[:distributions]['blocksPerJob'][:p99_upper]
+		rows.first[:accepted] = false
+		assert_equal 'failed', H.aggregate_write_profile(rows)[:status]
+	end
+	def test_timing_gate_rejects_acceptance_runs_and_missing_counters
+		[['--full', '1', 'diagnostic only'], ['--profile', '0', 'require BUTTER_STORAGE_DIAGNOSTICS']].each do |mode, counts, message|
+			text, status = Open3.capture2e({'BUTTER_STORAGE_WRITE_TIMINGS'=>'1', 'BUTTER_STORAGE_DIAGNOSTICS'=>counts}, File.expand_path('../Scripts/test-benchmark.sh', __dir__), mode)
+			assert_equal 2, status.exitstatus
+			assert_includes text, message
+		end
+		previous = ENV['BUTTER_STORAGE_WRITE_TIMINGS']
+		begin
+			ENV['BUTTER_STORAGE_WRITE_TIMINGS'] = '1'
+			assert_equal '1', H.process_environment['BUTTER_STORAGE_WRITE_TIMINGS']
+		ensure
+			ENV['BUTTER_STORAGE_WRITE_TIMINGS'] = previous
+		end
+	end
+end

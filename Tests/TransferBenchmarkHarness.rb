@@ -6,6 +6,7 @@ require 'tmpdir'
 require 'rbconfig'
 require 'time'
 require_relative 'ProfileAttribution'
+require_relative 'WriteProfileReport'
 
 module TransferBenchmarkHarness
 	PHASES = %w[prepare ready start verified persistence durable shutdown stopped].freeze
@@ -24,7 +25,7 @@ module TransferBenchmarkHarness
 	end
 	# Instruments records the target environment. Do not propagate unrelated credentials.
 	def self.process_environment
-		keys = %w[PATH HOME TMPDIR LANG LC_ALL LC_CTYPE USER LOGNAME DEVELOPER_DIR SDKROOT BUTTER_STORAGE_DIAGNOSTICS BUTTER_RECEIVE_ORDER_TRACE]
+		keys = %w[PATH HOME TMPDIR LANG LC_ALL LC_CTYPE USER LOGNAME DEVELOPER_DIR SDKROOT BUTTER_STORAGE_WRITE_TIMINGS BUTTER_STORAGE_DIAGNOSTICS BUTTER_RECEIVE_ORDER_TRACE]
 		ENV.to_h.select { |key, _| keys.include?(key) }
 	end
 	def self.redact_profile_environment(path)
@@ -239,13 +240,17 @@ module TransferBenchmarkHarness
 
 	class Child
 		attr_reader :events, :pid, :log, :job_path, :whole
-		def initialize(command, job_path, log, allocation_logging: false)
+		def initialize(command, job_path, log, allocation_logging: false, write_mode: nil)
 			@phases = JSON.parse(File.read(job_path))['partial'] ? %w[prepare ready start measurement-start measurement-end verified persistence durable shutdown stopped] : PHASES
 			@job_path, @log, @events, @buffer = job_path, log, [], ''.b
 			input, @control = IO.pipe
 			@output, output = IO.pipe
 			environment = TransferBenchmarkHarness.process_environment
 			environment['MallocStackLogging'] = '1' if allocation_logging
+			if write_mode
+				environment['BUTTER_STORAGE_DIAGNOSTICS'] = write_mode == 'off' ? '0' : '1'
+				environment['BUTTER_STORAGE_WRITE_TIMINGS'] = write_mode == 'timed' ? '1' : '0'
+			end
 			@pid = Process.spawn(environment, '/usr/bin/time', '-l', *command, '--benchmark', job_path,
 				in: input, out: output, err: log, pgroup: true, unsetenv_others: true)
 			input.close; output.close
@@ -431,17 +436,18 @@ module TransferBenchmarkHarness
 	end
 
 	class Runner
-		def initialize(swift, reference, output, work, smoke: false, profile: false, previous: nil, baseline: ENV['BUTTER_BENCHMARK_BASELINE'])
+		def initialize(swift, reference, output, work, smoke: false, profile: false, write_profile: false, previous: nil, baseline: ENV['BUTTER_BENCHMARK_BASELINE'])
 			@commands = { 'Swift' => [swift], 'libtorrent' => [reference] }
 			@source_commands = { 'current' => [swift] }; @source_commands['previous'] = [previous] if previous
 			@source_comparison = !previous.nil?
 			raise 'Source comparison cannot use smoke' if @source_comparison && smoke
 			@output, @work, @smoke, @profile = output, work, smoke, profile
+			@write_profile = write_profile
 			@profiler = ENV.fetch('BUTTER_BENCHMARK_PROFILER', 'sample')
 			raise 'Unknown benchmark profiler' unless %w[sample counts time-profiler file-activity heap allocations system-trace concurrency].include?(@profiler)
 			raise 'Instrumented profiling requires --profile' if !profile && @profiler != 'sample'
 			@trials = []
-			if baseline
+			if baseline && !write_profile
 				raise 'A representative full baseline is required' unless JSON.parse(File.read(File.join(baseline, 'environment.json')))['mode'] == '--full'
 				raise 'Baseline fixture hashes differ' unless JSON.parse(File.read(File.join(baseline, 'fixtures.json'))) == JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
 				@baseline = File.readlines(File.join(baseline, 'trials.jsonl')).map { |line| JSON.parse(line, symbolize_names: true) }
@@ -450,8 +456,8 @@ module TransferBenchmarkHarness
 		def command_for(engine, source)
 			engine == 'Swift' && source ? @source_commands.fetch(source) : @commands.fetch(engine)
 		end
-		def trial(fixture, format, direction, engine, pair, warmup, source: nil)
-			id = [source, fixture['case'], format, direction, pair, engine, warmup ? 'warmup' : 'measured'].compact.join('-')
+		def trial(fixture, format, direction, engine, pair, warmup, source: nil, write_mode: nil)
+			id = [write_mode, source, fixture['case'], format, direction, pair, engine, warmup ? 'warmup' : 'measured'].compact.join('-')
 			folder = File.join(@work, id); FileUtils.mkdir_p(folder)
 			log_dir = File.join(@output, id); FileUtils.mkdir_p(log_dir)
 			root = File.join(@work, 'fixtures', fixture['case'])
@@ -466,6 +472,7 @@ module TransferBenchmarkHarness
 			record = { id: id, case: fixture['case'], format: format, direction: direction, engine: engine, pair: pair, warmup: warmup, bytes: fixture['bytes'], accepted: false }
 			record[:application_inspector] = inspector if inspector
 			record[:source_variant] = source if source
+			record[:write_mode] = write_mode if write_mode
 			children = []; profilers = []; trace = nil
 			begin
 				# Explicitly warm every source with an independent streaming digest, outside timing.
@@ -481,7 +488,7 @@ module TransferBenchmarkHarness
 					job_path = File.join(folder, "#{role}.json"); File.write(job_path, JSON.generate(job))
 					selected = (direction == 'download' ? role == 'download' : role == 'seed') ? engine : 'libtorrent'
 					tested_role = direction == 'download' ? role == 'download' : role == 'seed'
-					roles[role] = Child.new(command_for(selected, source), job_path, File.join(log_dir, "#{role}.log"), allocation_logging: @profile && @profiler == 'allocations' && tested_role); children << roles[role]
+					roles[role] = Child.new(command_for(selected, source), job_path, File.join(log_dir, "#{role}.log"), allocation_logging: @profile && @profiler == 'allocations' && tested_role, write_mode: write_mode); children << roles[role]
 				end
 				seed, down = roles.values_at('seed', 'download')
 				timeout = @smoke ? 30 : 600
@@ -586,7 +593,23 @@ module TransferBenchmarkHarness
 			{ status: rows.size == 4 && rows.all? { |r| r[:accepted] } ? 'profile-source-only' : 'failed', profiled: true, source_order: order,
 				method: 'One diagnostic capture per engine/source; no acceptance or source-ratio inference' }
 		end
+		def run_write_profile(manifest)
+			Signal.trap('TERM') { raise Interrupt, 'Benchmark terminated' }
+			results = []
+			[['single', 'v1'], ['many', 'hybrid'], ['concurrent', 'v2'], ['concurrent', 'hybrid']].each do |workload, format|
+				fixture = manifest.find { |item| item['case'] == workload }
+				raise "Missing write-profile fixture: #{workload}" unless fixture
+				start = @trials.size
+				%w[off counts timed].each { |mode| trial(fixture, format, 'download', 'Swift', -1, true, write_mode: mode) }
+				%w[off counts timed timed counts off].each_with_index { |mode, index| trial(fixture, format, 'download', 'Swift', index, false, write_mode: mode) }
+				rows = @trials.drop(start)
+				results << TransferBenchmarkHarness.aggregate_write_profile(rows).merge(case: workload, format: format)
+				File.write(File.join(@output, 'summary.json'), JSON.pretty_generate(results))
+				raise 'Write profile contains failed trials; no automatic repetitions' unless rows.all? { |row| row[:accepted] }
+			end
+		end
 		def run(fixtures)
+			return run_write_profile(fixtures) if @write_profile
 			Signal.trap('TERM') { raise Interrupt, 'Benchmark terminated' }
 			results = []
 			fixtures.each_with_index do |fixture, index|
@@ -647,5 +670,5 @@ if $PROGRAM_NAME == __FILE__
 	FileUtils.mkdir_p(output)
 	manifest = JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
 	FileUtils.cp(File.join(work, 'fixtures', 'manifest.json'), File.join(output, 'fixtures.json'))
-	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: %w[--profile --profile-source].include?(mode), previous: %w[--compare-source --profile-source].include?(mode) ? previous : nil).run(manifest)
+	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: %w[--profile --profile-source].include?(mode), write_profile: mode == '--write-profile', previous: %w[--compare-source --profile-source].include?(mode) ? previous : nil).run(manifest)
 end

@@ -3,7 +3,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 mode=${1:---full}
-case "$mode" in --full|--smoke|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare] [OUTPUT]' >&2; exit 2 ;; esac
+case "$mode" in --full|--smoke|--write-profile|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--write-profile|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare] [OUTPUT]' >&2; exit 2 ;; esac
 case "$mode" in
 	--profile|--profile-source|--compare-source)
 		if [ -n "${BUTTER_BENCHMARK_CASE:-}" ]; then export BUTTER_BENCHMARK_FIXTURE_CASE=$BUTTER_BENCHMARK_CASE; fi ;;
@@ -18,8 +18,17 @@ case "${BUTTER_BENCHMARK_APPLICATION_INSPECTOR:-}" in
 		case "$mode" in --rate-*) echo 'Application polling uses full-transfer workloads.' >&2; exit 2 ;; esac ;;
 	*) echo 'Application inspector must be hidden or visible.' >&2; exit 2 ;;
 esac
+if [ "${BUTTER_STORAGE_WRITE_TIMINGS:-0}" = 1 ]; then
+	case "$mode" in --write-profile|--profile|--profile-source|--rate-profile) ;; *) echo 'Write timings are diagnostic only.' >&2; exit 2 ;; esac
+	[ "${BUTTER_STORAGE_DIAGNOSTICS:-0}" = 1 ] || { echo 'Write timings require BUTTER_STORAGE_DIAGNOSTICS=1.' >&2; exit 2; }
+fi
+if [ "$mode" = --write-profile ]; then
+	[ -z "${BUTTER_BENCHMARK_CASE:-}${BUTTER_BENCHMARK_FORMAT:-}${BUTTER_BENCHMARK_DIRECTION:-}${BUTTER_BENCHMARK_APPLICATION_INSPECTOR:-}${BUTTER_BENCHMARK_FIXTURE_CASE:-}" ] || { echo 'Write profiles use the four fixed download workloads.' >&2; exit 2; }
+	[ "${BUTTER_BENCHMARK_PROFILER:-sample}" = sample ] || { echo 'Write profiles cannot use another profiler.' >&2; exit 2; }
+fi
+
 if [ "${BUTTER_STORAGE_DIAGNOSTICS:-0}" = 1 ]; then
-	case "$mode" in --profile|--profile-source|--rate-profile) ;; *) echo 'Storage counters are diagnostic only; use --profile or --profile-source.' >&2; exit 2 ;; esac
+	case "$mode" in --write-profile|--profile|--profile-source|--rate-profile) ;; *) echo 'Storage counters are diagnostic only; use --profile or --profile-source.' >&2; exit 2 ;; esac
 fi
 if { [ "$mode" = --profile-source ] || [ "$mode" = --rate-compare ]; } && [ -z "${BUTTER_BENCHMARK_PREVIOUS_REVISION:-}" ]; then
 	echo 'Set BUTTER_BENCHMARK_PREVIOUS_REVISION for source profiles or rate comparisons.' >&2; exit 2
@@ -106,15 +115,15 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
     libtorrent_revision: "6da363d2994f17c0b3c0450d124cf73a31a73847", swift: capture.call("swift", "--version"), clang: capture.call("clang++", "--version"),
     os: capture.call("sw_vers"), machine: capture.call("sysctl", "-n", "hw.model", "hw.memsize", "hw.logicalcpu"),
     filesystem: capture.call("df", "-h", root), work_directory: root, resource_limits: capture.call("sh", "-c", "ulimit -a"),
-    filters: ENV.select { |key, _| key.start_with?("BUTTER_BENCHMARK_") || %w[BUTTER_STORAGE_DIAGNOSTICS BUTTER_PROFILE_KEEP_RAW].include?(key) },
+    filters: ENV.select { |key, _| key.start_with?("BUTTER_BENCHMARK_") || %w[BUTTER_STORAGE_DIAGNOSTICS BUTTER_STORAGE_WRITE_TIMINGS BUTTER_PROFILE_KEEP_RAW].include?(key) },
     swift_flags: "Release package; swiftc -O -swift-version #{ENV["BUTTER_BENCHMARK_APPLICATION_INSPECTOR"] ? 5 : 6}", reference_flags: "CMake Release; arm64; pinned static libtorrent",
     transport: "loopback TCP, encryption disabled, PEX/discovery disabled; production request windows",
     cache: "fresh processes and destinations; sources streamed and SHA256 checked before every trial; explicitly warm, no cold-cache claim",
     durability: rate_mode ? "After measurement: stop traffic, drain, checkpoint and fsync; independently compare every claimed verified piece with the fixture and reopen the partial checkpoint. Not full-transfer acceptance." : "Swift native payload fsync then atomic state fsync/rename/directory fsync; its forced completion checkpoint is inside the verified interval. Libtorrent finished precedes pause/flush_cache fence plus explicit payload/directory fsync then resume fsync/rename/directory fsync. Through-durable metrics include both placements.",
-    sampling: mode == "--rate-profile" ? "one diagnostic per engine at 500 Mbps; excluded from comparisons" : mode == "--rate-compare" ? "one warm-up per source/engine; fixed six balanced pairs at 500 Mbps, 28 samples; no automatic repetitions" : rate_mode ? "Exploratory; one sample per engine/rate; fixed shuffled rates, alternating engine order; 5s settle and 10s measurement; no retries or significance inference" : %w[--compare-source --rate-compare].include?(mode) ? "one warm-up per engine/source; fixed six balanced source-order pairs, each with a balanced Swift/native engine-order pair per source; source-comparison-only, no acceptance inference or uncertainty-driven retries" : profiled ? "one diagnostic trial per engine and source variant per selected case; no warm-ups; excluded from timing acceptance" : "one warm-up per engine per case, six balanced shuffled pairs; extend inconclusive cases to twelve pairs; smoke uses one pair and 32 MiB",
+    sampling: mode == "--write-profile" ? "four fixed workloads; one warm-up per off/counts/timed mode, then off, counts, timed, timed, counts, off; 36 trials; one Release binary; no repetitions; diagnostic only" : mode == "--rate-profile" ? "one diagnostic per engine at 500 Mbps; excluded from comparisons" : mode == "--rate-compare" ? "one warm-up per source/engine; fixed six balanced pairs at 500 Mbps, 28 samples; no automatic repetitions" : rate_mode ? "Exploratory; one sample per engine/rate; fixed shuffled rates, alternating engine order; 5s settle and 10s measurement; no retries or significance inference" : %w[--compare-source --rate-compare].include?(mode) ? "one warm-up per engine/source; fixed six balanced source-order pairs, each with a balanced Swift/native engine-order pair per source; source-comparison-only, no acceptance inference or uncertainty-driven retries" : profiled ? "one diagnostic trial per engine and source variant per selected case; no warm-ups; excluded from timing acceptance" : "one warm-up per engine per case, six balanced shuffled pairs; extend inconclusive cases to twelve pairs; smoke uses one pair and 32 MiB",
     profiler: profiled ? {name: profiler, capture_window: profile_window, time_profiler_method: %w[time-profiler file-activity].include?(profiler) ? "attach tested process before start using Instruments notification; Running samples only; stop at the labelled capture end; counterpart phase CPU retained, not instrumented" : nil} : nil,
     timing: rate_mode ? "Monotonic wall/user/system and received payload deltas between measurement-start/end; CPU 100% means one core; CPU/GiB excludes settle, persistence and teardown; counterpart CPU retained separately." : "phase wall/user/system from each driver; CPU/GiB through durable completion; whole process wall/user/system/peak RSS from /usr/bin/time -l, including teardown"}
-  files = %w[Tests/TransferBenchmark.swift Tests/ApplicationBenchmark.swift Tests/TransferBenchmarkReference.hpp Tests/TCPPeerReference.mm Tests/TransferBenchmarkHarness.rb Tests/ProfileAttribution.rb Tests/RateSweep.rb Tests/Reference/CMakeLists.txt Scripts/test-benchmark.sh Scripts/bootstrap-engine.sh]
+  files = %w[Tests/TransferBenchmark.swift Tests/ApplicationBenchmark.swift Tests/TransferBenchmarkReference.hpp Tests/TCPPeerReference.mm Tests/TransferBenchmarkHarness.rb Tests/WriteProfileReport.rb Tests/ProfileAttribution.rb Tests/RateSweep.rb Tests/Reference/CMakeLists.txt Scripts/test-benchmark.sh Scripts/bootstrap-engine.sh]
   record[:harness_sha256] = files.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }
   record[:swift_source_sha256] = Dir.glob("Packages/ButterTorrent/Sources/**/*.swift").sort.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }
   record[:package_sha256] = Digest::SHA256.file("Packages/ButterTorrent/Package.swift").hexdigest
@@ -153,3 +162,14 @@ else
 	ruby Tests/TransferBenchmarkHarness.rb "$work/TransferBenchmark" "$reference" "$out" "$work" "$mode"
 fi
 printf 'Raw results and summaries: %s\n' "$out"
+# Refuse to interpret measurements if their source or binary changed during traffic.
+ruby -rjson -rdigest -e '
+  out, driver, reference = ARGV
+  record = JSON.parse(File.read(File.join(out, "environment.json")))
+  %w[harness_sha256 swift_source_sha256 application_source_sha256].each do |group|
+    record.fetch(group, {}).each { |path, hash| raise "Benchmark source changed: #{path}" unless Digest::SHA256.file(path).hexdigest == hash }
+  end
+  raise "Benchmark package changed" unless Digest::SHA256.file("Packages/ButterTorrent/Package.swift").hexdigest == record.fetch("package_sha256")
+  {"swift" => driver, "reference" => reference}.each { |name, path| raise "Benchmark binary changed: #{name}" unless Digest::SHA256.file(path).hexdigest == record.fetch("driver_sha256").fetch(name) }
+  File.write(File.join(out, "fingerprints-verified.json"), JSON.generate({unchanged: true}))
+' "$out" "$work/TransferBenchmark" "$reference"
