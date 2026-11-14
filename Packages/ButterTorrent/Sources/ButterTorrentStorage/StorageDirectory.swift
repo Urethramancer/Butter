@@ -176,18 +176,14 @@ final class StorageDirectory: @unchecked Sendable {
 	}
 	static func read(_ file: Int32, offset: Int64, count: Int) throws -> Data {
 		var bytes = Data(count: count)
-		let readCount = try bytes.withUnsafeMutableBytes { try read(file, offset: offset, into: $0) }
-		bytes.count = readCount
-		return bytes
-	}
-	static func read(_ file: Int32, offset: Int64, into bytes: UnsafeMutableRawBufferPointer) throws -> Int {
 		while true {
-			let readCount = pread(file, bytes.baseAddress, bytes.count, off_t(offset))
+			let readCount = bytes.withUnsafeMutableBytes { pread(file, $0.baseAddress, count, off_t(offset)) }
 			if readCount < 0 {
 				if errno == EINTR { continue }; throw diskError("Cannot read file")
 			}
+			bytes.count = readCount
 			StorageDiagnostics.io(read: true, bytes: readCount)
-			return readCount
+			return bytes
 		}
 	}
 	static func write(_ data: Data, to file: Int32, offset: Int64, maximumChunk: Int = 65536, profile: StorageWriteProfile? = nil, check: () throws -> Void) throws {
