@@ -186,12 +186,12 @@ final class StorageDirectory: @unchecked Sendable {
 			return bytes
 		}
 	}
-	static func write(_ data: Data, to file: Int32, offset: Int64, check: () throws -> Void) throws {
+	static func write(_ data: Data, to file: Int32, offset: Int64, maximumChunk: Int = 65536, check: () throws -> Void) throws {
 		try data.withUnsafeBytes { bytes in
 			var written = 0
 			while written < bytes.count {
 				try check()
-				let count = pwrite(file, bytes.baseAddress!.advanced(by: written), min(65536, bytes.count - written), off_t(offset) + off_t(written))
+				let count = pwrite(file, bytes.baseAddress!.advanced(by: written), min(maximumChunk, bytes.count - written), off_t(offset) + off_t(written))
 				if count < 0, errno == EINTR { continue }
 				guard count > 0 else { throw diskError("Cannot write file") }; written += count
 				StorageDiagnostics.io(read: false, bytes: count)

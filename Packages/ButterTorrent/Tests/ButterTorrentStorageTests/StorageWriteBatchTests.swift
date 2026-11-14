@@ -16,6 +16,80 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 }
 
 @Suite struct StorageWriteBatchTests {
+	@Test(arguments: [false, true]) func downloadBatchOrdersDisjointRangesAndPreservesOverlappingWriteOrder(_ overlap: Bool) async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 32768, pieceLength: 32768)
+			let file = root.appendingPathComponent("data/bundle/file-0")
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"))
+			var writes = [StorageWrite(piece: 0, offset: 16384, data: bytes.suffix(16384)), StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384))]
+			var expected = bytes
+			if overlap {
+				let replacement = Data(repeating: 7, count: 4096)
+				writes.append(StorageWrite(piece: 0, offset: 8192, data: replacement)); expected.replaceSubrange(8192..<12288, with: replacement)
+			}
+			try await storage.writeDownloadBatch(writes, bufferBudget: DownloadWriteBufferBudget())
+			#expect(try Data(contentsOf: file) == expected)
+			#expect(try await storage.verify(piece: 0) == !overlap)
+			try await storage.shutdown()
+		}
+	}
+	@Test(arguments: [1, 2], [false, true])
+	func downloadCoalescingCrossesPieceBoundariesAndFallsBackWhenBudgetIsFull(_ files: Int, _ saturated: Bool) async throws {
+		try await storageFixture { root in
+			let size = 1_048_576 / files, (metadata, bytes) = try batchMetadata(fileCount: files, fileSize: size, pieceLength: 262144)
+			let destination = root.appendingPathComponent("data"), state = root.appendingPathComponent("state")
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state)
+			let budget = DownloadWriteBufferBudget()
+			if saturated { #expect(budget.reserve(1_048_576)) }
+			let writes = stride(from: 0, to: bytes.count, by: 16384).map {
+				StorageWrite(piece: $0 / 262144, offset: $0 % 262144, data: bytes[$0..<($0 + 16384)])
+			}
+			try await storage.writeDownloadBatch(writes, bufferBudget: budget)
+			#expect(budget.usage == (saturated ? 1_048_576 : 0))
+			if saturated { budget.release(1_048_576) }
+			for file in 0..<files { #expect(try Data(contentsOf: destination.appendingPathComponent("bundle/file-\(file)")) == bytes[(file * size)..<((file + 1) * size)]) }
+			for piece in 0..<4 { #expect(try await storage.verify(piece: piece)) }
+			try await storage.shutdown()
+			let reopened = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state)
+			#expect(try await reopened.snapshot().verifiedPieces == Set(0..<4))
+			try await reopened.shutdown()
+		}
+	}
+	@Test func cancelledDownloadWriteReleasesItsBufferReservation() async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 32768)
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"))
+			let budget = DownloadWriteBufferBudget()
+			let task = Task {
+				withUnsafeCurrentTask { $0?.cancel() }
+				try await storage.writeDownloadBatch([StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: 1, offset: 0, data: bytes.suffix(16384))], bufferBudget: budget)
+			}
+			await #expect(throws: CancellationError.self) { try await task.value }
+			#expect(budget.usage == 0)
+			try await storage.shutdown()
+		}
+	}
+	@Test(arguments: [false, true]) func coalescedRangesRejectReplacementAndHardLinksBeforeTheNextWrite(_ hardLinked: Bool) async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 65536, pieceLength: 32768)
+			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { _ in }, check: {})
+			let file = root.appendingPathComponent("data/bundle/file-0"), original = root.appendingPathComponent("original"), replacement = Data([4, 5, 6])
+			var changed = false
+			let failure: StorageFailure = hardLinked ? .shared("hard-linked file") : .invalid("payload replaced during write batch")
+			#expect(throws: failure) {
+				try state.writeOperations([StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: 1, offset: 0, data: bytes[32768..<49152])], maximumBytes: 262144, maximumCount: 16, coalescing: true, check: {
+					if !changed, (try? Data(contentsOf: file).count) == 16384 {
+						changed = true
+						if hardLinked { try FileManager.default.linkItem(at: file, to: original) }
+						else { try FileManager.default.moveItem(at: file, to: original); try replacement.write(to: file) }
+					}
+				})
+			}
+			#expect(changed)
+			#expect(try Data(contentsOf: original) == bytes.prefix(16384))
+			#expect(try Data(contentsOf: file) == (hardLinked ? bytes.prefix(16384) : replacement))
+		}
+	}
 	@Test func unrelatedPathsAreCheckedAtIntegrityBarriersRatherThanEveryWrite() async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: 2, fileSize: 16384)
@@ -42,6 +116,31 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 		}
 	}
 	enum ParentChange: CaseIterable, Sendable { case replacement, symlink, originalFile, permissions }
+	@Test(arguments: [ParentChange.symlink, .permissions]) func coalescedRangesRefreshParentAccessBeforeTheNextWrite(_ change: ParentChange) async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 65536, pieceLength: 32768)
+			let state = try StorageState(metadata: metadata, layout: StorageLayout(metadata: metadata), destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: nil, coordinator: StorageCoordinator(), event: { _ in }, check: {})
+			let parent = root.appendingPathComponent("data/bundle"), original = root.appendingPathComponent("original-parent")
+			let file = parent.appendingPathComponent("file-0")
+			defer { if change == .permissions { _ = chmod(parent.path, 0o700) } }
+			var changed = false
+			#expect(throws: (any Error).self) {
+				try state.writeOperations([StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: 1, offset: 0, data: bytes[32768..<49152])], maximumBytes: 262144, maximumCount: 16, coalescing: true, check: {
+					if !changed, (try? Data(contentsOf: file).count) == 16384 {
+						changed = true
+						if change == .permissions { guard chmod(parent.path, 0o300) == 0 else { throw diskError("Cannot change parent access") } }
+						else {
+							try FileManager.default.moveItem(at: parent, to: original)
+							try FileManager.default.createSymbolicLink(at: parent, withDestinationURL: original)
+						}
+					}
+				})
+			}
+			#expect(changed)
+			let retained = change == .permissions ? file : original.appendingPathComponent("file-0")
+			#expect(try Data(contentsOf: retained) == bytes.prefix(16384))
+		}
+	}
 	@Test(arguments: ParentChange.allCases) func parentReplacementBetweenBlocksKeepsPathAndFileOwnership(_ change: ParentChange) async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: 1, fileSize: 32768, pieceLength: 32768)
@@ -141,12 +240,14 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 			}
 		}
 	}
-	@Test(arguments: [false, true]) func crossesManyFilesAndEvictsDescriptorsWithoutChangingSelectiveStorage(selective: Bool) async throws {
+	@Test(arguments: [false, true], [false, true]) func crossesManyFilesAndEvictsDescriptorsWithoutChangingSelectiveStorage(selective: Bool, coalescing: Bool) async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try batchMetadata(fileCount: 32, fileSize: 1024)
 			let selected = (0..<32).map { !selective || $0 % 2 == 0 }
 			let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"), selected: selected)
-			try await storage.writeBatch([StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: 1, offset: 0, data: bytes.suffix(16384))])
+			let writes = [StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384)), StorageWrite(piece: 1, offset: 0, data: bytes.suffix(16384))]
+			if coalescing { try await storage.writeDownloadBatch(writes, bufferBudget: DownloadWriteBufferBudget()) }
+			else { try await storage.writeBatch(writes) }
 			#expect(try await storage.verify(piece: 0)); #expect(try await storage.verify(piece: 1))
 			for index in 0..<32 {
 				let path = selected[index] ? "data/bundle/file-\(index)" : "state/unwanted/\(index)"
@@ -157,17 +258,23 @@ private func batchMetadata(fileCount: Int, fileSize: Int, pieceLength: Int = 163
 			try await storage.shutdown()
 		}
 	}
-	@Test func validatesEveryPaddingByteBeforeWritingAnyBlock() async throws {
+	@Test(arguments: [false, true]) func validatesEveryPaddingByteBeforeWritingAnyBlock(coalescing: Bool) async throws {
 		try await storageFixture { root in
 			let (metadata, bytes) = try storageMetadata(root)
 			let storage = try await TorrentStorage.open(metadata: metadata, destination: root.appendingPathComponent("data"), stateDirectory: root.appendingPathComponent("state"))
+			let budget = DownloadWriteBufferBudget()
+			let write: @Sendable ([StorageWrite]) async throws -> Void = { writes in
+				if coalescing { try await storage.writeDownloadBatch(writes, bufferBudget: budget) }
+				else { try await storage.writeBatch(writes) }
+			}
 			var last = Data([1, 2, 3]) + Data(repeating: 0, count: 16381); last[last.count - 1] = 255
 			let first = StorageWrite(piece: 0, offset: 0, data: bytes.prefix(16384))
 			let badLast = last
-			await #expect(throws: StorageFailure.invalid("nonzero padding")) { try await storage.writeBatch([first, StorageWrite(piece: 2, offset: 0, data: badLast)]) }
+			await #expect(throws: StorageFailure.invalid("nonzero padding")) { try await write([first, StorageWrite(piece: 2, offset: 0, data: badLast)]) }
+			#expect(budget.usage == 0)
 			#expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("data/source/a").path))
 			last[last.count - 1] = 0
-			try await storage.writeBatch([first, StorageWrite(piece: 1, offset: 0, data: bytes.suffix(3616) + Data(repeating: 0, count: 12768)), StorageWrite(piece: 2, offset: 0, data: last)])
+			try await write([first, StorageWrite(piece: 1, offset: 0, data: bytes.suffix(3616) + Data(repeating: 0, count: 12768)), StorageWrite(piece: 2, offset: 0, data: last)])
 			for piece in 0..<3 { #expect(try await storage.verify(piece: piece)) }
 			try await storage.shutdown()
 		}

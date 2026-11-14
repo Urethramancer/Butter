@@ -2,9 +2,9 @@
 
 ## Performance
 
-- Complete fixed-rate and single-file/concurrent download and seeding regression
-  checks for bounded write coalescing. Its many-file hybrid comparison establishes
-  lower CPU; broader retention checks remain outstanding.
+- Complete single-file/concurrent download and seeding regression checks for
+  bounded write coalescing. Full-transfer and fixed-rate comparisons establish
+  lower CPU within the agreed retention gates.
 - Complete the approved summary/detail snapshot and bounded private staging
   experiments. Preserve integrity observations, filesystem guards, the 1 MiB
   transient budget and 64 MiB staging ceiling.

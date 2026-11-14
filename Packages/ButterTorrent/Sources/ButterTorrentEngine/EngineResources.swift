@@ -14,6 +14,7 @@ public final class TransferResources: Sendable {
 	let disk: TransferPermits
 	let web = TransferPermits(3)
 	let pieces: SharedPieceCache
+	let writeBuffers = DownloadWriteBufferBudget()
 	public init(maximumDiskOperations: Int = 8, maximumCachedBytes: Int = 64 * 1024 * 1024) throws {
 		guard (1...64).contains(maximumDiskOperations), (16 * 1024 * 1024...256 * 1024 * 1024).contains(maximumCachedBytes) else { throw PeerFailure.invalid("session resource limits") }
 		disk = TransferPermits(maximumDiskOperations); pieces = SharedPieceCache(limit: maximumCachedBytes)

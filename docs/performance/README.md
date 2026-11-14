@@ -2,15 +2,16 @@
 
 CPU parity remains unmet. The latest many-file hybrid write-coalescing candidate
 uses **22.7% less CPU** than the retained implementation, with **24.4% more
-throughput**, across six balanced source pairs. Fixed-rate and broader regression
-checks remain outstanding; this is not a release-wide improvement claim.
+throughput**, across six balanced source pairs. A matching fixed-rate comparison
+also qualifies; focused regressions remain outstanding. This is not a release-wide
+improvement claim.
 
 [Current measurements](results.json) contain the latest full matrix, compact
 profile summaries, native rendering observations and all 28 write-comparison
 measurements. Generated traces, per-run logs and historical experiment reports
 belong under ignored `.build/`, rather than in documentation.
 
-## Write coalescing
+## Retained write coalescing
 
 The 14 November comparison uses 1 GiB, 128 files, hybrid metadata and ordinary
 request windows. Four warm-ups and 24 measured samples all passed independent
@@ -40,6 +41,23 @@ buffers have not been introduced.
 Checks passed: storage/engine suites, focused Address and Thread Sanitizer tests,
 48 bidirectional native TCP fixtures, and unsigned Debug/Release app builds with
 native linkage and an unchanged repeat build.
+
+At 500 Mbps, all 28 samples validate and meet saturation with the original 4 GiB
+fixture and unchanged five-second settling/ten-second measurement windows:
+
+| Metric | Ratio | 95% interval |
+| --- | ---: | ---: |
+| CPU seconds/GiB | 0.888 | 0.781–0.942 |
+| Throughput | 0.963 | 0.952–1.001 |
+| Peak RSS | 1.026 | 1.001–1.041 |
+| Counterpart CPU seconds/GiB | 0.975 | 0.662–1.125 |
+
+This establishes lower CPU and passes the agreed retention gates. Throughput's
+median falls 3.7%, with its interval narrowly including no change; absence of a
+cost is not established. RSS remains within the 10% allowance. A preceding run
+was invalidated by kernel-confirmed ENOSPC affecting both engines (22/28 validated);
+it is excluded from inference. Obsolete build/profile artefacts were removed and
+the harness now checks temporary disk capacity before creating fixtures.
 
 ## Full matrix
 

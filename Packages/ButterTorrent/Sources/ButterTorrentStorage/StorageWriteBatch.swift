@@ -17,6 +17,16 @@ extension TorrentStorage {
 			try state.writeOperations(writes, maximumBytes: 262144, maximumCount: 16, check: cancellation.check)
 		}
 	}
+	/// Writes received blocks using contiguous file ranges within a shared 1 MiB buffer budget.
+	public func writeDownloadBatch(_ writes: [StorageWrite], bufferBudget: DownloadWriteBufferBudget) async throws {
+		try StorageState.validateWrites(writes, maximumBytes: 1_048_576, maximumCount: 64)
+		let size = writes.reduce(0) { $0 + $1.data.count }
+		let reserved = writes.count > 1 && bufferBudget.reserve(size)
+		defer { if reserved { bufferBudget.release(size) } }
+		try await worker.run { [state] cancellation in
+			try state.writeOperations(writes, maximumBytes: 1_048_576, maximumCount: 64, coalescing: reserved, check: cancellation.check)
+		}
+	}
 }
 
 extension StorageState {
@@ -40,7 +50,7 @@ extension StorageState {
 			total += write.data.count
 		}
 	}
-	func writeOperations(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int, check: () throws -> Void) throws {
+	func writeOperations(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int, coalescing: Bool = false, check: () throws -> Void) throws {
 		try ready(); try check(); try Self.validateWrites(writes, maximumBytes: maximumBytes, maximumCount: maximumCount)
 		// Validate every range and padding byte before any write or durable invalidation.
 		let segments = try writes.map { try layout.segments(piece: $0.piece, offset: $0.offset, count: $0.data.count) }
@@ -61,6 +71,9 @@ extension StorageState {
 			try save()
 		}
 		for piece in pieces { try forgetPendingVerification(piece) }
+		if coalescing {
+			try writeContiguousRanges(writes, segments: segments, check: check); return
+		}
 		var files: [Int: Int32] = [:], order: [Int] = []
 		defer { for file in files.values { close(file) } }
 		for index in writes.indices {

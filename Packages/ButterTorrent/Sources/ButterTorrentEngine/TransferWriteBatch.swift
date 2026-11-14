@@ -67,7 +67,7 @@ extension TCPTransfer {
 		}
 		if !staged.isEmpty { prefillDuringDiskWork(id) }
 		do {
-			if !staged.isEmpty { try await storage.writeBatch(staged.map { StorageWrite(piece: $0.piece, offset: $0.offset, data: $0.bytes) }) }
+			if !staged.isEmpty { try await storage.writeDownloadBatch(staged.map { StorageWrite(piece: $0.piece, offset: $0.offset, data: $0.bytes) }, bufferBudget: writeBuffers) }
 		} catch { abortBatch(staged); diskFailed(error); await disk.release(); throw error }
 		let ready = staged.compactMap { picker.written($0.block) ? $0.piece : nil }
 		var pending = ready[...]

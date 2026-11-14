@@ -117,6 +117,7 @@ public actor TCPTransfer {
 	let hello: PeerHandshake
 	let budget: TCPPeerBudget
 	let disk: TransferDiskScope
+	let writeBuffers: DownloadWriteBufferBudget
 	let uploadRate: TransferRateLimiter
 	let downloadRate: TransferRateLimiter
 	let cache: VerifiedPieceCache
@@ -180,7 +181,7 @@ public actor TCPTransfer {
 		let nodes = AsyncStream<NetworkEndpoint>.makeStream(bufferingPolicy: .bufferingNewest(64)); discoveredNodes = nodes.stream; nodeDiscovery = nodes.continuation
 		uploadRate = TransferRateLimiter(rate: configuration.uploadLimit, clock: clock); downloadRate = TransferRateLimiter(rate: configuration.downloadLimit, clock: clock)
 		let disk = TransferDiskScope(resources: resources)
-		self.disk = disk; cache = VerifiedPieceCache(storage: storage, resources: resources, disk: disk)
+		self.disk = disk; writeBuffers = resources.writeBuffers; cache = VerifiedPieceCache(storage: storage, resources: resources, disk: disk)
 		var offset: Int64 = 0, wanted: Set<Int> = []
 		for file in storage.layout.files {
 			if !file.pad, initial.selected[file.index], file.size > 0 {

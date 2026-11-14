@@ -11,8 +11,9 @@ The latest write-coalescing candidate passed the storage and engine suites,
 focused Address/Thread Sanitizer checks, 48 bidirectional native TCP fixtures,
 and unsigned Debug/Release app builds with native linkage, retained licences and
 an unchanged repeat build. Its 28 comparison samples independently checked payload
-bytes and reopened checkpoints. Fixed-rate and focused regression checks remain
-pending; see [performance](performance/README.md).
+bytes and reopened checkpoints. A further 28 fixed-rate samples validate and meet
+saturation; focused regression checks remain pending. See
+[performance](performance/README.md).
 
 Repair tests cover individual files and folders while network writes are queued:
 the old transfer drains before staging and running state is restored afterwards.

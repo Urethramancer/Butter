@@ -815,7 +815,7 @@
         "method": "paired median percentile bootstrap, 10000 resamples, 95%"
       }
     },
-    "status": "Lower CPU established for many-file hybrid full transfers; fixed-rate and focused regressions pending",
+    "status": "Retained after full-transfer and fixed-rate qualification; focused regressions pending",
     "retained_baseline": "5039a8dce8165a6a2e9514f43287953a85728526",
     "candidate_sources_sha256": "9926bcbf127c81058daca4627bca021b0ba0bbc496f1e724c6cea6d8133633af",
     "trials": [
@@ -1132,6 +1132,159 @@
     "median_cpu_per_gib": {
       "previous": 7.636192,
       "current": 5.889207
+    },
+    "rate_500": {
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 0.887953328721057,
+          "lower": 0.7809036973157741,
+          "upper": 0.9416132928510335,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "user_cpu_seconds_per_gib": {
+          "median": 1.028804830258184,
+          "lower": 0.9180375222609212,
+          "upper": 1.0867376540879465,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "system_cpu_seconds_per_gib": {
+          "median": 0.7912464486208797,
+          "lower": 0.6894605897274069,
+          "upper": 0.8421165415635727,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "mb_per_second": {
+          "median": 0.9632073858538958,
+          "lower": 0.9516197576926049,
+          "upper": 1.0007464105648634,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 1.0264166507996493,
+          "lower": 1.001215115987076,
+          "upper": 1.0411372475074834,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 0.9752798572752179,
+          "lower": 0.6617125441792343,
+          "upper": 1.1249799865041346,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_control_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 0.9393653806518228,
+          "lower": 0.8082260705793666,
+          "upper": 1.230263133154292,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "user_cpu_seconds_per_gib": {
+          "median": 0.9370245279250417,
+          "lower": 0.821378099446427,
+          "upper": 1.2169752339566138,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "system_cpu_seconds_per_gib": {
+          "median": 0.9517314038936795,
+          "lower": 0.7616102404133509,
+          "upper": 1.2784361880932384,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "mb_per_second": {
+          "median": 0.9979256354251014,
+          "lower": 0.9780659393439721,
+          "upper": 1.0067169620436713,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 0.9984546250888047,
+          "lower": 0.9420286694717973,
+          "upper": 1.094653315247746,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 0.8805147727112017,
+          "lower": 0.7382577418525123,
+          "upper": 1.0850219032095145,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "maximum_peak_rss_ratio": 1.0411883862255233,
+      "retention": "eligible",
+      "fixture_bytes": 4294967296,
+      "validated_samples": 28,
+      "saturated_samples": 28,
+      "prior_invalid_attempt": {
+        "validated": 22,
+        "failed": 6,
+        "cause": "Kernel-confirmed ENOSPC affected both engines before obsolete build artefacts were removed; excluded from inference"
+      },
+      "paired_ratio_columns": [
+        "pair",
+        "swift_cpu",
+        "swift_throughput",
+        "swift_peak_rss",
+        "counterpart_cpu",
+        "native_cpu",
+        "native_throughput"
+      ],
+      "paired_ratios": [
+        [
+          0,
+          0.7492073053595154,
+          0.9557056211267329,
+          0.9817690749493585,
+          1.1826704063937044,
+          0.7684691513016013,
+          1.0064893295085136
+        ],
+        [
+          1,
+          0.8954715792943743,
+          0.9591887960958176,
+          1.0206611570247934,
+          1.067289566614565,
+          0.8479829898571318,
+          1.0069445945788291
+        ],
+        [
+          2,
+          0.9564423851626371,
+          0.9672259756119739,
+          1.0271210013908205,
+          0.9825939362095586,
+          1.052733516751363,
+          0.9826400828086865
+        ],
+        [
+          3,
+          0.9267842005394298,
+          1.0050106184776877,
+          1.0282758620689656,
+          0.7425283977853654,
+          0.8567242388041181,
+          0.9951516227511353
+        ],
+        [
+          4,
+          0.8126000892720328,
+          0.9475338942584769,
+          1.025712300208478,
+          0.5808966905731032,
+          1.0220065224995276,
+          1.0006996480990673
+        ],
+        [
+          5,
+          0.8804350781477399,
+          0.9964822026520392,
+          1.0539986329460014,
+          0.9679657783408772,
+          1.407792749557221,
+          0.9734917958792576
+        ]
+      ]
     }
   }
 }
