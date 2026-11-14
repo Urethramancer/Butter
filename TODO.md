@@ -2,41 +2,36 @@
 
 ## Performance
 
-- Investigate guarded path opens/closes and peer transport overhead identified
-  by the final retained profiles, preserving fresh filesystem observations.
-- Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
-  at most 1.25× CPU/GiB through durable completion, and peak RSS within 10% of
-  the original fresh Swift baseline. Re-run the final matrix after retained
-  changes. The [current results](docs/performance/README.md) retain the latest
-  baseline and qualification limits.
-- Resolve grouped-upload/request-burst source uncertainty and earlier many-file
-  and concurrent seeding losses with controlled comparisons.
-- Establish installed-reference compiler/Boost provenance: archive ABI indicates
-  Boost 1.92 while cached flags name 1.88. Retain archive fingerprints.
+- Reduce download CPU/GiB and improve single/many-file throughput against
+  libtorrent. The [current matrix](docs/performance/README.md) passes all nine
+  seeding cases; downloads miss the CPU target. Targets remain ≥90% throughput,
+  ≤1.25× CPU/GiB and peak RSS within 10% of the original Butter baseline.
+- Investigate guarded path opens/closes and peer transport overhead while
+  preserving fresh filesystem observations and production resource limits.
+- Resolve grouped-upload/request-burst uncertainty with matched source comparisons.
+- Establish reference compiler/Boost provenance: archive ABI indicates Boost 1.92,
+  while cached flags name 1.88. Retain archive fingerprints.
 
-## Validation diagnostics
+## Unexplained validation failures
 
-- Explain the full native sequence's IPv6 v2 encrypted µTP upload handshake
-  timeout under deliberate SYN-ACK loss. Isolated and stress fixtures pass;
-  the original zero-payload failure remains unexplained.
-- Explain temporary-path disappearance in the earlier native run; a workspace
-  rerun passes. Evidence remains in `.build/diagnostics/piece-buffer`.
-- Reproduce the combined-contract six-second deadline under controlled CPU load
-  and identify its wait point. Serial checks pass; the original stall is unknown.
+- Locate the native sequence's IPv6 v2 encrypted µTP handshake timeout under
+  deliberate SYN-ACK loss; isolated and stress fixtures pass.
+- Explain earlier temporary-path disappearance; a workspace rerun passes.
+  Evidence: `.build/diagnostics/piece-buffer`.
+- Locate the wait behind the combined-contract six-second deadline under CPU
+  load; serial checks pass.
 
 ## Native interaction and appearance
 
-- Automate drag/drop, blocklist import/export dialogs, destination pickers and
-  remaining Settings controls.
-- Verify keyboard and VoiceOver navigation, populated peer/tracker lists, very
-  long paths and resizing.
+- Automate drag/drop, blocklist import/export, destination pickers and remaining
+  Settings controls.
+- Review keyboard/VoiceOver navigation, populated peer/tracker lists, long paths
+  and resizing.
 - Compare inspector spacing with the original visual reference when supplied.
 
 ## macOS services and network hardware
 
-- Verify real notification-permission changes, default-handler registration and
-  physical router mapping; automated checks stub or simulate these integrations.
-- Observe private-torrent discovery restrictions on actual interfaces. Loopback
-  tests cover tracker retention, discovery flags and DHT/LSD/PEX suppression.
-- Run longer cancellation/shutdown/removal stress with concurrent creation and
-  filesystem operations.
+- Test real notification permissions, default-handler registration and physical
+  router mapping; current checks stub or simulate them.
+- Observe private-torrent discovery restrictions on actual interfaces.
+- Run longer cancellation, shutdown, removal and concurrent filesystem stress.

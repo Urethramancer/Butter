@@ -1,34 +1,29 @@
 # Validation scope
 
-The Swift implementation has serial package coverage for metadata, networking,
-storage and engine behaviour. Native interoperability exercises both directions,
-TCP/µTP, encryption, hybrid identities, session discovery, trackers and web seeds.
-Filesystem fixtures check byte preservation and recovery across ENOSPC, read-only
-volumes, replacement, killed processes and interrupted publication/discard.
-Correctness checks do not establish CPU or throughput parity.
+Serial package tests cover metadata, networking, storage and engine behaviour.
+Native interoperability exercises both directions, TCP/µTP, encryption, hybrid
+identities, discovery, trackers and web seeds. Storage fixtures check byte
+preservation through ENOSPC, read-only volumes, replacement, killed processes and
+interrupted publication/discard.
 
-The latest write-coalescing candidate passed the storage and engine suites,
-focused Address/Thread Sanitizer checks, 48 bidirectional native TCP fixtures,
-and unsigned Debug/Release app builds with native linkage, retained licences and
-an unchanged repeat build. Its 28 comparison samples independently checked payload
-bytes and reopened checkpoints. A further 28 fixed-rate samples validate and meet
-saturation. Three focused cases and the single-file v1 fallback check each
-validate 28 samples; the fallback removes that case's established counterpart cost.
-The scoped path also passes batch tests and Debug/Release builds. See
-[performance](performance/README.md).
+The retained write coalescer passes storage/engine tests, focused Address and
+Thread Sanitizer checks, 48 bidirectional native TCP fixtures and unsigned
+Debug/Release builds with linkage and licence checks. Its source comparison,
+500 Mbps comparison and focused cases independently validate bytes and reopen
+checkpoints. The current full matrix validates **264/264 trials**; all nine seeding
+cases meet performance targets, while all nine downloads miss the CPU target.
+See [measurements and methodology](performance/README.md).
 
-Repair tests cover individual files and folders while network writes are queued:
-the old transfer drains before staging and running state is restored afterwards.
-Native disk tests cover recovery without the source copy and destination
-replacement before and after publication. Application contracts, lifecycle and
-Light/Dark interface checks passed at the repair baseline.
+Repair checks cover queued network writes, individual files/folders, source
+preservation, interrupted recovery and destination replacement. Application
+contracts, lifecycle checks, native UI automation and Light/Dark reviews cover
+common workflows. They do not replace complete keyboard/VoiceOver acceptance.
 
-Known limits remain in [TODO](../TODO.md): a full native-sequence µTP handshake
-failure that does not reproduce in isolation, temporary-path disappearance in an
-earlier native run, and a six-second combined-contract deadline without a confirmed
-wait point. Passing reruns do not explain those original failures.
+[TODO](../TODO.md) retains unexplained failures: a native-sequence µTP handshake
+timeout, an earlier temporary-path disappearance and a combined-contract deadline.
+Passing isolated checks do not explain them. Platform permissions, default-handler
+registration, physical routers, interface discovery captures and long-duration
+cancellation stress also remain open.
 
-Automated UI checks do not replace complete keyboard/VoiceOver review. Notification
-permissions, default-handler registration, physical routers, private-discovery
-packet capture and long-running cancellation stress still require acceptance work.
-Generated passing logs and diagnostic captures belong under ignored `.build/`.
+Generated logs and captures belong under ignored `.build/`. Correctness results
+and partial platform coverage are not release certification.

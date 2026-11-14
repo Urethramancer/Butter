@@ -1,220 +1,138 @@
 # Transfer performance
 
-CPU parity remains unmet. The latest many-file hybrid write-coalescing candidate
-uses **22.7% less CPU** than the retained implementation, with **24.4% more
-throughput**, across six balanced source pairs. A matching fixed-rate comparison
-also qualifies, and focused checks are complete. Single-file v1 retains ordinary
-writes after a measured counterpart cost. This is not a release-wide improvement claim.
+The current full matrix validates **264/264 trials**. All nine seeding cases meet
+the agreed targets. Downloads use **2.02–3.55× libtorrent's CPU/GiB**; single/many-file
+downloads also miss the throughput target.
 
-[Current measurements](results.json) contain the latest full matrix, compact
-profile summaries, native rendering observations and all 28 write-comparison
-measurements. Generated traces, per-run logs and historical experiment reports
-belong under ignored `.build/`, rather than in documentation.
+## Current matrix
 
-## Retained write coalescing
+14 November 2026, retained engine revision `e1be93b`. Values are Butter/libtorrent;
+speed is verified throughput, CPU is seconds/GiB through durable completion.
+Higher speed and lower CPU are better. Layouts are one file, 128 files or four
+concurrent transfers.
 
-The 14 November comparison uses 1 GiB, 128 files, hybrid metadata and ordinary
-request windows. Four warm-ups and 24 measured samples all passed independent
-payload checks and checkpoint reopening. Counters and profilers were disabled;
-no builds or tests ran during timing. Ratios are candidate/retained source, with
+| Layout | Format | Download speed | Download CPU/GiB | Seed speed | Seed CPU/GiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Single | v1 | 74% | 2.52× | 161% | 1.18× |
+| Single | v2 | 70% | 2.60× | 178% | 1.09× |
+| Single | Hybrid | 62% | 2.02× | 217% | 1.03× |
+| Many | v1 | 65% | 2.55× | 185% | 1.11× |
+| Many | v2 | 62% | 2.52× | 180% | 1.12× |
+| Many | Hybrid | 54% | 2.08× | 126% | 1.00× |
+| Concurrent | v1 | 142% | 3.54× | 180% | 1.16× |
+| Concurrent | v2 | 137% | 3.55× | 170% | 0.98× |
+| Concurrent | Hybrid | 141% | 2.48× | 146% | 1.09× |
+
+Targets: ≥90% reference throughput, ≤1.25× CPU/GiB and peak RSS within 10% of the
+original Butter baseline. Throughput passes **12/18**, CPU **9/18**, memory **18/18**;
+the nine seeding cases pass all three targets.
+
+Each trial transfers 1 GiB over loopback TCP with production request windows.
+There are 36 warm-ups and 228 measurements: six balanced pairs per case, extended
+to twelve for single-file v1 seeding under the predefined inconclusive-result
+rule. Fresh processes/destinations, source and destination SHA256 checks, strict
+checkpoint reopening and durable shutdown apply throughout. Counters and profilers
+were disabled; no other builds or tests ran during timing.
+
+Memory was recomputed against the complete original baseline (`40e4347`) used by
+the preceding full matrix after the launch selected an incomplete historical
+baseline. No transfer measurements changed or needed repeating. The initial
+summary, corrected summary and analysis are preserved under
+`.build/benchmarks/current-full-20261114`. Source, harness and reference-binary
+hashes stayed unchanged during the run. [Compact measurements](results.json)
+include all intervals, absolute medians and the baseline correction.
+
+Separate runs cannot establish a code regression. For example, many-file hybrid
+CPU/GiB falls from 5.89 to 5.04 seconds for Butter and 3.30 to 2.42 for libtorrent
+between the earlier focused run and this matrix. Butter's ratio worsens because
+the reference changes more; the native binary hashes match. Matched source
+comparisons below establish the retained optimisation's effect.
+
+## Retained optimisations
+
+Contiguous download writes use a shared 1 MiB transient budget, fresh filesystem
+checks and strict verification. They apply to v2/hybrid and multiple-file v1;
+single-file v1 uses ordinary writes after unrestricted coalescing increased
+counterpart CPU. Wire blocks remain 16 KiB; observed transfer writes reach 128 KiB.
+
+The controlled 1 GiB, 128-file hybrid source comparison validates all 28 samples
+(four warm-ups, 24 measurements). Ratios below are current/previous Butter, with
 paired 95% bootstrap intervals over six balanced source pairs.
 
 | Metric | Ratio | 95% interval |
 | --- | ---: | ---: |
-| CPU seconds/GiB | 0.773 | 0.750–0.794 |
-| Verified throughput | 1.244 | 1.202–1.284 |
+| CPU/GiB | 0.773 | 0.750–0.794 |
+| Throughput | 1.244 | 1.202–1.284 |
 | Peak RSS | 1.011 | 1.000–1.016 |
-| Counterpart CPU seconds/GiB | 0.961 | 0.926–1.063 |
+| Counterpart CPU/GiB | 0.961 | 0.926–1.063 |
 
-Median Swift CPU fell from 7.64 to 5.89 seconds/GiB. Native control CPU and
-throughput intervals include one. Peak memory remains within the approved 10%
-allowance. The candidate still uses about 1.79× libtorrent's CPU in this case.
-The controller labels source comparisons separately from full-matrix acceptance.
+This establishes **22.7% lower CPU** and **24.4% more throughput** for that case.
+A separate 500 Mbps comparison validates and saturates all 28 samples: CPU ratio
+0.888 (0.781–0.942), throughput 0.963 (0.952–1.001), RSS 1.026 (1.001–1.041).
+Its median throughput falls 3.7%; absence of a cost is unproven. Focused concurrent
+hybrid downloads establish a 6.8% CPU reduction; single-file v1 and seeding checks
+establish neither a gain nor a regression. Storage/engine tests, sanitizers,
+native TCP interoperability and Debug/Release builds pass.
 
-A separate diagnostic reduced payload write ranges from 65,536 to 10,511 and
-directory opens from 95,273 to 42,529. The implementation packs non-overlapping
-blocks in file order inside an existing job, with a shared 1 MiB buffer ceiling,
-fresh write/retry guards and strict verification. Actual transfer writes reached
-128 KiB; the storage API also passes 1 MiB write tests. Larger network-collection
-buffers have not been introduced.
+The file inspector uses one lazy stack of visible rows while preserving search,
+collapse and spacing. Its fixed 2,000-file rendering workload validates 28 samples:
+CPU falls 88.8% (ratio 0.112, interval 0.109–0.118), and median peak memory falls
+from 798 to 127 MB. This includes window creation and twelve updates, with no
+payload traffic; it establishes no transfer CPU gain.
 
-Checks passed: storage/engine suites, focused Address and Thread Sanitizer tests,
-48 bidirectional native TCP fixtures, and unsigned Debug/Release app builds with
-native linkage and an unchanged repeat build.
+## Rejected experiments
 
-At 500 Mbps, all 28 samples validate and meet saturation with the original 4 GiB
-fixture and unchanged five-second settling/ten-second measurement windows:
+| Candidate | Result |
+| --- | --- |
+| Block reordering and sequential proofs | Removed most readback but established no lower total CPU. Reverted. |
+| Pure-v2 leaf proofs | Established no lower total CPU. Reverted. |
+| Summary/detail snapshots | Reduced synthetic polling costs, without establishing a live-transfer CPU gain. Fixed-rate native controls were unsaturated. Reverted. |
+| Private staging | Storage replay CPU fell 31.8% for single blocks but rose 52.6% for eight-block batches. Doubled payload writes and tripled reads/hashing. Archived before transport integration. |
+| Popularity-based upload eviction | Increased reloads. Reverted; shared in-flight reads and the existing bounded cache remain. |
 
-| Metric | Ratio | 95% interval |
-| --- | ---: | ---: |
-| CPU seconds/GiB | 0.888 | 0.781–0.942 |
-| Throughput | 0.963 | 0.952–1.001 |
-| Peak RSS | 1.026 | 1.001–1.041 |
-| Counterpart CPU seconds/GiB | 0.975 | 0.662–1.125 |
+Snapshots are preserved on `experiment/snapshot-unconditional` and
+`experiment/snapshot-projection`; staging is on `experiment/private-staging`.
+Staging recovery, race and sanitizer checks pass, but final destination readback
+remains necessary: source/publication hashes can miss an edit masked by stamp
+recording. Detailed results and qualifications stay in `results.json`.
 
-This establishes lower CPU and passes the agreed retention gates. Throughput's
-median falls 3.7%, with its interval narrowly including no change; absence of a
-cost is not established. RSS remains within the 10% allowance. A preceding run
-was invalidated by kernel-confirmed ENOSPC affecting both engines (22/28 validated);
-it is excluded from inference. Obsolete build/profile artefacts were removed and
-the harness now checks temporary disk capacity before creating fixtures.
+## Profiling targets
 
-Focused comparisons each validate 28 samples:
+Final many-file hybrid download samples attribute 31.3% to stored-byte verification,
+30.6% to write jobs and 24.9% to peer transport. Metadata/open/close accounts for
+27.8% of executing leaves. Seeding samples attribute 33.5% to payload reads,
+31.4% to transport and 15.2% to upload admission/cache.
 
-| Case | CPU ratio (95% interval) | Outcome |
-| --- | --- | --- |
-| Concurrent hybrid download | 0.932 (0.889–0.972) | Lower CPU; other checked intervals include no change |
-| Many-file v1 seeding | 1.007 (0.999–1.038) | Neither gain nor regression established |
-| Single-file v1, ordinary-write fallback | 0.996 (0.968–1.031) | Neither gain nor regression established |
-
-Unrestricted single-file v1 coalescing increased counterpart CPU 11.2%
-(1.073–1.163) without establishing a Swift CPU benefit. That case now uses the
-original write path; its new counterpart interval is 0.908–1.031. The qualified
-coalescer remains enabled for v2/hybrid and multiple-file v1 transfers. The
-coalescer itself is unchanged by this eligibility restriction. Full-matrix parity
-and absence of all costs remain unproven.
-
-## Snapshot experiment
-
-Summary/detail projection and revision-based progress caching were tested and
-reverted. Fixed polling workloads reduced CPU in seven of eight cases, but the
-live transfer comparison established no CPU gain. The initial 500 Mbps check had
-an unsaturated native warm-up; a revised candidate restricted aggregation to
-presentation requests, but its fixed check had two unsaturated native controls.
-All 56 partial transfers validated. Neither run supplies a qualified regression
-result, and unchanged runs were not repeated. Tested candidates are preserved on
-`experiment/snapshot-unconditional` and `experiment/snapshot-projection`.
-
-Package, lifecycle, sanitizer, native interoperability and app-build checks passed.
-The independently qualified file-tree improvement below remains retained.
-
-## Private staging experiment
-
-The final approved experiment was rejected during storage screening and is saved
-on `experiment/private-staging` (`529457d`). All 56 samples pass payload hashes and
-independent strict checkpoint reopening. With 16 KiB incoming blocks, staging
-reduces component CPU 31.8% (ratio 0.682, 95% interval 0.582–0.711). With eight-block
-batches, CPU increases 52.6% (1.526, 1.507–1.542) and wall time increases 49.6%.
-RSS intervals include no change in both cases. These are 32 MiB storage replays,
-including equal bounded producer reads, rather than live transfer qualifications.
-The prototype was archived before transport integration.
-
-Separate counters show that staging doubles payload writes and triples reads and
-hashing. Eight-block destination ranges halve, but admitted disk jobs increase
-from 386 to 1,026. The replay reserves one 256 KiB piece at a time, with 256 KiB
-of allocated temporary payload; the shared anonymous file has a 64 MiB logical
-ceiling. Authentication and publication take 118–123 ms over 128 pieces, excluding
-the final destination readback and queue waits. No instrumented sample supplies
-timing acceptance evidence.
-
-That readback remains necessary: an edit between writing and recording a stamp
-can escape source/publication hashes. The strict final check rejects it. Storage,
-Address/Thread Sanitizer, concurrent-owner, five process-interruption boundaries,
-real ENOSPC/retry, read-only-volume and filesystem-race checks pass. Reservations
-are bounded and released; anonymous staging disappears on process exit. None of
-this prototype is enabled in the retained engine.
-
-## File inspector
-
-The file tree now presents visible rows in one lazy stack, preserving folder
-collapse state, search, indentation and the nested layout's spacing. In the fixed
-2,000-file model workload, four warm-ups and 24 measurements all pass model and
-saved-state checks, with a real file checkbox required to be visible.
-
-| Metric | Current/previous ratio | 95% interval |
-| --- | ---: | ---: |
-| CPU over window creation and twelve updates | 0.112 | 0.109–0.118 |
-| Wall time | 0.565 | 0.554–0.570 |
-| Peak RSS | 0.159 | 0.158–0.159 |
-
-Median CPU falls from 13.63 to 1.57 seconds and peak memory from 798 to 127 MB.
-The twelve updates alone fall from 4.32 to 1.00 CPU seconds; initial rendering
-falls from 9.30 to 0.56. This is a synthetic rendering result, with no payload or
-network traffic, and establishes no transfer CPU gain. Native checkbox coordinates
-match exactly in separate many-file download and many-torrent seeding checks.
-Early NSView bitmaps are unreliable for the original nested tree; visible native
-controls and settled coordinates provide the layout checks. Debug/Release app
-builds and search/collapse/spacing tests pass.
-
-## Full matrix
-
-The last complete matrix predates write coalescing. All 264 trials validated.
-Throughput passed 11/18 cases, CPU 0/18 and original-baseline memory 18/18.
-Ratios below are Swift/libtorrent; CPU is seconds/GiB through durable completion.
-
-| Layout | Format | Download throughput / CPU | Seed throughput / CPU |
-| --- | --- | ---: | ---: |
-| Single | v1 | 0.660 / 2.059 | 1.293 / 1.510 |
-| Single | v2 | 0.677 / 2.073 | 1.332 / 1.561 |
-| Single | hybrid | 0.591 / 1.738 | 1.380 / 1.799 |
-| Many | v1 | 0.495 / 2.399 | 1.157 / 1.311 |
-| Many | v2 | 0.512 / 2.489 | 1.177 / 1.473 |
-| Many | hybrid | 0.438 / 2.047 | 0.815 / 1.676 |
-| Concurrent | v1 | 1.268 / 2.188 | 1.782 / 1.423 |
-| Concurrent | v2 | 1.270 / 2.149 | 1.783 / 1.597 |
-| Concurrent | hybrid | 1.235 / 1.782 | 1.652 / 1.730 |
-
-Targets remain at least 90% of reference throughput, at most 1.25× CPU/GiB and
-peak RSS within 10% of the original fresh Swift baseline. Separate runs do not
-establish the cause of differences between implementations.
-
-## Current profiling findings
-
-The final retained many-file hybrid download and seeding paths were reprofiled
-after all four experiments. Four CPU captures and four separate counter trials
-validate exact payloads and strict checkpoint reopening. Swift download samples
-are 31.3% stored-byte verification, 30.6% write jobs and 24.9% peer transport.
-File metadata/open/close accounts for 27.8% of executing leaves, including 18.5%
-in `openat`. Seeding samples are 33.5% payload reads, 31.4% peer transport and
-15.2% upload admission/cache; `openat` alone accounts for 13.8%.
-
-The separate download diagnostic writes 65,536 blocks in 13,761 destination
-ranges, with 48,736 directory opens. Both download readback and upload cache loads
-total exactly 1 GiB; seeding performs no payload hashing during transfer. Guarded
-path handling and transport are the next investigation targets. These single
-captures supply sample attribution, rather than established savings or kernel
-residence; instrumented runs cannot establish performance ratios.
-
-The earlier full 18-case profile matrix predates write coalescing. Its download
-write jobs account for 49–68% of Swift samples; many-file hybrid download is 57.2%
-writes, 17.1% stored-byte verification and 17.0% peer transport. Current and earlier
-profiles remain labelled separately in the compact measurements.
-
-The existing seeding cache joins in-flight reads across peers and retains eight
-pieces per torrent within a 64 MiB session budget. Eight concurrent readers
-received 512 MiB from 64 MiB of storage reads. A tested ageing popularity policy
-increased reloads and was reverted. The earlier sequential and pure-v2 proof
-experiments did not establish lower CPU and were also reverted.
-
-Eight synthetic native-view captures include window creation and twelve updates.
-Hidden inspectors cost 0.54–1.22 CPU seconds; a visible 2,000-file inspector costs
-13.52–13.75, and 200 torrent rows with a 512-file inspector cost 5.30–6.21.
-These observations include initial rendering and do not isolate polling cost.
-
-File Activity captures passed in the selected download/seeding cases. Allocation,
-System Trace and Swift Concurrency attempts did not yield validated coverage.
-Raw Instruments traces stay private because they can retain environment metadata;
-exported metadata is redacted and child environments use an explicit allowlist.
+Guarded path opens/closes and transport are the next targets. Separate counters
+show 65,536 download blocks in 13,761 ranges and 48,736 directory opens. Download
+readback and upload cache loads each total 1 GiB; seeding performs no payload
+hashing. The earlier 18-case profile matrix predates coalescing and remains
+labelled separately in the measurements. Samples describe execution ancestry,
+not measured CPU savings or kernel residence.
 
 ## Reproduction
 
-`Scripts/test-benchmark.sh --full` runs the native comparison matrix; `--smoke`
-checks correctness with smaller fixtures. `--compare-source` uses four warm-ups
-and 24 measurements; set `BUTTER_BENCHMARK_PREVIOUS_REVISION` and select a case,
-format and direction with the corresponding `BUTTER_BENCHMARK_*` variables.
-`--rate-compare` performs the fixed 500 Mbps comparison; `--rate-sweep` is
-exploratory. `--profile` and `Scripts/test-ui-profile.sh` are diagnostic only.
-Use `BUTTER_STORAGE_DIAGNOSTICS=1 BUTTER_BENCHMARK_PROFILER=counts` for a separate
-operation-count run. Never use instrumented measurements for timing acceptance.
-Profiler runs retain compact attribution reports and delete traces and raw XML,
-including failed captures. Set `BUTTER_PROFILE_KEEP_RAW=1` only when those raw
-exports are needed; retained allocation-table manifests mark whether exports remain.
-For the fixed UI comparison, set `BUTTER_UI_COMPARE_SOURCE=1` and
-`BUTTER_UI_PROFILE_PREVIOUS_REVISION` before running `Scripts/test-ui-profile.sh`.
-Adding `BUTTER_UI_COMPARE_SMOKE=1` checks settled layout without timing acceptance.
+After `Scripts/bootstrap-engine.sh`:
 
-The native anchor is libtorrent revision
-`6da363d2994f17c0b3c0450d124cf73a31a73847`. Installed archive ABI indicates
-Boost 1.92 while cached build flags name 1.88; compiler/header provenance remains
-unresolved. Archive fingerprints anchor existing comparisons, but cached flags
-alone do not establish a reproducible dependency build.
+```sh
+BUTTER_BENCHMARK_BASELINE="$PWD/.build/benchmarks/baseline-seeding-fixed" \
+  Scripts/test-benchmark.sh --full .build/benchmarks/new-full
+Scripts/test-benchmark.sh --smoke .build/benchmarks/new-smoke
+```
+
+Use a fresh output directory and the retained complete baseline for memory checks.
+`--compare-source` and `--rate-compare` accept `BUTTER_BENCHMARK_PREVIOUS_REVISION`;
+select workloads with `BUTTER_BENCHMARK_CASE`, `BUTTER_BENCHMARK_FORMAT` and
+`BUTTER_BENCHMARK_DIRECTION`. `--rate-sweep` is exploratory.
+
+For separate diagnostics, use `--profile` with `BUTTER_BENCHMARK_PROFILER=time-profiler`,
+or `BUTTER_STORAGE_DIAGNOSTICS=1 BUTTER_BENCHMARK_PROFILER=counts`. UI comparisons
+use `Scripts/test-ui-profile.sh`, `BUTTER_UI_COMPARE_SOURCE=1` and
+`BUTTER_UI_PROFILE_PREVIOUS_REVISION`; add `BUTTER_UI_COMPARE_SMOKE=1` for layout checks.
+Instrumented runs supply no timing acceptance evidence. Raw traces/XML are deleted
+after compact extraction unless `BUTTER_PROFILE_KEEP_RAW=1` is explicitly set.
+Fixtures, drivers and temporary compiler caches are removed after each run.
+
+The pinned libtorrent reference is `6da363d2994f17c0b3c0450d124cf73a31a73847`.
+Archive ABI indicates Boost 1.92 while cached flags name 1.88; compiler/header
+provenance remains unresolved. Recorded archive hashes anchor the comparisons.

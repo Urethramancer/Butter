@@ -1,190 +1,84 @@
 # ButterTorrent
 
-Apple-first Swift libraries for Butter's staged engine replacement. The metadata
-library uses Foundation and CryptoKit and has no AppKit, SwiftUI or bundled
-third-party dependencies. The parent repository's MIT licence applies.
+The Swift engine used by Butter's macOS app. The package uses Apple frameworks
+without bundled third-party dependencies; the repository's MIT licence applies.
+Libtorrent is an optional interoperability and benchmark reference.
 
-`ButterTorrentMetadata` provides bounded binary bencoding, exact original info
-bytes, incremental SHA-1/SHA-256, full v1/v2 identifiers, magnet parsing/generation
-and v1/v2/hybrid metadata inspection and hybrid creation. Binary dictionary keys remain binary.
-Out-of-order dictionary keys are tolerated for interoperability, but duplicate
-keys and non-canonical numbers/lengths are rejected. Identity always hashes the
-original info section, including its original key order.
+| Product | Responsibility |
+| --- | --- |
+| `ButterTorrentMetadata` | Bencoding, identities, magnets, v1/v2/hybrid metadata and torrent creation |
+| `ButterTorrentNetworking` | TCP/µTP, encrypted streams, HTTP/UDP, trackers, discovery, web seeds and router protocols |
+| `ButterTorrentStorage` | Piece/file mapping, virtual padding, selection, hashing, checkpoints and recoverable file operations |
+| `ButterTorrentEngine` | Transfer/session ownership, peer scheduling, upload admission and discovery integration |
 
-Default bounds are 32 MiB of input/output, 100 nested values and one million
-values (including dictionary keys). Integers are limited to signed 64-bit values.
-Metadata reads are bounded even if a file grows while being read. Path components
-use the reference's Apple sanitisation rules without changing info bytes. See
-`THIRD_PARTY_NOTICES.txt` for the adapted implementation's attribution. Piece-layer
-bytes are retained and structurally inspected; transfer-time Merkle verification
-belongs to later creation/transfer phases. Inspection never marks payload data
-verified. Magnet hints do not authorise discovery for private torrents.
+## Metadata and creation
 
-`TorrentCreator` hashes files in 16 KiB blocks, constructs v1 piece hashes and v2
-Merkle trees/piece layers, and emits hybrid metadata with canonical file ordering,
-padding, private flags and trackers. Empty files are retained, symlinks excluded
-and changed source files rejected. Descriptor-relative reads refuse symlinks in
-source subdirectories. Limits include 50,000 source files, depth 90, fewer than
-400,000 pieces and 32 MiB maximum piece size, in addition to encoding limits.
-Automatic creation sizing still targets roughly 2,048 pieces and caps at 16 MiB;
-32 MiB is available for explicit creation settings and existing torrents.
-Creation needs a source containing at least one byte. Progress and cancellation
-callbacks are synchronous; callers choose the worker. Butter uses one serial
-worker, atomic publication, explicit cancellation and shutdown settlement.
+Identities hash the exact original info bytes. Binary dictionary keys remain
+binary; duplicate keys and non-canonical numbers/lengths are rejected. Default
+bencoding limits are 32 MiB, depth 100 and one million values. Inspection never
+marks payloads verified, and magnet hints cannot authorise private discovery.
+
+`TorrentCreator` emits hybrid metadata with v1 hashes, v2 Merkle layers, canonical
+file ordering and padding. It preserves empty files, rejects changed sources and
+refuses symlinked descendants. Sources must contain at least one byte. Piece sizes
+up to 32 MiB are supported; automatic sizing targets about 2,048 pieces and caps
+at 16 MiB. Progress and cancellation callbacks are synchronous; callers own the worker.
+Adapted path sanitisation is attributed in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+
+## Networking
+
+Transports bound requests, framing, decoded bodies, queues and deadlines. HTTP/TLS
+uses numeric endpoints after validating all DNS answers; TLS authenticates the
+original hostname. Unsafe local redirects, mixed public/local answers, URL
+credentials and HTTPS downgrades are rejected. Responses use no cookie jar,
+credential store or cache. `FoundationHTTPTransport` aliases `NetworkHTTPTransport`.
+
+`ListeningPort` owns TCP and IPv4/IPv6 UDP on one port. Shared dispatchers match
+UDP replies by endpoint and transaction. Trackers manage tiers, intervals and
+started/completed/stopped events; web seeds retain original remote path bytes and
+validate response ranges. Fetched bytes require storage authentication before
+advertisement. Private torrents suppress discovery; blocklists cover peers and trackers.
+
+## Storage and lifecycle
+
+Storage defaults rehash restored claims and verified reads. The app may explicitly
+select `.trustCompleted` after a durable clean shutdown and `.trustedVerified`
+reads; both retain synchronous filesystem checks. Explicit `verify(piece:)` and
+`validate(piece:)` always read and hash storage. Launch validation is serial and
+includes paused unfinished transfers.
+
+Descriptor-relative operations reject unsafe descendants and destructive access
+to hard-linked files. A shared coordinator protects live paths; each checkpoint
+directory has an OS lock. Journals and exclusive claims make import, rename,
+selection, move and Trash recoverable. Unexpected replacements are preserved;
+unfinished recovery blocks ordinary I/O and verified advertisements.
+
+Commands are serial per storage owner, with four shared workers and bounded
+queues. Contiguous download writes share a 1 MiB transient budget. Concurrent
+upload requests join one piece load; the default 64 MiB session cache retains at
+most eight immutable pieces per transfer. Protocol requests remain 16 KiB and
+production windows remain bounded.
+
+Hosts own listeners and final storage shutdown. Stop peer I/O before filesystem
+operations. Session shutdown drains networking and disk work and checkpoints
+counters; failed publication permits a retry. Application shutdown must not claim
+a clean exit while owned work remains unfinished.
+
+## Tests
+
+From the repository root:
 
 ```sh
-swift test --package-path Packages/ButterTorrent --scratch-path .build/ButterTorrent
-Scripts/verify.sh metadata-reference
-Scripts/verify.sh creation
-Scripts/verify.sh http
-Scripts/verify.sh network
+swift test --no-parallel --package-path Packages/ButterTorrent --scratch-path .build/ButterTorrent
 Scripts/verify.sh native-storage
 Scripts/verify.sh peer
 Scripts/verify.sh peer-reference
 ```
 
-The first command works without libtorrent installed. The second uses the parent
-repository's optional reference dependencies to compare twelve cases covering
-single/multifile v1/v2/hybrid layouts, identities, magnets and sanitised paths. It uses
-temporary files and does not contact public peers or discovery services.
+Package tests need no libtorrent installation. `peer-reference` requires the
+optional reference bootstrap. Fixtures use temporary files and local listeners;
+TLS tests use disposable identities without changing keychain trust. Native
+storage tests include killed processes, ENOSPC and a read-only disposable volume.
 
-Butter currently compiles the metadata target's source directory into its app
-and headless executables, using the same files that SwiftPM tests. This keeps the
-existing Xcode project and shell-based test builds aligned without introducing
-binary artefacts. Consumers of the standalone package can import the
-`ButterTorrentMetadata` product normally.
-
-`ButterTorrentNetworking` provides TCP streams/listeners, shared IPv4/IPv6 UDP,
-HTTP/HTTPS and UDP trackers, BEP 17/19 web seeds, local discovery and UPnP/NAT-PMP.
-These services are connected to the package's headless integration tests;
-production transfers still use libtorrent. `http` and `network` run the networking
-tests; the ordinary package test command includes both libraries.
-
-The HTTP transport bounds concurrent requests, redirects, response headers and
-decoded body bytes; defaults are eight requests, five redirects, 32 KiB response
-headers and 1 MiB bodies. Requests have a 30-second overall and ten-second idle
-deadline. With the approved phase 5 design change, Network handles HTTP/TLS through
-numeric endpoints; Foundation retains URL and XML parsing. Each hop resolves once,
-validates all answers and connects to those addresses. TLS verifies the original
-hostname using platform trust. Mixed public/local answers, public-to-local
-redirects, unsafe loopback tracker paths, URL credentials and HTTPS downgrades are
-rejected. HTTP/1 framing handles fragmented, chunked and close-delimited responses;
-system zlib bounds gzip/deflate decoding. No cookies, credential store or cache is
-used. `FoundationHTTPTransport` remains a compatibility alias for
-`NetworkHTTPTransport`.
-
-`ListeningPort` owns TCP and IPv4/IPv6 UDP on one port, rolls back partial binds
-and releases the port on shutdown. Incoming and outgoing TCP peers share a hard
-budget; streams permit one read and one write, each bounded to 1 MiB. DNS allows
-four outstanding system jobs per resolver and sixteen answers; cancelled libc
-lookups retain their worker slot until they finish. UDP queues, subscriptions
-and transactions are bounded. The dispatcher matches replies by source and
-transaction and routes DHT/µTP packets to future protocol implementations.
-
-UDP trackers implement BEP 15/41, connection expiry and exponential retries.
-`TrackerClient` connects HTTP/UDP tiers to the same lifecycle manager. Local
-discovery advertises only explicitly registered public metadata, with cookies,
-rate limits and IPv4/IPv6 multicast interfaces. UPnP discovery validates the
-description origin against the responding address; bounded XML rejects entities.
-Mapping clients support lease renewal, reboot detection and removal. UPnP checks
-existing mappings before changing or deleting them. Callers drive discovery,
-announce and renewal ticks and explicitly shut down owned transports.
-
-The headless native session owns local discovery when `SessionPeerSettings.lsd`
-is enabled. It advertises running public torrents on multicast-capable interfaces,
-shares a cookie across its interface services, and bounds discovered connection
-attempts. Pausing, removal, settings changes and shutdown drain that work.
-Discovery errors remain visible without closing the peer listener. The Swift app
-adapter accepts the existing LSD setting; production transfers still use libtorrent.
-
-Tracker services encode binary identifiers without text conversion, parse compact
-IPv4/IPv6 and dictionary peers, retain tracker IDs, honour intervals, shuffle and
-promote tier members, and send started/completed/stopped events. The caller ticks
-an injectable monotonic clock. Failure delays double from 30 seconds to a maximum
-of 30 minutes; cancellation does not count as tracker failure. A torrent that
-starts complete does not send a completed event. A session admits one command at
-a time and stops every tracker it successfully contacted.
-
-Web seeds admit three simultaneous requests and 128 distinct sources per client.
-BEP 19 checks byte ranges, response lengths and Content-Range; whole-file HTTP 200
-is accepted only for a complete requested file. Paths use separately escaped
-original metadata components. BEP 17 supports whole pieces and contiguous ranges.
-503 retry hints use the BEP 17 response body or Retry-After seconds/HTTP dates.
-Retries are bounded and use an injectable clock. The caller verifies piece hashes
-and reports corruption to ban a seed, including its in-flight responses; fetched
-bytes are never automatically treated as verified. Padding and file-to-piece
-mapping remain storage/engine responsibilities.
-
-Tests use temporary loopback HTTP/TLS listeners and injected failures. On macOS
-15+, the negative TLS test uses `/usr/bin/openssl` to generate a disposable identity
-imported only into memory; no keychain or trust settings change. No public service
-or third-party dependency installation is needed. Package Release tests verify
-the same harness; the native UI suite is reserved for later integration.
-
-`ButterTorrentStorage` supplies bounded piece/file mapping, virtual padding,
-skipped-file storage, SHA-1 verification for v1/hybrid data and versioned binary
-property-list checkpoints with compact progress bits. Verification of v2 Merkle
-hashes uses authenticated Merkle layers. By default opening rehashes checkpoint
-claims and verified reads hash the complete piece. Applications can explicitly
-select `.trustCompleted` restoration after a durable clean shutdown and
-`.trustedVerified` reads; both retain synchronous filesystem checks. Explicit
-`verify(piece:)` and `validate(piece:)` always read and hash storage. Session
-launch validation is serial and includes paused unfinished transfers.
-Descriptor-relative operations refuse symlinked
-descendants and destructive access to hard-linked files. A shared coordinator
-protects live transfer paths; an OS lock protects each checkpoint directory.
-Opening is asynchronous. Disk/hash commands are serial per storage owner, with
-four shared workers, eight pending commands per owner and sixty-four overall.
-Bulk filesystem work can occupy three workers, leaving capacity for shorter
-operations such as snapshots and checkpoints. Payload paths
-cannot overlap the checkpoint directory; missing payload files still reserve
-their paths against other transfers.
-
-The native session orders commands per transfer, retains a barrier for settings
-and shutdown, and samples other transfers while a filesystem operation is busy.
-Busy rows use their last storage snapshot and report the current move, rename or
-check activity. Repository publication remains serialised under its existing lease.
-
-Imports copy without deleting their sources. Rename, selection, move and Trash
-operations use durable journals, exclusive publication and content-checked copies
-across volumes. Recovery blocks ordinary I/O and advertising of verified pieces
-until reconciliation finishes. A copy published before its receipt needs explicit
-acceptance after review; both source and destination are retained meanwhile.
-Production storage remains on libtorrent. `native-storage` runs the focused tests
-and a disposable-image harness: 18 journalled child-process interruptions, four
-atomic-checkpoint interruptions, actual ENOSPC and a read-only remount. Trash tests
-use disposable directories and verify every receipt; system Trash destination
-selection and Finder integration remain application-integration checks.
-
-`ButterTorrentEngine` supplies `TCPTransfer`, a headless v1 plaintext transfer
-actor using the metadata, networking and storage libraries. Hosts own listening
-ports and attach accepted `TCPStream`s; outgoing connections can share the same
-peer budget. No discovery, trackers or production adapter starts implicitly.
-Stop the transfer before invoking storage selection or filesystem operations.
-Shutdown drains peer and upload work and checkpoints counters; the caller owns
-the final storage/port shutdown. Failed checkpoint publication permits a retry.
-
-The wire codec bounds framing and rejects invalid ranges, unsolicited blocks and
-unnegotiated messages. Peers manage choke/interest state, bitfields, HAVE messages,
-request pipelines, expiry and disconnect recovery. The picker uses rarest-first
-selection, at most eight active pieces and bounded duplicate requests in endgame.
-Completion cancels duplicate requests and announces only hash-verified pieces.
-Corruption discards the piece and closes contributing peers. Recent reply credits
-are consumed once, and cancellation releases reserved/writing blocks.
-
-Default limits are fifty peers (maximum two hundred), eight pipelined requests
-(maximum thirty-two), four upload slots, sixty-four upload jobs and four disk
-permits. A peer queues at most 128 messages/512 KiB. The upload cache retains at
-most eight immutable pieces per transfer, with four bounded loads, within the
-shared 64 MiB default budget; each piece is at most 32 MiB. Smaller explicitly
-configured cache budgets reject pieces that cannot fit. Payload rate limits use an injectable monotonic clock and a one-second
-token burst. Incomplete handshakes expire after ten seconds; idle peers and
-repeated request timeouts close. Extension negotiation, magnets, v2, encryption
-and µTP belong to subsequent phases. Production transfers remain on libtorrent.
-
-`peer` runs eighteen protocol, selection, loopback and cancellation cases.
-`peer-reference` runs sixteen cases with independently libtorrent-generated v1
-metadata: single/multifile layouts, 16/64 KiB pieces, both transfer directions,
-selective boundaries and fragmented IPv4/IPv6 relays. Every output byte is checked
-after both shutdown/flush barriers. The reference explicitly disables encryption
-and µTP for this TCP gate. No public peer or discovery service is contacted.
+See [architecture](../../docs/swift-engine.md), [validation](../../docs/validation.md)
+and [performance](../../docs/performance/README.md) for integration details and limits.

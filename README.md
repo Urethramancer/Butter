@@ -1,136 +1,95 @@
 # Butter
 
 A native macOS BitTorrent client built with SwiftUI and the local
-`Packages/ButterTorrent` Swift engine. Targets Apple Silicon and macOS 26 and
-requires Xcode 27.2 or later.
+[ButterTorrent](Packages/ButterTorrent/README.md) Swift engine. Requires Apple
+Silicon, macOS 26 and Xcode 27.2 or later.
 
-The inspector's **Repair from local file…** action can replace a missing or
-damaged file from a separate local copy. **Repair from Folder…** in a torrent's
-context menu repairs that torrent, independently of the selection. Choose its
-original root folder or the parent; partial folders are accepted, unrelated
-files are ignored and ambiguous root matches are rejected. Renamed destinations
-and file selection are preserved. Butter pauses peer I/O, checks staged
-bytes and preserves the source. Pieces awaiting neighbouring files remain
-pending; checkable hash mismatches are rejected. Interrupted publication keeps
-a recovery journal and owned backups until the new checkpoint is durable.
-
-After a clean shutdown, Butter trusts checkpointed completion when metadata,
-hashes, paths and file stamps still match. Unfinished torrents are checked on
-every launch, including paused torrents; after an unclean shutdown all restored
-torrents containing payload are checked. One launch worker checks them in saved
-order, keeping each pending torrent stopped. Verified uploads retain filesystem
-checks without hashing their bytes again. **Verify Local Data** always hashes
-storage and is available for whole torrents and inspector file rows. File checks
-include complete shared boundary pieces without changing download selection. External file
-changes detected by normal snapshot polling retire stale advertisements and
-are rechecked after unchanged observations one second apart. Piece sizes up to
-32 MiB are supported; automatic creation sizing and default cache budgets are
-unchanged. Each metadata-backed torrent shows a **v1**, **v2** or **Hybrid** badge
-beside its name; pending magnets remain unlabelled until metadata arrives.
-
-Butter supports torrent files and magnets, TCP and µTP, selective downloads,
-hybrid torrent creation, local file renames, resume recovery, grouped transfers,
-priority scheduling and a searchable inspector. Settings include watched imports,
-completion moves, queue limits, blocklists, discovery and favourite trackers.
+Supports torrent files and magnets, v1/v2/hybrid metadata, TCP/µTP, selective
+downloads, torrent creation, local renames, resume recovery, grouped transfers
+and priority scheduling. Settings include queue limits, watched imports,
+completion moves, blocklists, discovery and favourite trackers.
 
 ## Build
 
-Build from a complete Git checkout with Xcode and its command-line tools.
+From a complete Git checkout:
 
 ```sh
 xcodebuild -project Butter.xcodeproj -scheme Butter -configuration Debug \
   -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
-Choose `-configuration Release` for a Release build, or open `Butter.xcodeproj`.
-The app links the local Swift package and Apple system frameworks. The build
-requires no Homebrew packages or dependency bootstrap. `Butter/Licences`
-contains the retained notice for adapted path sanitisation code.
+Use `-configuration Release` for a Release build, or open `Butter.xcodeproj`.
+The app uses the local Swift package and Apple frameworks; Homebrew and reference
+engine dependencies are unnecessary for app builds.
 
-## Use and storage
+## Use
 
-Open a torrent with `⌘O`, add a magnet with `⌘L`, or drop a file onto the window.
-Create a torrent with `⌘N`; open Settings with `⌘,` and toggle the inspector with
-`⌥⌘I`. The transfer list supports multiple selection and context actions.
+| Action | Shortcut |
+| --- | --- |
+| Open torrent | `⌘O` or drop a file onto the window |
+| Add magnet | `⌘L` |
+| Create torrent | `⌘N` |
+| Settings | `⌘,` |
+| Toggle inspector | `⌥⌘I` |
 
-App state is stored in `~/Library/Application Support/Butter`. The `Engine/`
-directory keeps standard torrent metadata, versioned Swift checkpoints and
-atomic filesystem journals. Local renames preserve the original info dictionary.
-Interrupted operations reconcile the managed files and may require review before
-resuming. Existing libtorrent resume files are retained. Keep the whole support
-folder together when backing up or restoring it.
+The transfer list supports multiple selection and context actions. Torrents show
+a v1, v2 or Hybrid badge once metadata is available.
 
+**Repair from local file…** replaces a missing or damaged file from a separate
+copy. **Repair from Folder…** accepts the original root or its parent, including
+partial folders. Repair preserves sources, renames and selection, pauses peer
+I/O and journals publication. Pieces requiring neighbouring files remain pending.
+**Verify Local Data** always hashes stored bytes, including shared boundary pieces.
 
-Ordinary removal retains data. The separate delete action asks for confirmation,
-waits for engine disk activity, and moves existing managed files individually to
-Trash. Shared files and unsafe paths are rejected. Completion moves must succeed
-before auto-removal; created torrents always seed their source in place.
+## Storage and recovery
 
-Watch-folder automation, original deletion, auto-removal, ratio stopping and idle
-stopping default to disabled. Private torrents disable discovery and retain their
-trackers. Favourite trackers are appended only when explicitly selected. The
-manual port check uses [Transmission's HTTPS checker](https://github.com/transmission/transmission/blob/main/libtransmission/rpcimpl.cc);
-it reports external TCP reachability separately from local UDP binding. Service
-failures are unknown results. Bandwidth estimates use observed rates with regular
-upward probes; they are not measurements of an ISP connection limit.
+State lives in `~/Library/Application Support/Butter`. Back up the whole directory:
+`Engine/` contains metadata, native checkpoints and filesystem journals. Existing
+libtorrent resume files are retained; local renames preserve torrent identities.
 
-## Verification
+After a clean shutdown, completed checkpoints are trusted only while metadata,
+paths, hashes and file stamps match. Unfinished torrents are checked on every
+launch, including paused transfers; an unclean launch also checks completed
+payloads. Validation runs serially before each affected torrent can resume.
+Detected external changes retire stale advertisements and trigger rechecking.
 
-Run `Scripts/verify.sh final` for the native app and package checks. It runs the
-UI suite once, checks Debug and Release linkage, exercises disposable-volume
-and process-interruption recovery, and verifies the package with coverage and
-sanitizers. Run it when the computer is available for UI automation.
+Ordinary removal retains payloads. Delete asks for confirmation and moves managed
+files individually to Trash, rejecting shared files and unsafe paths. Completion
+moves must succeed before auto-removal; created torrents seed their source in place.
+Watch-folder automation, original deletion, auto-removal and ratio/idle stopping
+are disabled by default. Private torrents suppress discovery and keep their trackers.
 
-Focused suites include `contract` for the app command boundary, `creation` for
-source seeding and creation failure handling, `peer` for the Swift wire engine,
-`network` for local network fixtures, and `native-storage` for file operations
-and recovery. `Scripts/verify.sh contract --system-trash` moves a generated file
-into the system Trash, checks the receipt and removes that test receipt.
+The manual port check uses [Transmission's checker](https://github.com/transmission/transmission/blob/main/libtransmission/rpcimpl.cc).
+External TCP reachability and local UDP binding are separate results; service
+failures report unknown status. Bandwidth estimates come from observed traffic
+and probes, rather than an ISP connection measurement.
 
-The pinned libtorrent engine and bridge are optional developer tools under
-`Tests/Reference`. Run `Scripts/bootstrap-engine.sh` once to build the reference
-dependencies with CMake, then run `Scripts/verify.sh reference` for the reference
-suite or `Scripts/verify.sh peer-reference` for transfer interoperability.
-The matrix covers 456 transfers and DHT protocol comparisons, including
-sparse hybrid magnets, discovery, web seeds and impaired TCP-disabled µTP.
-`Scripts/verify.sh benchmark` runs the paired Release TCP download/seeding matrix,
-with separate durable-completion, CPU and whole-process memory measurements.
-Use `benchmark --smoke` for a smaller correctness run; see the
-[comparison method and artifacts](docs/performance/README.md).
-The [current results](docs/performance/README.md) record the remaining CPU gap,
-latest full matrix and measured optimisation candidates.
-`Scripts/verify.sh storage-benchmark` measures many-file storage costs with
-byte and restart checks; it requires no reference-engine installation.
-The [engine architecture](docs/swift-engine.md), [audit results](docs/audit.md) and
-[validation scope](docs/validation.md) describe the retained implementation and
-remaining acceptance work.
+## Verification and performance
 
-Verification captures output under `.build/test-logs`. Passing logs are removed
-automatically. Failures and interrupted runs retain their logs and print the
-path. Coverage and diagnostic artifacts remain available. Use
-`sh Scripts/test-log.sh label command [arguments...]` for direct commands.
+`Scripts/verify.sh final` runs serial package tests, recovery checks, sanitizers,
+Debug/Release linkage checks and native UI automation. Run it when the computer
+is available for UI tests. Focused suites include `contract`, `creation`, `peer`,
+`network`, `native-storage`, `lifecycle` and `ui`.
 
-Native XCUITests exercise torrent and magnet addition, keyboard shortcuts,
-search typing/clearing, mixed file selection, context rename, inspector toggling,
-removal confirmation, typed peer limits, Settings persistence and quit modes.
-Default-size compositor captures of every Settings and inspector tab have been
-inspected in Light and Dark. This review found and fixed a collapsed Groups
-editor and duplicate peer-field labels; resizing and full accessibility acceptance
-remain in TODO.md.
+Optional libtorrent comparisons require `Scripts/bootstrap-engine.sh` and CMake.
+Use `Scripts/verify.sh reference` for reference checks, `peer-reference` for
+interoperability and `benchmark` for the complete Release matrix. Add
+`benchmark --smoke` for smaller correctness fixtures. `storage-benchmark` needs
+no reference installation.
 
-Interface smoke checks open isolated native test windows in Light and Dark appearance.
-They write partial layer captures under ignored `.build/InterfaceChecks`; these
-do not replace a compositor-based visual review. Remaining manual and stress
-checks are listed in `TODO.md`.
+See [performance results](docs/performance/README.md),
+[validation scope](docs/validation.md), [architecture](docs/swift-engine.md),
+[audit results](docs/audit.md) and [remaining work](TODO.md).
+Passing verification logs are removed automatically; failures print their path
+under `.build/test-logs`. Generated captures and reports belong under `.build/`.
 
-## Git versions
+## Versions and licence
 
-Each build runs `Scripts/git-version.sh` to combine `Butter-Info.plist` and version
-keys in Xcode's derived directory. Builds never rewrite source files.
-`CFBundleVersion` counts all commits reachable from HEAD. The marketing version
-comes from the nearest ancestor tag matching `vMAJOR.MINOR.PATCH`, with `v`
-removed; before a release tag it defaults to `0.1.0`. Both annotated and lightweight
-tags work. Build from complete Git history with release tags available; shallow
-clones fail and require `git fetch --unshallow --tags`.
+Builds derive versions from Git without changing source files. `CFBundleVersion`
+counts commits reachable from HEAD; the marketing version uses the nearest
+ancestor `vMAJOR.MINOR.PATCH` tag, defaulting to `0.1.0` before a release tag.
+Shallow checkouts require `git fetch --unshallow --tags`.
 
-Butter's code uses the MIT licence. Adapted code and optional reference dependencies retain their own terms.
+Butter uses the MIT licence. Adapted code and optional reference dependencies
+retain their notices in `Butter/Licences`, `Packages/ButterTorrent` and
+`Tests/Reference/Licences`.
