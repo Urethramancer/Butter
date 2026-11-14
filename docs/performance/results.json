@@ -1919,5 +1919,144 @@
       }
     },
     "checks": "403 package tests, selection and lifecycle tests, focused Address/Thread Sanitizer checks, 48 native TCP fixtures, Debug/Release builds; no automatic retries of an unchanged candidate."
+  },
+  "private_staging_2026_11_14": {
+    "outcome": "Rejected at storage component screening; archived before engine integration or live/native qualification",
+    "candidate_commit": "529457d",
+    "candidate_branch": "experiment/private-staging",
+    "scope": "32 MiB, 128 files, hybrid metadata, 256 KiB pieces; same Release binary, strict destination verification and durable checkpoint; bounded producer reads included equally; no transport or counterpart CPU inference",
+    "sampling": "Each batch size: four warm-ups and 24 measurements, six balanced ABBA/BAAB blocks; no instrumentation or concurrent tests/builds; all source/destination hashes and independent strict checkpoint reopens pass",
+    "comparisons": [
+      {
+        "batch": 1,
+        "samples": 28,
+        "valid": 28,
+        "diagnostic": false,
+        "scope": "Storage replay including bounded source reads, received writes, strict verification and durable checkpoint; no network, native counterpart or production retention inference",
+        "cpu": {
+          "median": 0.6822750114496323,
+          "lower": 0.5817362160689457,
+          "upper": 0.7112772947372996,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "wall": {
+          "median": 0.661476342601803,
+          "lower": 0.533822898546303,
+          "upper": 0.7091163969793746,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 0.9982284571956683,
+          "lower": 0.9810199429368562,
+          "upper": 1.013456090651558,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      {
+        "batch": 8,
+        "samples": 28,
+        "valid": 28,
+        "diagnostic": false,
+        "scope": "Storage replay including bounded source reads, received writes, strict verification and durable checkpoint; no network, native counterpart or production retention inference",
+        "cpu": {
+          "median": 1.5255582489473452,
+          "lower": 1.507148718429004,
+          "upper": 1.5417055263394173,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "wall": {
+          "median": 1.4957346515492456,
+          "lower": 1.4590728365545198,
+          "upper": 1.5287832139553645,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 1.00277565056775,
+          "lower": 0.9761282034221019,
+          "upper": 1.0038623595505618,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      }
+    ],
+    "diagnostics": [
+      {
+        "batch": 1,
+        "variant": "direct",
+        "counters": {
+          "fileOpens": 2305,
+          "bytesWritten": 33609669,
+          "bytesRead": 33554432,
+          "sha256Bytes": 33554432,
+          "sha1Bytes": 33554432,
+          "directoryOpens": 7176,
+          "diskJobs": 2178,
+          "bytesHashed": 33554432
+        }
+      },
+      {
+        "batch": 1,
+        "variant": "staged",
+        "counters": {
+          "bytesWritten": 67164087,
+          "stagingPeakAllocatedBytes": 262144,
+          "bytesRead": 100663296,
+          "stagingPublicationNanoseconds": 118429250,
+          "sha1Bytes": 100663296,
+          "stagingBytesWritten": 33554432,
+          "directoryOpens": 1416,
+          "sha256Bytes": 100663296,
+          "stagingPeakPieces": 1,
+          "fileOpens": 386,
+          "stagingPublicationBytes": 33554432,
+          "bytesHashed": 100663296,
+          "stagingBytesRead": 67108864,
+          "diskJobs": 2818,
+          "stagingPeakPayloadBytes": 262144,
+          "contiguousWriteRanges": 128,
+          "stagingReservations": 128
+        }
+      },
+      {
+        "batch": 8,
+        "variant": "direct",
+        "counters": {
+          "bytesRead": 33554432,
+          "bytesWritten": 33609655,
+          "contiguousWriteRanges": 256,
+          "sha256Bytes": 33554432,
+          "sha1Bytes": 33554432,
+          "diskJobs": 386,
+          "directoryOpens": 1800,
+          "fileOpens": 513,
+          "bytesHashed": 33554432
+        }
+      },
+      {
+        "batch": 8,
+        "variant": "staged",
+        "counters": {
+          "stagingPeakPieces": 1,
+          "stagingPeakPayloadBytes": 262144,
+          "diskJobs": 1026,
+          "stagingPublicationBytes": 33554432,
+          "stagingBytesWritten": 33554432,
+          "bytesRead": 100663296,
+          "contiguousWriteRanges": 128,
+          "stagingPeakAllocatedBytes": 262144,
+          "sha1Bytes": 100663296,
+          "stagingBytesRead": 67108864,
+          "stagingPublicationNanoseconds": 123004994,
+          "sha256Bytes": 100663296,
+          "bytesHashed": 100663296,
+          "fileOpens": 386,
+          "bytesWritten": 67164108,
+          "stagingReservations": 128,
+          "directoryOpens": 1416
+        }
+      }
+    ],
+    "safety": "96 storage tests; Address and Thread Sanitizer each pass 32 focused tests including concurrent owners; five killed-process staging boundaries; real ENOSPC, retry, read-only volume, replacement/link/permission races, selective spill, v1/v2/hybrid padding and shutdown/quota cleanup pass",
+    "integrity_finding": "An edit between pwrite and stamp recording can conceal corruption from source/publication hashes; final strict destination readback remains necessary",
+    "limits": "Eight pieces and 64 MiB reserved payload; 1 MiB shared transient ceiling; anonymous staging unlinked durably before writing; stalled pieces flush unverified after one second; no persistent staging format"
   }
 }

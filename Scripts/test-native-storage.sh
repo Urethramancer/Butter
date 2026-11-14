@@ -14,7 +14,7 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
-swiftc -swift-version 6 -parse-as-library -module-cache-path /tmp/butter-swift-cache -I "$bin" -L "$bin" \
+swiftc -swift-version 6 -parse-as-library -module-cache-path "$work/modules" -I "$bin" -L "$bin" \
 	-lButterTorrentStorage -lButterTorrentMetadata Tests/NativeStorageRecoveryTests.swift -o "$work/StorageRecoveryTests"
 hdiutil create -size 16m -fs HFS+ -type UDIF -nospotlight -volname ButterNativeStorage "$work/fixture.dmg" >/dev/null
 mkdir "$work/mount" "$work/cases"

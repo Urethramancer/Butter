@@ -86,8 +86,33 @@ result, and unchanged runs were not repeated. Tested candidates are preserved on
 `experiment/snapshot-unconditional` and `experiment/snapshot-projection`.
 
 Package, lifecycle, sanitizer, native interoperability and app-build checks passed.
-The independently qualified file-tree improvement below remains retained. The
-bounded staging experiment is the remaining approved phase.
+The independently qualified file-tree improvement below remains retained.
+
+## Private staging experiment
+
+The final approved experiment was rejected during storage screening and is saved
+on `experiment/private-staging` (`529457d`). All 56 samples pass payload hashes and
+independent strict checkpoint reopening. With 16 KiB incoming blocks, staging
+reduces component CPU 31.8% (ratio 0.682, 95% interval 0.582–0.711). With eight-block
+batches, CPU increases 52.6% (1.526, 1.507–1.542) and wall time increases 49.6%.
+RSS intervals include no change in both cases. These are 32 MiB storage replays,
+including equal bounded producer reads, rather than live transfer qualifications.
+The prototype was archived before transport integration.
+
+Separate counters show that staging doubles payload writes and triples reads and
+hashing. Eight-block destination ranges halve, but admitted disk jobs increase
+from 386 to 1,026. The replay reserves one 256 KiB piece at a time, with 256 KiB
+of allocated temporary payload; the shared anonymous file has a 64 MiB logical
+ceiling. Authentication and publication take 118–123 ms over 128 pieces, excluding
+the final destination readback and queue waits. No instrumented sample supplies
+timing acceptance evidence.
+
+That readback remains necessary: an edit between writing and recording a stamp
+can escape source/publication hashes. The strict final check rejects it. Storage,
+Address/Thread Sanitizer, concurrent-owner, five process-interruption boundaries,
+real ENOSPC/retry, read-only-volume and filesystem-race checks pass. Reservations
+are bounded and released; anonymous staging disappears on process exit. None of
+this prototype is enabled in the retained engine.
 
 ## File inspector
 
