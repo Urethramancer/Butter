@@ -2,6 +2,9 @@
 require 'json'
 
 module ProfileAttribution
+	def self.field(record, key)
+		record.fetch(key) { record.fetch(key.to_sym) }
+	end
 	def self.category(frames)
 		leaf = frames.first || '[unavailable backtrace]'
 		return 'kernel-facing copying' if frames.include?('vm_copy')
@@ -35,19 +38,19 @@ module ProfileAttribution
 	end
 	def self.summarise(profile)
 		categories, purposes, leaves, cross = Array.new(4) { Hash.new(0) }
-		stacks = profile.fetch('stacks')
-		total = stacks.sum { |s| Integer(s.fetch('weight_ns')) }
+		stacks = field(profile, 'stacks')
+		total = stacks.sum { |s| Integer(field(s, 'weight_ns')) }
 		raise 'No exported execution samples' unless total > 0
 		stacks.each do |sample|
-			frames = sample.fetch('frames'); weight = Integer(sample.fetch('weight_ns'))
+			frames = field(sample, 'frames'); weight = Integer(field(sample, 'weight_ns'))
 			raise 'Invalid sample weight' unless weight > 0
 			category = category(frames); purpose = purpose(frames)
 			categories[category] += weight; purposes[purpose] += weight; leaves[frames.first] += weight
 			cross[[purpose, category]] += weight
 		end
 		rank = ->(values) { values.sort_by { |key, weight| [-weight, key.to_s] }.map { |key, weight| {name: key, weight_ns: weight, percent: 100.0 * weight / total} } }
-		{target_pid: profile.fetch('target_pid'), running_samples: profile.fetch('running_samples'), weight_ns: total,
-			method: 'Disjoint executing leaves and disjoint stack purposes; sample weights, not CPU durations or kernel residence. Purpose describes sampled ancestry, not inclusive cost. All exported stacks retained in the source CPU report.',
+		{target_pid: field(profile, 'target_pid'), running_samples: field(profile, 'running_samples'), weight_ns: total,
+			method: 'Disjoint executing leaves and disjoint stack purposes using every exported stack; sample weights, not CPU durations or kernel residence. Purpose describes sampled ancestry, not inclusive cost.',
 			categories: rank.call(categories), purposes: rank.call(purposes), leaves: rank.call(leaves), purpose_categories: rank.call(cross)}
 	end
 end

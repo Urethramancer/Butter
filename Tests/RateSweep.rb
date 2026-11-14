@@ -159,7 +159,7 @@ module RateSweep
 				record[:counterpart_metrics][:whole] = seed.whole
 				if trace
 					trace.export
-					File.write(File.join(logs, 'cpu.json'), JSON.pretty_generate(H.profile_summary(File.join(logs, 'download.samples.xml'), down.phase('ready').fetch('pid'))))
+					H.write_profile_report(File.join(logs, 'download'), H.profile_summary(File.join(logs, 'download.samples.xml'), down.phase('ready').fetch('pid')))
 				end
 				pieces = down.phase('durable').fetch('verified_pieces')
 				record[:checked_pieces] = RateSweep.validate_pieces(fixture, File.join(root, 'seed'), item[:destination], pieces)

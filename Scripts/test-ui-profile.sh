@@ -2,6 +2,7 @@
 # Profiles disposable native views; never opens the user's Butter state.
 set -eu
 cd "$(dirname "$0")/.."
+case "${BUTTER_UI_PROFILE_TREE:-source}" in source|lazy) ;; *) echo 'UI tree must be source or lazy.' >&2; exit 2 ;; esac
 ui_profile_out=${1:-$PWD/.build/experiments/cpu-profiles/application-ui}
 mkdir -p "$ui_profile_out"
 ui_profile_out=$(cd "$ui_profile_out" && pwd)
@@ -11,6 +12,9 @@ trap 'rm -rf "$ui_profile_work"' EXIT HUP INT TERM
 swift build -c release --package-path Packages/ButterTorrent --scratch-path .build/benchmark-release > "$ui_profile_out/build.log" 2>&1
 ui_profile_bin=$(swift build -c release --package-path Packages/ButterTorrent --scratch-path .build/benchmark-release --show-bin-path)
 cp Butter/UI/TorrentInspector.swift "$ui_profile_work/TorrentInspector.swift"
+if [ "${BUTTER_UI_PROFILE_TREE:-source}" = lazy ]; then
+	ruby -e 'path = ARGV.fetch(0); source = File.read(path); before = "if node.matches(search) {\n\t\t\tVStack(alignment: .leading, spacing: 4)"; raise "File row not found" unless source.include?(before); File.write(path, source.sub(before, before.sub("VStack", "LazyVStack")))' "$ui_profile_work/TorrentInspector.swift"
+fi
 cat >> "$ui_profile_work/TorrentInspector.swift" <<'SWIFT'
 
 // Test-only initial selection; production layout and defaults remain unchanged.
@@ -36,13 +40,16 @@ ruby -rjson -rdigest -ropen3 -e '
  puts JSON.pretty_generate({revision: capture.call("git", "rev-parse", "HEAD"), dirty: capture.call("git", "status", "--short"), swift: capture.call("swift", "--version"), os: capture.call("sw_vers"),
   scope: "Synthetic models rendered by production ContentView and optional adjacent TorrentInspector, with test-only Files initial selection; includes window creation and 12 updates one second apart; 2000 files or 200 torrents with 512 files each; no payload or networking; not timing acceptance",
   visible_only: ENV["BUTTER_UI_PROFILE_VISIBLE_ONLY"] == "1",
+  selected_case: ENV["BUTTER_UI_PROFILE_CASE"], tree: ENV.fetch("BUTTER_UI_PROFILE_TREE", "source"), keep_raw: ENV["BUTTER_PROFILE_KEEP_RAW"] == "1",
+  test_inspector_sha256: Digest::SHA256.file(ARGV[1]).hexdigest,
   source_sha256: files.sort.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }, driver_sha256: Digest::SHA256.file(ARGV[0]).hexdigest, flags: "Release package; application swiftc -O -swift-version 5"})
-' "$ui_profile_work/ApplicationUIProfile" > "$ui_profile_out/environment.json"
-ruby -I Tests -rTransferBenchmarkHarness -e '
+' "$ui_profile_work/ApplicationUIProfile" "$ui_profile_work/TorrentInspector.swift" > "$ui_profile_out/environment.json"
+ruby -I Tests -rTransferBenchmarkHarness -rProfileAttribution -e '
  h = TransferBenchmarkHarness; driver, out = ARGV; results = []
  %w[many-files many-torrents].product(%w[download seed], [false, true]).each do |workload, role, inspector|
   next if ENV["BUTTER_UI_PROFILE_VISIBLE_ONLY"] == "1" && !inspector
   id = [workload, role, inspector ? "visible" : "hidden"].join("-"); prefix = File.join(out,id)
+  next if ENV["BUTTER_UI_PROFILE_CASE"] && ENV["BUTTER_UI_PROFILE_CASE"] != id
   job = {workload: workload, role: role, inspector: inspector, screenshot: prefix + ".png"}
   job_path = prefix + ".json"; File.write(job_path, JSON.generate(job))
   row = job.merge(id: id, accepted: false); child = nil; trace = nil
@@ -53,7 +60,8 @@ ruby -I Tests -rTransferBenchmarkHarness -e '
    child.send_command("start"); h.wait([child], [[child,"verified"]], timeout: 120)
    child.send_command("persist"); h.wait([child], [[child,"durable"]], timeout: 30)
    trace.finish; child.send_command("stop"); h.wait([child], [[child,"stopped"]], timeout: 30); child.finish
-   trace.export; File.write(prefix + ".cpu.json", JSON.pretty_generate(h.profile_summary(prefix + ".samples.xml", child.phase("ready").fetch("pid"))))
+   trace.export
+   h.write_profile_report(prefix, h.profile_summary(prefix + ".samples.xml", child.phase("ready").fetch("pid")))
    metrics = h.delta(child.phase("start"), child.phase("durable")); metrics[:cpu_seconds] = metrics[:user] + metrics[:system]
    row[:metrics] = metrics; row[:whole] = child.whole; row[:accepted] = true
   rescue StandardError => error
@@ -65,5 +73,6 @@ ruby -I Tests -rTransferBenchmarkHarness -e '
   end
  end
  File.write(File.join(out,"summary.json"),JSON.pretty_generate(results.map { |row| row.reject { |key,_| key == :events } }))
+ raise "No UI workload matched" if results.empty?
  raise "UI profiling contains failed captures" if results.any? { |row| !row[:accepted] }
 ' "$ui_profile_work/ApplicationUIProfile" "$ui_profile_out"

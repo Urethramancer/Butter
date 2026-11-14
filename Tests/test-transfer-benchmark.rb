@@ -180,7 +180,7 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 			assert rows.all? { |r| !r['accepted'] && r['error'].include?('Source digest changed') }
 		end
 	end
-	def with_profiler(mode)
+	def with_profiler(mode, name: 'profile')
 		Dir.mktmpdir('butter-profiler-test') do |root|
 			flag = File.join(root, 'ready')
 			notification = Object.new
@@ -188,8 +188,8 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 			notification.define_singleton_method(:close) { @closed = true }
 			notification.define_singleton_method(:closed?) { @closed }
 			program = "trap('INT') { exit 0 unless ARGV[0] == 'ignore' }; abort 'profiler failure' if ARGV[0] == 'fail'; File.write(ARGV[1], 'ready') if %w[ready ignore].include?(ARGV[0]); loop { sleep 0.01 }"
-			profiler = H::TimeProfiler.new(0, File.join(root, 'profile'), command: [RbConfig.ruby, '-e', program, mode, flag], notification: notification)
-			begin; yield profiler
+			profiler = H::TimeProfiler.new(0, File.join(root, name), command: [RbConfig.ruby, '-e', program, mode, flag], notification: notification)
+			begin; yield profiler, File.join(root, name)
 			ensure; profiler.cleanup
 			end
 			assert notification.closed?
@@ -200,6 +200,33 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 		with_profiler('ready') do |profiler|
 			profiler.wait_ready([], timeout: 2)
 			profiler.finish(timeout: 2)
+		end
+	end
+	def test_profile_reports_stay_compact_and_raw_capture_retention_is_explicit
+		previous = ENV['BUTTER_PROFILE_KEEP_RAW']
+		begin
+			%w[0 1].each do |keep|
+				ENV['BUTTER_PROFILE_KEEP_RAW'] = keep
+				with_profiler('ready', name: 'profile[1]') do |profiler, prefix|
+					profiler.wait_ready([], timeout: 2); profiler.finish(timeout: 2)
+					FileUtils.mkdir_p(prefix + '.trace')
+					%w[toc samples allocation-table].each { |name| File.write(prefix + ".#{name}.xml", 'raw') }
+					File.write(File.join(File.dirname(prefix), 'unrelated.xml'), 'keep')
+					profile = {target_pid: 42, running_samples: 25, stacks: (0...25).map { |i| {frames: ["leaf-#{i}"], weight_ns: 1} }}
+					H.write_profile_report(prefix, profile)
+					profiler.cleanup
+					assert_equal keep == '1', File.exist?(prefix + '.trace')
+					%w[toc samples allocation-table].each { |name| assert_equal keep == '1', File.exist?(prefix + ".#{name}.xml") }
+					assert File.exist?(File.join(File.dirname(prefix), 'unrelated.xml'))
+					assert_equal keep == '1', File.exist?(prefix + '.cpu.json')
+					result = JSON.parse(File.read(prefix + '.attribution.json'))
+					assert_equal 25, result.fetch('weight_ns')
+					assert_equal 20, result.fetch('leaves').length
+					refute result.key?('stacks')
+				end
+			end
+		ensure
+			ENV['BUTTER_PROFILE_KEEP_RAW'] = previous
 		end
 	end
 	def test_cpu_profile_resolves_references_and_excludes_waits_and_other_processes

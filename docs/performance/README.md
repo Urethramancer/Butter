@@ -130,6 +130,9 @@ format and direction with the corresponding `BUTTER_BENCHMARK_*` variables.
 exploratory. `--profile` and `Scripts/test-ui-profile.sh` are diagnostic only.
 Use `BUTTER_STORAGE_DIAGNOSTICS=1 BUTTER_BENCHMARK_PROFILER=counts` for a separate
 operation-count run. Never use instrumented measurements for timing acceptance.
+Profiler runs retain compact attribution reports and delete traces and raw XML,
+including failed captures. Set `BUTTER_PROFILE_KEEP_RAW=1` only when those raw
+exports are needed; retained allocation-table manifests mark whether exports remain.
 
 The native anchor is libtorrent revision
 `6da363d2994f17c0b3c0450d124cf73a31a73847`. Installed archive ABI indicates

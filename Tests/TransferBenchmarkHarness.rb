@@ -5,6 +5,7 @@ require 'fileutils'
 require 'tmpdir'
 require 'rbconfig'
 require 'time'
+require_relative 'ProfileAttribution'
 
 module TransferBenchmarkHarness
 	PHASES = %w[prepare ready start verified persistence durable shutdown stopped].freeze
@@ -30,6 +31,14 @@ module TransferBenchmarkHarness
 		text = File.read(path)
 		File.write(path, text.gsub(/<environment(?:\s[^>]*)?>.*?<\/environment>/m, '<environment redacted="true"/>'))
 		File.chmod(0600, path)
+	end
+	def self.write_profile_report(prefix, profile)
+		if ENV['BUTTER_PROFILE_KEEP_RAW'] == '1'
+			File.write(prefix + '.cpu.json', JSON.pretty_generate(profile))
+		end
+		attribution = ProfileAttribution.summarise(profile)
+		attribution[:leaves] = attribution[:leaves].first(20)
+		File.write(prefix + '.attribution.json', JSON.pretty_generate(attribution))
 	end
 	def self.terminate(pid)
 		return if Process.waitpid(pid, Process::WNOHANG)
@@ -156,13 +165,20 @@ module TransferBenchmarkHarness
 				path = "#{@prefix}.#{suffix}.xml"
 				query = "/trace-toc/run[@number=\"1\"]/data/table[@schema=\"#{schema}\"]"
 				raise "Profiler table export failed: #{schema}" unless TransferBenchmarkHarness.run_bounded(['xcrun', 'xctrace', 'export', '--input', "#{@prefix}.trace", '--xpath', query, '--output', path], "#{path}.log", timeout: 60)
-				{schema: schema, file: File.basename(path), bytes: File.size(path)}
+				{schema: schema, file: File.basename(path), bytes: File.size(path), retained: ENV['BUTTER_PROFILE_KEEP_RAW'] == '1'}
 			end
 			File.write("#{@prefix}.tables.json", JSON.pretty_generate(manifest))
 		end
 		def cleanup
 			TransferBenchmarkHarness.terminate(@pid) if @pid && !@reaped
 			@notification.close
+			unless ENV['BUTTER_PROFILE_KEEP_RAW'] == '1'
+				FileUtils.rm_rf(@prefix + '.trace')
+				folder, name = File.dirname(@prefix), File.basename(@prefix) + '.'
+				Dir.children(folder).each do |entry|
+					FileUtils.rm_f(File.join(folder, entry)) if entry.start_with?(name) && entry.end_with?('.xml')
+				end
+			end
 		end
 	end
 
@@ -513,7 +529,7 @@ module TransferBenchmarkHarness
 					trace.export
 					prefix = File.join(@output, id)
 					summary = TransferBenchmarkHarness.profile_summary("#{prefix}.samples.xml", tested.phase('ready').fetch('pid'))
-					File.write("#{prefix}.cpu.json", JSON.pretty_generate(summary))
+					TransferBenchmarkHarness.write_profile_report(prefix, summary)
 				end
 				# Measurements have ended. Check each file independently, then reopen native recovery state.
 				fixture['files'].each do |file|
