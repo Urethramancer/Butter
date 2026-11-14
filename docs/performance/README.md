@@ -268,6 +268,32 @@ post-durable tail counts are retained under ignored
 Main retains opt-in diagnostics, not the descriptor cache. Both sanitizers pass
 62 focused tests, alongside the package and benchmark-controller suites.
 
+### Closing retained handles before verification
+
+Candidate `1684b5f` keeps the initial cache's fresh filesystem checks but closes
+affected write handles before piece verification and hybrid readback. Against
+cache-free `a299efa`, all **28/28** many-file hybrid download trials validate:
+four warm-ups, six balanced source/engine pairs, counters disabled, independent
+SHA256 checks, strict checkpoint reopening and unchanged fingerprints.
+
+| Candidate/baseline | Median ratio | Paired 95% interval |
+| --- | ---: | ---: |
+| CPU/GiB | 1.038 | 1.032–1.046 |
+| Verified throughput | 0.965 | 0.958–0.977 |
+| Peak RSS | 0.995 | 0.921–1.044 |
+| Counterpart CPU/GiB | 0.999 | 0.981–1.168 |
+
+Native-control CPU and throughput ratios are 0.995 (0.992–1.024) and 0.993
+(0.982–1.008). Closing handles before verification does not recover a benefit;
+this candidate is reverted too. This result does not establish the cause of the
+earlier verification tail. No trials were repeated or discarded.
+
+The candidate passes 427 package tests, 13 focused tests under each sanitizer,
+and native recovery, real ENOSPC and read-only-volume checks. Evidence is under
+ignored `.build/benchmarks/preverification-cache-many-hybrid-20261114` and
+`preverification-cache-validation-20261114`. The candidate remains on
+`experiment/preverification-write-descriptors`; main has no payload-handle cache.
+
 ## Reproduction
 
 After `Scripts/bootstrap-engine.sh`:
