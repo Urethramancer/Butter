@@ -89,12 +89,22 @@ payload traffic; it establishes no transfer CPU gain.
 | Summary/detail snapshots | Reduced synthetic polling costs, without establishing a live-transfer CPU gain. Fixed-rate native controls were unsaturated. Reverted. |
 | Private staging | Storage replay CPU fell 31.8% for single blocks but rose 52.6% for eight-block batches. Doubled payload writes and tripled reads/hashing. Archived before transport integration. |
 | Popularity-based upload eviction | Increased reloads. Reverted; shared in-flight reads and the existing bounded cache remain. |
+| Last-path syntax memoization | No established CPU or throughput benefit in 28 single-file v1 trials. Reverted. |
 
 Snapshots are preserved on `experiment/snapshot-unconditional` and
 `experiment/snapshot-projection`; staging is on `experiment/private-staging`.
 Staging recovery, race and sanitizer checks pass, but final destination readback
 remains necessary: source/publication hashes can miss an edit masked by stamp
 recording. Detailed results and qualifications stay in `results.json`.
+
+The path-syntax candidate `a88bef2` compares against `44d8b50` with the fixed six
+balanced source/engine pairs and four warm-ups, all validated. CPU/GiB ratio is
+1.004 (95% interval 0.966–1.060), throughput 0.987 (0.922–1.051), RSS
+1.002 (0.989–1.022), and counterpart CPU 1.029 (0.985–1.060). Native-control
+intervals also include one. Counts were disabled; fingerprints stayed unchanged.
+All 95 storage tests pass under Debug and both sanitizers. Exact-Unicode and
+concurrent-path tests remain; compact results stay under ignored
+`.build/benchmarks/path-syntax-single-v1-20261114`.
 
 ## Profiling targets
 
@@ -192,6 +202,17 @@ Intervals are paired 95% bootstrap intervals. The initial variant rechecked path
 identity during acquisition as well as before writing. One separate diagnostic
 transfer reduces total file opens from 13,756 to 4,378 and in-job payload closes
 from 9,498 to 120, but this does not translate into better transfer performance.
+In that instrumented sample, summed write-job elapsed time falls from 1.68 to
+1.50 seconds while verified transfer time rises from 4.71 to 5.11 seconds.
+The same 65,536 blocks form 10,085 jobs instead of 9,430. Smaller batches and
+unmeasured queue/transport/verification waits are possible contributors; these
+aggregates do not isolate the cause or establish that descriptor closes help.
+The reader flushes each receive's blocks and awaits storage plus any completed
+piece verification before the next receive (`PeerSession.readInput` and
+`TCPTransfer.receivedBlocks`). TCP receives can complete with one byte. Faster
+storage can therefore advance the next receive and reduce its batch size,
+increasing read/actor/disk round trips. The observed batch change is consistent
+with this feedback; per-stage wait times are still needed to attribute the loss.
 The refinement uses checkpoint stamps only to select candidates, retains fresh
 effective-access and prewrite identity checks, and drains handles at checkpoints.
 Both keep eight idle slots per owner and 32 across the process, with cold-path
