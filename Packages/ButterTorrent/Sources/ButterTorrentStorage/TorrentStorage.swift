@@ -279,16 +279,23 @@ final class StorageState: @unchecked Sendable {
 				return checked.bytes
 			} catch { record.set(piece, false); throw error }
 		}
-		var result = Data()
-		for segment in segments {
-			try check()
-			if segment.padding { result.append(Data(repeating: 0, count: segment.count)); continue }
-			let (directory, path) = overlay[segment.file] ?? location(segment.file), file = try directory.openFile(path)
-			defer { close(file) }
-			var done = 0
-			while done < segment.count {
-				try check(); let data = try StorageDirectory.read(file, offset: segment.offset + Int64(done), count: min(65536, segment.count - done))
-				guard !data.isEmpty else { throw StorageFailure.invalid("short payload read") }; done += data.count; result.append(data)
+		// Padding stays zero; payload reads fill their final destination directly.
+		var result = Data(count: count)
+		try result.withUnsafeMutableBytes { (buffer: UnsafeMutableRawBufferPointer) in
+			var destination = 0
+			for segment in segments {
+				try check()
+				if segment.padding { destination += segment.count; continue }
+				let (directory, path) = overlay[segment.file] ?? location(segment.file), file = try directory.openFile(path)
+				defer { close(file) }
+				var done = 0
+				while done < segment.count {
+					try check()
+					let start = destination + done, end = start + min(65536, segment.count - done)
+					let read = try StorageDirectory.read(file, offset: segment.offset + Int64(done), into: UnsafeMutableRawBufferPointer(rebasing: buffer[start..<end]))
+					guard read > 0 else { throw StorageFailure.invalid("short payload read") }; done += read
+				}
+				destination += segment.count
 			}
 		}
 		return result
