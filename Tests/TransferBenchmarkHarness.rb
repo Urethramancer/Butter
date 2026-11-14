@@ -258,7 +258,17 @@ module TransferBenchmarkHarness
 		rescue IO::WaitReadable
 		rescue EOFError
 			@eof = true
-			raise "Child exited before stopped: #{@log}" unless phase('stopped') && @buffer.empty?
+			unless phase('stopped') && @buffer.empty?
+				deadline = TransferBenchmarkHarness.now + 0.1
+				loop do
+					if (result = Process.waitpid2(@pid, Process::WNOHANG))
+						@reaped = true; @exit_status = result[1]; break
+					end
+					break if TransferBenchmarkHarness.now >= deadline
+					sleep 0.005
+				end
+				raise "Child exited before stopped (#{@exit_status || 'stdout closed; exit status unavailable'}): #{@log}\n#{stderr_tail}"
+			end
 		end
 		def output
 			@eof ? nil : @output
@@ -272,8 +282,7 @@ module TransferBenchmarkHarness
 				if (result = Process.waitpid2(@pid, Process::WNOHANG))
 					@reaped = true
 					unless result[1].success?
-						tail = File.binread(@log, 4096, [File.size(@log) - 4096, 0].max).force_encoding(Encoding::UTF_8).scrub
-						raise "Child failed (#{result[1]}): #{@log}\n#{tail}"
+						raise "Child failed (#{result[1]}): #{@log}\n#{stderr_tail}"
 					end
 					break
 				end
@@ -295,6 +304,11 @@ module TransferBenchmarkHarness
 			event = phase('ready')
 			Process.kill('USR1', event['pid']) if event && !event.key?('libtorrent')
 		rescue Errno::ESRCH
+		end
+		private def stderr_tail
+			File.binread(@log, 4096, [File.size(@log) - 4096, 0].max).force_encoding(Encoding::UTF_8).scrub
+		rescue Errno::ENOENT
+			'[stderr log missing]'
 		end
 	end
 

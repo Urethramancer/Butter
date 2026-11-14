@@ -4,9 +4,10 @@ set -eu
 cd "$(dirname "$0")/.."
 mode=${1:---full}
 case "$mode" in --full|--smoke|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare] [OUTPUT]' >&2; exit 2 ;; esac
-if [ "$mode" = --profile ] && [ -n "${BUTTER_BENCHMARK_CASE:-}" ]; then
-	export BUTTER_BENCHMARK_FIXTURE_CASE=$BUTTER_BENCHMARK_CASE
-fi
+case "$mode" in
+	--profile|--profile-source|--compare-source)
+		if [ -n "${BUTTER_BENCHMARK_CASE:-}" ]; then export BUTTER_BENCHMARK_FIXTURE_CASE=$BUTTER_BENCHMARK_CASE; fi ;;
+esac
 case "${BUTTER_BENCHMARK_RATE_FORMAT:-hybrid}" in
 	hybrid|v2) ;;
 	*) echo 'Rate format must be hybrid or v2.' >&2; exit 2 ;;

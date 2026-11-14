@@ -385,6 +385,14 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 			assert_includes JSON.generate(error: error.message), 'fixture failed after stopped'
 		end
 	end
+	def test_early_child_failure_retains_exit_status_and_stderr
+		with_children(['failed']) do |children|
+			error = assert_raises(RuntimeError) { H.wait(children, [[children[0], 'ready']], timeout: 3) }
+			assert_match(/exited before stopped.*exit 1/, error.message)
+			assert_includes error.message, 'counterpart failure'
+			assert error.message.valid_encoding?
+		end
+	end
 	def test_deadline_counterpart_failure_and_cleanup
 		with_children(['stall']) { |children| assert_raises(RuntimeError) { H.wait(children, [[children[0], 'ready']], timeout: 0.05) } }
 		with_children(['stall', 'failed']) do |children|

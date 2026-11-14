@@ -153,11 +153,17 @@ import ButterTorrentEngine
 		if let selected = ProcessInfo.processInfo.environment["BUTTER_BENCHMARK_FIXTURE_CASE"] {
 			guard cases.contains(selected) else { throw PeerFailure.invalid("unknown benchmark fixture case") }; cases = [selected]
 		}
+		let total = sweep ? 4 * 1_073_741_824 : small ? 32 * 1_048_576 : 1_073_741_824
+		var volume = root
+		while !fm.fileExists(atPath: volume.path) { volume.deleteLastPathComponent() }
+		let free = try fm.attributesOfFileSystem(forPath: volume.path)[.systemFreeSize] as? NSNumber
+		// Reserve source fixtures, one full destination, and 1 GiB of working headroom.
+		let required = Int64(total) * Int64(cases.count + 1) + 1_073_741_824
+		guard let free, free.int64Value >= required else { throw PeerFailure.limit("benchmark needs \(required / 1_048_576) MiB of free temporary disk space") }
 		for name in cases {
 			let folder = root.appendingPathComponent(name), seed = folder.appendingPathComponent("seed")
 			try fm.createDirectory(at: seed, withIntermediateDirectories: true)
 			let count = name == "many" ? 128 : name == "concurrent" ? 4 : 1
-			let total = sweep ? 4 * 1_073_741_824 : small ? 32 * 1_048_576 : 1_073_741_824
 			var files: [[String: Any]] = []
 			for index in 0..<count {
 				let path = name == "many" ? String(format: "bundle/file-%03d.bin", index) : "payload-\(index).bin"
