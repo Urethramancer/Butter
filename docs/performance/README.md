@@ -90,6 +90,7 @@ payload traffic; it establishes no transfer CPU gain.
 | Private staging | Storage replay CPU fell 31.8% for single blocks but rose 52.6% for eight-block batches. Doubled payload writes and tripled reads/hashing. Archived before transport integration. |
 | Popularity-based upload eviction | Increased reloads. Reverted; shared in-flight reads and the existing bounded cache remain. |
 | Last-path syntax memoization | No established CPU or throughput benefit in 28 single-file v1 trials. Reverted. |
+| Merkle leaf slices | Removed per-leaf `subdata` copies, but 28 many-file hybrid trials establish no CPU or throughput gain. Reverted. |
 
 Snapshots are preserved on `experiment/snapshot-unconditional` and
 `experiment/snapshot-projection`; staging is on `experiment/private-staging`.
@@ -105,6 +106,14 @@ intervals also include one. Counts were disabled; fingerprints stayed unchanged.
 All 95 storage tests pass under Debug and both sanitizers. Exact-Unicode and
 concurrent-path tests remain; compact results stay under ignored
 `.build/benchmarks/path-syntax-single-v1-20261114`.
+
+Merkle-slice candidate `c6963e6` against `cd651c1` validates 28/28 trials with
+counters disabled and unchanged fingerprints. CPU/GiB ratio is 0.982 (paired
+95% interval 0.959–1.013), verified throughput 1.016 (0.988–1.048), and peak RSS
+1.006 (0.947–1.065). Native-control CPU and throughput intervals also include one.
+All 98 storage tests pass. The inconclusive candidate is retained only on
+`experiment/merkle-hash-slices`; raw results remain under ignored
+`.build/benchmarks/hash-slices-many-hybrid-20261114`.
 
 ## Profiling targets
 
