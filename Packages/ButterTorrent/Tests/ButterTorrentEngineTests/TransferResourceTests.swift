@@ -205,6 +205,18 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 		cancelled.cancel(); await #expect(throws: CancellationError.self) { try await cancelled.value }
 		await limiter.set(0); try await limiter.consume(1_000_000)
 	}
+	@Test func unrestrictedAdmissionTracksCompletedRateChanges() async throws {
+		let clock = EngineClock(), limiter = TransferRateLimiter(rate: 0, clock: clock)
+		#expect(await limiter.consumeUnrestrictedBatch())
+		for rate in [100, 10] {
+			await limiter.set(rate); #expect(await limiter.consumeUnrestrictedBatch() == false)
+			let consuming = Task { try await limiter.consume(rate / 2) }
+			#expect(try await clock.nextSleep() == 0.5)
+			clock.advance(0.5); try await consuming.value
+			await limiter.set(0); #expect(await limiter.consumeUnrestrictedBatch())
+			try await limiter.consume(1_000_000)
+		}
+	}
 	@Test func permitsCancelQueuedWorkAndCloseAllWaiters() async throws {
 		let permits = TransferPermits(1); try await permits.acquire()
 		let cancelled = Task { try await permits.acquire() }

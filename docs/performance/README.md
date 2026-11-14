@@ -93,6 +93,7 @@ payload traffic; it establishes no transfer CPU gain.
 | Merkle leaf slices | Removed per-leaf `subdata` copies, but 28 many-file hybrid trials establish no CPU or throughput gain. Reverted. |
 | Direct payload read buffers | Removed intermediate chunk buffers/copies, but neither many-file hybrid nor concurrent v2 establishes a CPU or throughput gain. Reverted. |
 | Parent reuse within verification | Revalidated one parent during each piece check, but 28 many-file hybrid trials establish no CPU or throughput gain. Reverted. |
+| Synchronous unrestricted-rate checks | Removed admission-only actor hops, but 28 many-file hybrid trials establish no CPU or throughput gain. Reverted. |
 
 Snapshots are preserved on `experiment/snapshot-unconditional` and
 `experiment/snapshot-projection`; staging is on `experiment/private-staging`.
@@ -143,6 +144,15 @@ tests, 27 tests under each sanitizer, and native recovery/ENOSPC/read-only check
 It remains on `experiment/scoped-verification-parent`; the four-case parent-change
 regression remains on main, which passes 99 storage tests. Results remain under
 ignored `.build/benchmarks/verification-parent-many-hybrid-20261114`.
+
+Synchronous-admission candidate `768f441` against `ddf63b8` validates 28/28
+many-file hybrid trials with counters disabled and unchanged fingerprints.
+CPU/GiB ratio is 0.991 (paired 95% interval 0.904–1.005), verified throughput
+1.015 (0.989–1.101), and peak RSS 1.003 (0.944–1.099). Native-control intervals
+include one. No trials were repeated or discarded. All 198 engine tests and 52
+ThreadSanitizer tests pass. The candidate remains on
+`experiment/synchronous-rate-admission`; the rate-transition regression remains
+on main. Results stay under ignored `.build/benchmarks/rate-access-many-hybrid-20261114`.
 
 ## Profiling targets
 
