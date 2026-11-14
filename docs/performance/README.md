@@ -160,11 +160,25 @@ establish the cause of differences between implementations.
 
 ## Current profiling findings
 
-All 18 layout/format/direction cases have validated Swift and native CPU captures,
-plus separate counter runs. Download write jobs account for 49–68% of Swift
-samples. In many-file hybrid download, writes account for 57.2%, stored-byte
-verification 17.1% and peer transport 17.0%. Sample ancestry is attribution, not
-measured CPU savings or kernel residence.
+The final retained many-file hybrid download and seeding paths were reprofiled
+after all four experiments. Four CPU captures and four separate counter trials
+validate exact payloads and strict checkpoint reopening. Swift download samples
+are 31.3% stored-byte verification, 30.6% write jobs and 24.9% peer transport.
+File metadata/open/close accounts for 27.8% of executing leaves, including 18.5%
+in `openat`. Seeding samples are 33.5% payload reads, 31.4% peer transport and
+15.2% upload admission/cache; `openat` alone accounts for 13.8%.
+
+The separate download diagnostic writes 65,536 blocks in 13,761 destination
+ranges, with 48,736 directory opens. Both download readback and upload cache loads
+total exactly 1 GiB; seeding performs no payload hashing during transfer. Guarded
+path handling and transport are the next investigation targets. These single
+captures supply sample attribution, rather than established savings or kernel
+residence; instrumented runs cannot establish performance ratios.
+
+The earlier full 18-case profile matrix predates write coalescing. Its download
+write jobs account for 49–68% of Swift samples; many-file hybrid download is 57.2%
+writes, 17.1% stored-byte verification and 17.0% peer transport. Current and earlier
+profiles remain labelled separately in the compact measurements.
 
 The existing seeding cache joins in-flight reads across peers and retains eight
 pieces per torrent within a 64 MiB session budget. Eight concurrent readers

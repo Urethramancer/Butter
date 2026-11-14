@@ -2,6 +2,8 @@
 
 ## Performance
 
+- Investigate guarded path opens/closes and peer transport overhead identified
+  by the final retained profiles, preserving fresh filesystem observations.
 - Meet the unchanged per-case targets: at least 90% of libtorrent throughput,
   at most 1.25× CPU/GiB through durable completion, and peak RSS within 10% of
   the original fresh Swift baseline. Re-run the final matrix after retained

@@ -2058,5 +2058,597 @@
     "safety": "96 storage tests; Address and Thread Sanitizer each pass 32 focused tests including concurrent owners; five killed-process staging boundaries; real ENOSPC, retry, read-only volume, replacement/link/permission races, selective spill, v1/v2/hybrid padding and shutdown/quota cleanup pass",
     "integrity_finding": "An edit between pwrite and stamp recording can conceal corruption from source/publication hashes; final strict destination readback remains necessary",
     "limits": "Eight pieces and 64 MiB reserved payload; 1 MiB shared transient ceiling; anonymous staging unlinked durably before writing; stalled pieces flush unverified after one second; no persistent staging format"
+  },
+  "final_retained_profiles_2026_11_14": {
+    "revision": "a226dd0",
+    "scope": "1 GiB, 128 files, hybrid metadata, ordinary windows; one Time Profiler capture per engine/direction and separate operation counts; eight validated transfers with exact payload checks and strict checkpoint reopening",
+    "method": "Disjoint stack-purpose and executing-leaf sample weights; diagnostic only, no timing/CPU-ratio acceptance inference; no counter instrumentation during CPU captures",
+    "cleanup": "Raw Instruments traces/XML removed after compact attribution extraction; temporary drivers, modules, fixtures and destination data removed",
+    "profiles": [
+      {
+        "running_samples": 4723,
+        "weight_ns": 4723000000,
+        "categories": [
+          {
+            "name": "filesystem metadata/open/close",
+            "weight_ns": 1314000000,
+            "percent": 27.821300021172984
+          },
+          {
+            "name": "user hashing",
+            "weight_ns": 933000000,
+            "percent": 19.75439339402922
+          },
+          {
+            "name": "other user processing or unresolved execution",
+            "weight_ns": 918000000,
+            "percent": 19.43679864492907
+          },
+          {
+            "name": "payload I/O",
+            "weight_ns": 272000000,
+            "percent": 5.759051450349355
+          },
+          {
+            "name": "user copying/clearing",
+            "weight_ns": 263000000,
+            "percent": 5.568494600889266
+          },
+          {
+            "name": "networking",
+            "weight_ns": 249000000,
+            "percent": 5.272072835062461
+          },
+          {
+            "name": "unattributed",
+            "weight_ns": 234000000,
+            "percent": 4.954478085962312
+          },
+          {
+            "name": "scheduling and event delivery",
+            "weight_ns": 214000000,
+            "percent": 4.531018420495448
+          },
+          {
+            "name": "kernel-facing copying",
+            "weight_ns": 131000000,
+            "percent": 2.773660808807961
+          },
+          {
+            "name": "reference counting and destruction",
+            "weight_ns": 98000000,
+            "percent": 2.074952360787635
+          },
+          {
+            "name": "user allocation",
+            "weight_ns": 97000000,
+            "percent": 2.053779377514292
+          }
+        ],
+        "purposes": [
+          {
+            "name": "stored-byte authentication",
+            "weight_ns": 1477000000,
+            "percent": 31.272496294727926
+          },
+          {
+            "name": "download write jobs",
+            "weight_ns": 1444000000,
+            "percent": 30.5737878467076
+          },
+          {
+            "name": "peer wire and transport",
+            "weight_ns": 1176000000,
+            "percent": 24.89942832945162
+          },
+          {
+            "name": "other runtime or unresolved purpose",
+            "weight_ns": 434000000,
+            "percent": 9.189074740630955
+          },
+          {
+            "name": "piece and request selection",
+            "weight_ns": 110000000,
+            "percent": 2.3290281600677534
+          },
+          {
+            "name": "checkpoints and durability",
+            "weight_ns": 68000000,
+            "percent": 1.4397628625873387
+          },
+          {
+            "name": "connection deadlines",
+            "weight_ns": 14000000,
+            "percent": 0.296421765826805
+          }
+        ],
+        "top_leaves": [
+          {
+            "name": "__openat",
+            "weight_ns": 872000000,
+            "percent": 18.46284141435528
+          },
+          {
+            "name": "AccelerateCrypto_SHA1_compress",
+            "weight_ns": 472000000,
+            "percent": 9.993648105017996
+          },
+          {
+            "name": "AccelerateCrypto_SHA256_compress",
+            "weight_ns": 447000000,
+            "percent": 9.464323523184417
+          },
+          {
+            "name": "close",
+            "weight_ns": 318000000,
+            "percent": 6.733008680923142
+          },
+          {
+            "name": "start_wqthread",
+            "weight_ns": 234000000,
+            "percent": 4.954478085962312
+          },
+          {
+            "name": "_platform_memmove",
+            "weight_ns": 216000000,
+            "percent": 4.573364387042134
+          },
+          {
+            "name": "pwrite",
+            "weight_ns": 206000000,
+            "percent": 4.3616345543087025
+          },
+          {
+            "name": "__recvmsg",
+            "weight_ns": 143000000,
+            "percent": 3.0277366080880794
+          },
+          {
+            "name": "mach_msg2_trap",
+            "weight_ns": 131000000,
+            "percent": 2.773660808807961
+          },
+          {
+            "name": "kevent_id",
+            "weight_ns": 108000000,
+            "percent": 2.286682193521067
+          }
+        ],
+        "counters_through_durable": {
+          "contiguousWriteRanges": 13761,
+          "scans": 19164,
+          "directoryOpens": 48736,
+          "fileOpens": 15082,
+          "readSizePower2_16": 16384,
+          "sha1Bytes": 1073741824,
+          "sha256Bytes": 1073741824,
+          "bytesHashed": 1073741824,
+          "descriptorOpens": 63884,
+          "writeSizePower2_16": 2117,
+          "descriptorDuplicates": 67965,
+          "writeSizePower2_14": 3399,
+          "filesInspected": 58319,
+          "bytesRead": 1073741824,
+          "atomicStateOpens": 66,
+          "writeBlocks": 65536,
+          "diskJobs": 14880,
+          "writeSizePower2_13": 25,
+          "writeSizePower2_15": 1779,
+          "fileDescriptorInspections": 43446,
+          "bytesWritten": 1074327442,
+          "writeBatches": 10777,
+          "writeSizePower2_17": 6928,
+          "writeDescriptorCacheHits": 3350
+        },
+        "case": "many",
+        "format": "hybrid",
+        "direction": "download",
+        "engine": "Swift",
+        "profile_validated": true,
+        "counter_run_validated": true
+      },
+      {
+        "running_samples": 2375,
+        "weight_ns": 2375000000,
+        "categories": [
+          {
+            "name": "user hashing",
+            "weight_ns": 928000000,
+            "percent": 39.07368421052632
+          },
+          {
+            "name": "other user processing or unresolved execution",
+            "weight_ns": 531000000,
+            "percent": 22.357894736842105
+          },
+          {
+            "name": "networking",
+            "weight_ns": 216000000,
+            "percent": 9.094736842105263
+          },
+          {
+            "name": "payload I/O",
+            "weight_ns": 203000000,
+            "percent": 8.547368421052632
+          },
+          {
+            "name": "filesystem metadata/open/close",
+            "weight_ns": 191000000,
+            "percent": 8.042105263157895
+          },
+          {
+            "name": "scheduling and event delivery",
+            "weight_ns": 166000000,
+            "percent": 6.989473684210527
+          },
+          {
+            "name": "user copying/clearing",
+            "weight_ns": 99000000,
+            "percent": 4.168421052631579
+          },
+          {
+            "name": "user allocation",
+            "weight_ns": 33000000,
+            "percent": 1.3894736842105264
+          },
+          {
+            "name": "unattributed",
+            "weight_ns": 8000000,
+            "percent": 0.3368421052631579
+          }
+        ],
+        "purposes": [
+          {
+            "name": "native disk work",
+            "weight_ns": 2180000000,
+            "percent": 91.78947368421052
+          },
+          {
+            "name": "other runtime or unresolved purpose",
+            "weight_ns": 195000000,
+            "percent": 8.210526315789474
+          }
+        ],
+        "top_leaves": [
+          {
+            "name": "sha256_block_armv8",
+            "weight_ns": 467000000,
+            "percent": 19.66315789473684
+          },
+          {
+            "name": "sha1_block_armv8",
+            "weight_ns": 461000000,
+            "percent": 19.410526315789475
+          },
+          {
+            "name": "__recvfrom",
+            "weight_ns": 161000000,
+            "percent": 6.778947368421052
+          },
+          {
+            "name": "pwritev",
+            "weight_ns": 143000000,
+            "percent": 6.021052631578947
+          },
+          {
+            "name": "close",
+            "weight_ns": 124000000,
+            "percent": 5.221052631578948
+          },
+          {
+            "name": "kevent",
+            "weight_ns": 99000000,
+            "percent": 4.168421052631579
+          },
+          {
+            "name": "_platform_memmove",
+            "weight_ns": 98000000,
+            "percent": 4.126315789473685
+          },
+          {
+            "name": "__open",
+            "weight_ns": 66000000,
+            "percent": 2.778947368421053
+          },
+          {
+            "name": "pread",
+            "weight_ns": 56000000,
+            "percent": 2.357894736842105
+          },
+          {
+            "name": "__sendmsg",
+            "weight_ns": 53000000,
+            "percent": 2.231578947368421
+          }
+        ],
+        "case": "many",
+        "format": "hybrid",
+        "direction": "download",
+        "engine": "libtorrent",
+        "profile_validated": true,
+        "counter_run_validated": true
+      },
+      {
+        "running_samples": 1934,
+        "weight_ns": 1934000000,
+        "categories": [
+          {
+            "name": "other user processing or unresolved execution",
+            "weight_ns": 558000000,
+            "percent": 28.852119958634955
+          },
+          {
+            "name": "filesystem metadata/open/close",
+            "weight_ns": 325000000,
+            "percent": 16.804550155118925
+          },
+          {
+            "name": "networking",
+            "weight_ns": 219000000,
+            "percent": 11.323681489141675
+          },
+          {
+            "name": "unattributed",
+            "weight_ns": 219000000,
+            "percent": 11.323681489141675
+          },
+          {
+            "name": "user copying/clearing",
+            "weight_ns": 182000000,
+            "percent": 9.410548086866598
+          },
+          {
+            "name": "scheduling and event delivery",
+            "weight_ns": 162000000,
+            "percent": 8.376421923474664
+          },
+          {
+            "name": "payload I/O",
+            "weight_ns": 110000000,
+            "percent": 5.687693898655636
+          },
+          {
+            "name": "kernel-facing copying",
+            "weight_ns": 65000000,
+            "percent": 3.360910031023785
+          },
+          {
+            "name": "reference counting and destruction",
+            "weight_ns": 59000000,
+            "percent": 3.050672182006205
+          },
+          {
+            "name": "user allocation",
+            "weight_ns": 35000000,
+            "percent": 1.8097207859358841
+          }
+        ],
+        "purposes": [
+          {
+            "name": "upload payload reads",
+            "weight_ns": 647000000,
+            "percent": 33.45398138572906
+          },
+          {
+            "name": "peer wire and transport",
+            "weight_ns": 607000000,
+            "percent": 31.38572905894519
+          },
+          {
+            "name": "other runtime or unresolved purpose",
+            "weight_ns": 376000000,
+            "percent": 19.441571871768357
+          },
+          {
+            "name": "upload admission and cache",
+            "weight_ns": 294000000,
+            "percent": 15.201654601861428
+          },
+          {
+            "name": "connection deadlines",
+            "weight_ns": 9000000,
+            "percent": 0.4653567735263702
+          },
+          {
+            "name": "checkpoints and durability",
+            "weight_ns": 1000000,
+            "percent": 0.05170630816959669
+          }
+        ],
+        "top_leaves": [
+          {
+            "name": "__openat",
+            "weight_ns": 267000000,
+            "percent": 13.805584281282316
+          },
+          {
+            "name": "start_wqthread",
+            "weight_ns": 219000000,
+            "percent": 11.323681489141675
+          },
+          {
+            "name": "__sendmsg",
+            "weight_ns": 150000000,
+            "percent": 7.755946225439503
+          },
+          {
+            "name": "_platform_memmove",
+            "weight_ns": 135000000,
+            "percent": 6.980351602895554
+          },
+          {
+            "name": "pread",
+            "weight_ns": 109000000,
+            "percent": 5.63598759048604
+          },
+          {
+            "name": "__workq_kernreturn",
+            "weight_ns": 84000000,
+            "percent": 4.343329886246122
+          },
+          {
+            "name": "kevent_id",
+            "weight_ns": 66000000,
+            "percent": 3.4126163391933817
+          },
+          {
+            "name": "mach_msg2_trap",
+            "weight_ns": 66000000,
+            "percent": 3.4126163391933817
+          },
+          {
+            "name": "getsockopt",
+            "weight_ns": 37000000,
+            "percent": 1.9131334022750777
+          },
+          {
+            "name": "__recvmsg",
+            "weight_ns": 32000000,
+            "percent": 1.654601861427094
+          }
+        ],
+        "counters_through_durable": {
+          "descriptorDuplicates": 20483,
+          "scans": 8193,
+          "cacheEvictedBytes": 1071382528,
+          "fileOpens": 4096,
+          "bytesRead": 1073741824,
+          "cacheLoadedBytes": 1073741824,
+          "filesInspected": 8320,
+          "readSizePower2_16": 16384,
+          "descriptorOpens": 16386,
+          "writeSizePower2_14": 1,
+          "sha256Bytes": 0,
+          "cacheLoads": 4096,
+          "diskJobs": 4097,
+          "bytesWritten": 12493,
+          "directoryOpens": 12289,
+          "writeSizePower2_16": 0,
+          "atomicStateOpens": 1,
+          "cacheHits": 1862,
+          "bytesHashed": 0,
+          "fileDescriptorInspections": 4096,
+          "cacheEvictions": 4087,
+          "sha1Bytes": 0
+        },
+        "case": "many",
+        "format": "hybrid",
+        "direction": "seed",
+        "engine": "Swift",
+        "profile_validated": true,
+        "counter_run_validated": true
+      },
+      {
+        "running_samples": 1747,
+        "weight_ns": 1747000000,
+        "categories": [
+          {
+            "name": "scheduling and event delivery",
+            "weight_ns": 781000000,
+            "percent": 44.70520892959359
+          },
+          {
+            "name": "other user processing or unresolved execution",
+            "weight_ns": 307000000,
+            "percent": 17.57298225529479
+          },
+          {
+            "name": "payload I/O",
+            "weight_ns": 283000000,
+            "percent": 16.199198626216372
+          },
+          {
+            "name": "networking",
+            "weight_ns": 273000000,
+            "percent": 15.62678878076703
+          },
+          {
+            "name": "user copying/clearing",
+            "weight_ns": 49000000,
+            "percent": 2.8048082427017746
+          },
+          {
+            "name": "filesystem metadata/open/close",
+            "weight_ns": 47000000,
+            "percent": 2.6903262736119062
+          },
+          {
+            "name": "user allocation",
+            "weight_ns": 7000000,
+            "percent": 0.4006868918145392
+          }
+        ],
+        "purposes": [
+          {
+            "name": "native disk work",
+            "weight_ns": 1555000000,
+            "percent": 89.00973096737263
+          },
+          {
+            "name": "other runtime or unresolved purpose",
+            "weight_ns": 192000000,
+            "percent": 10.990269032627362
+          }
+        ],
+        "top_leaves": [
+          {
+            "name": "pread",
+            "weight_ns": 280000000,
+            "percent": 16.02747567258157
+          },
+          {
+            "name": "__psynch_mutexwait",
+            "weight_ns": 275000000,
+            "percent": 15.741270749856897
+          },
+          {
+            "name": "__sendmsg",
+            "weight_ns": 209000000,
+            "percent": 11.963365769891242
+          },
+          {
+            "name": "__psynch_cvwait",
+            "weight_ns": 191000000,
+            "percent": 10.933028048082427
+          },
+          {
+            "name": "__psynch_mutexdrop",
+            "weight_ns": 176000000,
+            "percent": 10.074413279908415
+          },
+          {
+            "name": "kevent",
+            "weight_ns": 86000000,
+            "percent": 4.922724670864339
+          },
+          {
+            "name": "__recvfrom",
+            "weight_ns": 64000000,
+            "percent": 3.6634230108757873
+          },
+          {
+            "name": "__psynch_cvbroad",
+            "weight_ns": 53000000,
+            "percent": 3.033772180881511
+          },
+          {
+            "name": "mach_continuous_time",
+            "weight_ns": 48000000,
+            "percent": 2.7475672581568404
+          },
+          {
+            "name": "_platform_memmove",
+            "weight_ns": 45000000,
+            "percent": 2.575844304522038
+          }
+        ],
+        "case": "many",
+        "format": "hybrid",
+        "direction": "seed",
+        "engine": "libtorrent",
+        "profile_validated": true,
+        "counter_run_validated": true
+      }
+    ]
   }
 }
