@@ -62,7 +62,6 @@ public actor TorrentStorage {
 	public func shutdown() async throws {
 		closing = true; await drainCheckpointTimer()
 		do { try await worker.run { [state] _ in
-			defer { state.writeDescriptors.removeAll() }
 			if state.closed { return }
 			guard !state.hasJournal else { throw StorageFailure.recoveryRequired("a filesystem operation is pending") }
 			try state.save(); state.closed = true; state.coordinator.release(state.owner); state.lease.release()
@@ -83,7 +82,6 @@ final class StorageState: @unchecked Sendable {
 	let owner = UUID()
 	let event: @Sendable (StorageEvent) -> Void
 	let lease: StorageLease
-	let writeDescriptors = StorageWriteDescriptors()
 	var writeProfile: StorageWriteProfile?
 	var diagnosticVerificationDepth = 0
 	var closed = false
@@ -177,9 +175,8 @@ final class StorageState: @unchecked Sendable {
 			}
 		} catch { coordinator.release(owner); throw error }
 	}
-	deinit { writeDescriptors.removeAll(); coordinator.release(owner) }
+	deinit { coordinator.release(owner) }
 	func claim(extra: [URL] = []) throws {
-		writeDescriptors.removeAll(profile: writeProfile)
 		let paths = record.paths.indices.filter { !layout.files[$0].pad }.map { location($0).0.url.appendingPathComponent(location($0).1) }
 		try coordinator.claim(owner, paths: [state.url] + paths + extra)
 	}
@@ -304,7 +301,6 @@ final class StorageState: @unchecked Sendable {
 		let profile = beginVerificationProfile(); defer { finishVerificationProfile(profile) }
 		try ready()
 		_ = try layout.length(of: piece)
-		writeDescriptors.discard(files: try layout.files(touchingPiece: piece))
 		let before = try observe(piece: piece)
 		try prepareVerification(of: piece)
 		let wasVerified = record.contains(piece); record.set(piece, false)

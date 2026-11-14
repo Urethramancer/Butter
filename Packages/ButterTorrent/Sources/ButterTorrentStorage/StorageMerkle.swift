@@ -30,8 +30,7 @@ extension TorrentStorage {
 	public func verifyLegacyCandidate(piece: Int) async throws -> Bool {
 		try await worker.run { [state] cancellation in
 			let profile = state.beginVerificationProfile(); defer { state.finishVerificationProfile(profile) }
-			try state.ready(); let (file, _) = try state.hybridFile(containing: piece)
-			state.writeDescriptors.discard(files: file.index..<(file.index + 1))
+			try state.ready(); _ = try state.hybridFile(containing: piece)
 			let stamps = try state.observe(piece: piece)
 			let valid = try state.digestPiece(piece, check: cancellation.check).legacyValid
 			guard try state.observe(piece: piece) == stamps else { throw StorageFailure.invalid("payload changed during verification") }
@@ -79,7 +78,6 @@ extension StorageState {
 	func reconstructHybridLayer(containing piece: Int, check: () throws -> Void) throws -> HybridLayerVerification {
 		try ready(); try invalidateChangedFiles()
 		let (file, start) = try hybridFile(containing: piece)
-		writeDescriptors.discard(files: file.index..<(file.index + 1))
 		let before = try stamps()
 		var layer = Data(capacity: file.pieces * 32), legacyPieces: Set<Int> = []
 		for index in start..<(start + file.pieces) {

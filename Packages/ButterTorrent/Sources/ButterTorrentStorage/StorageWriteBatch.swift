@@ -54,7 +54,7 @@ extension StorageState {
 	func writeOperations(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int, coalescing: Bool = false, budgetFallback: Bool = false, diagnosticRecorder: StorageWriteProfile? = StorageWriteProfile.make(), check: () throws -> Void) throws {
 		let profile = diagnosticRecorder; writeProfile = profile
 		var outcome = "failed"
-		defer { if outcome != "succeeded" { writeDescriptors.removeAll(profile: profile) }; profile?.finish(outcome: outcome); writeProfile = nil }
+		defer { profile?.finish(outcome: outcome); writeProfile = nil }
 		profile?.count(coalescing ? "coalescedJobs" : "ordinaryJobs")
 		profile?.count("receivedBlocks", writes.count)
 		profile?.histogram("blocksPerJob", writes.count)
@@ -90,7 +90,7 @@ extension StorageState {
 			try writeContiguousRanges(writes, segments: segments, check: checked); outcome = "succeeded"; return
 		}
 		var files: [Int: Int32] = [:], order: [Int] = []
-		defer { finishWriteDescriptors(files, retaining: outcome == "succeeded", profile: profile) }
+		defer { profile?.enter(.cleanup); for file in files.values { close(file); profile?.count("descriptorCloses") } }
 		for index in writes.indices {
 			profile?.enter(.prewriteChecks)
 			if index > 0 { try checked() }
@@ -106,8 +106,8 @@ extension StorageState {
 				if let cached = files[segment.file] {
 					file = cached; profile?.count("descriptorHits"); StorageDiagnostics.count(.writeDescriptorCacheHits)
 				} else {
-					if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!); profile?.count("descriptorCloses"); StorageDiagnostics.count(.writeDescriptorCloses); profile?.enter(.descriptorAcquisition) }
-					file = try writeDescriptors.take(segment.file, directory: directory, path: path, profile: profile) ?? directory.openFile(path, write: true); files[segment.file] = file; order.append(segment.file)
+					if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!); profile?.count("descriptorCloses"); profile?.enter(.descriptorAcquisition) }
+					file = try directory.openFile(path, write: true); files[segment.file] = file; order.append(segment.file)
 				}
 				profile?.enter(.prewriteChecks)
 				// Re-check even the first open: replacement can occur after the initial scan.

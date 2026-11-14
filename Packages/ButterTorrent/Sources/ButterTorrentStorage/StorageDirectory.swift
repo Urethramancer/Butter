@@ -139,15 +139,6 @@ final class StorageDirectory: @unchecked Sendable {
 			do { _ = try stamp(file, shared: !write); return file } catch { close(file); throw error }
 		}
 	}
-	// Retained descriptors preserve access after chmod/ACL changes. Refresh both
-	// the pathname identity and effective permissions before reusing one for a job.
-	func canReuseWriteFile(_ path: String, file: Int32) throws -> Bool {
-		try parent(path, create: true) { directory, name in
-			guard let current = try inspect(name, at: directory), try stamp(file, shared: true).sameFile(current) else { return false }
-			guard faccessat(directory, name, R_OK | W_OK, AT_EACCESS) == 0 else { throw diskError("Cannot access managed file") }
-			return true
-		}
-	}
 	func stamp(_ file: Int32, shared: Bool = false) throws -> FileStamp {
 		StorageDiagnostics.count(.fileDescriptorInspections)
 		var value = stat()
