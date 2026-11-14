@@ -132,15 +132,12 @@ final class StorageDirectory: @unchecked Sendable {
 	}
 	func openFile(_ path: String, write: Bool = false, exclusive: Bool = false) throws -> Int32 {
 		try parent(path, create: write) { directory, name in
-			try openFile(name, at: directory, write: write, exclusive: exclusive)
+			let flags = (write ? O_RDWR | O_CREAT : O_RDONLY) | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK | (exclusive ? O_EXCL : 0)
+			let file = openat(directory, name, flags, 0o600)
+			StorageDiagnostics.opened(.fileOpens)
+			guard file >= 0 else { throw diskError("Cannot open managed file") }
+			do { _ = try stamp(file, shared: !write); return file } catch { close(file); throw error }
 		}
-	}
-	func openFile(_ name: String, at directory: Int32, write: Bool = false, exclusive: Bool = false) throws -> Int32 {
-		let flags = (write ? O_RDWR | O_CREAT : O_RDONLY) | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK | (exclusive ? O_EXCL : 0)
-		let file = openat(directory, name, flags, 0o600)
-		StorageDiagnostics.opened(.fileOpens)
-		guard file >= 0 else { throw diskError("Cannot open managed file") }
-		do { _ = try stamp(file, shared: !write); return file } catch { close(file); throw error }
 	}
 	func stamp(_ file: Int32, shared: Bool = false) throws -> FileStamp {
 		StorageDiagnostics.count(.fileDescriptorInspections)
@@ -159,7 +156,7 @@ final class StorageDirectory: @unchecked Sendable {
 		}
 		catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
 	}
-	func inspect(_ name: String, at directory: Int32) throws -> FileStamp? {
+	fileprivate func inspect(_ name: String, at directory: Int32) throws -> FileStamp? {
 		StorageDiagnostics.count(.filesInspected)
 		var value = stat()
 		if fstatat(directory, name, &value, AT_SYMLINK_NOFOLLOW) != 0 {
