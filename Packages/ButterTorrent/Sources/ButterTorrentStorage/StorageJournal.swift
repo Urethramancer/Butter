@@ -99,7 +99,6 @@ extension StorageState {
 		try recover(acceptMatchingCopies: false, check: check)
 	}
 	func recover(acceptMatchingCopies: Bool, check: () throws -> Void) throws {
-		writeDescriptors.removeAll(profile: writeProfile)
 		guard !closed else { throw StorageFailure.closed }
 		guard hasJournal else { return }
 		var journal = try PropertyListDecoder().decode(StorageJournal.self, from: state.read("operation.plist", maximum: 33_554_432))

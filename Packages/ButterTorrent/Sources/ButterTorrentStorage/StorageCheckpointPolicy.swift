@@ -81,7 +81,7 @@ extension TorrentStorage {
 	public func flush(retryFailed: Bool = true) async throws {
 		let deadline = checkpointTimerDeadline
 		await drainCheckpointTimer()
-		do { try await worker.run { [state] _ in state.writeDescriptors.removeAll(); try state.ready(allowCheckpointRetry: retryFailed); try state.save() } }
+		do { try await worker.run { [state] _ in try state.ready(allowCheckpointRetry: retryFailed); try state.save() } }
 		catch { armCheckpointTimer(deadline); throw error }
 	}
 }

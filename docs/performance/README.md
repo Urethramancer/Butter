@@ -173,6 +173,41 @@ checks pass. Temporary fixtures, drivers and sanitizer/compiler caches are remov
 Descriptor caching, larger batches, verification and scheduling changes need a
 subsequent plan; these measurements establish costs, not achievable savings.
 
+## Rejected payload-descriptor reuse
+
+Two bounded payload-descriptor cache variants were tested against `97b815c` on
+1 GiB many-file hybrid downloads. Each fixed comparison validates **28/28 trials**:
+four warm-ups and six balanced source/engine pairs, with counters disabled,
+independent SHA256 checks, strict checkpoint reopening and unchanged fingerprints.
+Both variants are reverted; the between-job permission and ACL tests remain.
+
+| Current/previous | Initial (`f86f537`) | Refined (`7584bc7`) |
+| --- | ---: | ---: |
+| CPU/GiB | 0.980 (0.968–0.997) | 1.038 (1.003–1.137) |
+| Verified throughput | 0.932 (0.912–0.953) | 0.913 (0.840–0.944) |
+| Peak RSS | 1.012 (0.984–1.037) | 1.016 (1.001–1.063) |
+| Counterpart CPU/GiB | 0.918 (0.819–1.015) | 0.899 (0.864–0.953) |
+
+Intervals are paired 95% bootstrap intervals. The initial variant rechecked path
+identity during acquisition as well as before writing. One separate diagnostic
+transfer reduces total file opens from 13,756 to 4,378 and in-job payload closes
+from 9,498 to 120, but this does not translate into better transfer performance.
+The refinement uses checkpoint stamps only to select candidates, retains fresh
+effective-access and prewrite identity checks, and drains handles at checkpoints.
+Both keep eight idle slots per owner and 32 across the process, with cold-path
+fallback on exhaustion and cleanup on errors, filesystem operations and shutdown.
+
+External load of roughly two CPU cores from Etemmu was observed during the second
+comparison. Native-control CPU ratios are 0.989 (0.973–0.993) and
+1.055 (0.970–1.083); native throughput intervals include one in both comparisons.
+These results justify rejecting the implementations, not concluding that all
+forms of descriptor reuse are ineffective. No samples were repeated or discarded.
+
+The candidates pass storage tests (97 and 98), focused Address/Thread Sanitizers
+(43 and 51 tests each), and native recovery, real ENOSPC and read-only-volume
+checks. Compact evidence remains under ignored `.build/benchmarks/descriptor-cache-*`;
+the refined results use `descriptor-cache-refined-many-hybrid-20261114`.
+
 ## Reproduction
 
 After `Scripts/bootstrap-engine.sh`:

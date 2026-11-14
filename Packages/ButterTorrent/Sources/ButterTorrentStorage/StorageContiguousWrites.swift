@@ -42,8 +42,8 @@ extension StorageState {
 		StorageDiagnostics.count(.contiguousWriteRanges, ranges.count)
 		profile?.count("contiguousRanges", ranges.count)
 		for range in ranges { profile?.histogram("contiguousBytes", range.bytes.count) }
-		var files: [Int: Int32] = [:], order: [Int] = [], completed = false
-		defer { finishWriteDescriptors(files, retaining: completed, profile: profile) }
+		var files: [Int: Int32] = [:], order: [Int] = []
+		defer { profile?.enter(.cleanup); for file in files.values { close(file); profile?.count("descriptorCloses") } }
 		for range in ranges {
 			profile?.enter(.prewriteChecks)
 			try check()
@@ -53,8 +53,8 @@ extension StorageState {
 			let file: Int32
 			if let cached = files[range.file] { file = cached; profile?.count("descriptorHits"); StorageDiagnostics.count(.writeDescriptorCacheHits) }
 			else {
-				if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!); profile?.count("descriptorCloses"); StorageDiagnostics.count(.writeDescriptorCloses); profile?.enter(.descriptorAcquisition) }
-				file = try writeDescriptors.take(range.file, directory: directory, path: path, expected: record.stamps[range.file], profile: profile) ?? directory.openFile(path, write: true); files[range.file] = file; order.append(range.file)
+				if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!); profile?.count("descriptorCloses"); profile?.enter(.descriptorAcquisition) }
+				file = try directory.openFile(path, write: true); files[range.file] = file; order.append(range.file)
 			}
 			pendingFlush.insert(range.file)
 			try StorageDirectory.write(buffer[range.bytes], to: file, offset: range.offset, maximumChunk: 1_048_576, profile: profile) {
@@ -70,6 +70,5 @@ extension StorageState {
 			profile?.enter(.postwriteStamping)
 			record.stamps[range.file] = try directory.stamp(file)
 		}
-		completed = true
 	}
 }
