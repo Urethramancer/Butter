@@ -356,7 +356,7 @@ final class StorageState: @unchecked Sendable {
 			if let mapping {
 				for block in stride(from: offset, to: min(offset + count, mapping.length), by: 16384) {
 					let end = min(block + 16384, mapping.length)
-					leaves.append(Data(SHA256.hash(data: data.subdata(in: (block - offset)..<(end - offset)))))
+					leaves.append(Data(SHA256.hash(data: data[(block - offset)..<(end - offset)])))
 					StorageDiagnostics.count(.sha256Bytes, end - block)
 				}
 			}
