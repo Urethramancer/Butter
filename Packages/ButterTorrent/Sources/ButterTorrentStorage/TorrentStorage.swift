@@ -62,6 +62,7 @@ public actor TorrentStorage {
 	public func shutdown() async throws {
 		closing = true; await drainCheckpointTimer()
 		do { try await worker.run { [state] _ in
+			defer { state.writeDescriptors.removeAll() }
 			if state.closed { return }
 			guard !state.hasJournal else { throw StorageFailure.recoveryRequired("a filesystem operation is pending") }
 			try state.save(); state.closed = true; state.coordinator.release(state.owner); state.lease.release()
@@ -82,6 +83,7 @@ final class StorageState: @unchecked Sendable {
 	let owner = UUID()
 	let event: @Sendable (StorageEvent) -> Void
 	let lease: StorageLease
+	let writeDescriptors = StorageWriteDescriptors()
 	var writeProfile: StorageWriteProfile?
 	var closed = false
 	var hasJournal = false
@@ -174,8 +176,9 @@ final class StorageState: @unchecked Sendable {
 			}
 		} catch { coordinator.release(owner); throw error }
 	}
-	deinit { coordinator.release(owner) }
+	deinit { writeDescriptors.removeAll(); coordinator.release(owner) }
 	func claim(extra: [URL] = []) throws {
+		writeDescriptors.removeAll(profile: writeProfile)
 		let paths = record.paths.indices.filter { !layout.files[$0].pad }.map { location($0).0.url.appendingPathComponent(location($0).1) }
 		try coordinator.claim(owner, paths: [state.url] + paths + extra)
 	}
