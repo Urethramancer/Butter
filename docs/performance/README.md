@@ -94,6 +94,7 @@ payload traffic; it establishes no transfer CPU gain.
 | Direct payload read buffers | Removed intermediate chunk buffers/copies, but neither many-file hybrid nor concurrent v2 establishes a CPU or throughput gain. Reverted. |
 | Parent reuse within verification | Revalidated one parent during each piece check, but 28 many-file hybrid trials establish no CPU or throughput gain. Reverted. |
 | Synchronous unrestricted-rate checks | Removed admission-only actor hops, but 28 many-file hybrid trials establish no CPU or throughput gain. Reverted. |
+| One bounded read ahead | Increased write jobs and reduced batching; CPU rose 30.5% and throughput fell 11.7%. Reverted. |
 
 Snapshots are preserved on `experiment/snapshot-unconditional` and
 `experiment/snapshot-projection`; staging is on `experiment/private-staging`.
@@ -153,6 +154,23 @@ include one. No trials were repeated or discarded. All 198 engine tests and 52
 ThreadSanitizer tests pass. The candidate remains on
 `experiment/synchronous-rate-admission`; the rate-transition regression remains
 on main. Results stay under ignored `.build/benchmarks/rate-access-many-hybrid-20261114`.
+
+One-read-ahead candidate `dcca213` against `3769974` validates 28/28 many-file
+hybrid trials with counters disabled and unchanged fingerprints. CPU/GiB ratio
+is 1.305 (paired 95% interval 1.273–1.338), verified throughput 0.883
+(0.861–0.911), and peak RSS 1.010 (0.972–1.059). Native-control intervals include
+one. The implementation keeps current and prefetched raw bytes within 256 KiB,
+preserves dispatch order, and cancels/drains its one pending read on exit.
+
+A separate four-trial counts diagnostic processes the same 65,536 blocks/GiB:
+write jobs rise from 9,472 to 16,658, total disk jobs from 13,577 to 20,764, and
+mean blocks/dispatch fall from 6.92 to 3.93. The earlier read changes batching and
+adds substantial coordination work. These counts describe one diagnostic transfer
+per source; they are excluded from acceptance. No samples are repeated or discarded.
+The candidate passes 202 engine tests and 42 tests under each sanitizer. It remains
+on `experiment/bounded-read-ahead`; results are under ignored
+`.build/benchmarks/read-ahead-{many-hybrid,counts-many-hybrid}-20261114`.
+This result applies to the single-prefetch implementation.
 
 ## Profiling targets
 
