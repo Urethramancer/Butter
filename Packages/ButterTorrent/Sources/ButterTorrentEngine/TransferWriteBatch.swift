@@ -46,7 +46,7 @@ extension TCPTransfer {
 			let item = blocks[0]; try await received(id, message: .piece(item.piece, item.offset, item.bytes), profile: profile); return
 		}
 		let rateStarted = profile?.tick()
-		let unrestricted = downloadRate.consumeUnrestrictedBatch()
+		let unrestricted = await downloadRate.consumeUnrestrictedBatch()
 		profile?.end(.rateAdmission, since: rateStarted)
 		if !unrestricted {
 			for item in blocks { try await received(id, message: .piece(item.piece, item.offset, item.bytes), profile: profile) }; return
