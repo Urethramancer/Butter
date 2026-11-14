@@ -91,6 +91,7 @@ payload traffic; it establishes no transfer CPU gain.
 | Popularity-based upload eviction | Increased reloads. Reverted; shared in-flight reads and the existing bounded cache remain. |
 | Last-path syntax memoization | No established CPU or throughput benefit in 28 single-file v1 trials. Reverted. |
 | Merkle leaf slices | Removed per-leaf `subdata` copies, but 28 many-file hybrid trials establish no CPU or throughput gain. Reverted. |
+| Direct payload read buffers | Removed intermediate chunk buffers/copies, but neither many-file hybrid nor concurrent v2 establishes a CPU or throughput gain. Reverted. |
 
 Snapshots are preserved on `experiment/snapshot-unconditional` and
 `experiment/snapshot-projection`; staging is on `experiment/private-staging`.
@@ -114,6 +115,23 @@ counters disabled and unchanged fingerprints. CPU/GiB ratio is 0.982 (paired
 All 98 storage tests pass. The inconclusive candidate is retained only on
 `experiment/merkle-hash-slices`; raw results remain under ignored
 `.build/benchmarks/hash-slices-many-hybrid-20261114`.
+
+Direct-read candidate `a5346a7` against `288ba91` validates 28/28 trials per
+workload, each with four warm-ups and six balanced source/engine pairs. Counters
+are disabled; independent SHA256 checks, strict checkpoint reopening and source
+fingerprints pass. Ratios below are candidate/baseline with paired 95% intervals.
+
+| Workload | CPU/GiB | Verified throughput | Peak RSS |
+| --- | ---: | ---: | ---: |
+| Many hybrid | 1.006 (0.931–1.126) | 1.008 (0.834–1.081) | 1.042 (0.964–1.100) |
+| Concurrent v2 | 0.993 (0.973–1.009) | 0.992 (0.805–1.029) | 0.977 (0.947–1.029) |
+
+Native-control CPU and throughput intervals include one for both workloads.
+Neither comparison establishes a benefit; no samples were repeated or discarded.
+All 98 storage tests pass normally and under AddressSanitizer, including partial
+reads, padding, large hybrid/v2 pieces, repair and corruption detection. The
+candidate remains on `experiment/direct-payload-read-buffer`, with results under
+ignored `.build/benchmarks/direct-read-{many-hybrid,concurrent-v2}-20261114`.
 
 ## Profiling targets
 
