@@ -11,6 +11,7 @@ public enum StorageDiagnostics {
 		case cacheLoads, cacheLoadJoins, cacheEvictions, cacheLoadedBytes, cacheEvictedBytes
 		case descriptorDuplicates, writeBatches, writeBlocks, writeDescriptorCacheHits
 		case fileDescriptorInspections
+		case writePersistentDescriptorHits, writeDescriptorCloses
 		case contiguousWriteRanges
 	}
 	enum OpenKind: String { case directoryOpens, fileOpens, atomicStateOpens }
