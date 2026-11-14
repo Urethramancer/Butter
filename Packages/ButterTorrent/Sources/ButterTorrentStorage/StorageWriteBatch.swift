@@ -13,7 +13,7 @@ extension TorrentStorage {
 	/// Writes at most sixteen blocks and 256 KiB in one admitted disk job.
 	public func writeBatch(_ writes: [StorageWrite]) async throws {
 		try StorageState.validateWrites(writes, maximumBytes: 262144, maximumCount: 16)
-		try await worker.run { [state] cancellation in
+		try await worker.run(write: true) { [state] cancellation in
 			try state.writeOperations(writes, maximumBytes: 262144, maximumCount: 16, check: cancellation.check)
 		}
 	}
@@ -23,7 +23,7 @@ extension TorrentStorage {
 		let size = writes.reduce(0) { $0 + $1.data.count }
 		let reserved = writes.count > 1 && bufferBudget.reserve(size)
 		defer { if reserved { bufferBudget.release(size) } }
-		try await worker.run { [state] cancellation in
+		try await worker.run(write: true) { [state] cancellation in
 			try state.writeOperations(writes, maximumBytes: 1_048_576, maximumCount: 64, coalescing: reserved, budgetFallback: writes.count > 1 && !reserved, check: cancellation.check)
 		}
 	}

@@ -233,19 +233,46 @@ final class PeerSession: @unchecked Sendable {
 	private func readInput(_ channel: PeerStream, id: UUID, engine: TCPTransfer, download: TransferRateLimiter, idleTimeout: TimeInterval) async throws {
 		var decoder = PeerWireDecoder(), ready = false, frames = 0
 		while true {
+			let cycleStarted = ReceivePipelineDiagnostics.tick()
+			let admissionStarted = ReceivePipelineDiagnostics.tick()
 			var maximum = 65536
 			if stream.kind == .tcp, await download.consumeUnrestrictedBatch() { maximum = 262144 }
-			let bytes = try await channel.read(maximumBytes: maximum, timeout: ready ? idleTimeout : 10)
-			if bytes.isEmpty {
-				guard ready else { throw NetworkFailure.closed }
-				try decoder.finish(); return
+			let admissionEnded = ReceivePipelineDiagnostics.tick()
+			let readStarted = ReceivePipelineDiagnostics.tick()
+			let bytes: Data
+			do { bytes = try await channel.read(maximumBytes: maximum, timeout: ready ? idleTimeout : 10) }
+			catch {
+				let failed = ReceivePipelineDiagnostics.sample(.terminalRead, started: readStarted)
+				failed?.finish(error is CancellationError ? "cancelled" : "failed"); throw error
 			}
+			let readEnded = ReceivePipelineDiagnostics.tick()
+			if bytes.isEmpty {
+				let terminal = ReceivePipelineDiagnostics.sample(.terminalRead, started: readStarted)
+				var outcome = "failed"
+				defer { terminal?.finish(outcome) }
+				guard ready else { throw NetworkFailure.closed }
+				try decoder.finish(); outcome = "eof"; return
+			}
+			let cycle = ReceivePipelineDiagnostics.sample(.reader, started: cycleStarted)
+			cycle?.end(.readAdmission, since: admissionStarted, until: admissionEnded)
+			cycle?.end(.streamRead, since: readStarted, until: readEnded); cycle?.histogram("readBytes", bytes.count)
+			var cycleOutcome = "failed"
+			defer { cycle?.finish(cycleOutcome) }
 			var firstBlock: IncomingPieceBlock?, blocks: [IncomingPieceBlock] = [], blockBytes = 0
-			func flushBlocks() async throws {
+			func flushBlocks(_ reason: ReceivePipelineSample.Flush) async throws {
 				guard let first = firstBlock else { return }
-				let batch = blocks; blocks = []; firstBlock = nil; blockBytes = 0
-				if batch.isEmpty { try await engine.received(id, message: .piece(first.piece, first.offset, first.bytes)) }
-				else { try await engine.receivedBlocks(id, blocks: batch) }
+				let batch = blocks, payloadBytes = blockBytes; blocks = []; firstBlock = nil; blockBytes = 0
+				let sample = ReceivePipelineDiagnostics.sample(.dispatch)
+				sample?.histogram("blocks", batch.isEmpty ? 1 : batch.count); sample?.histogram("payloadBytes", payloadBytes)
+				sample?.count("reason." + reason.rawValue)
+				let dispatchStarted = cycle?.tick()
+				var outcome = "failed"
+				defer { sample?.finish(outcome); cycle?.end(.dispatch, since: dispatchStarted) }
+				do {
+					if batch.isEmpty { try await engine.received(id, message: .piece(first.piece, first.offset, first.bytes), profile: sample) }
+					else { try await engine.receivedBlocks(id, blocks: batch, profile: sample) }
+					outcome = "succeeded"
+				} catch { if error is CancellationError { outcome = "cancelled" }; throw error }
 			}
 			do {
 				// Consume already available bytes through bounded decoder feeds.
@@ -254,25 +281,42 @@ final class PeerSession: @unchecked Sendable {
 					try decoder.feed(bytes[offset..<min(offset + 65536, bytes.endIndex)])
 					if !ready {
 						guard let handshake = try decoder.handshake() else { continue }
-						let features = try await engine.handshaken(id, handshake: handshake); decoder.negotiate(features); ready = true
+						do {
+							let started = cycle?.tick(); defer { cycle?.end(.controlDispatch, since: started) }
+							let features = try await engine.handshaken(id, handshake: handshake); decoder.negotiate(features); ready = true
+						}
 					}
 					while let message = try decoder.next() {
 						try Task.checkCancellation()
 						if case .piece(let piece, let offset, let bytes) = message {
-							if bytes.count > 262144 - blockBytes || blocks.count == 16 { try await flushBlocks() }
+							if bytes.count > 262144 - blockBytes || blocks.count == 16 { try await flushBlocks(.budget) }
+							cycle?.count("decodedBlocks"); cycle?.count("payloadBytes", bytes.count)
 							let block = IncomingPieceBlock(piece: piece, offset: offset, bytes: bytes)
 							if let first = firstBlock {
 								if blocks.isEmpty { blocks = [first, block] } else { blocks.append(block) }
 							} else { firstBlock = block }
 							blockBytes += bytes.count
-						} else { try await flushBlocks(); try await engine.received(id, message: message) }
+						} else {
+							try await flushBlocks(.control)
+							let started = cycle?.tick(); defer { cycle?.end(.controlDispatch, since: started) }
+							try await engine.received(id, message: message)
+						}
 						frames += 1
-						if frames % 128 == 0 { try await flushBlocks(); await Task.yield() }
+						if frames % 128 == 0 {
+							try await flushBlocks(.yield)
+							let started = cycle?.tick(); await Task.yield(); cycle?.end(.schedulerYield, since: started)
+						}
 					}
 				}
-			} catch { let failure = error; try await flushBlocks(); throw failure }
+			} catch {
+				let failure = error
+				do { try await flushBlocks(.error) }
+				catch { cycleOutcome = error is CancellationError ? "cancelled" : "failed"; throw error }
+				cycleOutcome = failure is CancellationError ? "cancelled" : "failed"; throw failure
+			}
 			// Flush a short batch before the next network wait; never wait to fill it.
-			try await flushBlocks()
+			do { try await flushBlocks(.readEnd); cycleOutcome = "succeeded" }
+			catch { cycleOutcome = error is CancellationError ? "cancelled" : "failed"; throw error }
 		}
 	}
 	func run(id: UUID, hello: PeerHandshake, outgoing: Bool, engine: TCPTransfer, upload: TransferRateLimiter, download: TransferRateLimiter, idleTimeout: TimeInterval,

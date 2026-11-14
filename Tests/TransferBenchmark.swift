@@ -28,6 +28,9 @@ import ButterTorrentEngine
 		#if BUTTER_STORAGE_DIAGNOSTICS_AVAILABLE
 		if StorageDiagnostics.enabled { record["storage_diagnostics"] = StorageDiagnostics.snapshot() }
 		#endif
+		#if BUTTER_RECEIVE_PIPELINE_DIAGNOSTICS_AVAILABLE
+		if ReceivePipelineDiagnostics.enabled { record["receive_pipeline_diagnostics"] = ReceivePipelineDiagnostics.snapshot() }
+		#endif
 		var bytes = try JSONSerialization.data(withJSONObject: record); bytes.append(10)
 		try FileHandle.standardOutput.write(contentsOf: bytes)
 	}

@@ -35,17 +35,21 @@ extension TCPTransfer {
 		}
 		discardUnretainedPayload()
 	}
-	func receivedBlocks(_ id: UUID, blocks: [IncomingPieceBlock]) async throws {
+	func receivedBlocks(_ id: UUID, blocks: [IncomingPieceBlock], profile: ReceivePipelineSample? = nil) async throws {
+		profile?.enteredEngine()
 		guard (1...16).contains(blocks.count) else { throw PeerFailure.limit("incoming write batch blocks") }
 		var size = 0
 		for item in blocks {
 			guard item.bytes.count <= 262144 - size else { throw PeerFailure.limit("incoming write batch bytes") }; size += item.bytes.count
 		}
 		if blocks.count == 1 {
-			let item = blocks[0]; try await received(id, message: .piece(item.piece, item.offset, item.bytes)); return
+			let item = blocks[0]; try await received(id, message: .piece(item.piece, item.offset, item.bytes), profile: profile); return
 		}
-		if !(await downloadRate.consumeUnrestrictedBatch()) {
-			for item in blocks { try await received(id, message: .piece(item.piece, item.offset, item.bytes)) }; return
+		let rateStarted = profile?.tick()
+		let unrestricted = await downloadRate.consumeUnrestrictedBatch()
+		profile?.end(.rateAdmission, since: rateStarted)
+		if !unrestricted {
+			for item in blocks { try await received(id, message: .piece(item.piece, item.offset, item.bytes), profile: profile) }; return
 		}
 		var payload: Int64 = 0
 		do {
@@ -54,7 +58,10 @@ extension TCPTransfer {
 				try acceptPayload(peer, block: item.block, now: now); payload += Int64(item.bytes.count)
 			}
 		} catch { recordUnusablePayload(payload); throw error }
-		do { try Task.checkCancellation(); try await disk.acquire() }
+		do {
+			let started = profile?.tick(); defer { profile?.end(.diskAdmission, since: started) }
+			try Task.checkCancellation(); try await disk.acquire()
+		}
 		catch { recordUnusablePayload(payload); throw error }
 		var staged: [IncomingPieceBlock] = [], submitted: Int64 = 0
 		do {
@@ -63,25 +70,35 @@ extension TCPTransfer {
 				if try stageBlock(id, block: item.block, bytes: item.bytes) { staged.append(item) }
 			}
 		} catch {
-			abortBatch(staged); recordUnusablePayload(payload - submitted); await disk.release(); throw error
+			abortBatch(staged); recordUnusablePayload(payload - submitted)
+			let started = profile?.tick(); await disk.release(); profile?.end(.diskRelease, since: started)
+			throw error
 		}
 		if !staged.isEmpty { prefillDuringDiskWork(id) }
 		do {
 			if !staged.isEmpty {
 				let writes = staged.map { StorageWrite(piece: $0.piece, offset: $0.offset, data: $0.bytes) }
+				let started = profile?.tick(); defer { profile?.end(.storageWrite, since: started) }
 				if coalesceWrites { try await storage.writeDownloadBatch(writes, bufferBudget: writeBuffers) }
 				else { try await storage.writeBatch(writes) }
 			}
-		} catch { abortBatch(staged); diskFailed(error); await disk.release(); throw error }
+		} catch {
+			abortBatch(staged); diskFailed(error)
+			let started = profile?.tick(); await disk.release(); profile?.end(.diskRelease, since: started)
+			throw error
+		}
 		let ready = staged.compactMap { picker.written($0.block) ? $0.piece : nil }
 		var pending = ready[...]
-		do { while let piece = pending.popFirst() { try await verifyReceivedPiece(piece) } }
+		do { while let piece = pending.popFirst() { try await verifyReceivedPiece(piece, profile: profile) } }
 		catch {
 			// The attempted piece owns its cleanup. Later pieces were marked ready
 			// together, but have no verification task to release them after an error.
 			for piece in pending { _ = picker.verified(piece, valid: false) }
-			discardUnretainedPayload(); await disk.release(); throw error
+			discardUnretainedPayload()
+			let started = profile?.tick(); await disk.release(); profile?.end(.diskRelease, since: started)
+			throw error
 		}
-		await disk.release(); fillAll()
+		let released = profile?.tick(); await disk.release(); profile?.end(.diskRelease, since: released)
+		fillAll()
 	}
 }

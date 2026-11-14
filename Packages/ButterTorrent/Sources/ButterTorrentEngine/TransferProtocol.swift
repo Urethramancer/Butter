@@ -63,7 +63,8 @@ extension TCPTransfer {
 		}
 		return (peer, now)
 	}
-	func received(_ id: UUID, message: PeerMessage) async throws {
+	func received(_ id: UUID, message: PeerMessage, profile: ReceivePipelineSample? = nil) async throws {
+		profile?.enteredEngine()
 		let (peer, now) = try prepareMessage(id, message: message)
 		switch message {
 		case .keepAlive: break
@@ -109,11 +110,22 @@ extension TCPTransfer {
 			try acceptPayload(peer, block: block, now: now)
 			var delivered = false
 			do {
-				try await downloadRate.consume(bytes.count); try Task.checkCancellation()
-				try await disk.acquire()
-				do { try Task.checkCancellation(); delivered = true; try await receiveBlock(id, block: block, bytes: bytes) }
-				catch { await disk.release(); throw error }
-				await disk.release(); fillAll()
+				do {
+					let started = profile?.tick(); defer { profile?.end(.rateAdmission, since: started) }
+					try await downloadRate.consume(bytes.count)
+				}
+				try Task.checkCancellation()
+				do {
+					let started = profile?.tick(); defer { profile?.end(.diskAdmission, since: started) }
+					try await disk.acquire()
+				}
+				do { try Task.checkCancellation(); delivered = true; try await receiveBlock(id, block: block, bytes: bytes, profile: profile) }
+				catch {
+					let started = profile?.tick(); await disk.release(); profile?.end(.diskRelease, since: started)
+					throw error
+				}
+				let released = profile?.tick(); await disk.release(); profile?.end(.diskRelease, since: released)
+				fillAll()
 			} catch { if !delivered { recordUnusablePayload(Int64(bytes.count)) }; throw error }
 		}
 	}
@@ -144,15 +156,16 @@ extension TCPTransfer {
 		}
 		return true
 	}
-	func receiveBlock(_ id: UUID, block: PeerBlock, bytes: Data, payloadBytes: Int64? = nil) async throws {
+	func receiveBlock(_ id: UUID, block: PeerBlock, bytes: Data, payloadBytes: Int64? = nil, profile: ReceivePipelineSample? = nil) async throws {
 		guard try stageBlock(id, block: block, bytes: bytes, payloadBytes: payloadBytes) else { return }
 		prefillDuringDiskWork(id)
-		do { try await storage.write(piece: block.piece, offset: block.offset, data: bytes) }
+		do { let started = profile?.tick(); defer { profile?.end(.storageWrite, since: started) }; try await storage.write(piece: block.piece, offset: block.offset, data: bytes) }
 		catch { picker.abortedWrite(block); discardUnretainedPayload(); diskFailed(error); throw error }
 		guard picker.written(block) else { return }
-		try await verifyReceivedPiece(block.piece)
+		try await verifyReceivedPiece(block.piece, profile: profile)
 	}
-	func verifyReceivedPiece(_ piece: Int) async throws {
+	func verifyReceivedPiece(_ piece: Int, profile: ReceivePipelineSample? = nil) async throws {
+		let started = profile?.tick(); defer { profile?.end(.verification, since: started) }
 		var staged = legacyHybrid && !hashReady.contains(piece)
 		let valid: Bool
 		do {

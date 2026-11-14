@@ -487,3 +487,66 @@ class WriteProfileTests < Minitest::Test
 		end
 	end
 end
+
+class ReceivePipelineProfileTests < Minitest::Test
+	H = TransferBenchmarkHarness
+	def row(source, mode, warmup)
+		pipeline = mode == 'off' ? {} : {'reader.samples'=>2, 'reader.readBytes.count'=>2, 'reader.readBytes.sum'=>65536, 'reader.readBytes.power2.15'=>2,
+			'dispatch.blocks.count'=>2, 'dispatch.blocks.sum'=>4, 'dispatch.blocks.power2.1'=>2}
+		storage = mode == 'off' ? {} : {'writeQueue.jobs'=>2, 'writeProfile.jobs'=>2}
+		pipeline['dispatch.stage.storageWrite.calls'] = 2 unless mode == 'off'
+		if mode == 'timed'
+			pipeline.merge!('reader.stage.streamRead.elapsedNs'=>30, 'reader.stage.dispatch.elapsedNs'=>60, 'reader.other.elapsedNs'=>10,
+				'dispatch.stage.storageWrite.elapsedNs'=>40, 'dispatch.stage.actorEntry.elapsedNs'=>10, 'dispatch.other.elapsedNs'=>10)
+			storage.merge!('writeQueue.elapsedNs'=>5, 'writeProfile.job.elapsedNs'=>25)
+		end
+		{source_variant: source, pipeline_mode: mode, warmup: warmup, accepted: true,
+			engine_metrics: {cpu_seconds: 2.0, user_cpu_seconds: 1.5, system_cpu_seconds: 0.5, transfer: {wall: 3.0}}, counterpart_metrics: {cpu_seconds: 1.0},
+			events: {'download'=>[{'phase'=>'start'}, {'phase'=>'durable', 'receive_pipeline_diagnostics'=>pipeline, 'storage_diagnostics'=>storage}, {'phase'=>'stopped', 'receive_pipeline_diagnostics'=>pipeline, 'storage_diagnostics'=>storage}]}}
+	end
+	def test_fixed_modes_and_balanced_source_order_have_exactly_18_trials
+		Dir.mktmpdir do |root|
+			owner = self
+			runner = H::Runner.new('/swift', '/reference', root, root, receive_profile: true, previous: '/previous', baseline: nil)
+			runner.define_singleton_method(:trial) do |fixture, format, direction, engine, pair, warmup, source:, pipeline_mode:|
+				@trials << owner.row(source, pipeline_mode, warmup).merge(pair: pair)
+			end
+			runner.run([{'case'=>'many'}])
+			rows = runner.instance_variable_get(:@trials)
+			assert_equal 18, rows.size
+			assert_equal 6, rows.count { |r| r[:warmup] }
+			groups = rows.reject { |r| r[:warmup] }.group_by { |r| r[:pair] }
+			assert_equal %w[off counts timed timed counts off], groups.values.map { |r| r.first[:pipeline_mode] }
+			groups.each { |pair, r| assert_equal pair.even? ? %w[previous current] : %w[current previous], r.map { |item| item[:source_variant] } }
+			report = H.receive_pipeline_report(rows)
+			timed = report[:modes]['current/timed']
+			assert_in_delta 20e-9, timed[:storage_await_breakdown_seconds][:actor_and_completion_remainder], 1e-15
+			assert_equal 32768, timed[:distributions]['reader.readBytes'][:p50_upper]
+			assert_equal 0, timed[:after_durable]['reader.samples']
+			timed_row = rows.find { |item| item[:pipeline_mode] == 'timed' && !item[:warmup] }
+			timed_row[:events]['download'].last['receive_pipeline_diagnostics']['dispatch.overlapErrors'] = 1
+			assert_raises(RuntimeError) { H.receive_pipeline_report(rows) }
+			timed_row[:events]['download'].last['receive_pipeline_diagnostics'].delete('dispatch.overlapErrors')
+			timed_row[:events]['download'].last['storage_diagnostics']['writeQueue.jobs'] = 3
+			assert_raises(RuntimeError) { H.receive_pipeline_report(rows) }
+			timed_row[:events]['download'].last['storage_diagnostics']['writeQueue.jobs'] = 2
+			rows.first[:accepted] = false
+			assert_equal 'failed', H.receive_pipeline_report(rows)[:status]
+		end
+	end
+	def test_receive_timing_gate_and_source_requirement_are_checked_before_building
+		[['--full', '1', 'diagnostic only'], ['--profile', '0', 'require BUTTER_STORAGE_DIAGNOSTICS'], ['--receive-profile', '0', 'PREVIOUS_REVISION']].each do |mode, counts, message|
+			timing = mode == '--receive-profile' ? nil : '1'
+			text, status = Open3.capture2e({'BUTTER_RECEIVE_PIPELINE_TIMINGS'=>timing, 'BUTTER_STORAGE_DIAGNOSTICS'=>counts, 'BUTTER_BENCHMARK_PREVIOUS_REVISION'=>nil}, File.expand_path('../Scripts/test-benchmark.sh', __dir__), mode)
+			assert_equal 2, status.exitstatus
+			assert_includes text, message
+		end
+		previous = ENV['BUTTER_RECEIVE_PIPELINE_TIMINGS']
+		begin
+			ENV['BUTTER_RECEIVE_PIPELINE_TIMINGS'] = '1'
+			assert_equal '1', H.process_environment['BUTTER_RECEIVE_PIPELINE_TIMINGS']
+		ensure
+			ENV['BUTTER_RECEIVE_PIPELINE_TIMINGS'] = previous
+		end
+	end
+end

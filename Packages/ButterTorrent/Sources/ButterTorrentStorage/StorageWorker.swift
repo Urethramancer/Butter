@@ -28,8 +28,9 @@ final class StorageWorker: @unchecked Sendable {
 	private let lock = NSLock()
 	private var pending = 0
 	var pendingCount: Int { lock.withLock { pending } }
-	func run<T: Sendable>(bulk: Bool = false, _ operation: @escaping @Sendable (DiskCancellation) throws -> T) async throws -> T {
+	func run<T: Sendable>(bulk: Bool = false, write: Bool = false, _ operation: @escaping @Sendable (DiskCancellation) throws -> T) async throws -> T {
 		try Task.checkCancellation()
+		let profile = StorageWriteQueueProfile.make(forWrite: write)
 		let admitted = lock.withLock { if pending >= 8 { return false }; pending += 1; return true }
 		guard admitted else { throw StorageFailure.limit("queued disk commands") }
 		guard Self.budget.acquire() else { lock.withLock { pending -= 1 }; throw StorageFailure.limit("global disk commands") }
@@ -37,7 +38,9 @@ final class StorageWorker: @unchecked Sendable {
 		return try await withTaskCancellationHandler {
 			try await withCheckedThrowingContinuation { continuation in
 				Self.pool.submit(owner: self.owner, bulk: bulk) {
+					let started = profile?.began()
 					let result = Result { try cancellation.check(); StorageDiagnostics.count(.diskJobs); return try operation(cancellation) }
+					profile?.finish(started: started)
 					self.lock.withLock { self.pending -= 1 }
 					Self.budget.release()
 					continuation.resume(with: result)

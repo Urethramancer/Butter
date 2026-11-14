@@ -5,12 +5,13 @@ import ButterTorrentStorage
 enum ReceiveOrderDiagnostics {
 	private static let output = Output()
 	static func accepted(transfer: ObjectIdentifier, piece: Int, offset: Int, count: Int, length: Int) {
-		guard StorageDiagnostics.enabled else { return }
+		guard StorageDiagnostics.enabled, output.hasFile else { return }
 		output.append("\(ProcessInfo.processInfo.systemUptime) \(transfer) \(piece) \(offset) \(count) \(length)\n")
 	}
 	private final class Output: @unchecked Sendable {
 		private let lock = NSLock()
 		private let file: FileHandle?
+		var hasFile: Bool { file != nil }
 		init() {
 			guard StorageDiagnostics.enabled, let path = ProcessInfo.processInfo.environment["BUTTER_RECEIVE_ORDER_TRACE"] else { file = nil; return }
 			do {
