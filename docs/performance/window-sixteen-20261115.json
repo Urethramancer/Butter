@@ -1,7 +1,7 @@
 {
   "candidate": "db0cd52",
   "baseline": "1363710",
-  "status": "Primary CPU criterion passed; guard and native checks in progress; implementation remains isolated",
+  "status": "All four fixed comparisons passed; native preflight reported a private-tracker failover observation failure; adoption gated on investigation",
   "primary": {
     "candidate": "db0cd52",
     "baseline": "1363710",
@@ -68,7 +68,11 @@
       "original_baseline_unchanged": true,
       "request_windows_verified": true
     },
-    "results_directory": ".build/benchmarks/window-sixteen-many-hybrid-24pairs-20261115"
+    "results_directory": ".build/benchmarks/window-sixteen-many-hybrid-24pairs-20261115",
+    "median_peak_rss_mib": {
+      "previous": 17.484375,
+      "current": 18.140625
+    }
   },
   "counts": {
     "trials": 4,
@@ -125,6 +129,16 @@
       "summaries": [
         "✔ Test run with 55 tests in 6 suites passed after 31.114 seconds."
       ]
+    },
+    "native_preflight": {
+      "passed": false,
+      "test": "privateFailoverDrainsOldPeersBeforeContactingTheReplacement",
+      "arguments": {
+        "initialFailure": true,
+        "version": 1
+      },
+      "issue": "oldPeersWereDrained expectation failed",
+      "evidence": ".build/benchmarks/window-sixteen-20261115/native-preflight-failure.log"
     }
   },
   "protocol": {
@@ -165,5 +179,228 @@
     "quiet_host_release_qualification": false,
     "observations": "Etemmu, compiler/test and indexing activity observed; no assistant builds or tests during traffic; snapshots are not average host-load measurements"
   },
-  "archive_branch": "experiment/download-window-sixteen"
+  "guards": [
+    {
+      "candidate": "db0cd52",
+      "baseline": "1363710",
+      "window": {
+        "previous": 8,
+        "current": 16
+      },
+      "case": "concurrent",
+      "format": "v2",
+      "pairs": 12,
+      "trials": 52,
+      "validated": 52,
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 0.8918676574703837,
+          "lower": 0.8767437660899793,
+          "upper": 0.9274328804425211,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.120320534083089,
+          "lower": 1.0350959340721149,
+          "upper": 1.220791515125287,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 1.134483528817765,
+          "lower": 1.0742784059764006,
+          "upper": 1.1714820768865168,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 0.9090411646990024,
+          "lower": 0.7789635209476736,
+          "upper": 1.0461773348209544,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_controls": {
+        "cpu_seconds_per_gib": {
+          "median": 1.0054712128269174,
+          "lower": 0.9828794890591698,
+          "upper": 1.018206791311553,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.0005457509378064,
+          "lower": 0.9922790052682597,
+          "upper": 1.022005517784934,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "memory_vs_original": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.3310013991605037,
+        "lower": 0.32344124700239807,
+        "upper": 0.3355596033191662,
+        "maximum_peak_rss_ratio": 0.336383528943704,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true
+      },
+      "results_directory": ".build/benchmarks/window-sixteen-concurrent-v2-12pairs-20261115",
+      "median_peak_rss_mib": {
+        "previous": 22.671875,
+        "current": 25.875
+      }
+    },
+    {
+      "candidate": "db0cd52",
+      "baseline": "1363710",
+      "window": {
+        "previous": 8,
+        "current": 16
+      },
+      "case": "single",
+      "format": "v1",
+      "pairs": 6,
+      "trials": 28,
+      "validated": 28,
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 0.8422224276013142,
+          "lower": 0.8160436793848459,
+          "upper": 0.8838079523954397,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.1514591554890505,
+          "lower": 1.0941674952984108,
+          "upper": 1.1948582867337643,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 1.0403461069747255,
+          "lower": 0.9887660318787512,
+          "upper": 1.0606234375402694,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 0.8173150099584492,
+          "lower": 0.7657606796647916,
+          "upper": 0.8331621397960858,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_controls": {
+        "cpu_seconds_per_gib": {
+          "median": 0.9966852495801366,
+          "lower": 0.9752779356812881,
+          "upper": 1.0215145552973668,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.0075537008670858,
+          "lower": 0.9936357805475768,
+          "upper": 1.036189600678238,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "memory_vs_original": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.21598134802882576,
+        "lower": 0.213543874523103,
+        "upper": 0.22087745839636913,
+        "maximum_peak_rss_ratio": 0.21626187961985216,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true
+      },
+      "results_directory": ".build/benchmarks/window-sixteen-single-v1-6pairs-20261115",
+      "median_peak_rss_mib": {
+        "previous": 15.2578125,
+        "current": 15.921875
+      }
+    },
+    {
+      "candidate": "db0cd52",
+      "baseline": "1363710",
+      "window": {
+        "previous": 8,
+        "current": 16
+      },
+      "case": "concurrent",
+      "format": "hybrid",
+      "pairs": 6,
+      "trials": 28,
+      "validated": 28,
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 0.8686811326320665,
+          "lower": 0.8123600614082609,
+          "upper": 0.8833163221421916,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.2650469044643047,
+          "lower": 1.159781191693031,
+          "upper": 1.406801120940666,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 1.124636033374431,
+          "lower": 1.0397190864534789,
+          "upper": 1.1991326138813476,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 0.8704005874246581,
+          "lower": 0.6883220633049261,
+          "upper": 0.947639757919171,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_controls": {
+        "cpu_seconds_per_gib": {
+          "median": 1.008433411343204,
+          "lower": 0.9682104025990366,
+          "upper": 1.0841524988643723,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.0005822316359017,
+          "lower": 0.9591192120526956,
+          "upper": 1.0785259001583656,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "memory_vs_original": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.3263958375025015,
+        "lower": 0.31865492393915135,
+        "upper": 0.34575424575424574,
+        "maximum_peak_rss_ratio": 0.3573567578358954,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true
+      },
+      "results_directory": ".build/benchmarks/window-sixteen-concurrent-hybrid-6pairs-20261115",
+      "median_peak_rss_mib": {
+        "previous": 22.625,
+        "current": 25.484375
+      }
+    }
+  ],
+  "total_comparison_trials": 208,
+  "all_comparisons_validated": true,
+  "all_cpu_intervals_below_one": true,
+  "all_throughput_medians_at_least_one": true,
+  "all_original_memory_budgets_pass": true,
+  "candidate_branch": "experiment/download-window-sixteen"
 }
