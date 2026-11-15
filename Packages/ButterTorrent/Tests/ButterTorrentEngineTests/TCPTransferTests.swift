@@ -214,12 +214,36 @@ import ButterTorrentNetworking
 			#expect(seedStopped && downloadStopped)
 		}
 	}
-	@Test(arguments: [4, 8, 32], [0, 8, 16]) func requestWindowRespectsConfigurationAndRemoteQueue(_ remoteLimit: Int, _ configured: Int) async throws {
-		let fixture = try TransferFixture(lengths: [524288, 0, 0, 0])
+	@Test func downloadRequestLimitsRemainBounded() throws {
+		var configuration = plainTransferConfiguration()
+		for window in [1, 16, 32] { configuration.pipeline = window; try configuration.validate() }
+		for window in [0, 33, 48, 64, 65] {
+			configuration.pipeline = window
+			#expect(throws: (any Error).self) { try configuration.validate() }
+		}
+		var handshake = ExtensionHandshake()
+		try handshake.apply(extensionDictionary([:]).encoded())
+		#expect(handshake.queueLimit == 32)
+		for remote in [1, 31, 32, 48, 64, 2000, 65536] {
+			try handshake.apply(extensionDictionary(["reqq": .integer(Int64(remote))]).encoded())
+			#expect(handshake.queueLimit == min(32, remote))
+		}
+		for remote in [0, 65537] {
+			#expect(throws: (any Error).self) { try handshake.apply(extensionDictionary(["reqq": .integer(Int64(remote))]).encoded()) }
+		}
+	}
+	@Test(arguments: [4, 8, 31, 32, 48, 64], [0, 8, 16, 32]) func requestWindowRespectsConfigurationAndRemoteQueue(_ remoteLimit: Int, _ configured: Int) async throws {
+		try await checkRequestWindow(remoteLimit: remoteLimit, configured: configured, pieceLength: 131072)
+	}
+	@Test(arguments: zip([16384, 32768, 65536, 262144, 1048576], [8, 16, 32, 32, 32])) func requestWindowRespectsAvailablePieces(_ pieceLength: Int, _ expected: Int) async throws {
+		try await checkRequestWindow(remoteLimit: 64, configured: 32, pieceLength: pieceLength, expectedRequests: expected)
+	}
+	private func checkRequestWindow(remoteLimit: Int, configured: Int, pieceLength: Int, expectedRequests: Int? = nil) async throws {
+		let fixture = try TransferFixture(lengths: [2097152, 0, 0, 0], pieceLength: pieceLength)
 		do {
 			var configuration = plainTransferConfiguration()
 			if configured != 0 { configuration.pipeline = configured }
-			let expected = min(configuration.pipeline, remoteLimit)
+			let expected = expectedRequests ?? min(configuration.pipeline, remoteLimit)
 			let down = try await fixture.transfer("window-download", configuration: configuration)
 			var reserved = Data(repeating: 0, count: 8); reserved[5] = 16
 			let peer = try await fixture.scripted(down, reserved: reserved)
@@ -229,8 +253,9 @@ import ButterTorrentNetworking
 			#expect(Set(requests).count == expected)
 			#expect(requests.allSatisfy { $0.length == 16384 })
 			try await eventually { await down.snapshot().peers.first?.pendingRequests == expected }
-			for block in requests.prefix(2) { try await peer.reply(block, bytes: fixture.bytes) }
-			let replacements = try await peer.requests(2)
+			let returned = min(requests.count, pieceLength / 16384)
+			for block in requests.prefix(returned) { try await peer.reply(block, bytes: fixture.bytes, pieceLength: pieceLength) }
+			let replacements = try await peer.requests(returned)
 			#expect(Set(replacements).isDisjoint(with: requests))
 			try await eventually { await down.snapshot().peers.first?.pendingRequests == expected }
 			try await down.shutdown()

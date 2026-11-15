@@ -9,7 +9,7 @@ public struct TCPTransferConfiguration: Sendable {
 	public var maximumPeers = 50
 	public var allowSameIP = true
 	public var addressFilter = PeerAddressFilter()
-	public var pipeline = 16
+	public var pipeline = 32
 	public var uploadSlots = 4
 	public var requestTimeout: TimeInterval = 30
 	public var idleTimeout: TimeInterval = 180

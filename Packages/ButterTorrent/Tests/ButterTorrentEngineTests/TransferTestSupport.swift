@@ -32,8 +32,8 @@ final class TransferFixture {
 	var engines: [TCPTransfer] = []
 	var stores: [TorrentStorage] = []
 	var listeners: [TCPListener] = []
-	init(lengths: [Int] = [10003, 50019, 30000, 0]) throws {
-		precondition(lengths.count == names.count && lengths.allSatisfy { $0 >= 0 })
+	init(lengths: [Int] = [10003, 50019, 30000, 0], pieceLength: Int = 32768) throws {
+		precondition(lengths.count == names.count && lengths.allSatisfy { $0 >= 0 } && pieceLength > 0)
 		self.lengths = lengths
 		root = FileManager.default.temporaryDirectory.appendingPathComponent("butter-peer-" + UUID().uuidString).resolvingSymlinksInPath()
 		try FileManager.default.createDirectory(at: root.appendingPathComponent("source/bundle"), withIntermediateDirectories: true)
@@ -45,8 +45,8 @@ final class TransferFixture {
 			try bytes.subdata(in: offset..<(offset + size)).write(to: root.appendingPathComponent("source/bundle/" + name)); offset += size
 			files.append(.dictionary([Data("path".utf8): .list([.bytes(Data(name.utf8))]), Data("length".utf8): .integer(Int64(size))]))
 		}
-		for start in stride(from: 0, to: bytes.count, by: 32768) { hashes.append(TorrentHasher.hash(bytes.subdata(in: start..<min(start + 32768, bytes.count))).sha1) }
-		let info: [Data: BencodeValue] = [Data("name".utf8): .bytes(Data("bundle".utf8)), Data("files".utf8): .list(files), Data("piece length".utf8): .integer(32768), Data("pieces".utf8): .bytes(hashes)]
+		for start in stride(from: 0, to: bytes.count, by: pieceLength) { hashes.append(TorrentHasher.hash(bytes.subdata(in: start..<min(start + pieceLength, bytes.count))).sha1) }
+		let info: [Data: BencodeValue] = [Data("name".utf8): .bytes(Data("bundle".utf8)), Data("files".utf8): .list(files), Data("piece length".utf8): .integer(Int64(pieceLength)), Data("pieces".utf8): .bytes(hashes)]
 		metadata = try TorrentMetadata(BencodeValue.dictionary([Data("info".utf8): .dictionary(info)]).encoded())
 	}
 	func transfer(_ name: String, seed: Bool = false, selected: [Bool]? = nil, configuration: TCPTransferConfiguration = plainTransferConfiguration(), clock: any TransportClock = ContinuousTransportClock(), peerID: Data? = nil, resources: TransferResources = .shared, readPolicy: StorageReadPolicy = .strict, event: @escaping @Sendable (StorageEvent) -> Void = { _ in }) async throws -> TCPTransfer {
@@ -124,8 +124,8 @@ final class WirePeer {
 	func seed(pieceCount: Int) async throws {
 		try await send(.bitfield(PieceBitfield(count: pieceCount, pieces: Set(0..<pieceCount)).bytes)); try await send(.unchoke)
 	}
-	func reply(_ block: PeerBlock, bytes: Data, corrupt: Bool = false) async throws {
-		let start = block.piece * 32768 + block.offset
+	func reply(_ block: PeerBlock, bytes: Data, corrupt: Bool = false, pieceLength: Int = 32768) async throws {
+		let start = block.piece * pieceLength + block.offset
 		var data = bytes.subdata(in: start..<(start + block.length)); if corrupt { data[0] ^= 255 }
 		try await send(.piece(block.piece, block.offset, data))
 	}
