@@ -553,6 +553,46 @@ adoption. Sixty-four supplies no established additional benefit in these fixture
 [Compact protocol, counts and validation](window-sixty-four-20261115.json) retain
 both outcomes; raw evidence is under ignored `.build/benchmarks/window-sixty-four-*`.
 
+## Retaining payload across fairness yields
+
+Candidate `99afd53`, isolated on `experiment/fairness-batch-retention`, retains the
+bounded pending payload across the existing 128-frame `Task.yield()`. It removes
+only the forced yield flush and its unused diagnostic enum case. Control, read-end,
+error and size-budget flushes remain; the request window stays 32 and dispatches
+remain bounded to sixteen blocks/256 KiB. No network wait or batching delay is added.
+
+A deterministic plaintext/RC4 fixture crosses frame 128 halfway through six available
+payload blocks while storage is blocked. The baseline admits three blocks and fails
+the six-block expectation in both modes; the candidate admits all six in one batch
+and processes the following choke only afterwards. It verifies all bytes and drains
+readers and permits on shutdown. An extended existing test puts its only payload at
+frame 128 and proves that read-end flushing still writes it without another frame.
+The source passes 432 package tests and 64 focused tests under each sanitizer; the
+additional read-end case also passes normally and under both sanitizers.
+
+Separate four-trial counts comparisons validate at both piece sizes:
+
+| Piece size | Write jobs/GiB, baseline → candidate | Mean blocks/dispatch | Physical reads |
+| --- | ---: | ---: | ---: |
+| 256 KiB | 4,600 → 4,263 | 14.25 → 15.37 | 4,133 → 4,271 |
+| 1 MiB | 4,835 → 4,456 | 13.55 → 14.71 | 4,366 → 4,460 |
+
+Both retain exactly 512 scheduler yields/GiB, with yield-triggered flushes 512 → 0
+and identical wire bytes and counted hash work. Disk jobs fall 4,627 → 4,298 and
+4,846 → 4,467 respectively. The increased read counts mean these diagnostics alone
+cannot establish a CPU saving. The fixed primary timing uses 24 many-file hybrid
+source pairs against `3d284a6`, with counters disabled. If its upper paired 95%
+CPU/GiB interval is below one, guards use twelve concurrent-v2 pairs, six each
+single-v1/concurrent-hybrid, and twelve many-hybrid pairs with 1 MiB pieces.
+Memory must pass against matching original fixtures; the additional 1 MiB fixture
+has a matched previous/current check without inferred original-baseline acceptance.
+Any lower-throughput CPU-saving candidate remains isolated for user decision.
+
+[Protocol, counts and validation](fairness-batch-20261115.json) retain the fixed
+criteria and baseline test failure. Raw evidence remains under ignored
+`.build/benchmarks/fairness-batch-*`. Native validation is pending; the general
+default remains the retained 32-block implementation while timing runs.
+
 ## Profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers

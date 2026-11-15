@@ -1,0 +1,201 @@
+{
+  "candidate": "99afd53",
+  "baseline": "3d284a6",
+  "status": "Isolated candidate; package, sanitizer and counts checks pass; primary CPU comparison running",
+  "counts": {
+    "piece_256k": {
+      "baseline": "3d284a6",
+      "case": "many",
+      "format": "hybrid",
+      "piece_length": 262144,
+      "request_window": 32,
+      "trials": 4,
+      "validated": 4,
+      "results_directory": ".build/benchmarks/fairness-batch-counts-many-hybrid-20261115",
+      "diagnostics_only": true,
+      "sources": [
+        {
+          "source": "previous",
+          "write_jobs": 4600,
+          "disk_jobs": 4627,
+          "descriptor_opens": 37600,
+          "blocks": 65536,
+          "dispatches": 4600,
+          "mean_blocks_per_dispatch": 14.246956521739131,
+          "reads": 4133,
+          "wire_bytes": 1074594138,
+          "bytes_hashed": 1073741824,
+          "scheduler_yields": 512,
+          "yield_flushes": 512
+        },
+        {
+          "source": "current",
+          "write_jobs": 4263,
+          "disk_jobs": 4298,
+          "descriptor_opens": 35102,
+          "blocks": 65536,
+          "dispatches": 4263,
+          "mean_blocks_per_dispatch": 15.37321135350692,
+          "reads": 4271,
+          "wire_bytes": 1074594138,
+          "bytes_hashed": 1073741824,
+          "scheduler_yields": 512,
+          "yield_flushes": 0
+        }
+      ],
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true,
+        "original_torrent_hashes_match": true
+      }
+    },
+    "piece_1m": {
+      "baseline": "3d284a6",
+      "case": "many",
+      "format": "hybrid",
+      "piece_length": 1048576,
+      "request_window": 32,
+      "trials": 4,
+      "validated": 4,
+      "results_directory": ".build/benchmarks/fairness-batch-counts-many-hybrid-1mib-20261115",
+      "diagnostics_only": true,
+      "sources": [
+        {
+          "source": "previous",
+          "write_jobs": 4835,
+          "disk_jobs": 4846,
+          "descriptor_opens": 32553,
+          "blocks": 65536,
+          "dispatches": 4835,
+          "mean_blocks_per_dispatch": 13.554498448810754,
+          "reads": 4366,
+          "wire_bytes": 1074594138,
+          "bytes_hashed": 1073741824,
+          "scheduler_yields": 512,
+          "yield_flushes": 512
+        },
+        {
+          "source": "current",
+          "write_jobs": 4456,
+          "disk_jobs": 4467,
+          "descriptor_opens": 30222,
+          "blocks": 65536,
+          "dispatches": 4456,
+          "mean_blocks_per_dispatch": 14.707360861759426,
+          "reads": 4460,
+          "wire_bytes": 1074594138,
+          "bytes_hashed": 1073741824,
+          "scheduler_yields": 512,
+          "yield_flushes": 0
+        }
+      ],
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true,
+        "original_torrent_hashes_match": false
+      }
+    }
+  },
+  "validation": {
+    "full": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 102 tests in 17 suites passed after 3.785 seconds.",
+        "✔ Test run with 102 tests in 23 suites passed after 7.849 seconds.",
+        "✔ Test run with 24 tests in 6 suites passed after 0.032 seconds.",
+        "✔ Test run with 204 tests in 36 suites passed after 61.192 seconds."
+      ]
+    },
+    "asan": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 64 tests in 7 suites passed after 34.214 seconds."
+      ]
+    },
+    "tsan": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 64 tests in 7 suites passed after 58.470 seconds."
+      ]
+    },
+    "read_end_boundary": {
+      "debug": {
+        "passed": true,
+        "summaries": [
+          "✔ Test run with 1 test in 1 suite passed after 0.063 seconds."
+        ]
+      },
+      "asan": {
+        "passed": true,
+        "summaries": [
+          "✔ Test run with 1 test in 1 suite passed after 0.098 seconds."
+        ]
+      },
+      "tsan": {
+        "passed": true,
+        "summaries": [
+          "✔ Test run with 1 test in 1 suite passed after 0.180 seconds."
+        ]
+      }
+    },
+    "baseline_regression": {
+      "expected_failure": true,
+      "plaintext_and_rc4": true,
+      "observed_writing_blocks": 3,
+      "expected_writing_blocks": 6,
+      "evidence": ".build/benchmarks/fairness-batch-20261115/regression-baseline-failure.log"
+    }
+  },
+  "protocol": {
+    "baseline": "3d284a6",
+    "change": "Keep pending payload across the existing 128-frame Task.yield; keep read-end/control/error flushes, 16-block/256-KiB dispatch bounds, request window 32 and all integrity/resource limits",
+    "rationale": "User permits modest additional RAM for lower CPU; allow existing read/write batching to use more queued payload without read-ahead",
+    "diagnostic": "Separate four-trial counts comparisons for 256 KiB and 1 MiB pieces; excluded from timing acceptance",
+    "primary": {
+      "case": "many",
+      "format": "hybrid",
+      "source_pairs": 24
+    },
+    "conditional_guards": [
+      {
+        "case": "concurrent",
+        "format": "v2",
+        "source_pairs": 12
+      },
+      {
+        "case": "single",
+        "format": "v1",
+        "source_pairs": 6
+      },
+      {
+        "case": "concurrent",
+        "format": "hybrid",
+        "source_pairs": 6
+      }
+    ],
+    "trigger": "Primary upper paired 95% CPU/GiB interval below one",
+    "memory_baseline": ".build/benchmarks/baseline-seeding-fixed",
+    "acceptance": "Memory budget must pass against matching complete original baseline. Retain every sample. No repetitions or result-dependent extensions. Keep any lower-throughput CPU-saving candidate isolated for user decision.",
+    "host": "Continue under the user-authorised contended-comparison policy; record load and qualify results",
+    "candidate_branch": "experiment/fairness-batch-retention",
+    "window": {
+      "previous": 32,
+      "current": 32
+    },
+    "additional_piece_size_guard": {
+      "case": "many",
+      "format": "hybrid",
+      "piece_length": 1048576,
+      "source_pairs": 12,
+      "reason": "Predeclared piece-size guard after primary CPU gain, retaining all fixed samples",
+      "memory": "Fresh matched 16/32 comparison; no original-baseline memory pass inferred",
+      "conditional": true
+    },
+    "candidate": "99afd53"
+  },
+  "qualification": "User-authorised contended source comparison; no owned builds/tests during acceptance timing; diagnostic counts excluded from acceptance; all samples preserved"
+}
