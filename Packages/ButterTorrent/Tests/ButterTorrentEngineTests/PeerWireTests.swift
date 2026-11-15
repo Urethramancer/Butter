@@ -43,6 +43,52 @@ import ButterTorrentStorage
 		#expect(try parser.next() == .piece(2, 0, replacement)); try parser.finish()
 		#expect(owned == payload)
 	}
+	@Test func decoderCopiesPreserveIndependentFragmentsAndOwnedPayloads() throws {
+		var parser = PeerWireDecoder()
+		try parser.feed(PeerHandshake(infoHash: Data(repeating: 0, count: 20), peerID: Data(repeating: 1, count: 20)).encoded)
+		_ = try parser.handshake()
+		var owned: [Data] = []
+		for index in 0..<12 {
+			let payload = Data(repeating: UInt8(index), count: 16384)
+			let frame = try PeerMessage.piece(index, 0, payload).encoded()
+			try parser.feed(frame + frame.prefix(13))
+			guard case .piece(_, _, let bytes)? = try parser.next() else { Issue.record("Missing complete piece"); return }
+			owned.append(bytes); #expect(try parser.next() == nil)
+			var copy = parser
+			let alternative = Data(repeating: UInt8(index + 100), count: payload.count)
+			try copy.feed(alternative)
+			#expect(try copy.next() == .piece(index, 0, alternative)); try copy.finish()
+			try parser.feed(payload)
+			#expect(try parser.next() == .piece(index, 0, payload)); try parser.finish()
+		}
+		for (index, bytes) in owned.enumerated() {
+			#expect(bytes == Data(repeating: UInt8(index), count: 16384) && bytes.startIndex == 0)
+		}
+	}
+	@Test(arguments: [false, true]) func partialFramesAndDecoderCopiesRespectStorageBound(_ leadingKeepAlive: Bool) throws {
+		var parser = PeerWireDecoder(), features = PeerFeatures(); features.extended = true
+		try parser.feed(PeerHandshake(infoHash: Data(repeating: 0, count: 20), peerID: Data(repeating: 1, count: 20)).encoded)
+		_ = try parser.handshake(); parser.negotiate(features)
+		let message = PeerMessage.extended(1, Data(repeating: 42, count: 65534)), frame = try message.encoded()
+		for _ in 0..<4 {
+			let leading = Data(repeating: 0, count: leadingKeepAlive ? 4 : 0), prefix = 65536 - leading.count
+			try parser.feed(leading + frame.prefix(prefix))
+			if leadingKeepAlive { #expect(try parser.next() == .keepAlive) }
+			#expect(try parser.next() == nil)
+			try parser.feed(frame[prefix..<65539]); #expect(try parser.next() == nil)
+			// A leading keepalive adds a consumed prefix. Completing one decoder
+			// copy must leave the other copy's partial frame intact.
+			var copy = parser
+			try copy.feed(Data([99]) + frame.prefix(65535))
+			#expect(try copy.next() == .extended(1, Data(repeating: 42, count: 65533) + Data([99])))
+			#expect(try copy.next() == nil)
+			try copy.feed(frame.suffix(5)); #expect(try copy.next() == message)
+			try copy.finish(); #expect(try parser.next() == nil)
+			try parser.feed(frame.suffix(1) + frame.prefix(65535))
+			#expect(try parser.next() == message); #expect(try parser.next() == nil)
+			try parser.feed(frame.suffix(5)); #expect(try parser.next() == message); try parser.finish()
+		}
+	}
 	@Test(arguments: [9, 16394, 65536]) func invalidPieceSizesRetainTheFollowingFrame(_ size: Int) throws {
 		var parser = PeerWireDecoder()
 		try parser.feed(PeerHandshake(infoHash: Data(repeating: 0, count: 20), peerID: Data(repeating: 1, count: 20)).encoded)
