@@ -1,7 +1,7 @@
 {
   "candidate": "50b3c87",
   "baseline": "6e67dfc",
-  "status": "All 208 fixed comparisons validate; primary and both concurrent CPU gains established, single-file inconclusive; native validation pending; candidate remains isolated",
+  "status": "All 260 fixed comparisons validate, including the additional 1 MiB piece-size guard; native validation pending; candidate remains isolated during the requested larger-window calibration",
   "primary": {
     "baseline": "6e67dfc",
     "window": {
@@ -128,6 +128,13 @@
       "summaries": [
         "✔ Test run with 55 tests in 6 suites passed after 38.815 seconds."
       ]
+    },
+    "native_preflight": {
+      "status": "Initial preflight hit six-second large-piece deadlines during parallel builds/tests; unchanged LargePieceTests subsequently pass serially; complete final native sequence pending",
+      "preserved_failure": ".build/benchmarks/window-thirty-two-20261115/native-preflight-load-failure.log",
+      "serial_summary": [
+        "✔ Test run with 2 tests in 1 suite passed after 18.015 seconds."
+      ]
     }
   },
   "protocol": {
@@ -162,7 +169,20 @@
     "acceptance": "Memory budget must pass against matching complete original baseline. Retain every sample. No repetitions or result-dependent extensions. Keep any lower-throughput CPU-saving candidate isolated for user decision.",
     "host": "Continue under the user-authorised contended-comparison policy; record load and qualify results",
     "candidate_branch": "experiment/download-window-thirty-two",
-    "candidate": "50b3c878497075589d6eb8a8e0d081195612b23c"
+    "candidate": "50b3c878497075589d6eb8a8e0d081195612b23c",
+    "window": {
+      "previous": 16,
+      "current": 32
+    },
+    "additional_piece_size_guard": {
+      "case": "many",
+      "format": "hybrid",
+      "piece_length": 1048576,
+      "source_pairs": 12,
+      "reason": "User-requested piece-size calibration; declared before data collection",
+      "memory": "Fresh matched 16/32 comparison; no original-baseline memory pass inferred"
+    },
+    "benchmark_revision": "1abc10f"
   },
   "guards": {
     "concurrent-v2": {
@@ -380,5 +400,80 @@
     }
   },
   "qualification": "User-authorised contended run; compiler/test and application activity recorded; no quiet-host release claim; no samples removed or repeated",
-  "trials": 208
+  "trials": 260,
+  "additional_piece_size_guard": {
+    "baseline": "6e67dfc2ebf05ad2f16d21c98c2969183e572aeb",
+    "candidate": "50b3c878497075589d6eb8a8e0d081195612b23c",
+    "window": {
+      "previous": 16,
+      "current": 32
+    },
+    "case": "many",
+    "format": "hybrid",
+    "piece_length": 1048576,
+    "trials": 52,
+    "validated": 52,
+    "results_directory": ".build/benchmarks/window-thirty-two-many-hybrid-1mib-12pairs-20261115",
+    "pairs": 12,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 0.9227232048024258,
+        "lower": 0.8802542621613618,
+        "upper": 0.9617152525899613,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.0582677700470016,
+        "lower": 1.0305174135228838,
+        "upper": 1.1249748024531465,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 0.9944198670666107,
+        "lower": 0.9840706605222734,
+        "upper": 1.0229926806197136,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 0.9692621818358012,
+        "lower": 0.8740554920217013,
+        "upper": 1.0964925327567323,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_controls": {
+      "cpu_seconds_per_gib": {
+        "median": 0.9851309769948495,
+        "lower": 0.9812571141816342,
+        "upper": 1.0087869131272367,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9966226296121616,
+        "lower": 0.986194416719065,
+        "upper": 1.0150789494346808,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "memory_vs_previous": {
+      "status": "pass",
+      "median_peak_rss_ratio": 1.006123410268488,
+      "lower": 0.9865554010199351,
+      "upper": 1.019312293923693,
+      "maximum_peak_rss_ratio": 0.9641638225255973,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10",
+      "qualification": "New piece-size fixture; matched previous/current comparison only. No original-baseline memory acceptance inferred."
+    },
+    "median_peak_rss_mib": {
+      "previous": 16.5859375,
+      "current": 16.6875
+    },
+    "integrity": {
+      "payloads_and_reopens": true,
+      "fingerprints_unchanged": true,
+      "original_baseline_unchanged": true,
+      "request_windows_verified": true,
+      "matching_original_torrent_hashes": false
+    }
+  }
 }

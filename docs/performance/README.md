@@ -388,8 +388,8 @@ absolute memory medians and validation status. Raw evidence remains under ignore
 ## Thirty-two-block request-window candidate
 
 Candidate `50b3c87` raises the default from sixteen to thirty-two blocks. It remains
-isolated on `experiment/download-window-thirty-two` while the additional piece-size
-comparison and final native validation are pending. Dispatches remain capped at sixteen blocks/256 KiB; peer
+isolated on `experiment/download-window-thirty-two` while final native validation and the
+requested larger-window calibration are pending. Dispatches remain capped at sixteen blocks/256 KiB; peer
 queue limits, hashing, filesystem checks and all other hard limits are unchanged.
 
 Against `6e67dfc`, the fixed 24-pair many-file hybrid comparison validates **100/100
@@ -414,8 +414,15 @@ The three original guards also validate, giving **208/208 trials** in total:
 Both concurrent guards establish CPU gains; single-file CPU and all three guard
 throughput outcomes remain inconclusive. No throughput median is lower. All native
 control CPU/throughput intervals include one; all original-baseline memory budgets
-pass. A user-requested 1 MiB piece-size comparison is additional to these original
-256 KiB fixture comparisons and will use fresh matched sources.
+pass. The additional 1 MiB piece-size comparison below uses fresh matched sources.
+
+The additional twelve-pair **1 MiB piece-size** comparison validates **52/52 trials**,
+bringing this candidate to **260/260** across five comparisons. CPU/GiB is
+**0.923 (0.880–0.962)** and verified throughput **1.058 (1.031–1.125)**; median
+RSS is 16.59 → 16.69 MiB, with a paired RSS ratio of 0.994 (0.984–1.023).
+Both native-control intervals include one. Payload hashes match the original data,
+but torrent metadata changes with piece size: its fresh matched memory check passes,
+and no original-baseline memory acceptance is inferred for that additional fixture.
 
 A separate four-trial counts comparison reduces disk jobs/GiB from 5,439 to 4,688,
 write jobs from 4,902 to 4,655 and descriptor opens from 41,499 to 37,673, with
