@@ -214,6 +214,43 @@ on `experiment/bounded-read-ahead`; results are under ignored
 `.build/benchmarks/read-ahead-{many-hybrid,counts-many-hybrid}-20261114`.
 This result applies to the single-prefetch implementation.
 
+## Rejected persistent receive aggregation
+
+Candidate `3e5bf25` against `834075d` validates **100/100 many-file hybrid trials**:
+four warm-ups and 24 predeclared balanced source pairs, with counters disabled,
+production windows, independent SHA256 checks, strict checkpoint reopening and
+unchanged fingerprints. No samples were repeated or discarded.
+
+| Candidate/baseline | Median ratio | Paired 95% interval |
+| --- | ---: | ---: |
+| CPU/GiB | 1.234 | 1.175–1.271 |
+| Verified throughput | 1.009 | 0.978–1.062 |
+| Peak RSS | 1.074 | 1.055–1.084 |
+| Counterpart CPU/GiB | 1.107 | 1.034–1.166 |
+
+Native-control CPU and throughput intervals include one. Memory passes against the
+matching original baseline: median RSS ratio 0.278 (95% interval 0.272–0.283),
+maximum ratio 0.297. The host was checked before launch; browser activity and later
+external compiler work appeared during traffic. These are **contended-host results**.
+
+A separate four-trial counts comparison increases write jobs/GiB from 9,401 to
+10,235 and reduces mean blocks/dispatch from 6.97 to 6.40. The candidate performs
+33,573 stream reads and 13,430 aggregation drains; the baseline has 9,153 positive
+read cycles. Read calls and consumer drains are separate counts. This diagnostic
+transfer does not establish timing acceptance.
+
+The bounded persistent producer/consumer passes 433 package tests, focused checks
+under both sanitizers, 312 native peer fixtures and the remaining native session,
+discovery, tracker, DHT, PEX and web-seed checks. The implementation and its buffer
+tests remain on `experiment/bounded-receive-aggregation`; main retains the independent
+blocked-storage shutdown regression. Conditional guard comparisons were not triggered
+because CPU did not improve. More RAM remains an option for future CPU-saving work;
+this candidate already raises memory without reducing CPU. This result applies to
+the tested implementation.
+
+[Compact results](receive-aggregation-20261115.json) retain intervals and qualifications.
+Raw evidence remains under ignored `.build/benchmarks/receive-aggregation-*`.
+
 ## Profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers

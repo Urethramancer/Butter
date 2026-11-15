@@ -1,0 +1,173 @@
+{
+  "candidate": "3e5bf25",
+  "baseline": "834075d",
+  "pairs": 24,
+  "trials": 100,
+  "validated": 100,
+  "source_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 1.233527268213929,
+      "lower": 1.1752326432688893,
+      "upper": 1.271489225830914,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 1.008914151410658,
+      "lower": 0.9777844604930631,
+      "upper": 1.0620929681360893,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "peak_rss": {
+      "median": 1.0738455892588235,
+      "lower": 1.055303717135086,
+      "upper": 1.0844036697247705,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "counterpart_cpu_seconds_per_gib": {
+      "median": 1.1066121763407315,
+      "lower": 1.0340845570394526,
+      "upper": 1.1657773946886618,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "native_controls": {
+    "cpu_seconds_per_gib": {
+      "median": 0.9999863573346545,
+      "lower": 0.9888108690525335,
+      "upper": 1.0136625043307772,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 1.0009969493646074,
+      "lower": 0.993173165152724,
+      "upper": 1.0073267026431902,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "memory_vs_original": {
+    "status": "pass",
+    "median_peak_rss_ratio": 0.2779541446208113,
+    "lower": 0.27249653899400095,
+    "upper": 0.2826163818503241,
+    "maximum_peak_rss_ratio": 0.2968067999081094,
+    "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+  },
+  "counts": {
+    "trials": 4,
+    "validated": 4,
+    "diagnostics_only": true,
+    "sources": [
+      {
+        "source": "previous",
+        "write_jobs": 9401,
+        "blocks": 65536,
+        "mean_blocks_per_dispatch": 6.971173279438357,
+        "physical_reads": null,
+        "legacy_reads": 9153,
+        "aggregation_drains": null,
+        "high_accounted_bytes": null,
+        "high_accounted_chunks": null
+      },
+      {
+        "source": "current",
+        "write_jobs": 10235,
+        "blocks": 65536,
+        "mean_blocks_per_dispatch": 6.4031265266243285,
+        "physical_reads": 33573,
+        "legacy_reads": 3,
+        "aggregation_drains": 13430,
+        "high_accounted_bytes": 262144,
+        "high_accounted_chunks": 18
+      }
+    ]
+  },
+  "validation": {
+    "package": {
+      "summaries": [
+        "✔ Test run with 102 tests in 17 suites passed after 3.755 seconds.",
+        "✔ Test run with 100 tests in 23 suites passed after 7.870 seconds.",
+        "✔ Test run with 24 tests in 6 suites passed after 0.031 seconds.",
+        "✔ Test run with 207 tests in 37 suites passed after 37.272 seconds."
+      ],
+      "sanitizer_findings": [
+
+      ]
+    },
+    "address": {
+      "summaries": [
+        "✔ Test run with 46 tests in 7 suites passed after 14.787 seconds."
+      ],
+      "sanitizer_findings": [
+
+      ]
+    },
+    "thread": {
+      "summaries": [
+        "✔ Test run with 30 tests in 5 suites passed after 25.862 seconds."
+      ],
+      "sanitizer_findings": [
+
+      ]
+    },
+    "native": {
+      "passed": true,
+      "summary_lines": [
+        "PASS: 312 independent libtorrent-to-Swift and Swift-to-libtorrent peer fixtures",
+        "PASS: 6 independent legacy hybrid comparisons",
+        "PASS: 12 independent local discovery comparisons",
+        "PASS: 36 independent native-session transfers in both directions",
+        "PASS: 32 independent hybrid tracker comparisons in both directions",
+        "PASS: 24 independent session DHT transfers in both directions",
+        "PASS: 24 independent PEX/PORT discovery comparisons in both directions",
+        "PASS: 10 HTTP-to-native-to-libtorrent web-seed comparisons"
+      ],
+      "pass_lines": 466
+    },
+    "retained_regression": {
+      "commit": "f324be3",
+      "passed": true,
+      "test": "shutdownDrainsQueuedPayloadWhileStorageIsBlocked",
+      "cases": 4,
+      "suite_tests": 10
+    }
+  },
+  "integrity": {
+    "sha256_and_strict_reopen": true,
+    "fingerprints_unchanged": true,
+    "original_baseline_unchanged": true
+  },
+  "guard_cases": [
+    {
+      "case": "concurrent",
+      "format": "v2",
+      "planned_pairs": 12,
+      "status": "Not triggered: primary CPU improvement criterion failed"
+    },
+    {
+      "case": "single",
+      "format": "v1",
+      "planned_pairs": 6,
+      "status": "Not triggered: primary CPU improvement criterion failed"
+    },
+    {
+      "case": "concurrent",
+      "format": "hybrid",
+      "planned_pairs": 6,
+      "status": "Not triggered: primary CPU improvement criterion failed"
+    }
+  ],
+  "results_directory": ".build/benchmarks/receive-aggregation-many-hybrid-24pairs-20261115",
+  "decision": "Archive the unsuccessful candidate; retain the independent shutdown regression and results on main",
+  "archive_branch": "experiment/bounded-receive-aggregation",
+  "host_conditions": {
+    "quiet_at_launch": true,
+    "quiet_host_release_qualification": false,
+    "observed_during_traffic": "Browser renderer exceeded one CPU core; external mehc/clang work later appeared, including two mehc processes near one core each. No assistant-initiated builds or tests ran during traffic. Samples were retained without repetitions.",
+    "evidence": ".build/benchmarks/receive-aggregation-20261115/host-load.txt"
+  },
+  "criteria": {
+    "cpu_improvement": false,
+    "memory_pass": true,
+    "throughput_sacrifice": false
+  }
+}
