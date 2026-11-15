@@ -1,7 +1,7 @@
 {
   "candidate": "02cbc31",
   "baseline": "be45572",
-  "status": "Package and sanitizer validation and both counts comparisons pass; fixed CPU comparisons running; candidate remains isolated",
+  "status": "256 KiB primary validates 100 trials but establishes no CPU gain and has a lower throughput median; 1 MiB timing pending; candidate remains isolated",
   "counts": {
     "piece_256k": {
       "baseline": "be45572",
@@ -178,7 +178,115 @@
       "current": 64
     },
     "guards_note": "If final 64-block candidate is eligible, compare its guard workloads directly with the independently measured 32-block source, not the intermediate 48-block source whose 256-KiB throughput median is lower. No automatic throughput trade-off.",
-    "candidate": "02cbc31cf5e7659182f29c77adffbf34e8c012db"
+    "candidate": "02cbc31cf5e7659182f29c77adffbf34e8c012db",
+    "final_adoption_comparison": "If 64 is eligible for a general default (established CPU gain, no lower throughput median), run a separate fixed comparison directly against 32 before adoption. Retain the 64/48 marginal trials separately; do not extend or pool their samples.",
+    "final_adoption_cases": [
+      {
+        "case": "many",
+        "format": "hybrid",
+        "piece_length": 262144,
+        "source_pairs": 24
+      },
+      {
+        "case": "many",
+        "format": "hybrid",
+        "piece_length": 1048576,
+        "source_pairs": 12
+      },
+      {
+        "case": "concurrent",
+        "format": "v2",
+        "piece_length": 262144,
+        "source_pairs": 12
+      },
+      {
+        "case": "single",
+        "format": "v1",
+        "piece_length": 262144,
+        "source_pairs": 6
+      },
+      {
+        "case": "concurrent",
+        "format": "hybrid",
+        "piece_length": 262144,
+        "source_pairs": 6
+      }
+    ]
   },
-  "qualification": "User-authorised contended runs; diagnostic counts excluded from acceptance timing; every sample preserved"
+  "qualification": "User-authorised contended runs; diagnostic counts excluded from acceptance timing; every sample preserved",
+  "primary": {
+    "baseline": "be45572",
+    "candidate": "02cbc31cf5e7659182f29c77adffbf34e8c012db",
+    "window": {
+      "previous": 48,
+      "current": 64
+    },
+    "case": "many",
+    "format": "hybrid",
+    "piece_length": 262144,
+    "trials": 100,
+    "validated": 100,
+    "results_directory": ".build/benchmarks/window-sixty-four-many-hybrid-24pairs-20261115",
+    "pairs": 24,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 1.0109192661372588,
+        "lower": 0.9839875448591495,
+        "upper": 1.0450230006597439,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9798489054513437,
+        "lower": 0.9610523756287269,
+        "upper": 1.003219602146427,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 0.9970524215490658,
+        "lower": 0.9818792900586167,
+        "upper": 1.0078602620087336,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 0.9951463095707731,
+        "lower": 0.9100174477679467,
+        "upper": 1.0632498824477035,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_controls": {
+      "cpu_seconds_per_gib": {
+        "median": 1.0037508512335076,
+        "lower": 0.9969945846007278,
+        "upper": 1.0097269774454025,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9961303150991421,
+        "lower": 0.9872046076381891,
+        "upper": 1.0090541045238444,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "memory_vs_original": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.2751322751322751,
+      "lower": 0.26923960487020443,
+      "upper": 0.2775943396226415,
+      "maximum_peak_rss_ratio": 0.2885366413967379,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "median_peak_rss_mib": {
+      "previous": 18.5078125,
+      "current": 18.28125
+    },
+    "integrity": {
+      "payloads_and_reopens": true,
+      "fingerprints_unchanged": true,
+      "original_baseline_unchanged": true,
+      "request_windows_verified": true,
+      "matching_original_torrent_hashes": true
+    }
+  },
+  "general_default_eligible": false
 }

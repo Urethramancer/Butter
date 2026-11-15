@@ -508,11 +508,17 @@ and counted hash work within each comparison:
 | 256 KiB | 4,643 → 4,672 | 14.22 → 14.19 |
 | 1 MiB | 4,663 → 4,916 | 14.09 → 13.36 |
 
+The completed 256 KiB primary comparison validates **100/100 trials**. CPU/GiB
+is **1.011 (0.984–1.045)**, throughput **0.980 (0.961–1.003)** and peak RSS
+**0.997 (0.982–1.008)**. Neither CPU nor throughput establishes an improvement;
+median throughput is 2.0% lower. Original-baseline memory passes, and both native
+control intervals include one. The candidate remains isolated; the 1 MiB timing
+is still pending. All samples and source/binary fingerprints are retained.
+
 These counts establish no CPU acceptance result. The predeclared final guard
 workloads, if needed, compare 64 directly with the established 32-block source.
 [Compact protocol, counts and validation](window-sixty-four-20261115.json) retain
 both outcomes; raw evidence is under ignored `.build/benchmarks/window-sixty-four-*`.
-No experiment beyond 64 is authorised by this calibration request.
 
 ## Profiling targets
 
