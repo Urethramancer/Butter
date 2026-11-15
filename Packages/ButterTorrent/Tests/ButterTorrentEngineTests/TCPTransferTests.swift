@@ -214,4 +214,28 @@ import ButterTorrentNetworking
 			#expect(seedStopped && downloadStopped)
 		}
 	}
+	@Test(arguments: [4, 8, 32], [0, 8, 16]) func requestWindowRespectsConfigurationAndRemoteQueue(_ remoteLimit: Int, _ configured: Int) async throws {
+		let fixture = try TransferFixture(lengths: [524288, 0, 0, 0])
+		do {
+			var configuration = plainTransferConfiguration()
+			if configured != 0 { configuration.pipeline = configured }
+			let expected = min(configuration.pipeline, remoteLimit)
+			let down = try await fixture.transfer("window-download", configuration: configuration)
+			var reserved = Data(repeating: 0, count: 8); reserved[5] = 16
+			let peer = try await fixture.scripted(down, reserved: reserved)
+			try await peer.send(.extended(0, extensionDictionary(["m": extensionDictionary([:]), "reqq": .integer(Int64(remoteLimit))]).encoded()))
+			try await peer.seed(pieceCount: fixture.stores[0].layout.pieceCount)
+			let requests = try await peer.requests(expected)
+			#expect(Set(requests).count == expected)
+			#expect(requests.allSatisfy { $0.length == 16384 })
+			try await eventually { await down.snapshot().peers.first?.pendingRequests == expected }
+			for block in requests.prefix(2) { try await peer.reply(block, bytes: fixture.bytes) }
+			let replacements = try await peer.requests(2)
+			#expect(Set(replacements).isDisjoint(with: requests))
+			try await eventually { await down.snapshot().peers.first?.pendingRequests == expected }
+			try await down.shutdown()
+			#expect(await down.snapshot().peers.isEmpty)
+			await fixture.clean()
+		} catch { await fixture.clean(); throw error }
+	}
 }
