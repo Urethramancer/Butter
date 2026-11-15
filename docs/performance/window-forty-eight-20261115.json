@@ -1,0 +1,186 @@
+{
+  "candidate": "74938ad",
+  "benchmark_revision": "be45572",
+  "baseline": "50b3c87",
+  "status": "Corrected candidate passes package and sanitizer checks; both counts comparisons validate; acceptance timing pending",
+  "counts": {
+    "piece_256k": {
+      "baseline": "50b3c87",
+      "candidate": "74938ad08f7e42cf3d4412d6d24b33106127acba",
+      "window": {
+        "previous": 32,
+        "current": 48
+      },
+      "case": "many",
+      "format": "hybrid",
+      "piece_length": 262144,
+      "trials": 4,
+      "validated": 4,
+      "results_directory": ".build/benchmarks/window-forty-eight-counts-many-hybrid-20261115",
+      "diagnostics_only": true,
+      "sources": [
+        {
+          "source": "previous",
+          "window": 32,
+          "write_jobs": 4665,
+          "disk_jobs": 4696,
+          "blocks": 65536,
+          "mean_blocks_per_dispatch": 14.048445873526259,
+          "reads": 4184,
+          "wire_bytes": 1074594138,
+          "descriptor_opens": 37764,
+          "bytes_hashed": 1073741824,
+          "bytes_written": 1074594549
+        },
+        {
+          "source": "current",
+          "window": 48,
+          "write_jobs": 4699,
+          "disk_jobs": 4734,
+          "blocks": 65536,
+          "mean_blocks_per_dispatch": 13.94679719089168,
+          "reads": 4225,
+          "wire_bytes": 1074594138,
+          "descriptor_opens": 38167,
+          "bytes_hashed": 1073741824,
+          "bytes_written": 1074594406
+        }
+      ],
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true,
+        "matching_original_torrent_hashes": true
+      }
+    },
+    "piece_1m": {
+      "baseline": "50b3c87",
+      "candidate": "74938ad08f7e42cf3d4412d6d24b33106127acba",
+      "window": {
+        "previous": 32,
+        "current": 48
+      },
+      "case": "many",
+      "format": "hybrid",
+      "piece_length": 1048576,
+      "trials": 4,
+      "validated": 4,
+      "results_directory": ".build/benchmarks/window-forty-eight-counts-many-hybrid-1mib-20261115",
+      "diagnostics_only": true,
+      "sources": [
+        {
+          "source": "previous",
+          "window": 32,
+          "write_jobs": 4914,
+          "disk_jobs": 4925,
+          "blocks": 65536,
+          "mean_blocks_per_dispatch": 13.336589336589336,
+          "reads": 4461,
+          "wire_bytes": 1074594138,
+          "descriptor_opens": 33457,
+          "bytes_hashed": 1073741824,
+          "bytes_written": 1074407897
+        },
+        {
+          "source": "current",
+          "window": 48,
+          "write_jobs": 4765,
+          "disk_jobs": 4776,
+          "blocks": 65536,
+          "mean_blocks_per_dispatch": 13.753620146904511,
+          "reads": 4295,
+          "wire_bytes": 1074594138,
+          "descriptor_opens": 32336,
+          "bytes_hashed": 1073741824,
+          "bytes_written": 1074407597
+        }
+      ],
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true,
+        "matching_original_torrent_hashes": false
+      }
+    }
+  },
+  "validation": {
+    "full": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 102 tests in 17 suites passed after 3.359 seconds.",
+        "✔ Test run with 102 tests in 23 suites passed after 7.863 seconds.",
+        "✔ Test run with 24 tests in 6 suites passed after 0.029 seconds.",
+        "✔ Test run with 203 tests in 36 suites passed after 63.372 seconds."
+      ]
+    },
+    "asan": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 57 tests in 6 suites passed after 39.248 seconds."
+      ]
+    },
+    "tsan": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 57 tests in 6 suites passed after 68.825 seconds."
+      ]
+    }
+  },
+  "protocol": {
+    "window": {
+      "previous": 32,
+      "current": 48
+    },
+    "baseline": "50b3c87",
+    "change": "Bounded download request window; explicit remote request-queue clamp extended to 64, missing remote queue remains 32; dispatch remains 16 blocks/256 KiB",
+    "comparisons": [
+      {
+        "case": "many",
+        "format": "hybrid",
+        "piece_length": 262144,
+        "source_pairs": 24
+      },
+      {
+        "case": "many",
+        "format": "hybrid",
+        "piece_length": 1048576,
+        "source_pairs": 12
+      }
+    ],
+    "counts": "Separate four-trial counts diagnostic per piece size; excluded from CPU acceptance",
+    "gain_gate": "Upper paired 95% CPU/GiB ratio below one in either predeclared piece size justifies trying 64. Report both outcomes; never select or extend samples after results. Any lower-throughput CPU-saving candidate remains isolated for user decision; any regression is reported before adoption.",
+    "guards": [
+      {
+        "case": "concurrent",
+        "format": "v2",
+        "source_pairs": 12
+      },
+      {
+        "case": "single",
+        "format": "v1",
+        "source_pairs": 6
+      },
+      {
+        "case": "concurrent",
+        "format": "hybrid",
+        "source_pairs": 6
+      }
+    ],
+    "guard_trigger": "Run guards for the final larger-window candidate with an established gain; keep intermediate candidates isolated until final selection",
+    "memory": "Default 256-KiB fixture: compare against matching complete original 264-trial/18-case baseline. New 1-MiB fixture: report matched previous/current memory only; do not infer an original-baseline memory pass.",
+    "integrity": "Fresh Release binaries; same current driver for both sources; strict reopens and independent SHA256 payload checks; source/native binary fingerprints unchanged; every sample preserved",
+    "host": "User-authorised contended runs, record host load; no owned builds/tests beside timing; no quiet-host release claim",
+    "stop": "Do not run 64 if 48 does not pass gain gate",
+    "candidate": "74938ad08f7e42cf3d4412d6d24b33106127acba",
+    "benchmark_revision": "be45572"
+  },
+  "preflight": {
+    "reason": "Initial 48-block candidate exceeded the existing 32-message request batch limit; split requests without increasing that bound",
+    "diagnostics": "Counts controller terminated after two previous-source trials, preserving all raw results under window-forty-eight-counts-many-hybrid-20261115-preflight-batch-limit",
+    "timing": "No 48-block acceptance timing started",
+    "other_failures": "32-MiB transfer cases hit six-second test deadlines alongside parallel builds/tests; unchanged 32-block serial LargePieceTests subsequently passed all cases"
+  },
+  "qualification": "User-authorised contended runs; counts excluded from CPU acceptance; no 64-block comparison unless 48 establishes a CPU gain in a predeclared piece size"
+}

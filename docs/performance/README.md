@@ -388,8 +388,8 @@ absolute memory medians and validation status. Raw evidence remains under ignore
 ## Thirty-two-block request-window candidate
 
 Candidate `50b3c87` raises the default from sixteen to thirty-two blocks. It remains
-isolated on `experiment/download-window-thirty-two` while guard workloads and native
-validation are pending. Dispatches remain capped at sixteen blocks/256 KiB; peer
+isolated on `experiment/download-window-thirty-two` while the additional piece-size
+comparison and final native validation are pending. Dispatches remain capped at sixteen blocks/256 KiB; peer
 queue limits, hashing, filesystem checks and all other hard limits are unchanged.
 
 Against `6e67dfc`, the fixed 24-pair many-file hybrid comparison validates **100/100
@@ -424,6 +424,41 @@ focused tests under each sanitizer. [Compact results](window-thirty-two-20261115
 retain the protocol and validation; ignored `.build/benchmarks/window-thirty-two-*`
 retain the raw evidence. The user has additionally requested 48 versus 32, then
 64 versus 48 only if 48 establishes a gain, with a 1 MiB piece-size comparison.
+
+## Larger-window piece-size calibration
+
+The user requested 48 versus 32, then 64 versus 48 only if 48 establishes a CPU
+gain. Candidate `74938ad` allows explicit pipelines up to 64 and honours explicit
+remote queues up to that ceiling, retaining the 32-request fallback when `reqq` is
+absent. Larger windows are sent as wire batches of at most 32 requests; the writer's
+existing batch, output-byte/message, upload and payload-dispatch limits are retained.
+New tests cover lower remote queues and piece sizes from 16 KiB to 1 MiB. The
+corrected candidate passes 431 package tests and 57 focused tests under each sanitizer.
+
+Separate four-trial diagnostic comparisons validate for both piece sizes:
+
+| Piece size | Disk jobs/GiB, 32 → 48 | Descriptor opens, 32 → 48 |
+| --- | ---: | ---: |
+| 256 KiB | 4,696 → 4,734 | 37,764 → 38,167 |
+| 1 MiB | 4,925 → 4,776 | 33,457 → 32,336 |
+
+Wire bytes and counted hash work are identical within each comparison. These are
+counts, not CPU acceptance evidence. Timing is predeclared at 24 source pairs for
+256 KiB pieces and twelve for 1 MiB; all outcomes will be retained. A CPU gain in
+either size justifies trying 64; lower-throughput candidates remain isolated for
+user decision. The final larger-window candidate also requires the original guard
+workloads and native validation before adoption.
+
+`BUTTER_BENCHMARK_PIECE_LENGTH=1048576` selects the additional fixture, records its
+piece length and changes torrent metadata while retaining the same payload hashes.
+The 1 MiB fixture uses a fresh matched memory comparison; no original-baseline memory
+pass is inferred from the original 256 KiB fixture. [Compact results and protocol](window-forty-eight-20261115.json)
+retain both diagnostics and the corrected preflight history; raw evidence is under
+ignored `.build/benchmarks/window-forty-eight-*`. The initial diagnostic was stopped
+after the larger-window tests exposed the writer's 32-request batch limit; its two
+completed previous-source trials and incomplete current-source transfer are preserved.
+Parallel preflight also hit large-piece test deadlines; the unchanged 32-block cases
+and corrected full 48-block suite subsequently pass serially without deadline changes.
 
 ## Profiling targets
 
