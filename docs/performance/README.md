@@ -456,12 +456,28 @@ either size justifies trying 64; lower-throughput candidates remain isolated for
 user decision. The final larger-window candidate also requires the original guard
 workloads and native validation before adoption.
 
-The completed 256 KiB primary timing validates **100/100 trials**. CPU/GiB ratio
-is **1.006 (0.994–1.019)**, throughput **0.997 (0.982–1.005)** and peak RSS
-**1.006 (0.997–1.013)**. This establishes no CPU or throughput improvement; memory
-passes against the matching original baseline and both native-control intervals
-include one. The predeclared 1 MiB timing remains pending. No samples were repeated,
-discarded or added.
+Both timings validate **152/152 trials** in total. Paired candidate/previous ratios
+with 95% bootstrap intervals:
+
+| Piece size | CPU/GiB | Verified throughput | Peak RSS |
+| --- | ---: | ---: | ---: |
+| 256 KiB, 24 pairs | 1.006 (0.994–1.019) | 0.997 (0.982–1.005) | 1.006 (0.997–1.013) |
+| 1 MiB, twelve pairs | 0.980 (0.975–0.987) | 1.019 (1.006–1.031) | 1.006 (1.001–1.015) |
+
+The 1 MiB fixture establishes a 2.0% CPU reduction and 1.9% throughput increase,
+with median RSS 16.07 → 16.15 MiB. Its matched previous/current memory check passes;
+no original-baseline memory acceptance is inferred for this new fixture. The 256 KiB
+fixture establishes no improvement, passes original-baseline memory, and has a lower
+throughput median. Both native-control intervals include one in both sizes. No
+samples were repeated, discarded or added. Compiler/test and application activity
+was recorded under the authorised contended-run policy; no quiet-host claim applies.
+
+The CPU gain passes the user-requested gate for the isolated 64-versus-48 experiment,
+which will use the same fixed pair counts at both piece sizes. Forty-eight remains
+isolated; its lower 256 KiB throughput median is not automatically accepted. Guards
+are deferred to the final larger-window candidate as predeclared. If 64 is eligible,
+its final guard workloads will compare directly against the established 32-block
+source, avoiding an inference through the intermediate 48-block source.
 
 `BUTTER_BENCHMARK_PIECE_LENGTH=1048576` selects the additional fixture, records its
 piece length and changes torrent metadata while retaining the same payload hashes.
