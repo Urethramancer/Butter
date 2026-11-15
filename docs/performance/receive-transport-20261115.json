@@ -1,0 +1,126 @@
+{
+  "scope": "One profiling transfer and one separate counts transfer per source and engine; 1 GiB many-file hybrid downloads; no retries or acceptance inference",
+  "profile": {
+    "validated": 4,
+    "fingerprints_unchanged": true,
+    "sources": {
+      "baseline": {
+        "revision": "5bdb5d2",
+        "running_samples": 5003,
+        "purposes": {
+          "download write jobs": 32.040776,
+          "stored-byte authentication": 30.541675,
+          "peer wire and transport": 24.825105,
+          "other runtime or unresolved purpose": 8.235059,
+          "piece and request selection": 2.498501,
+          "checkpoints and durability": 1.599041,
+          "connection deadlines": 0.239856,
+          "snapshot integrity and presentation": 0.019988
+        }
+      },
+      "pump": {
+        "revision": "3e5bf25",
+        "running_samples": 5844,
+        "purposes": {
+          "peer wire and transport": 30.253251,
+          "stored-byte authentication": 27.857632,
+          "download write jobs": 27.036277,
+          "other runtime or unresolved purpose": 10.763176,
+          "piece and request selection": 2.344285,
+          "checkpoints and durability": 1.368925,
+          "connection deadlines": 0.359343,
+          "snapshot integrity and presentation": 0.017112
+        }
+      }
+    }
+  },
+  "counts": {
+    "validated": 4,
+    "fingerprints_unchanged": true,
+    "sources": {
+      "baseline": {
+        "revision": "2a752db",
+        "counters": {
+          "tcp.receivedBytes": 1074594138,
+          "tcp.received.power2.17": 2244,
+          "tcp.received.power2.6": 2,
+          "tcp.received.power2.16": 722,
+          "tcp.received.power2.18": 6131,
+          "tcp.received.power2.4": 175,
+          "tcp.requested.power2.18": 9516,
+          "tcp.received.power2.0": 1,
+          "tcp.received.power2.14": 90,
+          "tcp.pieceHeaderShape.largeAllowance": 175,
+          "tcp.small.exact.0": 1,
+          "tcp.received.power2.15": 150,
+          "tcp.waiterSuspended": 23324,
+          "tcp.deadlineTimers": 1,
+          "tcp.pieceHeaderShape": 175,
+          "tcp.waiterImmediate": 1,
+          "tcp.deadlineClockReads": 23326,
+          "tcp.small.largeAllowance": 176,
+          "tcp.complete": 1,
+          "tcp.callbacks": 9516,
+          "tcp.deadlineInsertions": 23325,
+          "tcp.received.power2.9": 1,
+          "tcp.small.exact.13": 175,
+          "tcp.readOperations": 9516
+        }
+      },
+      "pump": {
+        "revision": "e7066fc",
+        "counters": {
+          "tcp.received.power2.17": 5431,
+          "tcp.received.power2.7": 42,
+          "tcp.received.power2.0": 1,
+          "tcp.complete": 1,
+          "tcp.requested.power2.18": 24842,
+          "tcp.deadlineInsertions": 43812,
+          "tcp.received.power2.10": 59,
+          "tcp.received.power2.8": 52,
+          "tcp.received.power2.6": 60,
+          "tcp.readOperations": 29660,
+          "tcp.failed": 1,
+          "tcp.deadlineClockReads": 43813,
+          "tcp.filledAllowance": 6,
+          "tcp.callbacks": 29660,
+          "tcp.waiterImmediate": 4,
+          "tcp.receivedBytes": 1074594138,
+          "tcp.waiterSuspended": 43808,
+          "tcp.received.power2.14": 4342,
+          "tcp.received.power2.4": 11006,
+          "tcp.deadlineTimers": 1,
+          "tcp.small.exact.13": 11006,
+          "tcp.received.power2.18": 1926,
+          "tcp.small.largeAllowance": 11007,
+          "tcp.received.power2.15": 1673,
+          "tcp.pieceHeaderShape.largeAllowance": 11006,
+          "tcp.received.power2.16": 4875,
+          "tcp.pieceHeaderShape": 11006,
+          "tcp.small.exact.0": 1,
+          "tcp.received.power2.9": 193,
+          "tcp.requested.power2.17": 4818
+        }
+      }
+    }
+  },
+  "instrumentation_branches": {
+    "baseline": "experiment/tcp-receive-diagnostics",
+    "pump": "experiment/tcp-receive-pump-diagnostics"
+  },
+  "instrumentation_tests": {
+    "disabled": 12,
+    "enabled": 12,
+    "thread_sanitizer": 12
+  },
+  "findings": [
+    "Tiny receives match complete 13-byte piece-header framing despite at least 64 KiB of read allowance",
+    "Each source starts one shared deadline timer; per-read timer creation is ruled out for these transfers",
+    "The pump has substantially more network receives and waiter suspensions",
+    "These diagnostics do not establish timing acceptance or a universal bound on deadline cost"
+  ],
+  "results_directories": [
+    ".build/benchmarks/receive-transport-profile-20261115",
+    ".build/benchmarks/receive-header-counts-20261115"
+  ]
+}

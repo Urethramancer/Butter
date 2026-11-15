@@ -251,6 +251,40 @@ the tested implementation.
 [Compact results](receive-aggregation-20261115.json) retain intervals and qualifications.
 Raw evidence remains under ignored `.build/benchmarks/receive-aggregation-*`.
 
+## Receive fragmentation diagnostics
+
+Separate running-thread profiles and counts comparisons validate **8/8 diagnostic
+transfers**, with independent SHA256 checks, strict checkpoint reopening and unchanged
+fingerprints. Each source/engine has one 1 GiB many-file hybrid transfer per diagnostic.
+The instrumented baseline and pump use matching counters.
+
+| Counts-only measurement | Baseline | Persistent pump |
+| --- | ---: | ---: |
+| TCP receive calls | 9,516 | 29,660 |
+| Exact 13-byte piece-header shapes | 175 | 11,006 |
+| Shared deadline timers started | 1 | 1 |
+| Deadline registrations, including writes | 23,325 | 43,812 |
+| Waiter suspensions, including writes | 23,324 | 43,808 |
+
+Every matched header-only receive has at least 64 KiB of read allowance. Each source
+receives the same 1,074,594,138 wire bytes. This supports early receives exposing
+headers separately from payload. These tiny reads are not forced by 13-byte read
+allowances; a larger raw-buffer cap has no established benefit here. There is no
+timer task per read in these transfers.
+
+The profiles retain 5,003 baseline and 5,844 pump running samples. Directly attributed
+connection-deadline ancestry accounts for 0.24%/0.36%; wire/transport ancestry accounts
+for 24.83%/30.25%. These are sampled ancestry weights, not measured CPU durations or
+savings. Inlining and unresolved runtime work prevent treating the deadline share as
+an upper bound. The counters and profiles are separate intrusive diagnostics, with
+no timing acceptance inference.
+
+Instrumentation remains isolated on `experiment/tcp-receive-diagnostics` and
+`experiment/tcp-receive-pump-diagnostics`; its 12 focused tests pass with diagnostics
+off, on and under ThreadSanitizer. [Compact results](receive-transport-20261115.json)
+retain source identities and measurements. Raw evidence remains under ignored
+`.build/benchmarks/receive-{transport-profile,header-counts}-20261115`.
+
 ## Profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers
