@@ -2,7 +2,7 @@
   "candidate": "74938ad",
   "benchmark_revision": "be45572",
   "baseline": "50b3c87",
-  "status": "All 152 fixed comparisons validate: 1 MiB CPU gain established, 256 KiB flat; 64-block experiment triggered; candidate remains isolated",
+  "status": "All 152 fixed comparisons validate: CPU gain established only with 1 MiB pieces; retain isolated because the 256 KiB throughput median is lower; subsequent 64-block calibration adds no established gain",
   "counts": {
     "piece_256k": {
       "baseline": "50b3c87",
@@ -335,7 +335,7 @@
   "trials": 152,
   "gain_gate_passed": true,
   "guards": {
-    "status": "Deferred to the final larger-window candidate as predeclared"
+    "status": "Not run: candidate remains isolated because the 256 KiB throughput median is lower; 32 remains the general default"
   },
   "retention": "Keep isolated: the 256 KiB throughput median is lower, although its interval includes one. Do not automatically adopt a throughput trade-off."
 }

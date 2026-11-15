@@ -130,7 +130,7 @@
       ]
     },
     "native_preflight": {
-      "status": "Initial preflight hit six-second large-piece deadlines during parallel builds/tests; unchanged LargePieceTests subsequently pass serially; complete final native sequence pending",
+      "status": "Initial preflight hit six-second large-piece deadlines during parallel builds/tests; unchanged cases and the complete final native sequence subsequently pass serially without deadline changes",
       "preserved_failure": ".build/benchmarks/window-thirty-two-20261115/native-preflight-load-failure.log",
       "serial_summary": [
         "✔ Test run with 2 tests in 1 suite passed after 18.015 seconds."

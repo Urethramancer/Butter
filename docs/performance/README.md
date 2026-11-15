@@ -451,8 +451,8 @@ benefit from 64. Both larger defaults remain isolated.
 
 ## Larger-window piece-size calibration
 
-The user requested 48 versus 32, then 64 versus 48 only if 48 establishes a CPU
-gain. Candidate `74938ad` allows explicit pipelines up to 64 and honours explicit
+The fixed calibration compares 48 versus 32, then 64 versus 48 after 48 establishes
+a CPU gain. Candidate `74938ad` allows explicit pipelines up to 64 and honours explicit
 remote queues up to that ceiling, retaining the 32-request fallback when `reqq` is
 absent. Larger windows are sent as wire batches of at most 32 requests; the writer's
 existing batch, output-byte/message, upload and payload-dispatch limits are retained.
@@ -467,8 +467,8 @@ Separate four-trial diagnostic comparisons validate for both piece sizes:
 | 1 MiB | 4,925 → 4,776 | 33,457 → 32,336 |
 
 Wire bytes and counted hash work are identical within each comparison. These are
-counts, not CPU acceptance evidence. Timing is predeclared at 24 source pairs for
-256 KiB pieces and twelve for 1 MiB; all outcomes will be retained. A CPU gain in
+counts, not CPU acceptance evidence. Timing uses 24 fixed source pairs for
+256 KiB pieces and twelve for 1 MiB; all outcomes are retained. A CPU gain in
 either size justifies trying 64; lower-throughput candidates remain isolated for
 user decision. The final larger-window candidate also requires the original guard
 workloads and native validation before adoption.
@@ -489,12 +489,12 @@ throughput median. Both native-control intervals include one in both sizes. No
 samples were repeated, discarded or added. Compiler/test and application activity
 was recorded under the authorised contended-run policy; no quiet-host claim applies.
 
-The CPU gain passes the user-requested gate for the isolated 64-versus-48 experiment,
-which will use the same fixed pair counts at both piece sizes. Forty-eight remains
-isolated; its lower 256 KiB throughput median is not automatically accepted. Guards
-are deferred to the final larger-window candidate as predeclared. If 64 is eligible,
-its final guard workloads will compare directly against the established 32-block
-source, avoiding an inference through the intermediate 48-block source.
+The CPU gain triggers the isolated 64-versus-48 experiment below, using the same
+fixed pair counts at both piece sizes. Forty-eight remains
+isolated; its lower 256 KiB throughput median is not automatically accepted. Final guards
+are not run for this isolated candidate because the common-case throughput median
+is lower; 32 remains the general default. The conditional 64 adoption study below
+requires a direct comparison against 32 before any further default increase.
 
 `BUTTER_BENCHMARK_PIECE_LENGTH=1048576` selects the additional fixture, records its
 piece length and changes torrent metadata while retaining the same payload hashes.
@@ -513,7 +513,7 @@ After 48 establishes a CPU gain with 1 MiB pieces, candidate `02cbc31` raises it
 default to 64. The measured production change is one constant against `be45572`;
 configuration/remote queue ceilings of 64, 32-message wire batches and other limits
 are inherited. It passes 431 package tests and 57 focused tests under each sanitizer.
-The candidate remains isolated during the fixed 24-pair 256 KiB and twelve-pair
+The candidate remains isolated after the fixed 24-pair 256 KiB and twelve-pair
 1 MiB comparisons. Any CPU-saving candidate with a lower throughput median remains
 isolated; no throughput trade-off is automatically adopted.
 
