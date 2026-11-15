@@ -323,6 +323,44 @@ DHT, PEX and web-seed comparisons. The retained transport/deadline subset passes
 intervals, qualifications and conditional guard statuses. Raw evidence remains under
 ignored `.build/benchmarks/tcp-direct-read-*`.
 
+## Sixteen-block request window
+
+Candidate `db0cd52` changes the default download request window from eight to sixteen
+blocks. The existing receive coordinator, sixteen-block/256 KiB dispatch limit,
+disk limits, hashing and fresh filesystem checks are unchanged. The candidate remains
+isolated on `experiment/download-window-sixteen` pending guard and native checks.
+
+The primary comparison against `1363710` validates **100/100 many-file hybrid trials**:
+four warm-ups and 24 predeclared balanced source pairs, counters disabled, independent
+SHA256 checks, strict checkpoint reopening and unchanged fingerprints. No samples
+were repeated or discarded. Candidate/baseline paired 95% bootstrap intervals:
+
+| Measurement | Median ratio | 95% interval |
+| --- | ---: | ---: |
+| CPU/GiB | 0.789 | 0.784–0.801 |
+| Verified throughput | 1.222 | 1.206–1.237 |
+| Peak RSS | 1.039 | 1.025–1.055 |
+| Counterpart CPU/GiB | 0.782 | 0.773–0.823 |
+
+This establishes a 21.1% CPU reduction and 22.2% throughput increase for this workload
+under the authorised contended-run policy. Median peak RSS is 17.48 MiB/18.14 MiB
+for eight/sixteen blocks. Memory passes against the original baseline: ratio 0.273
+(95% interval 0.267–0.283), maximum ratio 0.294. Native-control CPU and throughput
+intervals include one. Etemmu, compiler/test and indexing activity was observed;
+these results do not qualify a quiet-host release.
+
+A separate four-trial counts comparison reduces write jobs/GiB from 9,392 to 4,980,
+total disk jobs from 9,405 to 5,505, directory/file opens from 57,164 to 42,103 and
+positive read cycles from 9,159 to 4,509. Mean blocks/dispatch rise from 6.98 to 13.16,
+with the same wire bytes and counted hash work. These are diagnostic counts,
+excluded from timing acceptance.
+
+The candidate passes 429 package tests and 55 focused tests under each sanitizer.
+The predeclared guards are twelve concurrent-v2 source pairs, then six pairs each
+for single-file v1 and concurrent hybrid. [Compact measurements](window-sixteen-20261115.json)
+retain completed outcomes and validation status. Raw evidence remains under ignored
+`.build/benchmarks/window-sixteen-*`.
+
 ## Profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers

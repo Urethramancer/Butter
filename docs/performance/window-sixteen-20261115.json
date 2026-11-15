@@ -1,0 +1,169 @@
+{
+  "candidate": "db0cd52",
+  "baseline": "1363710",
+  "status": "Primary CPU criterion passed; guard and native checks in progress; implementation remains isolated",
+  "primary": {
+    "candidate": "db0cd52",
+    "baseline": "1363710",
+    "window": {
+      "previous": 8,
+      "current": 16
+    },
+    "case": "many",
+    "format": "hybrid",
+    "pairs": 24,
+    "trials": 100,
+    "validated": 100,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 0.789018125051418,
+        "lower": 0.7839655923742708,
+        "upper": 0.8013157175007033,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.2224678289902382,
+        "lower": 1.2055208190903113,
+        "upper": 1.2365569149896813,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 1.0394659974492944,
+        "lower": 1.0245901639344261,
+        "upper": 1.054806828391734,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 0.7816718892852771,
+        "lower": 0.7727380957758258,
+        "upper": 0.8227079183318351,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_controls": {
+      "cpu_seconds_per_gib": {
+        "median": 0.9964726288857144,
+        "lower": 0.9886878205747719,
+        "upper": 1.0047330075692864,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9979837270588526,
+        "lower": 0.9914409394355528,
+        "upper": 1.0036637062337153,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "memory_vs_original": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.273015873015873,
+      "lower": 0.26654929577464787,
+      "upper": 0.2829727843684578,
+      "maximum_peak_rss_ratio": 0.293820353779003,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "integrity": {
+      "payloads_and_reopens": true,
+      "fingerprints_unchanged": true,
+      "original_baseline_unchanged": true,
+      "request_windows_verified": true
+    },
+    "results_directory": ".build/benchmarks/window-sixteen-many-hybrid-24pairs-20261115"
+  },
+  "counts": {
+    "trials": 4,
+    "verified": 4,
+    "diagnostics_only": true,
+    "fingerprints_unchanged": true,
+    "sources": [
+      {
+        "source": "previous",
+        "window": 8,
+        "write_jobs": 9392,
+        "disk_jobs": 9405,
+        "blocks": 65536,
+        "mean_blocks_per_dispatch": 6.977853492333901,
+        "reads": 9159,
+        "wire_bytes": 1074594138,
+        "descriptor_opens": 57164,
+        "bytes_hashed": 1073741824,
+        "bytes_written": 1074592552
+      },
+      {
+        "source": "current",
+        "window": 16,
+        "write_jobs": 4980,
+        "disk_jobs": 5505,
+        "blocks": 65536,
+        "mean_blocks_per_dispatch": 13.15983935742972,
+        "reads": 4509,
+        "wire_bytes": 1074594138,
+        "descriptor_opens": 42103,
+        "bytes_hashed": 1073741824,
+        "bytes_written": 1074594603
+      }
+    ]
+  },
+  "validation": {
+    "package": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 102 tests in 17 suites passed after 3.482 seconds.",
+        "✔ Test run with 102 tests in 23 suites passed after 7.951 seconds.",
+        "✔ Test run with 24 tests in 6 suites passed after 0.031 seconds.",
+        "✔ Test run with 201 tests in 36 suites passed after 37.631 seconds."
+      ]
+    },
+    "address": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 55 tests in 6 suites passed after 18.460 seconds."
+      ]
+    },
+    "thread": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 55 tests in 6 suites passed after 31.114 seconds."
+      ]
+    }
+  },
+  "protocol": {
+    "baseline": "13637108b1eabac41153390bc60d0a4b8ec64d3d",
+    "change": "Default download request window: 8 to 16; all other production limits and integrity checks unchanged",
+    "rationale": "User permits modest additional RAM for lower CPU; allow existing read/write batching to use more queued payload without read-ahead",
+    "diagnostic": "Separate four-trial counts comparison; excluded from timing acceptance",
+    "primary": {
+      "case": "many",
+      "format": "hybrid",
+      "source_pairs": 24
+    },
+    "conditional_guards": [
+      {
+        "case": "concurrent",
+        "format": "v2",
+        "source_pairs": 12
+      },
+      {
+        "case": "single",
+        "format": "v1",
+        "source_pairs": 6
+      },
+      {
+        "case": "concurrent",
+        "format": "hybrid",
+        "source_pairs": 6
+      }
+    ],
+    "trigger": "Primary upper paired 95% CPU/GiB interval below one",
+    "memory_baseline": ".build/benchmarks/baseline-seeding-fixed",
+    "acceptance": "Memory budget must pass against matching complete original baseline. Retain every sample. No repetitions or result-dependent extensions. Keep any lower-throughput CPU-saving candidate isolated for user decision.",
+    "host": "Continue under the user-authorised contended-comparison policy; record load and qualify results",
+    "candidate": "db0cd52"
+  },
+  "host_conditions": {
+    "authorised_contended": true,
+    "quiet_host_release_qualification": false,
+    "observations": "Etemmu, compiler/test and indexing activity observed; no assistant builds or tests during traffic; snapshots are not average host-load measurements"
+  },
+  "archive_branch": "experiment/download-window-sixteen"
+}
