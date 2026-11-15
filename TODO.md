@@ -12,7 +12,8 @@
 - Investigate guarded path opens/closes and peer transport overhead while
   preserving fresh filesystem observations and production resource limits.
 - Repeat release performance validation without competing builds and heavy
-  background work; the full fused-engine matrix ran on a contended host.
+  background work; include isolated fairness-batch candidate `99afd53` in a
+  separately predeclared comparison. Current runs remain contended-host evidence.
 - Locate the remaining verification/worker delay in descriptor-cache experiments;
   direct baseline timing shows checkpoint execution is a small target.
 - Resolve grouped-upload/request-burst uncertainty with matched source comparisons.

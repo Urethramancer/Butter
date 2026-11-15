@@ -1,7 +1,7 @@
 {
   "candidate": "99afd53",
   "baseline": "3d284a6",
-  "status": "Isolated candidate; package, sanitizer and counts checks pass; primary CPU comparison running",
+  "status": "Isolated: primary throughput gain established, CPU interval narrowly misses the predeclared gate; production remains unchanged",
   "counts": {
     "piece_256k": {
       "baseline": "3d284a6",
@@ -148,6 +148,14 @@
       "observed_writing_blocks": 3,
       "expected_writing_blocks": 6,
       "evidence": ".build/benchmarks/fairness-batch-20261115/regression-baseline-failure.log"
+    },
+    "retained_main": {
+      "production_matches_unchanged_baseline": true,
+      "package_matches": true,
+      "retained_tests": "Wire ordering and short read-end flush at frame 128; no batch-geometry requirement",
+      "summaries": [
+        "✔ Test run with 32 tests in 3 suites passed after 11.942 seconds."
+      ]
     }
   },
   "protocol": {
@@ -197,5 +205,84 @@
     },
     "candidate": "99afd53"
   },
-  "qualification": "User-authorised contended source comparison; no owned builds/tests during acceptance timing; diagnostic counts excluded from acceptance; all samples preserved"
+  "qualification": "User-authorised contended source comparison; no owned builds/tests during acceptance timing; diagnostic counts excluded from acceptance; all samples preserved",
+  "primary": {
+    "baseline": "3d284a6",
+    "case": "many",
+    "format": "hybrid",
+    "piece_length": 262144,
+    "request_window": 32,
+    "trials": 100,
+    "validated": 100,
+    "results_directory": ".build/benchmarks/fairness-batch-many-hybrid-24pairs-20261115",
+    "pairs": 24,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 0.97563691491239,
+        "lower": 0.9416884728317982,
+        "upper": 1.0016135792482022,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.0170136214988124,
+        "lower": 1.004313980052319,
+        "upper": 1.0679812990717197,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 1.0000067352414024,
+        "lower": 0.9948096885813149,
+        "upper": 1.0263388937664617,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 0.967714289760089,
+        "lower": 0.9384609502102301,
+        "upper": 1.0128558853628686,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_controls": {
+      "cpu_seconds_per_gib": {
+        "median": 1.0012497511715552,
+        "lower": 0.9881806743696671,
+        "upper": 1.0080032224660378,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.0002328300105592,
+        "lower": 0.9969110949501162,
+        "upper": 1.006912324648821,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "memory_vs_original": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.2738389182833627,
+      "lower": 0.26798833819241985,
+      "upper": 0.276,
+      "maximum_peak_rss_ratio": 0.2931311739030554,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "median_peak_rss_mib": {
+      "previous": 18.078125,
+      "current": 18.1953125
+    },
+    "integrity": {
+      "payloads_and_reopens": true,
+      "fingerprints_unchanged": true,
+      "original_baseline_unchanged": true,
+      "request_windows_verified": true,
+      "original_torrent_hashes_match": true
+    }
+  },
+  "trials": 100,
+  "cpu_gain_established": false,
+  "guards": {
+    "status": "Not run: primary upper CPU/GiB ratio 1.0016135792482022 is not below one; fixed run not repeated or extended"
+  },
+  "native": {
+    "status": "Not run: candidate remains isolated after the CPU gate fails; unchanged production source retains its previous complete native validation"
+  },
+  "retained_test_commit": "1fbb59c"
 }

@@ -553,7 +553,7 @@ adoption. Sixty-four supplies no established additional benefit in these fixture
 [Compact protocol, counts and validation](window-sixty-four-20261115.json) retain
 both outcomes; raw evidence is under ignored `.build/benchmarks/window-sixty-four-*`.
 
-## Retaining payload across fairness yields
+## Isolated fairness-batch experiment
 
 Candidate `99afd53`, isolated on `experiment/fairness-batch-retention`, retains the
 bounded pending payload across the existing 128-frame `Task.yield()`. It removes
@@ -580,18 +580,37 @@ Separate four-trial counts comparisons validate at both piece sizes:
 Both retain exactly 512 scheduler yields/GiB, with yield-triggered flushes 512 → 0
 and identical wire bytes and counted hash work. Disk jobs fall 4,627 → 4,298 and
 4,846 → 4,467 respectively. The increased read counts mean these diagnostics alone
-cannot establish a CPU saving. The fixed primary timing uses 24 many-file hybrid
-source pairs against `3d284a6`, with counters disabled. If its upper paired 95%
-CPU/GiB interval is below one, guards use twelve concurrent-v2 pairs, six each
-single-v1/concurrent-hybrid, and twelve many-hybrid pairs with 1 MiB pieces.
-Memory must pass against matching original fixtures; the additional 1 MiB fixture
-has a matched previous/current check without inferred original-baseline acceptance.
-Any lower-throughput CPU-saving candidate remains isolated for user decision.
+cannot establish a CPU saving.
 
-[Protocol, counts and validation](fairness-batch-20261115.json) retain the fixed
-criteria and baseline test failure. Raw evidence remains under ignored
-`.build/benchmarks/fairness-batch-*`. Native validation is pending; the general
-default remains the retained 32-block implementation while timing runs.
+The fixed 24-pair many-file hybrid comparison against `3d284a6` validates **100/100
+trials**, including four warm-ups, with counters disabled. Candidate/baseline ratios
+with paired 95% bootstrap intervals are:
+
+| Measurement | Ratio (95%) |
+| --- | ---: |
+| CPU/GiB | 0.976 (0.942–1.002) |
+| Verified throughput | 1.017 (1.004–1.068) |
+| Peak RSS | 1.000 (0.995–1.026) |
+
+Throughput establishes a 1.7% improvement. Median CPU is 2.4% lower, but its upper
+bound is **1.0016**, narrowly missing the predeclared requirement that it be below
+one. CPU improvement remains inconclusive. Median RSS is 18.08 → 18.20 MiB; the
+matching original-baseline memory budget passes. Both native-control CPU/throughput
+intervals include one. Every payload, strict reopen and source/binary fingerprint
+validates. Compiler, installer and application activity was recorded under the
+authorised contended-run policy; no quiet-host qualification is inferred.
+
+The candidate stays isolated on `experiment/fairness-batch-retention`. The fixed run
+is not extended or repeated. Conditional concurrent, single-file and 1 MiB timing
+guards are not run because the CPU gate fails; complete native validation is also
+not run for this unretained production change. Main keeps only independently useful
+wire-ordering and short read-end tests at frame 128, without imposing batch geometry.
+All 32 relevant tests pass there, and all production-source/package fingerprints
+match the unchanged 32-block baseline exactly. Test coverage is retained in `1fbb59c`.
+
+[Protocol, counts and validation](fairness-batch-20261115.json) retain every outcome
+and the baseline test failure. Raw evidence remains under ignored
+`.build/benchmarks/fairness-batch-*`.
 
 ## Profiling targets
 
