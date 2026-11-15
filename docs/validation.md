@@ -10,8 +10,14 @@ The retained write coalescer passes storage/engine tests, focused Address and
 Thread Sanitizer checks, 48 bidirectional native TCP fixtures and unsigned
 Debug/Release builds with linkage and licence checks. Its source comparison,
 500 Mbps comparison and focused cases independently validate bytes and reopen
-checkpoints. The current full matrix validates **264/264 trials**; all nine seeding
-cases meet performance targets, while all nine downloads miss the CPU target.
+checkpoints.
+
+Worker fusion passes 425 package tests, 98 focused tests under each sanitizer,
+native storage recovery/ENOSPC/read-only checks and 33 controller tests. Its source
+comparisons establish a concurrent-v2 gain. The latest full matrix validates
+**252/252 trials**: throughput passes 12/18 cases, CPU 5/18 and memory 18/18.
+Competing builds and other CPU load were observed; quiet-host release performance
+validation remains pending. All nine downloads still miss the CPU target.
 See [measurements and methodology](performance/README.md).
 
 Repair checks cover queued network writes, individual files/folders, source

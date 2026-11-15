@@ -3,12 +3,14 @@
 ## Performance
 
 - Reduce download CPU/GiB and improve single/many-file throughput against
-  libtorrent. The [current matrix](docs/performance/README.md) passes all nine
-  seeding cases; downloads miss the CPU target. Targets remain ≥90% throughput,
-  ≤1.25× CPU/GiB and peak RSS within 10% of the original Butter baseline.
+  libtorrent. Downloads miss the CPU target in the
+  [latest matrix](docs/performance/README.md), which ran under competing host load.
+  Targets remain ≥90% throughput, ≤1.25× CPU/GiB and peak RSS within 10% of the
+  original Butter baseline.
 - Investigate guarded path opens/closes and peer transport overhead while
   preserving fresh filesystem observations and production resource limits.
-- Rerun the full performance matrix with fused write/verification jobs before release.
+- Repeat release performance validation without competing builds and heavy
+  background work; the full fused-engine matrix ran on a contended host.
 - Investigate bounded receive aggregation that preserves batch size during disk
   work; single-prefetch read-ahead reduced batch size and increased CPU.
 - Locate the remaining verification/worker delay in descriptor-cache experiments;

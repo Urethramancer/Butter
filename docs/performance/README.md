@@ -1,52 +1,58 @@
 # Transfer performance
 
-The last complete matrix validates **264/264 trials**. All nine seeding cases meet
-the agreed targets. Downloads use **2.02–3.55× libtorrent's CPU/GiB**; single/many-file
-downloads also miss the throughput target.
+The latest full matrix validates **252/252 trials**. Five cases meet all targets;
+downloads use **2.01–3.52× libtorrent's CPU/GiB**. Competing builds and other CPU
+load were observed, so this is a **contended-host result**, not quiet-host release
+qualification. The earlier matrix and controlled source comparisons remain retained.
 
 ## Current matrix
 
-14 November 2026, engine revision `e1be93b`, before worker fusion. Values are Butter/libtorrent;
-speed is verified throughput, CPU is seconds/GiB through durable completion.
+15 November 2026, engine revision `450e229`, including worker fusion `047dcfc`.
+Values are Butter/libtorrent; speed is verified throughput, CPU is seconds/GiB
+through durable completion.
 Higher speed and lower CPU are better. Layouts are one file, 128 files or four
 concurrent transfers.
 
 | Layout | Format | Download speed | Download CPU/GiB | Seed speed | Seed CPU/GiB |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Single | v1 | 74% | 2.52× | 161% | 1.18× |
-| Single | v2 | 70% | 2.60× | 178% | 1.09× |
-| Single | Hybrid | 62% | 2.02× | 217% | 1.03× |
-| Many | v1 | 65% | 2.55× | 185% | 1.11× |
-| Many | v2 | 62% | 2.52× | 180% | 1.12× |
-| Many | Hybrid | 54% | 2.08× | 126% | 1.00× |
-| Concurrent | v1 | 142% | 3.54× | 180% | 1.16× |
-| Concurrent | v2 | 137% | 3.55× | 170% | 0.98× |
-| Concurrent | Hybrid | 141% | 2.48× | 146% | 1.09× |
+| Single | v1 | 47% | 3.02× | 151% | 1.39× |
+| Single | v2 | 49% | 2.92× | 145% | 1.54× |
+| Single | Hybrid | 40% | 2.49× | 114% | 1.40× |
+| Many | v1 | 52% | 2.91× | 159% | 1.63× |
+| Many | v2 | 53% | 2.77× | 176% | 1.10× |
+| Many | Hybrid | 55% | 2.01× | 124% | 1.00× |
+| Concurrent | v1 | 131% | 3.52× | 181% | 1.08× |
+| Concurrent | v2 | 123% | 3.51× | 188% | 1.07× |
+| Concurrent | Hybrid | 137% | 2.38× | 154% | 1.02× |
 
 Targets: ≥90% reference throughput, ≤1.25× CPU/GiB and peak RSS within 10% of the
-original Butter baseline. Throughput passes **12/18**, CPU **9/18**, memory **18/18**;
-the nine seeding cases pass all three targets.
+original Butter baseline. Throughput passes **12/18**, CPU **5/18**, memory **18/18**.
+Many-file v2/hybrid and all three concurrent seeding cases meet all targets.
+Single-file seeding and many-file v1 seeding miss the CPU target in this run.
 
 Each trial transfers 1 GiB over loopback TCP with production request windows.
-There are 36 warm-ups and 228 measurements: six balanced pairs per case, extended
-to twelve for single-file v1 seeding under the predefined inconclusive-result
-rule. Fresh processes/destinations, source and destination SHA256 checks, strict
-checkpoint reopening and durable shutdown apply throughout. Counters and profilers
-were disabled; no other builds or tests ran during timing.
+There are 36 warm-ups and 216 measurements: six balanced pairs per case. None
+triggers the predefined extension to twelve pairs. Fresh processes/destinations,
+source and destination SHA256 checks, strict checkpoint reopening and durable
+shutdown apply throughout. Counters and profilers
+were disabled. No assistant-initiated builds or tests ran during timed transfers;
+other compiler processes, Etemmu and indexing were observed on the host.
 
-Memory was recomputed against the complete original baseline (`40e4347`) used by
-the preceding full matrix after the launch selected an incomplete historical
-baseline. No transfer measurements changed or needed repeating. The initial
-summary, corrected summary and analysis are preserved under
-`.build/benchmarks/current-full-20261114`. Source, harness and reference-binary
-hashes stayed unchanged during the run. [Compact measurements](results.json)
-include all intervals, absolute medians and the baseline correction.
+Memory uses the complete original baseline (`40e4347`), checked before launch:
+264 accepted trials covering all 18 cases, with matching fixture hashes. Its
+trial/fixture hashes remain unchanged. Raw results, baseline proof, host-load
+observations and analysis are under ignored `.build/benchmarks/fused-full-20261115`.
+Tested source, harness and driver/reference-binary hashes stayed unchanged.
+[Compact measurements](matrix-20261115.json) retain intervals and absolute medians.
 
-Separate runs cannot establish a code regression. For example, many-file hybrid
-CPU/GiB falls from 5.89 to 5.04 seconds for Butter and 3.30 to 2.42 for libtorrent
-between the earlier focused run and this matrix. Butter's ratio worsens because
-the reference changes more; the native binary hashes match. Matched source
-comparisons below establish the retained optimisation's effect.
+Early observations show several compiler processes and Etemmu each using roughly
+one core, with indexing also active. Etemmu and indexing remain visible at the
+midpoint. These snapshots describe observed activity, not average load for the run.
+Other processes were left untouched. A quiet-host release check remains queued.
+The preceding `e1be93b` matrix validates 264/264 trials and passes all nine seeding
+cases; its measurements remain in [the earlier results](results.json). Differences
+between these separate runs cannot establish a fusion regression. Matched source
+comparisons below establish its retained effect for concurrent v2.
 
 ## Retained optimisations
 
@@ -71,8 +77,9 @@ No trials are repeated or discarded. Ratios are fused/baseline Butter with paire
 This establishes **0.95% lower CPU/GiB and 4.5% more throughput for concurrent v2**.
 The many-file result remains inconclusive. Native-control CPU and throughput
 intervals include one in both comparisons; counterpart CPU intervals also include
-one. These focused results do not replace the full matrix or establish the overall
-download targets. The full matrix must be rerun before release.
+one. These focused results do not establish the overall download targets. The
+subsequent full matrix above ran under competing host load; quiet-host release
+validation remains pending.
 
 A separate four-trial counts diagnostic removes all 4,096 standalone verification
 jobs/GiB: total disk jobs fall from 13,791 to 9,410, with the same 65,536 blocks and
