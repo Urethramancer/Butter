@@ -1,0 +1,182 @@
+{
+  "candidate": "e3b33b5",
+  "baseline": "3d4107d",
+  "status": "Isolated: package, sanitizer, boundary and diagnostic checks pass; primary CPU comparison running",
+  "counts": {
+    "piece_256k": {
+      "baseline": "3d4107d",
+      "case": "many",
+      "format": "hybrid",
+      "piece_length": 262144,
+      "request_window": 32,
+      "trials": 4,
+      "validated": 4,
+      "results_directory": ".build/benchmarks/decoder-reuse-counts-many-hybrid-20261115",
+      "diagnostics_only": true,
+      "sources": [
+        {
+          "source": "previous",
+          "write_jobs": 4631,
+          "disk_jobs": 4664,
+          "descriptor_opens": 37844,
+          "blocks": 65536,
+          "mean_blocks_per_dispatch": 14.151587130209458,
+          "reads": 4145,
+          "wire_bytes": 1074594138,
+          "bytes_hashed": 1073741824
+        },
+        {
+          "source": "current",
+          "write_jobs": 4646,
+          "disk_jobs": 4677,
+          "descriptor_opens": 37777,
+          "blocks": 65536,
+          "mean_blocks_per_dispatch": 14.105897546276367,
+          "reads": 4166,
+          "wire_bytes": 1074594138,
+          "bytes_hashed": 1073741824
+        }
+      ],
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true,
+        "original_torrent_hashes_match": true
+      }
+    },
+    "piece_1m": {
+      "baseline": "3d4107d",
+      "case": "many",
+      "format": "hybrid",
+      "piece_length": 1048576,
+      "request_window": 32,
+      "trials": 4,
+      "validated": 4,
+      "results_directory": ".build/benchmarks/decoder-reuse-counts-many-hybrid-1mib-20261115",
+      "diagnostics_only": true,
+      "sources": [
+        {
+          "source": "previous",
+          "write_jobs": 4991,
+          "disk_jobs": 5002,
+          "descriptor_opens": 33618,
+          "blocks": 65536,
+          "mean_blocks_per_dispatch": 13.130835503907033,
+          "reads": 4525,
+          "wire_bytes": 1074594138,
+          "bytes_hashed": 1073741824
+        },
+        {
+          "source": "current",
+          "write_jobs": 4899,
+          "disk_jobs": 4910,
+          "descriptor_opens": 33353,
+          "blocks": 65536,
+          "mean_blocks_per_dispatch": 13.377423964074302,
+          "reads": 4442,
+          "wire_bytes": 1074594138,
+          "bytes_hashed": 1073741824
+        }
+      ],
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true,
+        "original_torrent_hashes_match": false
+      }
+    }
+  },
+  "validation": {
+    "full": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 102 tests in 17 suites passed after 3.446 seconds.",
+        "✔ Test run with 102 tests in 23 suites passed after 7.747 seconds.",
+        "✔ Test run with 24 tests in 6 suites passed after 0.030 seconds.",
+        "✔ Test run with 206 tests in 36 suites passed after 60.373 seconds."
+      ]
+    },
+    "asan": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 82 tests in 9 suites passed after 33.533 seconds."
+      ]
+    },
+    "tsan": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 82 tests in 9 suites passed after 56.349 seconds."
+      ]
+    },
+    "overlapping_shared_storage": {
+      "debug": {
+        "passed": true,
+        "summaries": [
+          "✔ Test run with 1 test in 1 suite passed after 0.001 seconds."
+        ]
+      },
+      "asan": {
+        "passed": true,
+        "summaries": [
+          "✔ Test run with 1 test in 1 suite passed after 0.003 seconds."
+        ]
+      },
+      "tsan": {
+        "passed": true,
+        "summaries": [
+          "✔ Test run with 1 test in 1 suite passed after 0.006 seconds."
+        ]
+      }
+    }
+  },
+  "protocol": {
+    "baseline": "3d4107d",
+    "change": "Reuse decoder Data storage: defer compaction until bounded append space is exhausted, move the unread tail in unique storage, and reuse capacity after draining; preserve input/storage limits, owned payloads and decoder value semantics",
+    "rationale": "Reduce buffer rebuilding and copying without changing receive timing, request windows, dispatch bounds or integrity checks",
+    "diagnostic": "Separate four-trial counts comparisons for 256 KiB and 1 MiB pieces; excluded from timing acceptance",
+    "primary": {
+      "case": "many",
+      "format": "hybrid",
+      "source_pairs": 24
+    },
+    "conditional_guards": [
+      {
+        "case": "concurrent",
+        "format": "v2",
+        "source_pairs": 12
+      },
+      {
+        "case": "single",
+        "format": "v1",
+        "source_pairs": 6
+      },
+      {
+        "case": "concurrent",
+        "format": "hybrid",
+        "source_pairs": 6
+      }
+    ],
+    "trigger": "Primary upper paired 95% CPU/GiB interval below one",
+    "memory_baseline": ".build/benchmarks/baseline-seeding-fixed",
+    "acceptance": "Memory budget must pass against matching complete original baseline. Retain every sample. No repetitions or result-dependent extensions. Keep any lower-throughput CPU-saving candidate isolated for user decision.",
+    "host": "Continue under the user-authorised contended-comparison policy; record load and qualify results",
+    "candidate_branch": "experiment/decoder-buffer-reuse",
+    "window": {
+      "previous": 32,
+      "current": 32
+    },
+    "additional_piece_size_guard": {
+      "case": "many",
+      "format": "hybrid",
+      "piece_length": 1048576,
+      "source_pairs": 12,
+      "reason": "Predeclared piece-size guard after primary CPU gain, retaining all fixed samples",
+      "memory": "Matched previous/current check at 1 MiB; no original-baseline memory acceptance inferred",
+      "conditional": true
+    },
+    "candidate": "e3b33b588c9ea5dd171d7dda1a3c489596cac968"
+  },
+  "qualification": "User-authorised contended runs; diagnostic transfer-work counts do not measure allocator activity; no owned builds/tests during acceptance timing; all samples preserved"
+}

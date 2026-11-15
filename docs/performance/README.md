@@ -612,6 +612,35 @@ match the unchanged 32-block baseline exactly. Test coverage is retained in `1fb
 and the baseline test failure. Raw evidence remains under ignored
 `.build/benchmarks/fairness-batch-*`.
 
+## Decoder buffer-reuse candidate
+
+Candidate `e3b33b5`, isolated on `experiment/decoder-buffer-reuse`, defers decoder
+compaction until append space is exhausted. It moves the unread tail in unique
+`Data` storage and requests retained capacity after draining. The 131,076-byte
+logical storage bound, 65,536-byte feed limit, owned payloads and decoder value
+semantics remain intact. Request windows, receive timing, dispatches, hashing and
+filesystem checks are unchanged. Tests cover independent copied fragments, retained
+payloads, maximum frames and a four-byte overlapping move in shared storage.
+
+The source passes 434 package tests and 82 focused tests under each sanitizer. The
+strengthened overlapping/shared-storage cases also pass normally and under both
+sanitizers. Separate four-trial diagnostics validate at both piece sizes:
+
+| Piece size | Write jobs/GiB, baseline → candidate | Physical reads |
+| --- | ---: | ---: |
+| 256 KiB | 4,631 → 4,646 | 4,145 → 4,166 |
+| 1 MiB | 4,991 → 4,899 | 4,525 → 4,442 |
+
+Wire bytes and counted hash work are identical within each comparison. These are
+transfer-work diagnostics, not allocation counts or CPU acceptance evidence. The
+fixed primary timing uses 24 many-file hybrid source pairs against `3d4107d`, with
+counters disabled. Only a primary upper paired 95% CPU/GiB ratio below one triggers
+concurrent-v2 (twelve), single-v1/concurrent-hybrid (six each) and 1 MiB-piece (twelve)
+guards. Original-baseline memory checks and throughput-preserving retention apply.
+[Protocol, diagnostics and validation](decoder-reuse-20261115.json) retain every
+outcome; raw evidence is under ignored `.build/benchmarks/decoder-reuse-*`.
+Native validation remains pending while the candidate is isolated.
+
 ## Profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers
