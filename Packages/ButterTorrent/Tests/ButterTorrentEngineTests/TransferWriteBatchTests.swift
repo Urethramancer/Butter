@@ -223,6 +223,53 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 			} catch { connecting.cancel(); if let channel = try? await connecting.value { channel.close() }; throw error }
 		}
 	}
+	@Test(arguments: [false, true]) func fairnessYieldPreservesPayloadBeforeControl(_ encrypted: Bool) async throws {
+		try await transferFixture { fixture in
+			var config = plainTransferConfiguration()
+			if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
+			let resources = try TransferResources(maximumDiskOperations: 1)
+			let down = try await fixture.transfer("download", configuration: config, resources: resources), listener = try await fixture.listen()
+			let endpoint = try NetworkEndpoint("127.0.0.1", port: listener.port), hash = fixture.metadata.hashes.v1!, encryption = config.encryption
+			let connecting = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption) }
+			let release = DispatchSemaphore(value: 0)
+			defer { release.signal() }
+			do {
+				let stream = CoalescingPeerStream(try await listener.accept(timeout: 3)); _ = try await down.attach(stream)
+				let channel = try await connecting.value; defer { channel.close() }
+				let peer = WirePeer(channel: channel)
+				try await peer.hello(hash: hash, identity: 42); try await peer.seed(pieceCount: 3)
+				let requests = try await peer.requests(6)
+				// Bitfield and unchoke count as two frames. Cross frame 128 after
+				// three payloads, leaving three more available across decoder feeds.
+				var frames = Data(repeating: 0, count: 123 * 4)
+				for block in requests {
+					let start = block.piece * 32768 + block.offset
+					frames.append(try PeerMessage.piece(block.piece, block.offset, fixture.bytes.subdata(in: start..<(start + block.length))).encoded())
+				}
+				frames.append(try PeerMessage.choke.encoded()); stream.coalesce(frames.count)
+				let worker = await fixture.stores[0].worker, entered = AsyncStream<Void>.makeStream()
+				let blocker = Task { try await worker.run { _ in entered.continuation.yield(()); _ = release.wait(timeout: .now() + 6) } }
+				do {
+					try await engineDeadline { for await _ in entered.stream { return }; throw PeerFailure.closed }
+					try await channel.write(frames)
+					try await eventually { await down.snapshot().writingBlocks > 0 }
+					let blocked = await down.snapshot()
+					#expect(blocked.peers.first?.remoteChoking == false)
+					#expect(stream.largestRead == frames.count)
+					release.signal(); try await blocker.value
+					try await eventually {
+						let status = await down.snapshot()
+						return status.verifiedPieces == [0, 1, 2] && status.writingBlocks == 0 && status.peers.first?.remoteChoking == true
+					}
+					#expect(await down.snapshot().downloaded == Int64(fixture.bytes.count))
+					try await down.shutdown()
+					#expect(stream.activeReads == 0)
+					let usage = await resources.snapshot()
+					#expect(usage.diskOperations == 0 && usage.waitingDiskOperations == 0)
+				} catch { release.signal(); _ = try? await blocker.value; throw error }
+			} catch { connecting.cancel(); if let channel = try? await connecting.value { channel.close() }; throw error }
+		}
+	}
 	@Test(arguments: [false, true], [false, true]) func shutdownDrainsQueuedPayloadWhileStorageIsBlocked(_ encrypted: Bool, _ changeRate: Bool) async throws {
 		try await transferFixture { fixture in
 			var config = plainTransferConfiguration()
@@ -286,11 +333,13 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 			peer.stream.close()
 		}
 	}
-	@Test func shortAvailableBatchDoesNotWaitForAnotherFrame() async throws {
+	@Test(arguments: [0, 125]) func shortAvailableBatchDoesNotWaitForAnotherFrame(_ keepAlives: Int) async throws {
 		try await transferFixture { fixture in
 			let down = try await fixture.transfer("download"), peer = try await fixture.scripted(down)
 			try await peer.seed(pieceCount: 3); let block = try await peer.requests(6)[0]
 			#expect(block.piece == 0 && block.offset == 0)
+			// With bitfield and unchoke, this places the only payload at frame 128.
+			if keepAlives > 0 { try await peer.stream.write(Data(repeating: 0, count: keepAlives * 4)) }
 			try await peer.reply(block, bytes: fixture.bytes)
 			let file = fixture.root.appendingPathComponent("download/bundle/a"), expected = Data(fixture.bytes.prefix(10003))
 			try await eventually {
