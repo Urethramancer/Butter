@@ -5,6 +5,10 @@ downloads use **2.01–3.52× libtorrent's CPU/GiB**. Competing builds and other
 load were observed, so this is a **contended-host result**, not quiet-host release
 qualification. The earlier matrix and controlled source comparisons remain retained.
 
+The later [request-window comparisons](#sixteen-block-request-window) retain a
+sixteen-block default and establish CPU/throughput improvements in four download
+workloads. The full matrix below predates that change.
+
 ## Current matrix
 
 15 November 2026, engine revision `450e229`, including worker fusion `047dcfc`.
@@ -55,6 +59,10 @@ between these separate runs cannot establish a fusion regression. Matched source
 comparisons below establish its retained effect for concurrent v2.
 
 ## Retained optimisations
+
+The [sixteen-block download window](#sixteen-block-request-window) reduces CPU/GiB
+by 10.8–21.1% and increases throughput by 12.0–26.5% across four matched workloads,
+with modest additional memory and every original memory budget passing.
 
 Worker fusion (`047dcfc`) writes a payload batch and verifies at most one ready
 piece in the same storage job. Picker completion, publication, corruption handling
@@ -325,10 +333,11 @@ ignored `.build/benchmarks/tcp-direct-read-*`.
 
 ## Sixteen-block request window
 
-Candidate `db0cd52` changes the default download request window from eight to sixteen
-blocks. The existing receive coordinator, sixteen-block/256 KiB dispatch limit,
-disk limits, hashing and fresh filesystem checks are unchanged. The candidate remains
-isolated on `experiment/download-window-sixteen` pending native interoperability.
+The default download request window is now sixteen blocks, up from eight. Measured
+candidate `db0cd52` is retained on main as `3415037`. The existing receive coordinator,
+sixteen-block/256 KiB dispatch limit, disk limits, hashing and fresh filesystem checks
+are unchanged. Explicit
+pipeline settings and lower peer-advertised queue limits remain honoured.
 
 Against `1363710`, all **208/208 fixed comparison trials** validate: four warm-ups per
 workload, then 24 many-file hybrid, twelve concurrent-v2 and six each single-file v1
@@ -367,6 +376,10 @@ now checks the live budget and first proves it observes the connected old peer.
 All four corrected cases pass on the eight-block baseline. Production tracker and
 disconnect code and all measured production-source fingerprints are unchanged.
 The initial failure and diagnostic reproduction remain preserved with the results.
+The corrected native run passes all 201 engine preflight tests, 312 peer fixtures and
+the remaining session, discovery, tracker, DHT, PEX and web-seed comparisons. The final
+24-test focused subset passes on main, whose production-source fingerprints match
+the measured candidate exactly.
 
 [Compact measurements](window-sixteen-20261115.json) retain all comparison outcomes,
 absolute memory medians and validation status. Raw evidence remains under ignored

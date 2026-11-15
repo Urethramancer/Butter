@@ -1,7 +1,7 @@
 {
   "candidate": "db0cd52",
   "baseline": "1363710",
-  "status": "All fixed comparisons passed; corrected native package preflight passed; native interoperability in progress",
+  "status": "Adopted on main after all fixed comparisons, memory budgets and corrected native checks passed",
   "primary": {
     "candidate": "db0cd52",
     "baseline": "1363710",
@@ -154,6 +154,31 @@
       "summary": [
         "✔ Test run with 201 tests in 36 suites passed after 38.606 seconds."
       ]
+    },
+    "native": {
+      "passed": true,
+      "summary_lines": [
+        "PASS: 312 independent libtorrent-to-Swift and Swift-to-libtorrent peer fixtures",
+        "PASS: 6 independent legacy hybrid comparisons",
+        "PASS: 12 independent local discovery comparisons",
+        "PASS: 36 independent native-session transfers in both directions",
+        "PASS: 32 independent hybrid tracker comparisons in both directions",
+        "PASS: 24 independent session DHT transfers in both directions",
+        "PASS: 24 independent PEX/PORT discovery comparisons in both directions",
+        "PASS: 10 HTTP-to-native-to-libtorrent web-seed comparisons"
+      ],
+      "pass_lines": 466,
+      "preflight": [
+        "✔ Test run with 201 tests in 36 suites passed after 38.606 seconds."
+      ]
+    },
+    "main": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 24 tests in 4 suites passed after 4.247 seconds."
+      ],
+      "measured_sources_match_exactly": true,
+      "package_definition_matches": true
     }
   },
   "protocol": {
@@ -417,5 +442,6 @@
   "all_cpu_intervals_below_one": true,
   "all_throughput_medians_at_least_one": true,
   "all_original_memory_budgets_pass": true,
-  "candidate_branch": "experiment/download-window-sixteen"
+  "candidate_branch": "experiment/download-window-sixteen",
+  "adopted_commit": "3415037"
 }
