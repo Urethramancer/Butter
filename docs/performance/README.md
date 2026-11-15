@@ -5,9 +5,11 @@ downloads use **2.01–3.52× libtorrent's CPU/GiB**. Competing builds and other
 load were observed, so this is a **contended-host result**, not quiet-host release
 qualification. The earlier matrix and controlled source comparisons remain retained.
 
-The later [request-window comparisons](#sixteen-block-request-window) retain a
-sixteen-block default and establish CPU/throughput improvements in four download
-workloads. The full matrix below predates that change.
+The later [request-window comparisons](#thirty-two-block-request-window) retain a
+thirty-two-block default after successive increases from eight and sixteen. They
+establish additional CPU gains with modest memory use. Larger windows help the
+tested 1 MiB-piece workload at 48, while 64 establishes no further gain. Those
+larger defaults remain isolated. The full matrix below predates both retained changes.
 
 ## Current matrix
 
@@ -59,6 +61,11 @@ between these separate runs cannot establish a fusion regression. Matched source
 comparisons below establish its retained effect for concurrent v2.
 
 ## Retained optimisations
+
+The [thirty-two-block download window](#thirty-two-block-request-window) establishes
+an additional 6.5% CPU/GiB reduction for many-file hybrid with 256 KiB pieces and
+7.7% with 1 MiB pieces, plus smaller concurrent gains. Single-file v1 remains
+inconclusive. Throughput medians are not lower, and matching memory checks pass.
 
 The [sixteen-block download window](#sixteen-block-request-window) reduces CPU/GiB
 by 10.8–21.1% and increases throughput by 12.0–26.5% across four matched workloads,
@@ -333,8 +340,9 @@ ignored `.build/benchmarks/tcp-direct-read-*`.
 
 ## Sixteen-block request window
 
-The default download request window is now sixteen blocks, up from eight. Measured
-candidate `db0cd52` is retained on main as `3415037`. The existing receive coordinator,
+The default download request window was raised from eight to sixteen. Measured
+candidate `db0cd52` was retained on main as `3415037`; the further increase to
+thirty-two is documented below. The existing receive coordinator,
 sixteen-block/256 KiB dispatch limit, disk limits, hashing and fresh filesystem checks
 are unchanged. Explicit
 pipeline settings and lower peer-advertised queue limits remain honoured.
@@ -385,12 +393,12 @@ the measured candidate exactly.
 absolute memory medians and validation status. Raw evidence remains under ignored
 `.build/benchmarks/window-sixteen-*`.
 
-## Thirty-two-block request-window candidate
+## Thirty-two-block request window
 
-Candidate `50b3c87` raises the default from sixteen to thirty-two blocks. It remains
-isolated on `experiment/download-window-thirty-two` while final native validation and the
-requested larger-window calibration are pending. Dispatches remain capped at sixteen blocks/256 KiB; peer
-queue limits, hashing, filesystem checks and all other hard limits are unchanged.
+Measured candidate `50b3c87` is retained on main as `44a809d`, raising the default
+from sixteen to thirty-two blocks. Dispatches remain capped at sixteen blocks/256 KiB;
+peer queue limits, hashing, filesystem checks and other hard limits are unchanged.
+Explicit configurations and lower remote queues remain honoured.
 
 Against `6e67dfc`, the fixed 24-pair many-file hybrid comparison validates **100/100
 trials**, including four warm-ups. CPU/GiB ratio is **0.935 (0.906–0.961)**,
@@ -426,11 +434,20 @@ and no original-baseline memory acceptance is inferred for that additional fixtu
 
 A separate four-trial counts comparison reduces disk jobs/GiB from 5,439 to 4,688,
 write jobs from 4,902 to 4,655 and descriptor opens from 41,499 to 37,673, with
-identical wire bytes and hash work. The candidate passes 429 package tests and 55
-focused tests under each sanitizer. [Compact results](window-thirty-two-20261115.json)
-retain the protocol and validation; ignored `.build/benchmarks/window-thirty-two-*`
-retain the raw evidence. The user has additionally requested 48 versus 32, then
-64 versus 48 only if 48 establishes a gain, with a 1 MiB piece-size comparison.
+identical wire bytes and hash work. The measured source passes 429 package tests and
+55 focused tests under each sanitizer. Main retains additional configuration/queue
+bounds and piece-size coverage through 1 MiB. Its three affected tests pass under
+both sanitizers; all 203 engine preflight tests pass, followed by all 312 native peer
+fixtures and the complete legacy-hybrid, local-discovery, session, tracker, DHT,
+PEX/PORT and web-seed sequence (466 native pass lines). Production-source and package
+fingerprints on main exactly match the measured candidate. Initial parallel native
+preflight hit large-piece deadlines; unchanged cases and the final complete sequence
+pass serially without deadline or production-code changes.
+
+[Compact results](window-thirty-two-20261115.json) retain the protocol and validation;
+ignored `.build/benchmarks/window-thirty-two-*` retain the raw evidence. The larger-window
+calibration below finds an additional 1 MiB-piece benefit at 48 and no established
+benefit from 64. Both larger defaults remain isolated.
 
 ## Larger-window piece-size calibration
 
