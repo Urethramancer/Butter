@@ -185,13 +185,20 @@ extension NativeSessionTests { @Suite struct SessionTrackerTests {
 			let oldPort = try await old.snapshot().network.port, newPort = try await seed.snapshot().network.port
 			let tracker = SwitchingSessionTracker(old: try TrackerPeer(address: "127.0.0.1", port: oldPort), new: try TrackerPeer(address: "127.0.0.1", port: newPort), initialFailure: initialFailure)
 			let down = try await fixture.download(tiers: [["http://old.test/announce"], ["http://new.test/announce"]], tracker: tracker, clock: clock)
-			await tracker.checkBeforeReplacement { try await down.snapshot().transfers[0].state.transfer?.peers.isEmpty == true }
+			await tracker.checkBeforeReplacement {
+				// Transfer rows can be cached during concurrent polling. The session's
+				// connection budget is live and must be empty before tracker failover.
+				async let first = down.snapshot()
+				async let second = down.snapshot()
+				return try await [first, second].allSatisfy { $0.network.peers == 0 }
+			}
 			try await down.run(id: "transfer", running: true)
 			if initialFailure {
 				try await eventually { await tracker.initialStarted }
 				_ = try await old.connect(id: "transfer", to: NetworkEndpoint("127.0.0.1", port: down.snapshot().network.port))
 			}
 			try await eventually { try await down.snapshot().transfers[0].state.transfer?.peers.contains { $0.peerID == old.peerID } == true }
+			let connected = try await down.snapshot(); #expect(connected.network.peers > 0)
 			if initialFailure { await tracker.releaseInitialFailure() }
 			else { await tracker.failPrimary(true); clock.advance(31) }
 			try await eventually { try await down.snapshot().transfers[0].state.transfer?.complete == true }
