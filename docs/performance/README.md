@@ -639,6 +639,15 @@ concurrent-v2 (twelve), single-v1/concurrent-hybrid (six each) and 1 MiB-piece (
 guards. Original-baseline memory checks and throughput-preserving retention apply.
 [Protocol, diagnostics and validation](decoder-reuse-20261115.json) retain every
 outcome; raw evidence is under ignored `.build/benchmarks/decoder-reuse-*`.
+The fixed primary comparison validates **100/100 trials**. CPU/GiB ratio is
+**0.981 (0.967–0.997)**, verified throughput **1.016 (1.006–1.028)** and peak
+RSS **0.987 (0.979–0.997)**, with paired 95% bootstrap intervals. This establishes
+1.9% lower CPU and 1.6% higher throughput. Median RSS is 18.03 → 17.80 MiB and
+original-baseline memory passes. Both native-control intervals include one. Payloads,
+strict reopens and source/binary fingerprints validate; no samples are repeated,
+discarded or added. The predeclared guards are now running. Results remain qualified
+by recorded compiler/application contention, with no quiet-host release claim.
+
 Native validation remains pending while the candidate is isolated.
 
 ## Profiling targets

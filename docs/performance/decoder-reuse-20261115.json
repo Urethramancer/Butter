@@ -1,7 +1,7 @@
 {
   "candidate": "e3b33b5",
   "baseline": "3d4107d",
-  "status": "Isolated: package, sanitizer, boundary and diagnostic checks pass; primary CPU comparison running",
+  "status": "Primary CPU, throughput and memory gains established; all 100 trials validate; predeclared guards running; candidate remains isolated",
   "counts": {
     "piece_256k": {
       "baseline": "3d4107d",
@@ -178,5 +178,77 @@
     },
     "candidate": "e3b33b588c9ea5dd171d7dda1a3c489596cac968"
   },
-  "qualification": "User-authorised contended runs; diagnostic transfer-work counts do not measure allocator activity; no owned builds/tests during acceptance timing; all samples preserved"
+  "qualification": "User-authorised contended runs; diagnostic transfer-work counts do not measure allocator activity; no owned builds/tests during acceptance timing; all samples preserved",
+  "primary": {
+    "baseline": "3d4107d",
+    "case": "many",
+    "format": "hybrid",
+    "piece_length": 262144,
+    "request_window": 32,
+    "trials": 100,
+    "validated": 100,
+    "results_directory": ".build/benchmarks/decoder-reuse-many-hybrid-24pairs-20261115",
+    "pairs": 24,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 0.9814589721356837,
+        "lower": 0.9672084380199019,
+        "upper": 0.9971042387355753,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.015716589944812,
+        "lower": 1.0061992230633068,
+        "upper": 1.0278218200404423,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 0.986503692675883,
+        "lower": 0.9787775891341256,
+        "upper": 0.9965034965034965,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 1.0104819122215196,
+        "lower": 0.9867095720582298,
+        "upper": 1.0327947157122643,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_controls": {
+      "cpu_seconds_per_gib": {
+        "median": 0.9979743232688881,
+        "lower": 0.9905902719034967,
+        "upper": 1.0058321788970706,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.0015309694539023,
+        "lower": 0.9981908722583102,
+        "upper": 1.0037305707698039,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "memory_vs_original": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.26796002351557907,
+      "lower": 0.2626882966396292,
+      "upper": 0.27071302298173244,
+      "maximum_peak_rss_ratio": 0.29037445439926485,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "median_peak_rss_mib": {
+      "previous": 18.03125,
+      "current": 17.8046875
+    },
+    "integrity": {
+      "payloads_and_reopens": true,
+      "fingerprints_unchanged": true,
+      "original_baseline_unchanged": true,
+      "request_windows_verified": true,
+      "original_torrent_hashes_match": true
+    }
+  },
+  "cpu_gain_established": true,
+  "trials": 100
 }
