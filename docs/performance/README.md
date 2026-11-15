@@ -285,6 +285,44 @@ off, on and under ThreadSanitizer. [Compact results](receive-transport-20261115.
 retain source identities and measurements. Raw evidence remains under ignored
 `.build/benchmarks/receive-{transport-profile,header-counts}-20261115`.
 
+## Direct TCP read completion
+
+Candidate `e1809ac` removes a per-read waiter object and callback-dictionary entry,
+using one owned continuation instead. Read sizes, deadlines, request windows,
+hashing, filesystem checks and GUI behaviour remain unchanged.
+
+The comparison against `5bdb5d2` validates **100/100 many-file hybrid trials**:
+four warm-ups and 24 predeclared balanced source pairs, counters disabled,
+independent SHA256 checks, strict checkpoint reopening and unchanged fingerprints.
+No samples were repeated or discarded. Ratios are candidate/baseline with paired
+95% bootstrap intervals.
+
+| Measurement | Median ratio | 95% interval |
+| --- | ---: | ---: |
+| CPU/GiB | 1.002 | 0.986–1.023 |
+| Verified throughput | 0.987 | 0.973–1.016 |
+| Peak RSS | 1.000 | 0.991–1.004 |
+| Counterpart CPU/GiB | 0.994 | 0.977–1.040 |
+
+Native-control CPU and throughput intervals include one. Memory passes against the
+matching complete original baseline: median ratio 0.261 (95% interval 0.256–0.263),
+maximum ratio 0.275. The user explicitly authorised this **contended comparison**;
+compiler/test and indexing activity is retained in load snapshots. No quiet-host
+release qualification is claimed.
+
+The CPU criterion fails to establish an improvement; the throughput median is also
+lower. The implementation remains on `experiment/tcp-direct-read-continuation`.
+Conditional concurrent-v2, single-v1 and concurrent-hybrid comparisons were not
+triggered. Main retains the independent overlapping-read ownership regression and
+64 iterations of completion/cancellation/close races.
+
+The candidate passes 428 package tests, 37 focused tests under each sanitizer,
+312 native peer fixtures and the remaining native session, discovery, tracker,
+DHT, PEX and web-seed comparisons. The retained transport/deadline subset passes
+11 tests on main. [Compact results](tcp-direct-read-20261115.json) retain the
+intervals, qualifications and conditional guard statuses. Raw evidence remains under
+ignored `.build/benchmarks/tcp-direct-read-*`.
+
 ## Profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers

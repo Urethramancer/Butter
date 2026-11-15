@@ -7,10 +7,6 @@
   [latest matrix](docs/performance/README.md), which ran under competing host load.
   Targets remain ≥90% throughput, ≤1.25× CPU/GiB and peak RSS within 10% of the
   original Butter baseline.
-- Complete the predeclared 24-pair comparison of verified TCP read candidate
-  `e1809ac` on `experiment/tcp-direct-read-continuation` once the host is quiet,
-  or after approval for a qualified contended run. Package, sanitizer and native
-  interoperability checks pass; no timing samples have started.
 - Investigate guarded path opens/closes and peer transport overhead while
   preserving fresh filesystem observations and production resource limits.
 - Repeat release performance validation without competing builds and heavy

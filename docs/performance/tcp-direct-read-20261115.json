@@ -1,0 +1,152 @@
+{
+  "candidate": "e1809ac",
+  "baseline": "5bdb5d2",
+  "case": "many",
+  "format": "hybrid",
+  "pairs": 24,
+  "trials": 100,
+  "validated": 100,
+  "source_ratios": {
+    "cpu_seconds_per_gib": {
+      "median": 1.0024744412369604,
+      "lower": 0.985702075361222,
+      "upper": 1.0228073271052447,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 0.9869110598793129,
+      "lower": 0.9734932055690705,
+      "upper": 1.0164711284248524,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "peak_rss": {
+      "median": 1.0000041024260928,
+      "lower": 0.9911190053285968,
+      "upper": 1.003577817531306,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "counterpart_cpu_seconds_per_gib": {
+      "median": 0.9936885680797984,
+      "lower": 0.9771741265758148,
+      "upper": 1.039926174502057,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "native_controls": {
+    "cpu_seconds_per_gib": {
+      "median": 0.9947489126450608,
+      "lower": 0.9865184372037323,
+      "upper": 1.0060366314461322,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    },
+    "verified_bytes_per_second": {
+      "median": 1.0028940706104588,
+      "lower": 0.9960728784043809,
+      "upper": 1.0098586790378135,
+      "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+    }
+  },
+  "memory_vs_original": {
+    "status": "pass",
+    "median_peak_rss_ratio": 0.260787771898883,
+    "lower": 0.2558516801853998,
+    "upper": 0.2630896226415094,
+    "maximum_peak_rss_ratio": 0.27521249712841717,
+    "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+  },
+  "validation": {
+    "package": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 102 tests in 17 suites passed after 3.832 seconds.",
+        "✔ Test run with 102 tests in 23 suites passed after 8.980 seconds.",
+        "✔ Test run with 24 tests in 6 suites passed after 0.036 seconds.",
+        "✔ Test run with 200 tests in 36 suites passed after 41.088 seconds."
+      ]
+    },
+    "address": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 24 tests in 6 suites passed after 9.338 seconds.",
+        "✔ Test run with 13 tests in 2 suites passed after 8.246 seconds."
+      ]
+    },
+    "thread": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 24 tests in 6 suites passed after 15.638 seconds.",
+        "✔ Test run with 13 tests in 2 suites passed after 14.956 seconds."
+      ]
+    },
+    "native": {
+      "passed": true,
+      "summary_lines": [
+        "PASS: 312 independent libtorrent-to-Swift and Swift-to-libtorrent peer fixtures",
+        "PASS: 6 independent legacy hybrid comparisons",
+        "PASS: 12 independent local discovery comparisons",
+        "PASS: 36 independent native-session transfers in both directions",
+        "PASS: 32 independent hybrid tracker comparisons in both directions",
+        "PASS: 24 independent session DHT transfers in both directions",
+        "PASS: 24 independent PEX/PORT discovery comparisons in both directions",
+        "PASS: 10 HTTP-to-native-to-libtorrent web-seed comparisons"
+      ],
+      "pass_lines": 466
+    },
+    "timing": {
+      "started": true,
+      "authorised_contended": true,
+      "candidate": "e1809ac",
+      "protocol": "protocol.json"
+    },
+    "retained_regressions": {
+      "commit": "e3071d9",
+      "tests": [
+        "rejectedOverlappingReadDoesNotDisturbItsOwner",
+        "readCompletionCancellationAndCloseRaceReleasesTheBudget"
+      ],
+      "race_iterations": 64,
+      "main_subset_tests": 11,
+      "passed": true
+    }
+  },
+  "integrity": {
+    "payloads_and_reopens": true,
+    "fingerprints_unchanged": true,
+    "original_baseline_unchanged": true
+  },
+  "results_directory": ".build/benchmarks/tcp-direct-read-many-hybrid-24pairs-20261115",
+  "sampling": "Four warm-ups followed by 24 predeclared balanced source pairs; 100 verified trials; no repetitions or extensions",
+  "decision": "No CPU benefit established; archive the implementation and retain independent TCP read regressions",
+  "archive_branch": "experiment/tcp-direct-read-continuation",
+  "host_conditions": {
+    "authorised_contended": true,
+    "quiet_host_release_qualification": false,
+    "observations": "Competing compiler/test and indexing activity during traffic; no assistant-initiated builds or tests during timing. Snapshots are not average host-load measurements.",
+    "evidence": ".build/benchmarks/tcp-direct-read-20261115/host-load-authorised.txt"
+  },
+  "guard_cases": [
+    {
+      "case": "concurrent",
+      "format": "v2",
+      "planned_pairs": 12,
+      "status": "Not triggered: primary upper paired 95% CPU/GiB interval is not below one"
+    },
+    {
+      "case": "single",
+      "format": "v1",
+      "planned_pairs": 6,
+      "status": "Not triggered: primary upper paired 95% CPU/GiB interval is not below one"
+    },
+    {
+      "case": "concurrent",
+      "format": "hybrid",
+      "planned_pairs": 6,
+      "status": "Not triggered: primary upper paired 95% CPU/GiB interval is not below one"
+    }
+  ],
+  "criteria": {
+    "cpu_improvement": false,
+    "memory_pass": true,
+    "throughput_median_lower": true
+  }
+}
