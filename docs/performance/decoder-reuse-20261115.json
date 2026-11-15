@@ -1,7 +1,7 @@
 {
   "candidate": "e3b33b5",
   "baseline": "3d4107d",
-  "status": "Primary CPU, throughput and memory gains established; all 100 trials validate; predeclared guards running; candidate remains isolated",
+  "status": "Isolated: primary CPU/throughput gain established, guard CPU outcomes inconclusive, and single-file median throughput lower; all 260 trials validate",
   "counts": {
     "piece_256k": {
       "baseline": "3d4107d",
@@ -129,6 +129,14 @@
           "✔ Test run with 1 test in 1 suite passed after 0.006 seconds."
         ]
       }
+    },
+    "retained_main": {
+      "production_matches_unchanged_baseline": true,
+      "package_matches": true,
+      "retained_tests": "Independent decoder copies, owned payloads and partial-frame buffering bounds; no allocation/compaction policy requirement",
+      "summaries": [
+        "✔ Test run with 18 tests in 2 suites passed after 0.019 seconds."
+      ]
     }
   },
   "protocol": {
@@ -250,5 +258,299 @@
     }
   },
   "cpu_gain_established": true,
-  "trials": 100
+  "trials": 260,
+  "guards": {
+    "concurrent-v2": {
+      "baseline": "3d4107d",
+      "case": "concurrent",
+      "format": "v2",
+      "piece_length": 262144,
+      "request_window": 32,
+      "trials": 52,
+      "validated": 52,
+      "results_directory": ".build/benchmarks/decoder-reuse-concurrent-v2-12pairs-20261115",
+      "pairs": 12,
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 1.008749984202621,
+          "lower": 0.9345546854391815,
+          "upper": 1.0972653185295242,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.03013229062415,
+          "lower": 0.9948941340160058,
+          "upper": 1.0807990871126072,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 0.9766097975881209,
+          "lower": 0.9133141828159835,
+          "upper": 1.0089225754226243,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 1.0243160995159895,
+          "lower": 0.9835152409091891,
+          "upper": 1.0792345733502238,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_controls": {
+        "cpu_seconds_per_gib": {
+          "median": 0.9923197491627622,
+          "lower": 0.9895903556802927,
+          "upper": 0.9991426058546244,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.0068999758909225,
+          "lower": 0.9980945188085303,
+          "upper": 1.0099967223171638,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "memory_vs_original": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.3102138716769938,
+        "lower": 0.3058165100939436,
+        "upper": 0.31774944343250355,
+        "maximum_peak_rss_ratio": 0.34036204495723094,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "median_peak_rss_mib": {
+        "previous": 25.203125,
+        "current": 24.25
+      },
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true,
+        "original_torrent_hashes_match": true
+      }
+    },
+    "single-v1": {
+      "baseline": "3d4107d",
+      "case": "single",
+      "format": "v1",
+      "piece_length": 262144,
+      "request_window": 32,
+      "trials": 28,
+      "validated": 28,
+      "results_directory": ".build/benchmarks/decoder-reuse-single-v1-6pairs-20261115",
+      "pairs": 6,
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 1.01212118834184,
+          "lower": 0.9841819530851346,
+          "upper": 1.0349343094123098,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 0.9894235640436416,
+          "lower": 0.9667179824802028,
+          "upper": 1.0156658100695841,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 0.979936781192908,
+          "lower": 0.9645395894428153,
+          "upper": 0.992992992992993,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 0.9975871721823804,
+          "lower": 0.9020569952627062,
+          "upper": 1.0840445281332238,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_controls": {
+        "cpu_seconds_per_gib": {
+          "median": 1.004639580893663,
+          "lower": 0.9838042583169307,
+          "upper": 1.0116877991670399,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 0.9989751575844974,
+          "lower": 0.9968931284947056,
+          "upper": 1.0069368571327444,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "memory_vs_original": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.20739720220432387,
+        "lower": 0.20614961961115807,
+        "upper": 0.21244867084504,
+        "maximum_peak_rss_ratio": 0.21161562829989441,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "median_peak_rss_mib": {
+        "previous": 15.6171875,
+        "current": 15.2890625
+      },
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true,
+        "original_torrent_hashes_match": true
+      }
+    },
+    "concurrent-hybrid": {
+      "baseline": "3d4107d",
+      "case": "concurrent",
+      "format": "hybrid",
+      "piece_length": 262144,
+      "request_window": 32,
+      "trials": 28,
+      "validated": 28,
+      "results_directory": ".build/benchmarks/decoder-reuse-concurrent-hybrid-6pairs-20261115",
+      "pairs": 6,
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 1.02073721413616,
+          "lower": 0.9947112983777984,
+          "upper": 1.0445642564558497,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.0028882729041657,
+          "lower": 0.9431220736115669,
+          "upper": 1.0416525534288579,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 1.0134123518402993,
+          "lower": 0.9935706785013203,
+          "upper": 1.0383114658551453,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 0.9943445225156539,
+          "lower": 0.9355237466065733,
+          "upper": 1.0717521195068027,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_controls": {
+        "cpu_seconds_per_gib": {
+          "median": 1.0193474291397755,
+          "lower": 1.0000497097899734,
+          "upper": 1.038082021733663,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 0.9951053569173036,
+          "lower": 0.9830498567807335,
+          "upper": 1.011254637027476,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "memory_vs_original": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.3264958975385231,
+        "lower": 0.32294787297783106,
+        "upper": 0.34161988773055335,
+        "maximum_peak_rss_ratio": 0.34058694350169694,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "median_peak_rss_mib": {
+        "previous": 25.390625,
+        "current": 25.4921875
+      },
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true,
+        "original_torrent_hashes_match": true
+      }
+    },
+    "many-hybrid-1mib": {
+      "baseline": "3d4107d",
+      "case": "many",
+      "format": "hybrid",
+      "piece_length": 1048576,
+      "request_window": 32,
+      "trials": 52,
+      "validated": 52,
+      "results_directory": ".build/benchmarks/decoder-reuse-many-hybrid-1mib-12pairs-20261115",
+      "pairs": 12,
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 0.9890650681362536,
+          "lower": 0.9672007722403386,
+          "upper": 1.004932253588237,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.018891576428424,
+          "lower": 0.9941622883860846,
+          "upper": 1.0383052238108843,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 1.007611483149529,
+          "lower": 0.9976348155156103,
+          "upper": 1.0161851205364365,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 0.9908393629576251,
+          "lower": 0.9469462749085946,
+          "upper": 1.0353187311390497,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_controls": {
+        "cpu_seconds_per_gib": {
+          "median": 0.9999382860957189,
+          "lower": 0.9950353355015105,
+          "upper": 1.0050519187830533,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 0.9951170267020074,
+          "lower": 0.9914183246158357,
+          "upper": 1.0088751175334356,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "memory_vs_previous": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.999056158565361,
+        "lower": 0.9849906191369606,
+        "upper": 1.0146919431279622,
+        "maximum_peak_rss_ratio": 1.0276785714285714,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10",
+        "qualification": "Matched 1 MiB fixture only; no original-baseline memory acceptance inferred"
+      },
+      "median_peak_rss_mib": {
+        "previous": 16.5546875,
+        "current": 16.5390625
+      },
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true,
+        "original_torrent_hashes_match": false
+      }
+    }
+  },
+  "retained_in_production": false,
+  "retention_reason": "Preserve throughput by default: single-v1 median throughput ratio is 0.9894235640436416; broad CPU improvement is not established by the guards",
+  "native": {
+    "status": "Not run: candidate remains isolated after a lower guard throughput median; unchanged production retains its prior native validation"
+  },
+  "retained_test_commit": "35f3f3d",
+  "control_qualifications": {
+    "concurrent_v2": "Native CPU control ratio 0.992320 (0.989590–0.999143), below one",
+    "concurrent_hybrid": "Native CPU control ratio 1.019347 (1.000050–1.038082), above one",
+    "effect": "These contended guard comparisons do not establish a general decoder CPU improvement"
+  }
 }

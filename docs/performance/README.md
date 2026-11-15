@@ -612,7 +612,7 @@ match the unchanged 32-block baseline exactly. Test coverage is retained in `1fb
 and the baseline test failure. Raw evidence remains under ignored
 `.build/benchmarks/fairness-batch-*`.
 
-## Decoder buffer-reuse candidate
+## Isolated decoder buffer-reuse experiment
 
 Candidate `e3b33b5`, isolated on `experiment/decoder-buffer-reuse`, defers decoder
 compaction until append space is exhausted. It moves the unread tail in unique
@@ -648,7 +648,28 @@ strict reopens and source/binary fingerprints validate; no samples are repeated,
 discarded or added. The predeclared guards are now running. Results remain qualified
 by recorded compiler/application contention, with no quiet-host release claim.
 
-Native validation remains pending while the candidate is isolated.
+All four predeclared guards also complete, giving **260/260 validated trials**:
+
+| Download guard | CPU/GiB ratio (95%) | Throughput ratio (95%) | Memory check |
+| --- | ---: | ---: | --- |
+| Concurrent v2, twelve pairs | 1.009 (0.935–1.097) | 1.030 (0.995–1.081) | Original baseline pass |
+| Single v1, six pairs | 1.012 (0.984–1.035) | 0.989 (0.967–1.016) | Original baseline pass |
+| Concurrent hybrid, six pairs | 1.021 (0.995–1.045) | 1.003 (0.943–1.042) | Original baseline pass |
+| Many hybrid, 1 MiB pieces, twelve pairs | 0.989 (0.967–1.005) | 1.019 (0.994–1.038) | Matched previous/current pass |
+
+All guard CPU and throughput intervals include one. The concurrent-v2 native CPU
+control is 0.992320 (0.989590–0.999143), while the concurrent-hybrid control is
+1.019347 (1.000050–1.038082); these small control shifts further qualify the
+contended guard results. Single-file median throughput is 1.1% lower, so the candidate
+remains isolated under the throughput-preserving rule. No samples are repeated,
+discarded or extended. The 1 MiB fixture has no inferred original-baseline memory
+acceptance; its new metadata and matched previous/current memory check are retained.
+
+Main keeps only independent-copy, payload-ownership and partial-frame boundary tests
+in `35f3f3d`. All 18 relevant tests pass against the unchanged production decoder,
+whose source/package fingerprints match `3d4107d` exactly. The tests impose no buffer
+allocation or compaction policy. Complete native validation is not run for this
+unretained production change. The branch and all raw results remain preserved.
 
 ## Profiling targets
 
