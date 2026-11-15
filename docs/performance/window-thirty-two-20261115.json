@@ -1,0 +1,179 @@
+{
+  "candidate": "50b3c87",
+  "baseline": "6e67dfc",
+  "status": "Primary CPU gain established; guard workloads and final native validation pending; candidate remains isolated",
+  "primary": {
+    "baseline": "6e67dfc",
+    "window": {
+      "previous": 16,
+      "current": 32
+    },
+    "case": "many",
+    "format": "hybrid",
+    "pairs": 24,
+    "trials": 100,
+    "validated": 100,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 0.9352558486317692,
+        "lower": 0.9063756209091854,
+        "upper": 0.9607566212081946,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.0746895248346633,
+        "lower": 1.0276469038785991,
+        "upper": 1.1007086469567362,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 1.0138885110935814,
+        "lower": 0.999140154772141,
+        "upper": 1.042720139494333,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 0.9534691280711263,
+        "lower": 0.9192309821307262,
+        "upper": 0.9805315244896067,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_controls": {
+      "cpu_seconds_per_gib": {
+        "median": 1.0036859985809934,
+        "lower": 0.9908687600448345,
+        "upper": 1.0080582766063424,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9939274351775257,
+        "lower": 0.9880758200655356,
+        "upper": 1.0099321372576233,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "memory_vs_original": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.2751322751322751,
+      "lower": 0.2692889561270802,
+      "upper": 0.2807307012374779,
+      "maximum_peak_rss_ratio": 0.29221226740179185,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "integrity": {
+      "payloads_and_reopens": true,
+      "fingerprints_unchanged": true,
+      "original_baseline_unchanged": true,
+      "request_windows_verified": true
+    },
+    "results_directory": ".build/benchmarks/window-thirty-two-many-hybrid-24pairs-20261115",
+    "median_peak_rss_mib": {
+      "previous": 17.9609375,
+      "current": 18.28125
+    }
+  },
+  "counts": {
+    "trials": 4,
+    "verified": 4,
+    "diagnostics_only": true,
+    "fingerprints_unchanged": true,
+    "sources": [
+      {
+        "source": "previous",
+        "window": 16,
+        "write_jobs": 4902,
+        "disk_jobs": 5439,
+        "blocks": 65536,
+        "mean_blocks_per_dispatch": 13.369237046103631,
+        "reads": 4440,
+        "wire_bytes": 1074594138,
+        "descriptor_opens": 41499,
+        "bytes_hashed": 1073741824,
+        "bytes_written": 1074594791
+      },
+      {
+        "source": "current",
+        "window": 32,
+        "write_jobs": 4655,
+        "disk_jobs": 4688,
+        "blocks": 65536,
+        "mean_blocks_per_dispatch": 14.078625134264232,
+        "reads": 4196,
+        "wire_bytes": 1074594138,
+        "descriptor_opens": 37673,
+        "bytes_hashed": 1073741824,
+        "bytes_written": 1074594340
+      }
+    ]
+  },
+  "validation": {
+    "full": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 102 tests in 17 suites passed after 3.707 seconds.",
+        "✔ Test run with 102 tests in 23 suites passed after 7.916 seconds.",
+        "✔ Test run with 24 tests in 6 suites passed after 0.029 seconds.",
+        "✔ Test run with 201 tests in 36 suites passed after 62.275 seconds."
+      ]
+    },
+    "asan": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 55 tests in 6 suites passed after 22.915 seconds."
+      ]
+    },
+    "tsan": {
+      "passed": true,
+      "summaries": [
+        "✔ Test run with 55 tests in 6 suites passed after 38.815 seconds."
+      ]
+    }
+  },
+  "protocol": {
+    "baseline": "6e67dfc2ebf05ad2f16d21c98c2969183e572aeb",
+    "change": "Default download request window: 16 to 32; retain 16-block/256-KiB dispatches and all existing hard resource limits and integrity checks",
+    "rationale": "User permits modest additional RAM for lower CPU; allow existing read/write batching to use more queued payload without read-ahead",
+    "diagnostic": "Separate four-trial counts comparison; excluded from timing acceptance",
+    "primary": {
+      "case": "many",
+      "format": "hybrid",
+      "source_pairs": 24
+    },
+    "conditional_guards": [
+      {
+        "case": "concurrent",
+        "format": "v2",
+        "source_pairs": 12
+      },
+      {
+        "case": "single",
+        "format": "v1",
+        "source_pairs": 6
+      },
+      {
+        "case": "concurrent",
+        "format": "hybrid",
+        "source_pairs": 6
+      }
+    ],
+    "trigger": "Primary upper paired 95% CPU/GiB interval below one",
+    "memory_baseline": ".build/benchmarks/baseline-seeding-fixed",
+    "acceptance": "Memory budget must pass against matching complete original baseline. Retain every sample. No repetitions or result-dependent extensions. Keep any lower-throughput CPU-saving candidate isolated for user decision.",
+    "host": "Continue under the user-authorised contended-comparison policy; record load and qualify results",
+    "candidate_branch": "experiment/download-window-thirty-two",
+    "candidate": "50b3c878497075589d6eb8a8e0d081195612b23c"
+  },
+  "guards": {
+    "concurrent-v2": {
+      "status": "pending"
+    },
+    "single-v1": {
+      "status": "pending"
+    },
+    "concurrent-hybrid": {
+      "status": "pending"
+    }
+  },
+  "qualification": "User-authorised contended run; compiler/test and application activity recorded; no quiet-host release claim; no samples removed or repeated"
+}

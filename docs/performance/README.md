@@ -385,6 +385,32 @@ the measured candidate exactly.
 absolute memory medians and validation status. Raw evidence remains under ignored
 `.build/benchmarks/window-sixteen-*`.
 
+## Thirty-two-block request-window candidate
+
+Candidate `50b3c87` raises the default from sixteen to thirty-two blocks. It remains
+isolated on `experiment/download-window-thirty-two` while guard workloads and native
+validation are pending. Dispatches remain capped at sixteen blocks/256 KiB; peer
+queue limits, hashing, filesystem checks and all other hard limits are unchanged.
+
+Against `6e67dfc`, the fixed 24-pair many-file hybrid comparison validates **100/100
+trials**, including four warm-ups. CPU/GiB ratio is **0.935 (0.906–0.961)**,
+verified throughput **1.075 (1.028–1.101)** and peak RSS **1.014 (0.999–1.043)**
+(paired 95% bootstrap intervals). Median RSS rises from 17.96 to 18.28 MiB, and the
+memory budget passes against matching fixtures from the complete original baseline.
+Both native-control intervals include one. Compiler/test and application contention
+was recorded under the authorised contended-run policy; this is not quiet-host
+release validation. Counters are disabled, source/binary fingerprints are unchanged,
+and every payload and strict checkpoint reopen validates. No samples were repeated,
+discarded or added after inspecting results.
+
+A separate four-trial counts comparison reduces disk jobs/GiB from 5,439 to 4,688,
+write jobs from 4,902 to 4,655 and descriptor opens from 41,499 to 37,673, with
+identical wire bytes and hash work. The candidate passes 429 package tests and 55
+focused tests under each sanitizer. [Compact results](window-thirty-two-20261115.json)
+retain the protocol and validation; ignored `.build/benchmarks/window-thirty-two-*`
+retain the raw evidence. The user has additionally requested 48 versus 32, then
+64 versus 48 only if 48 establishes a gain, with a 1 MiB piece-size comparison.
+
 ## Profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers
