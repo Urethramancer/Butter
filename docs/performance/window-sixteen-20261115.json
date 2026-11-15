@@ -1,7 +1,7 @@
 {
   "candidate": "db0cd52",
   "baseline": "1363710",
-  "status": "All four fixed comparisons passed; native preflight reported a private-tracker failover observation failure; adoption gated on investigation",
+  "status": "All fixed comparisons passed; corrected native package preflight passed; native interoperability in progress",
   "primary": {
     "candidate": "db0cd52",
     "baseline": "1363710",
@@ -139,6 +139,21 @@
       },
       "issue": "oldPeersWereDrained expectation failed",
       "evidence": ".build/benchmarks/window-sixteen-20261115/native-preflight-failure.log"
+    },
+    "fixture_correction": {
+      "commit": "984120d",
+      "kind": "Test-only live-budget oracle; production tracker/disconnect code unchanged",
+      "cause": "Concurrent TorrentSession snapshots can contain cached transfer peer rows despite a zero live connection budget",
+      "diagnostic": "Concurrent snapshot probe reproduced stale peer rows while live connections were zero",
+      "baseline_cases_passed": 4,
+      "measured_production_fingerprints_unchanged": true,
+      "evidence": ".build/benchmarks/window-sixteen-20261115/failover-snapshot-diagnostic.log"
+    },
+    "corrected_native_preflight": {
+      "passed": true,
+      "summary": [
+        "✔ Test run with 201 tests in 36 suites passed after 38.606 seconds."
+      ]
     }
   },
   "protocol": {

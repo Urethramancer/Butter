@@ -328,26 +328,31 @@ ignored `.build/benchmarks/tcp-direct-read-*`.
 Candidate `db0cd52` changes the default download request window from eight to sixteen
 blocks. The existing receive coordinator, sixteen-block/256 KiB dispatch limit,
 disk limits, hashing and fresh filesystem checks are unchanged. The candidate remains
-isolated on `experiment/download-window-sixteen` pending guard and native checks.
+isolated on `experiment/download-window-sixteen` pending native interoperability.
 
-The primary comparison against `1363710` validates **100/100 many-file hybrid trials**:
-four warm-ups and 24 predeclared balanced source pairs, counters disabled, independent
-SHA256 checks, strict checkpoint reopening and unchanged fingerprints. No samples
-were repeated or discarded. Candidate/baseline paired 95% bootstrap intervals:
+Against `1363710`, all **208/208 fixed comparison trials** validate: four warm-ups per
+workload, then 24 many-file hybrid, twelve concurrent-v2 and six each single-file v1
+and concurrent-hybrid source pairs. Counters are disabled; independent SHA256 checks,
+strict checkpoint reopening, unchanged fingerprints and matching original memory
+baselines apply throughout. No samples were repeated, discarded or extended.
+Candidate/baseline ratios with paired 95% bootstrap intervals:
 
-| Measurement | Median ratio | 95% interval |
-| --- | ---: | ---: |
-| CPU/GiB | 0.789 | 0.784–0.801 |
-| Verified throughput | 1.222 | 1.206–1.237 |
-| Peak RSS | 1.039 | 1.025–1.055 |
-| Counterpart CPU/GiB | 0.782 | 0.773–0.823 |
+| Download workload | CPU/GiB | Verified throughput | Peak RSS |
+| --- | ---: | ---: | ---: |
+| Many hybrid | 0.789 (0.784–0.801) | 1.222 (1.206–1.237) | 1.039 (1.025–1.055) |
+| Concurrent v2 | 0.892 (0.877–0.927) | 1.120 (1.035–1.221) | 1.134 (1.074–1.171) |
+| Single v1 | 0.842 (0.816–0.884) | 1.151 (1.094–1.195) | 1.040 (0.989–1.061) |
+| Concurrent hybrid | 0.869 (0.812–0.883) | 1.265 (1.160–1.407) | 1.125 (1.040–1.199) |
 
-This establishes a 21.1% CPU reduction and 22.2% throughput increase for this workload
-under the authorised contended-run policy. Median peak RSS is 17.48 MiB/18.14 MiB
-for eight/sixteen blocks. Memory passes against the original baseline: ratio 0.273
-(95% interval 0.267–0.283), maximum ratio 0.294. Native-control CPU and throughput
-intervals include one. Etemmu, compiler/test and indexing activity was observed;
-these results do not qualify a quiet-host release.
+The comparisons establish CPU reductions of 10.8–21.1% and throughput increases of
+12.0–26.5% in these workloads under the authorised contended-run policy. Every native
+control CPU/throughput interval includes one. Etemmu, compiler/test and indexing
+activity was observed; these results do not qualify a quiet-host release.
+
+Median peak RSS rises from 17.48 to 18.14 MiB for many-file hybrid, 22.67 to 25.88 MiB
+for concurrent v2, 15.26 to 15.92 MiB for single v1, and 22.63 to 25.48 MiB for
+concurrent hybrid. All four memory budgets pass against the matching complete
+original baseline: median ratios 0.216–0.331 and observed maximum ratios 0.216–0.357.
 
 A separate four-trial counts comparison reduces write jobs/GiB from 9,392 to 4,980,
 total disk jobs from 9,405 to 5,505, directory/file opens from 57,164 to 42,103 and
@@ -356,9 +361,15 @@ with the same wire bytes and counted hash work. These are diagnostic counts,
 excluded from timing acceptance.
 
 The candidate passes 429 package tests and 55 focused tests under each sanitizer.
-The predeclared guards are twelve concurrent-v2 source pairs, then six pairs each
-for single-file v1 and concurrent hybrid. [Compact measurements](window-sixteen-20261115.json)
-retain completed outcomes and validation status. Raw evidence remains under ignored
+Native preflight exposed a test-fixture observation race: concurrent UI snapshots
+can retain an old peer row after the live connection budget reaches zero. The fixture
+now checks the live budget and first proves it observes the connected old peer.
+All four corrected cases pass on the eight-block baseline. Production tracker and
+disconnect code and all measured production-source fingerprints are unchanged.
+The initial failure and diagnostic reproduction remain preserved with the results.
+
+[Compact measurements](window-sixteen-20261115.json) retain all comparison outcomes,
+absolute memory medians and validation status. Raw evidence remains under ignored
 `.build/benchmarks/window-sixteen-*`.
 
 ## Profiling targets
