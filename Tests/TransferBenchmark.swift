@@ -151,6 +151,10 @@ import ButterTorrentEngine
 
 	static func fixture(_ root: URL, small: Bool, sweep: Bool = false) throws {
 		let fm = FileManager.default
+		let requestedPieceLength = ProcessInfo.processInfo.environment["BUTTER_BENCHMARK_PIECE_LENGTH"]
+		guard let pieceLength = Int(requestedPieceLength ?? "262144"), (16384...16777216).contains(pieceLength), pieceLength.nonzeroBitCount == 1 else {
+			throw PeerFailure.invalid("benchmark piece length must be a power of two from 16 KiB to 16 MiB")
+		}
 		var manifest: [[String: Any]] = []
 		var cases = sweep ? ["many"] : ["single", "many", "concurrent"]
 		if let selected = ProcessInfo.processInfo.environment["BUTTER_BENCHMARK_FIXTURE_CASE"] {
@@ -185,7 +189,7 @@ import ButterTorrentEngine
 			var torrents: [String: [String]] = [:], torrentHashes: [String: String] = [:]
 			for index in 0..<(name == "concurrent" ? 4 : 1) {
 				let source = seed.appendingPathComponent(name == "many" ? "bundle" : "payload-\(index).bin")
-				let hybrid = try TorrentCreator.create(source: source, trackers: [], isPrivate: false, pieceLength: 262144)
+				let hybrid = try TorrentCreator.create(source: source, trackers: [], isPrivate: false, pieceLength: pieceLength)
 				let document = try BencodeDocument(hybrid)
 				for format in (sweep ? ["hybrid", "v2"] : ["v1", "v2", "hybrid"]) {
 					var info = document.root["info"]!.dictionary!, root = document.root.dictionary!
@@ -199,7 +203,9 @@ import ButterTorrentEngine
 					torrents[format, default: []].append(path)
 				}
 			}
-			manifest.append(["case": name, "bytes": total, "files": files, "torrents": torrents, "torrent_sha256": torrentHashes])
+			var fixture: [String: Any] = ["case": name, "bytes": total, "files": files, "torrents": torrents, "torrent_sha256": torrentHashes]
+			if requestedPieceLength != nil { fixture["piece_length"] = pieceLength }
+			manifest.append(fixture)
 		}
 		try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted]).write(to: root.appendingPathComponent("manifest.json"))
 	}
