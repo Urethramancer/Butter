@@ -27,13 +27,17 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 	let raw: TCPStream
 	private let lock = NSLock()
 	private var target: Int?
-	private var largest = 0
+	private var largest = 0, reads = 0
+	private var closed = false
 	init(_ raw: TCPStream) { self.raw = raw }
 	var remoteEndpoint: NetworkEndpoint? { raw.remoteEndpoint }
 	var kind: PeerTransportKind { .tcp }
 	var largestRead: Int { lock.withLock { largest } }
+	var isClosed: Bool { lock.withLock { closed } }
+	var activeReads: Int { lock.withLock { reads } }
 	func coalesce(_ count: Int) { lock.withLock { target = count } }
 	func read(maximumBytes: Int, timeout: TimeInterval) async throws -> Data {
+		lock.withLock { reads += 1 }; defer { lock.withLock { reads -= 1 } }
 		var bytes = try await raw.read(maximumBytes: maximumBytes, timeout: timeout)
 		let goal = lock.withLock { let count = min(target ?? bytes.count, maximumBytes); target = nil; return count }
 		while bytes.count < goal {
@@ -43,7 +47,7 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 		lock.withLock { largest = max(largest, bytes.count) }; return bytes
 	}
 	func write(_ bytes: Data, timeout: TimeInterval) async throws { try await raw.write(bytes, timeout: timeout) }
-	func close() { raw.close() }
+	func close() { lock.withLock { closed = true }; raw.close() }
 }
 
 @Suite struct TransferWriteBatchTests {
@@ -216,6 +220,52 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 				#expect((stream.largestRead > 65536) == !limited)
 				#expect(stream.largestRead <= (limited ? 65536 : 262144))
 				#expect(await down.snapshot().downloaded == Int64(fixture.bytes.count))
+			} catch { connecting.cancel(); if let channel = try? await connecting.value { channel.close() }; throw error }
+		}
+	}
+	@Test(arguments: [false, true], [false, true]) func shutdownDrainsQueuedPayloadWhileStorageIsBlocked(_ encrypted: Bool, _ changeRate: Bool) async throws {
+		try await transferFixture { fixture in
+			var config = plainTransferConfiguration()
+			if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
+			let resources = try TransferResources(maximumDiskOperations: 1)
+			let down = try await fixture.transfer("download", configuration: config, resources: resources), listener = try await fixture.listen()
+			let endpoint = try NetworkEndpoint("127.0.0.1", port: listener.port), hash = fixture.metadata.hashes.v1!, encryption = config.encryption
+			let connecting = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption) }
+			let release = DispatchSemaphore(value: 0)
+			defer { release.signal() }
+			do {
+				let stream = CoalescingPeerStream(try await listener.accept(timeout: 3)); _ = try await down.attach(stream)
+				let channel = try await connecting.value; defer { channel.close() }
+				let peer = WirePeer(channel: channel)
+				try await peer.hello(hash: hash, identity: 42); try await peer.seed(pieceCount: 3)
+				let requests = try await peer.requests(6)
+				func frame(_ block: PeerBlock) throws -> Data {
+					let start = block.piece * 32768 + block.offset
+					return try PeerMessage.piece(block.piece, block.offset, fixture.bytes.subdata(in: start..<(start + block.length))).encoded()
+				}
+				// Finish one payload cycle before holding the next storage operation.
+				try await channel.write(frame(requests[0]))
+				try await eventually { let status = await down.snapshot(); return status.downloaded == 16384 && status.writingBlocks == 0 }
+				let worker = await fixture.stores[0].worker, entered = AsyncStream<Void>.makeStream()
+				let blocker = Task { try await worker.run { _ in entered.continuation.yield(()); _ = release.wait(timeout: .now() + 6) } }
+				do {
+					try await engineDeadline { for await _ in entered.stream { return }; throw PeerFailure.closed }
+					try await channel.write(frame(requests[1]))
+					try await eventually { await down.snapshot().writingBlocks == 1 }
+					if changeRate { try await down.setLimits(download: 1048576, upload: 0) }
+					for block in requests.dropFirst(2) {
+						let bytes = try frame(block)
+						try await channel.write(bytes)
+					}
+					let stopping = Task { try await down.shutdown() }
+					try await eventually { stream.isClosed }
+					release.signal(); try await blocker.value
+					try await engineDeadline { try await stopping.value }
+					#expect(stream.activeReads == 0)
+					let usage = await resources.snapshot()
+					#expect(usage.diskOperations == 0 && usage.waitingDiskOperations == 0)
+					#expect(await down.snapshot().peers.isEmpty)
+				} catch { release.signal(); _ = try? await blocker.value; throw error }
 			} catch { connecting.cancel(); if let channel = try? await connecting.value { channel.close() }; throw error }
 		}
 	}
