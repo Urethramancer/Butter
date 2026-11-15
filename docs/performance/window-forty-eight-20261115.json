@@ -2,7 +2,7 @@
   "candidate": "74938ad",
   "benchmark_revision": "be45572",
   "baseline": "50b3c87",
-  "status": "Corrected candidate passes package and sanitizer checks; both counts comparisons validate; acceptance timing pending",
+  "status": "256 KiB primary comparison validates all 100 trials and establishes no CPU gain; 1 MiB timing pending; candidate remains isolated",
   "counts": {
     "piece_256k": {
       "baseline": "50b3c87",
@@ -182,5 +182,79 @@
     "timing": "No 48-block acceptance timing started",
     "other_failures": "32-MiB transfer cases hit six-second test deadlines alongside parallel builds/tests; unchanged 32-block serial LargePieceTests subsequently passed all cases"
   },
-  "qualification": "User-authorised contended runs; counts excluded from CPU acceptance; no 64-block comparison unless 48 establishes a CPU gain in a predeclared piece size"
+  "qualification": "User-authorised contended runs; counts excluded from CPU acceptance; no 64-block comparison unless 48 establishes a CPU gain in a predeclared piece size",
+  "primary": {
+    "baseline": "50b3c87",
+    "candidate": "74938ad08f7e42cf3d4412d6d24b33106127acba",
+    "window": {
+      "previous": 32,
+      "current": 48
+    },
+    "case": "many",
+    "format": "hybrid",
+    "piece_length": 262144,
+    "trials": 100,
+    "validated": 100,
+    "results_directory": ".build/benchmarks/window-forty-eight-many-hybrid-24pairs-20261115",
+    "pairs": 24,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 1.0063780898082766,
+        "lower": 0.9938879427023769,
+        "upper": 1.0188999600343525,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9971985814402591,
+        "lower": 0.982271344915825,
+        "upper": 1.0051924429022676,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 1.0057908454404187,
+        "lower": 0.9973333333333333,
+        "upper": 1.0132275132275133,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 1.0011391690883034,
+        "lower": 0.9846372944346912,
+        "upper": 1.0188891058180396,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_controls": {
+      "cpu_seconds_per_gib": {
+        "median": 0.9983055998835637,
+        "lower": 0.993580198051211,
+        "upper": 1.0048740931096647,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.0041324916451912,
+        "lower": 0.9965219546886662,
+        "upper": 1.0090652615848041,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "memory_vs_original": {
+      "status": "pass",
+      "median_peak_rss_ratio": 0.2647854203409759,
+      "lower": 0.2600369173973235,
+      "upper": 0.2688273423688863,
+      "maximum_peak_rss_ratio": 0.284631288766368,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+    },
+    "median_peak_rss_mib": {
+      "previous": 17.5625,
+      "current": 17.59375
+    },
+    "integrity": {
+      "payloads_and_reopens": true,
+      "fingerprints_unchanged": true,
+      "original_baseline_unchanged": true,
+      "request_windows_verified": true,
+      "matching_original_torrent_hashes": true
+    }
+  }
 }

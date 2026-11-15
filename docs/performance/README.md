@@ -456,6 +456,13 @@ either size justifies trying 64; lower-throughput candidates remain isolated for
 user decision. The final larger-window candidate also requires the original guard
 workloads and native validation before adoption.
 
+The completed 256 KiB primary timing validates **100/100 trials**. CPU/GiB ratio
+is **1.006 (0.994–1.019)**, throughput **0.997 (0.982–1.005)** and peak RSS
+**1.006 (0.997–1.013)**. This establishes no CPU or throughput improvement; memory
+passes against the matching original baseline and both native-control intervals
+include one. The predeclared 1 MiB timing remains pending. No samples were repeated,
+discarded or added.
+
 `BUTTER_BENCHMARK_PIECE_LENGTH=1048576` selects the additional fixture, records its
 piece length and changes torrent metadata while retaining the same payload hashes.
 The 1 MiB fixture uses a fresh matched memory comparison; no original-baseline memory
