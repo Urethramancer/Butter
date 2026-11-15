@@ -397,11 +397,25 @@ trials**, including four warm-ups. CPU/GiB ratio is **0.935 (0.906–0.961)**,
 verified throughput **1.075 (1.028–1.101)** and peak RSS **1.014 (0.999–1.043)**
 (paired 95% bootstrap intervals). Median RSS rises from 17.96 to 18.28 MiB, and the
 memory budget passes against matching fixtures from the complete original baseline.
-Both native-control intervals include one. Compiler/test and application contention
+Both primary native-control intervals include one. Compiler/test and application contention
 was recorded under the authorised contended-run policy; this is not quiet-host
 release validation. Counters are disabled, source/binary fingerprints are unchanged,
 and every payload and strict checkpoint reopen validates. No samples were repeated,
 discarded or added after inspecting results.
+
+The three original guards also validate, giving **208/208 trials** in total:
+
+| Download guard | CPU/GiB ratio (95%) | Throughput ratio (95%) | Memory vs original |
+| --- | ---: | ---: | --- |
+| Concurrent v2, twelve pairs | 0.971 (0.947–0.991) | 1.030 (0.969–1.073) | Pass |
+| Single v1, six pairs | 0.973 (0.946–1.025) | 1.021 (0.896–1.045) | Pass |
+| Concurrent hybrid, six pairs | 0.967 (0.950–0.988) | 1.006 (0.968–1.083) | Pass |
+
+Both concurrent guards establish CPU gains; single-file CPU and all three guard
+throughput outcomes remain inconclusive. No throughput median is lower. All native
+control CPU/throughput intervals include one; all original-baseline memory budgets
+pass. A user-requested 1 MiB piece-size comparison is additional to these original
+256 KiB fixture comparisons and will use fresh matched sources.
 
 A separate four-trial counts comparison reduces disk jobs/GiB from 5,439 to 4,688,
 write jobs from 4,902 to 4,655 and descriptor opens from 41,499 to 37,673, with

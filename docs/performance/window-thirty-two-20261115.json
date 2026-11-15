@@ -1,7 +1,7 @@
 {
   "candidate": "50b3c87",
   "baseline": "6e67dfc",
-  "status": "Primary CPU gain established; guard workloads and final native validation pending; candidate remains isolated",
+  "status": "All 208 fixed comparisons validate; primary and both concurrent CPU gains established, single-file inconclusive; native validation pending; candidate remains isolated",
   "primary": {
     "baseline": "6e67dfc",
     "window": {
@@ -166,14 +166,219 @@
   },
   "guards": {
     "concurrent-v2": {
-      "status": "pending"
+      "baseline": "6e67dfc",
+      "window": {
+        "previous": 16,
+        "current": 32
+      },
+      "case": "concurrent",
+      "format": "v2",
+      "pairs": 12,
+      "trials": 52,
+      "validated": 52,
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 0.9714047822720371,
+          "lower": 0.9467863025020715,
+          "upper": 0.9913194082844077,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.0300989207856435,
+          "lower": 0.9689745812447544,
+          "upper": 1.0733856153816639,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 1.0278240322713041,
+          "lower": 1.0164131419579419,
+          "upper": 1.0622131978860012,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 0.958442655605276,
+          "lower": 0.9132485464096709,
+          "upper": 1.0359537390719706,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_controls": {
+        "cpu_seconds_per_gib": {
+          "median": 0.9989599795829762,
+          "lower": 0.9879499578790899,
+          "upper": 1.0191105992735703,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.0003066545197805,
+          "lower": 0.9953420198237486,
+          "upper": 1.007760066029987,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "memory_vs_original": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.32990205876474116,
+        "lower": 0.3205693664795509,
+        "upper": 0.3387129109863673,
+        "maximum_peak_rss_ratio": 0.3485180027849612,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true
+      },
+      "results_directory": ".build/benchmarks/window-thirty-two-concurrent-v2-12pairs-20261115",
+      "median_peak_rss_mib": {
+        "previous": 24.765625,
+        "current": 25.7890625
+      }
     },
     "single-v1": {
-      "status": "pending"
+      "baseline": "6e67dfc",
+      "window": {
+        "previous": 16,
+        "current": 32
+      },
+      "case": "single",
+      "format": "v1",
+      "pairs": 6,
+      "trials": 28,
+      "validated": 28,
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 0.9725926824848703,
+          "lower": 0.9463724005294741,
+          "upper": 1.0248617912045677,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.0208163933579488,
+          "lower": 0.8962357905736482,
+          "upper": 1.044831667109792,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 1.0015182225422896,
+          "lower": 0.9789023074848799,
+          "upper": 1.0295613153476055,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 1.0550569901385383,
+          "lower": 0.9120196312048405,
+          "upper": 1.1157809537801506,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_controls": {
+        "cpu_seconds_per_gib": {
+          "median": 0.9960168002493264,
+          "lower": 0.9641458723334762,
+          "upper": 1.04244960177189,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 0.9953081122384554,
+          "lower": 0.9898489433599408,
+          "upper": 1.0137448941487706,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "memory_vs_original": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.21301398897838067,
+        "lower": 0.21115453681208407,
+        "upper": 0.2215417106652587,
+        "maximum_peak_rss_ratio": 0.2215417106652587,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true
+      },
+      "results_directory": ".build/benchmarks/window-thirty-two-single-v1-6pairs-20261115",
+      "median_peak_rss_mib": {
+        "previous": 15.796875,
+        "current": 15.703125
+      }
     },
     "concurrent-hybrid": {
-      "status": "pending"
+      "baseline": "6e67dfc",
+      "window": {
+        "previous": 16,
+        "current": 32
+      },
+      "case": "concurrent",
+      "format": "hybrid",
+      "pairs": 6,
+      "trials": 28,
+      "validated": 28,
+      "source_ratios": {
+        "cpu_seconds_per_gib": {
+          "median": 0.9668181015226345,
+          "lower": 0.9497085596134808,
+          "upper": 0.9884190396811696,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.0061305432904175,
+          "lower": 0.9679414246002744,
+          "upper": 1.0825506861224463,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "peak_rss": {
+          "median": 1.0095395327737335,
+          "lower": 0.9418215506415255,
+          "upper": 1.0531273795588085,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "counterpart_cpu_seconds_per_gib": {
+          "median": 0.9941634908866791,
+          "lower": 0.8506793625273765,
+          "upper": 1.115380304681831,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "native_controls": {
+        "cpu_seconds_per_gib": {
+          "median": 1.0038129052971365,
+          "lower": 0.9751843911200843,
+          "upper": 1.0279340467128775,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        },
+        "verified_bytes_per_second": {
+          "median": 1.0009486149925755,
+          "lower": 0.8955933912002962,
+          "upper": 1.0240925991364094,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "memory_vs_original": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.32749649789873925,
+        "lower": 0.31742862846875625,
+        "upper": 0.35304695304695305,
+        "maximum_peak_rss_ratio": 0.35975244559792374,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "integrity": {
+        "payloads_and_reopens": true,
+        "fingerprints_unchanged": true,
+        "original_baseline_unchanged": true,
+        "request_windows_verified": true
+      },
+      "results_directory": ".build/benchmarks/window-thirty-two-concurrent-hybrid-6pairs-20261115",
+      "median_peak_rss_mib": {
+        "previous": 26.1328125,
+        "current": 25.5703125
+      }
     }
   },
-  "qualification": "User-authorised contended run; compiler/test and application activity recorded; no quiet-host release claim; no samples removed or repeated"
+  "qualification": "User-authorised contended run; compiler/test and application activity recorded; no quiet-host release claim; no samples removed or repeated",
+  "trials": 208
 }
