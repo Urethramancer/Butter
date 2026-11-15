@@ -508,15 +508,31 @@ and counted hash work within each comparison:
 | 256 KiB | 4,643 → 4,672 | 14.22 → 14.19 |
 | 1 MiB | 4,663 → 4,916 | 14.09 → 13.36 |
 
-The completed 256 KiB primary comparison validates **100/100 trials**. CPU/GiB
-is **1.011 (0.984–1.045)**, throughput **0.980 (0.961–1.003)** and peak RSS
-**0.997 (0.982–1.008)**. Neither CPU nor throughput establishes an improvement;
-median throughput is 2.0% lower. Original-baseline memory passes, and both native
-control intervals include one. The candidate remains isolated; the 1 MiB timing
-is still pending. All samples and source/binary fingerprints are retained.
+Both fixed comparisons validate **152/152 trials**, with paired candidate/previous
+ratios and 95% bootstrap intervals:
 
-These counts establish no CPU acceptance result. The predeclared final guard
-workloads, if needed, compare 64 directly with the established 32-block source.
+| Piece size | CPU/GiB | Verified throughput | Peak RSS |
+| --- | ---: | ---: | ---: |
+| 256 KiB, 24 pairs | 1.011 (0.984–1.045) | 0.980 (0.961–1.003) | 0.997 (0.982–1.008) |
+| 1 MiB, twelve pairs | 1.005 (0.972–1.028) | 1.004 (0.977–1.032) | 1.006 (0.952–1.017) |
+
+Neither piece size establishes a CPU or throughput improvement. The 256 KiB
+throughput median is 2.0% lower; its original-baseline memory budget passes. The
+1 MiB matched memory check passes, with median RSS 16.48 → 16.50 MiB; no original
+memory acceptance is inferred for that fixture. Both native-control intervals
+include one in both sizes. Every payload, strict reopen and source/native fingerprint
+validates. All samples are retained, with no repetitions or extensions. Host compiler,
+test and application activity qualifies these as authorised contended comparisons,
+not quiet-host release validation.
+
+The candidate remains isolated and window increases stop. Final guard/adoption
+comparisons are not run because the gain gate fails and the common-case throughput
+median is lower. Across the three window stages, all **564/564 fixed comparison
+trials** validate: 260 for 32 versus 16, 152 for 48 versus 32, and 152 for 64 versus
+48. The useful measured choices are 32 for the general default and 48 for the tested
+1 MiB-piece workload; a piece-aware policy still needs separate validation before
+adoption. Sixty-four supplies no established additional benefit in these fixtures.
+
 [Compact protocol, counts and validation](window-sixty-four-20261115.json) retain
 both outcomes; raw evidence is under ignored `.build/benchmarks/window-sixty-four-*`.
 

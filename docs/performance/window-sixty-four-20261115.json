@@ -1,7 +1,7 @@
 {
   "candidate": "02cbc31",
   "baseline": "be45572",
-  "status": "256 KiB primary validates 100 trials but establishes no CPU gain and has a lower throughput median; 1 MiB timing pending; candidate remains isolated",
+  "status": "All 152 fixed comparisons validate; neither piece size establishes a CPU gain; retain isolated branch and stop window increases",
   "counts": {
     "piece_256k": {
       "baseline": "be45572",
@@ -288,5 +288,88 @@
       "matching_original_torrent_hashes": true
     }
   },
-  "general_default_eligible": false
+  "general_default_eligible": false,
+  "piece_size_1m": {
+    "baseline": "be45572",
+    "candidate": "02cbc31cf5e7659182f29c77adffbf34e8c012db",
+    "window": {
+      "previous": 48,
+      "current": 64
+    },
+    "case": "many",
+    "format": "hybrid",
+    "piece_length": 1048576,
+    "trials": 52,
+    "validated": 52,
+    "results_directory": ".build/benchmarks/window-sixty-four-many-hybrid-1mib-12pairs-20261115",
+    "pairs": 12,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 1.005201478833487,
+        "lower": 0.9724850188713376,
+        "upper": 1.027640043485201,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.0038443066986549,
+        "lower": 0.9768202712030146,
+        "upper": 1.031851204010411,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 1.0058422645459304,
+        "lower": 0.9524485111399504,
+        "upper": 1.0170474811973667,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 0.9794863722690161,
+        "lower": 0.9059857162504679,
+        "upper": 1.0148667910805267,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_controls": {
+      "cpu_seconds_per_gib": {
+        "median": 1.002118042736261,
+        "lower": 0.9761413479955992,
+        "upper": 1.0141490345179232,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.0068672403483268,
+        "lower": 0.9864326524151581,
+        "upper": 1.0235619242554155,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "memory_vs_previous": {
+      "status": "pass",
+      "median_peak_rss_ratio": 1.000947867298578,
+      "lower": 0.955045871559633,
+      "upper": 1.032967032967033,
+      "maximum_peak_rss_ratio": 0.9700854700854701,
+      "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10",
+      "qualification": "New piece-size fixture; matched previous/current comparison only. No original-baseline memory acceptance inferred."
+    },
+    "median_peak_rss_mib": {
+      "previous": 16.484375,
+      "current": 16.5
+    },
+    "integrity": {
+      "payloads_and_reopens": true,
+      "fingerprints_unchanged": true,
+      "original_baseline_unchanged": true,
+      "request_windows_verified": true,
+      "matching_original_torrent_hashes": false
+    }
+  },
+  "trials": 152,
+  "gain_gate_passed": false,
+  "guards": {
+    "status": "Not run: no established CPU gain, and 256 KiB throughput median is lower"
+  },
+  "final_adoption_comparison": {
+    "status": "Not run: candidate is ineligible; marginal samples are not repeated or extended"
+  }
 }
