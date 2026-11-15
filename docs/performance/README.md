@@ -490,6 +490,30 @@ completed previous-source trials and incomplete current-source transfer are pres
 Parallel preflight also hit large-piece test deadlines; the unchanged 32-block cases
 and corrected full 48-block suite subsequently pass serially without deadline changes.
 
+## Sixty-four-block request-window candidate
+
+After 48 establishes a CPU gain with 1 MiB pieces, candidate `02cbc31` raises its
+default to 64. The measured production change is one constant against `be45572`;
+configuration/remote queue ceilings of 64, 32-message wire batches and other limits
+are inherited. It passes 431 package tests and 57 focused tests under each sanitizer.
+The candidate remains isolated during the fixed 24-pair 256 KiB and twelve-pair
+1 MiB comparisons. Any CPU-saving candidate with a lower throughput median remains
+isolated; no throughput trade-off is automatically adopted.
+
+Separate four-trial diagnostics validate for both sizes, with identical wire bytes
+and counted hash work within each comparison:
+
+| Piece size | Disk jobs/GiB, 48 → 64 | Mean blocks/dispatch, 48 → 64 |
+| --- | ---: | ---: |
+| 256 KiB | 4,643 → 4,672 | 14.22 → 14.19 |
+| 1 MiB | 4,663 → 4,916 | 14.09 → 13.36 |
+
+These counts establish no CPU acceptance result. The predeclared final guard
+workloads, if needed, compare 64 directly with the established 32-block source.
+[Compact protocol, counts and validation](window-sixty-four-20261115.json) retain
+both outcomes; raw evidence is under ignored `.build/benchmarks/window-sixty-four-*`.
+No experiment beyond 64 is authorised by this calibration request.
+
 ## Profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers
