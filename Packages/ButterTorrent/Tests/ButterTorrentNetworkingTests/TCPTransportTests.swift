@@ -77,4 +77,48 @@ import Testing
 		#expect(budget.count == 0)
 		try await listener.shutdown()
 	}
+	@Test func rejectedOverlappingReadDoesNotDisturbItsOwner() async throws {
+		let clock = ManualTransportClock(), listener = try await TCPListener.listen(address: IPAddress("127.0.0.1"), maximumPeers: 1)
+		defer { listener.close() }
+		let client = try await TCPStream.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port), clock: clock)
+		let server = try await listener.accept(timeout: 3)
+		defer { client.close(); server.close() }
+		let first = Task { try await client.read(timeout: 7) }
+		try await clock.waitForSleep(7)
+		await #expect(throws: NetworkFailure.busy) { try await client.read(timeout: 3) }
+		#expect(!client.isClosed)
+		try await server.write(Data([42]))
+		#expect(try await first.value == Data([42]))
+		let second = Task { try await client.read(timeout: 3) }
+		try await clock.waitForSleep(3)
+		first.cancel()
+		#expect(!client.isClosed)
+		try await server.write(Data([43]))
+		#expect(try await second.value == Data([43]))
+		client.close(); server.close(); try await listener.shutdown()
+	}
+	@Test func readCompletionCancellationAndCloseRaceReleasesTheBudget() async throws {
+		let budget = TCPPeerBudget(limit: 2)
+		let listener = try await TCPListener.listen(address: IPAddress("127.0.0.1"), maximumPeers: 1, budget: budget)
+		defer { listener.close() }
+		for _ in 0..<64 {
+			let clock = ManualTransportClock()
+			let client = try await TCPStream.connect(to: NetworkEndpoint("127.0.0.1", port: listener.port), clock: clock, budget: budget)
+			let server = try await listener.accept(timeout: 3)
+			let reading = Task { try await client.read(timeout: 1) }
+			try await clock.waitForSleep(1)
+			await withTaskGroup(of: Void.self) { group in
+				group.addTask { reading.cancel() }
+				group.addTask { try? await server.write(Data([42])) }
+				group.addTask { client.close() }
+			}
+			do { #expect(try await reading.value == Data([42])) }
+			catch { #expect(error is CancellationError || error as? NetworkFailure == .closed) }
+			client.close(); server.close()
+			try await deadline {
+				while budget.count != 0 { try await Task.sleep(for: .milliseconds(1)) }
+			}
+		}
+		try await listener.shutdown()
+	}
 }
