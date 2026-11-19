@@ -72,9 +72,14 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 		Dir.mktmpdir do |root|
 			secret_key = 'BUTTER_TEST_UNRELATED_SECRET'
 			old_secret = ENV[secret_key]; old_diagnostics = ENV['BUTTER_STORAGE_DIAGNOSTICS']
+			prefixed_key = 'BUTTER_BENCHMARK_UNRELATED_SECRET'; old_prefixed = ENV[prefixed_key]
 			begin
 				ENV[secret_key] = 'synthetic-test-value'; ENV['BUTTER_STORAGE_DIAGNOSTICS'] = '1'
+				ENV[prefixed_key] = 'synthetic-test-value'
 				refute H.process_environment.key?(secret_key)
+				refute H.benchmark_environment.key?(secret_key)
+				refute H.benchmark_environment.key?(prefixed_key)
+				assert_equal '1', H.benchmark_environment['BUTTER_STORAGE_DIAGNOSTICS']
 				assert_equal '1', H.process_environment['BUTTER_STORAGE_DIAGNOSTICS']
 				output = File.join(root, 'output')
 				assert H.run_bounded([RbConfig.ruby, '-e', 'puts [ENV.key?("BUTTER_TEST_UNRELATED_SECRET"), ENV["BUTTER_STORAGE_DIAGNOSTICS"]].join(" ")'], File.join(root, 'errors'), output: output)
@@ -87,6 +92,7 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 				assert_equal 0600, File.stat(path).mode & 0777
 			ensure
 				ENV[secret_key] = old_secret; ENV['BUTTER_STORAGE_DIAGNOSTICS'] = old_diagnostics
+				ENV[prefixed_key] = old_prefixed
 			end
 		end
 	end

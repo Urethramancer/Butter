@@ -119,7 +119,7 @@ build_driver "$PWD" "$bin" "$work/TransferBenchmark"
 previous_driver=
 previous_root=
 if [ "$mode" = --compare-source ] || [ "$mode" = --profile-source ] || [ "$mode" = --receive-profile ] || [ "$mode" = --rate-compare ]; then
-	previous_revision=$(git rev-parse --verify --end-of-options "${BUTTER_BENCHMARK_PREVIOUS_REVISION:-1931e70}^{commit}")
+	previous_revision=$(git rev-parse --verify --end-of-options "${BUTTER_BENCHMARK_PREVIOUS_REVISION:-ad8976074b79bdbb24da9b67f79683b564ea9102}^{commit}")
 	previous_root=$work/previous-source
 	git worktree add --detach "$previous_root" "$previous_revision" >> "$out/build.log" 2>&1
 	if [ "$mode" = --receive-profile ]; then
@@ -132,7 +132,7 @@ if [ "$mode" = --compare-source ] || [ "$mode" = --profile-source ] || [ "$mode"
 	previous_driver=$work/PreviousTransferBenchmark
 	build_driver "$previous_root" "$previous_bin" "$previous_driver"
 fi
-ruby -rjson -rdigest -ropen3 -rrbconfig -e '
+ruby -I Tests -rTransferBenchmarkHarness -rjson -rdigest -ropen3 -rrbconfig -e '
   capture = ->(*cmd) { output, status = Open3.capture2e(*cmd); raise output unless status.success?; output.strip }
   root, out, mode, reference, swift_driver, previous_driver, previous_root = ARGV
   rate_mode = mode.start_with?("--rate-")
@@ -143,7 +143,7 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
     libtorrent_revision: "6da363d2994f17c0b3c0450d124cf73a31a73847", swift: capture.call("swift", "--version"), clang: capture.call("clang++", "--version"),
     os: capture.call("sw_vers"), machine: capture.call("sysctl", "-n", "hw.model", "hw.memsize", "hw.logicalcpu"),
     filesystem: capture.call("df", "-h", root), work_directory: root, resource_limits: capture.call("sh", "-c", "ulimit -a"),
-    filters: ENV.select { |key, _| key.start_with?("BUTTER_BENCHMARK_") || %w[BUTTER_STORAGE_DIAGNOSTICS BUTTER_STORAGE_WRITE_TIMINGS BUTTER_RECEIVE_PIPELINE_TIMINGS BUTTER_PROFILE_KEEP_RAW].include?(key) },
+    filters: TransferBenchmarkHarness.benchmark_environment,
     swift_flags: "Release package; swiftc -O -swift-version #{ENV["BUTTER_BENCHMARK_APPLICATION_INSPECTOR"] ? 5 : 6}", reference_flags: "CMake Release; arm64; pinned static libtorrent",
     transport: "loopback TCP, encryption disabled, PEX/discovery disabled; production request windows",
     cache: "fresh processes and destinations; sources streamed and SHA256 checked before every trial; explicitly warm, no cold-cache claim",
