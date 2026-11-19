@@ -82,7 +82,7 @@ cleanup() {
 	status=$?
 	trap - EXIT
 	# Only the disposable clone and derived data are removed; retain release evidence.
-	rm -rf "$source_dir" "$output/DerivedData" "$output/BuildProducts" "$output/Intermediates"
+	rm -rf "$source_dir" "$output/DerivedData"
 	if [[ $status != 0 ]]; then printf 'Release stopped. Logs and artifacts: %s\n' "$output" >&2; fi
 	exit "$status"
 }
@@ -94,10 +94,11 @@ printf 'Building %s (%s). Logs: %s\n' "$tag" "$revision" "$output"
 git clone --quiet --no-hardlinks --no-checkout "$root" "$source_dir"
 git -C "$source_dir" checkout --quiet --detach "$revision"
 archive=$output/Butter-$tag.xcarchive
+# Keep Xcode's archive directory layout intact, independent of custom user paths.
 if ! xcodebuild -project "$source_dir/Butter.xcodeproj" -scheme Butter -configuration Release \
 	-destination 'generic/platform=macOS' -derivedDataPath "$output/DerivedData" \
+	-IDEBuildLocationStyle=Unique ARCHS=arm64 \
 	-archivePath "$archive" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$identity" \
-	SYMROOT="$output/BuildProducts" OBJROOT="$output/Intermediates" \
 	DEVELOPMENT_TEAM="$team" ENABLE_HARDENED_RUNTIME=YES \
 	CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO OTHER_CODE_SIGN_FLAGS=--timestamp archive >"$output/build.log" 2>&1; then
 	tail -n 60 "$output/build.log" >&2
