@@ -4,6 +4,35 @@ require_relative 'TransferBenchmarkHarness'
 
 class TransferBenchmarkHarnessTests < Minitest::Test
 	H = TransferBenchmarkHarness
+	def test_fixed_matrix_never_extends_uncertain_cases
+		previous_signal = Signal.trap('TERM', 'DEFAULT')
+		[6, 12].each do |count|
+			Dir.mktmpdir('butter-fixed-matrix') do |out|
+				runner = H::Runner.new('/swift', '/reference', out, '/unused', baseline: nil, fixed_pairs: count)
+				runner.define_singleton_method(:trial) do |fixture, format, direction, engine, pair, warmup|
+					@trials << {case: fixture['case'], format: format, direction: direction, engine: engine, pair: pair, warmup: warmup, accepted: true}
+				end
+				H.stub(:summary, {status: 'inconclusive', requires_more_pairs: true}) do
+					runner.run([{'case' => 'many'}])
+				end
+				rows = runner.instance_variable_get(:@trials)
+				assert_equal 6 * (2 + count * 2), rows.size
+				rows.group_by { |row| row.values_at(:format, :direction) }.each_value do |trials|
+					assert_equal 2, trials.count { |row| row[:warmup] }
+					measured = trials.reject { |row| row[:warmup] }.group_by { |row| row[:pair] }.values
+					assert_equal count, measured.size
+					assert_equal count / 2, measured.count { |pair| pair.first[:engine] == 'Swift' }
+				end
+			end
+		end
+	ensure
+		Signal.trap('TERM', previous_signal) if previous_signal
+	end
+	def test_fixed_matrix_rejects_other_modes_and_invalid_counts
+		[{fixed_pairs: 7}, {fixed_pairs: 6, smoke: true}, {fixed_pairs: 6, profile: true}, {fixed_pairs: 6, previous: '/previous'}].each do |options|
+			assert_raises(ArgumentError) { H::Runner.new('/swift', '/reference', '/unused', '/unused', baseline: nil, **options) }
+		end
+	end
 	def test_selected_fixture_subset_requires_exact_full_baseline_matches
 		Dir.mktmpdir('butter-baseline-fixtures') do |root|
 			baseline, work = File.join(root, 'baseline'), File.join(root, 'work')

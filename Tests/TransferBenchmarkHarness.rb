@@ -438,7 +438,9 @@ module TransferBenchmarkHarness
 	end
 
 	class Runner
-		def initialize(swift, reference, output, work, smoke: false, profile: false, write_profile: false, receive_profile: false, previous: nil, baseline: ENV['BUTTER_BENCHMARK_BASELINE'], source_pairs: 6)
+		def initialize(swift, reference, output, work, smoke: false, profile: false, write_profile: false, receive_profile: false, previous: nil, baseline: ENV['BUTTER_BENCHMARK_BASELINE'], source_pairs: 6, fixed_pairs: nil)
+			raise ArgumentError, 'Fixed pairs require an uninstrumented full matrix and must be 6 or 12' if fixed_pairs && (![6, 12].include?(fixed_pairs) || smoke || profile || write_profile || receive_profile || previous)
+			@fixed_pairs = fixed_pairs
 			raise ArgumentError, 'Source pairs must be 6, 12 or 24' unless [6, 12, 24].include?(source_pairs)
 			@source_pairs = source_pairs
 			@commands = { 'Swift' => [swift], 'libtorrent' => [reference] }
@@ -656,13 +658,13 @@ module TransferBenchmarkHarness
 							File.write(File.join(@output, 'summary.json'), JSON.pretty_generate(results)); next
 						end
 						%w[Swift libtorrent].each { |engine| trial(fixture, format, direction, engine, -1, true) } unless @profile
-						orders = @smoke || @profile ? [%w[Swift libtorrent]] : TransferBenchmarkHarness.orders(6, seed)
+						orders = @smoke || @profile ? [%w[Swift libtorrent]] : TransferBenchmarkHarness.orders(@fixed_pairs || 6, seed)
 						orders.each_with_index { |order, pair| order.each { |engine| trial(fixture, format, direction, engine, pair, false) } }
 						select = -> { @trials.select { |trial| trial[:case] == fixture['case'] && trial[:format] == format && trial[:direction] == direction } }
 						result = TransferBenchmarkHarness.summary(select.call)
 						baseline = @baseline&.select { |trial| trial[:case] == fixture['case'] && trial[:format] == format && trial[:direction] == direction }
 						result[:memory] = TransferBenchmarkHarness.memory_summary(select.call, baseline) if baseline
-						if !@smoke && !@profile && (result[:requires_more_pairs] || (baseline && result[:memory][:status] == 'inconclusive'))
+						if !@fixed_pairs && !@smoke && !@profile && (result[:requires_more_pairs] || (baseline && result[:memory][:status] == 'inconclusive'))
 							TransferBenchmarkHarness.orders(6, seed + 1000).each_with_index { |order, pair| order.each { |engine| trial(fixture, format, direction, engine, pair + 6, false) } }
 							result = TransferBenchmarkHarness.summary(select.call)
 							result[:memory] = TransferBenchmarkHarness.memory_summary(select.call, baseline) if baseline
@@ -693,5 +695,5 @@ if $PROGRAM_NAME == __FILE__
 	FileUtils.mkdir_p(output)
 	manifest = JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
 	FileUtils.cp(File.join(work, 'fixtures', 'manifest.json'), File.join(output, 'fixtures.json'))
-	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: %w[--profile --profile-source].include?(mode), write_profile: mode == '--write-profile', receive_profile: mode == '--receive-profile', previous: %w[--compare-source --profile-source --receive-profile].include?(mode) ? previous : nil, source_pairs: Integer(ENV.fetch('BUTTER_BENCHMARK_SOURCE_PAIRS', '6'))).run(manifest)
+	TransferBenchmarkHarness::Runner.new(swift, reference, output, work, smoke: mode == '--smoke', profile: %w[--profile --profile-source].include?(mode), write_profile: mode == '--write-profile', receive_profile: mode == '--receive-profile', previous: %w[--compare-source --profile-source --receive-profile].include?(mode) ? previous : nil, source_pairs: Integer(ENV.fetch('BUTTER_BENCHMARK_SOURCE_PAIRS', '6')), fixed_pairs: ENV['BUTTER_BENCHMARK_FIXED_PAIRS'] && Integer(ENV['BUTTER_BENCHMARK_FIXED_PAIRS'])).run(manifest)
 end

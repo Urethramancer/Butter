@@ -984,6 +984,10 @@ Scripts/test-benchmark.sh --smoke .build/benchmarks/new-smoke
 ```
 
 Use a fresh output directory and the retained complete baseline for memory checks.
+For a fixed full matrix, set `BUTTER_BENCHMARK_FIXED_PAIRS=6` or `12` before
+launch. This disables automatic extensions for uncertain results and records the
+sampling policy in the environment manifest. Six pairs give 252 trials including
+the 36 warm-ups across all 18 cases.
 `--compare-source` and `--rate-compare` accept `BUTTER_BENCHMARK_PREVIOUS_REVISION`;
 select workloads with `BUTTER_BENCHMARK_CASE`, `BUTTER_BENCHMARK_FORMAT` and
 `BUTTER_BENCHMARK_DIRECTION`. `--rate-sweep` is exploratory.

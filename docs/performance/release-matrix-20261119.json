@@ -1,0 +1,14 @@
+{
+	"status": "predeclared",
+	"release": "v0.18.0",
+	"scope": "18 loopback cases: single file, 128 files and four concurrent transfers; v1/v2/hybrid; download and seed; 1 GiB per trial.",
+	"sampling": "One warm-up per engine per case, then six fixed balanced engine-order pairs: 252 trials total. No retries, discarded samples or uncertainty-driven extensions.",
+	"validation": "Independent payload hashes, strict checkpoint reopening, durable shutdown, unchanged source/binary fingerprints and exact original-baseline fixtures.",
+	"baseline": ".build/benchmarks/baseline-seeding-fixed",
+	"baseline_trials_sha256": "665fe8e874896a86b4804f8bac04ca21f25261dd50f3d2f8421d50054e2fde60",
+	"baseline_fixtures_sha256": "071708d0fd615061b69a36a05107dc3e702b3b746fff8c884f89b32e2f28937e",
+	"targets": {"throughput_ratio_minimum": 0.9, "cpu_per_gib_ratio_maximum": 1.25, "peak_rss_vs_original_maximum": 1.1},
+	"host": "Compiler and ordinary desktop activity observed before preparation. Leave other processes untouched, record snapshots, and qualify results as contended if activity persists. No assistant-initiated builds or other tests during timing.",
+	"instrumentation": "Counters and profilers disabled during the matrix; CPU profiling follows after the matrix and its analysis.",
+	"next": "Use completed matrix to select CPU diagnostics, then investigate cold-start discovery latency. UI testing remains stopped. User reports good GUI throughput behind a fibre router with DMZ, UPnP and forwarding configured; leave router configuration unchanged."
+}

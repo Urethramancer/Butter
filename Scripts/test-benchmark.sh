@@ -3,6 +3,10 @@
 set -eu
 cd "$(dirname "$0")/.."
 mode=${1:---full}
+if [ -n "${BUTTER_BENCHMARK_FIXED_PAIRS:-}" ]; then
+	[ "$mode" = --full ] || { echo 'Fixed matrix pair counts require --full.' >&2; exit 2; }
+	case "$BUTTER_BENCHMARK_FIXED_PAIRS" in 6|12) ;; *) echo 'Fixed matrix pairs must be 6 or 12.' >&2; exit 2 ;; esac
+fi
 case "$mode" in --full|--smoke|--receive-profile|--write-profile|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare) ;; *) echo 'Usage: Scripts/test-benchmark.sh [--full|--smoke|--receive-profile|--write-profile|--profile|--compare-source|--profile-source|--rate-sweep|--rate-profile|--rate-compare] [OUTPUT]' >&2; exit 2 ;; esac
 if [ -n "${BUTTER_BENCHMARK_SOURCE_PAIRS:-}" ]; then
 	[ "$mode" = --compare-source ] || { echo 'Source pair counts require --compare-source.' >&2; exit 2; }
@@ -172,6 +176,9 @@ ruby -rjson -rdigest -ropen3 -rrbconfig -e '
   record[:dependency_archives_sha256] = %w[libtorrent-rasterbar libssl libcrypto].to_h { |name| [name, Digest::SHA256.file(".dependencies/install/lib/#{name}.a").hexdigest] }
   record[:reference_linkage] = capture.call("otool", "-L", reference)
   record[:ruby] = capture.call(RbConfig.ruby, "--version")
+  if ENV["BUTTER_BENCHMARK_FIXED_PAIRS"]
+    record[:sampling] = "one warm-up per engine per case, fixed #{ENV.fetch("BUTTER_BENCHMARK_FIXED_PAIRS")} balanced pairs; no uncertainty-driven extensions or repetitions"
+  end
   File.write(File.join(out, "environment.json"), JSON.pretty_generate(record))
 ' "$work" "$out" "$mode" "$reference" "$work/TransferBenchmark" "$previous_driver" "$previous_root"
 rm -f "$out/build.log"
