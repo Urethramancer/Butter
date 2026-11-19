@@ -7,6 +7,12 @@ result**, not quiet-host release qualification. Earlier matrices and controlled
 source comparisons remain retained; differences between separate matrices do not
 establish the cause of a performance change.
 
+Reference provenance remains incomplete: 178 of the installed archive's 179
+object payloads match the cached Apple-build archive; `bt_peer_connection.cpp.o`
+differs. Cached compiler/header settings therefore do not establish the installed
+archive's provenance. Benchmark metadata labels them as unverified and retains
+archive fingerprints; neither archive was rebuilt or replaced for this check.
+
 The later [request-window comparisons](#thirty-two-block-request-window) retain a
 thirty-two-block default after successive increases from eight and sixteen. They
 establish additional CPU gains with modest memory use. Larger windows help the

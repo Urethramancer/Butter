@@ -22,7 +22,9 @@
   direct baseline timing shows checkpoint execution is a small target.
 - Resolve grouped-upload/request-burst uncertainty with matched source comparisons.
 - Establish reference compiler/Boost provenance: archive ABI indicates Boost 1.92,
-  while cached flags name 1.88. Retain archive fingerprints.
+  while cached flags name 1.88. Installed object payloads match 178/179 cached
+  Apple-build objects; `bt_peer_connection.cpp.o` differs. Establish the origin
+  of that object and the headers actually used. Retain archive fingerprints.
 
 ## Unexplained validation failures
 
