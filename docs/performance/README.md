@@ -36,6 +36,37 @@ vary. These are single diagnostic runs, with approximate sampling times and no
 controlled Transmission timing. Cold-start latency and redundant traffic remain
 targets; this does not establish parity with Transmission.
 
+A subsequent user test reached approximately 50% at over 30 MB/s in Butter.
+Transmission then verified that partial payload and continued at around 25 MB/s.
+These sequential observations support competitive bulk throughput and correct
+interoperability; they are separate from the fresh-session diagnostic above.
+
+### Duplicate-request rescue experiment
+
+The picker can duplicate blocks immediately whenever its eight active piece
+slots are occupied, even when the existing requests are fresh. Candidate
+`9e3c203` requires those requests to be one second old before rescue; duplication
+of the final 32-block tail remains immediate, with at most two owners per block.
+
+One predeclared fresh-session Debian download per source produced:
+
+| Source | Redundant payload | Completion | Peak sampled receive rate |
+| --- | ---: | ---: | ---: |
+| `v0.16.1` | 24.79 MB (3.37% of ISO size) | 74.58 s | 17.62 MB/s |
+| One-second rescue delay | 10.89 MB (1.48%) | 157.15 s | 17.39 MB/s |
+
+The candidate reduced redundant bytes by 56%, but this public-swarm pair does
+not establish causation or preserved throughput: peers and their availability
+differed. Both payloads independently passed all 2,806 hashes. The candidate
+passed 211 engine tests, including healthy multi-peer request counts, staggered
+request ages, immediate endgame duplication and a stalled TCP peer's rescue,
+cancellation, late-byte accounting and completion.
+
+The candidate remains on `experiments/aged-duplicate-rescue`; main retains the
+existing rescue policy. Avoid exchanging the established download performance
+for lower traffic without a controlled comparison. Raw runs and the diagnostic
+driver are retained under `.build/diagnostics/duplicate-rescue`.
+
 ## Current matrix
 
 15 November 2026, engine revision `450e229`, including worker fusion `047dcfc`.
