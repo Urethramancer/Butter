@@ -2,11 +2,7 @@
 
 ## Performance
 
-- Reduce public-swarm startup latency and redundant request traffic without
-  sacrificing the established bulk throughput.
-- Evaluate isolated duplicate-rescue candidate `9e3c203` with controlled peer
-  rates before retention. Candidate public runs finished in 64–157 s with
-  0.069–1.48% redundant payload; throughput preservation needs matched conditions.
+- Reduce public-swarm discovery startup latency.
 - Reduce download CPU/GiB and improve single/many-file throughput against
   libtorrent. Downloads miss the CPU target in the
   [latest matrix](docs/performance/README.md), which ran under competing host load.

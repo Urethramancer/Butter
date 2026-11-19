@@ -41,7 +41,7 @@ Transmission then verified that partial payload and continued at around 25 MB/s.
 These sequential observations support competitive bulk throughput and correct
 interoperability; they are separate from the fresh-session diagnostic above.
 
-### Duplicate-request rescue experiment
+### Duplicate-request rescue
 
 The picker can duplicate blocks immediately whenever its eight active piece
 slots are occupied, even when the existing requests are fresh. Candidate
@@ -69,10 +69,13 @@ Independent reopening again verified all 2,806 pieces. This shows the candidate
 can complete with very low overhead; the spread between its two runs still
 prevents attributing elapsed-time differences to the policy alone.
 
-The candidate remains on `experiments/aged-duplicate-rescue`; main retains the
-existing rescue policy. Avoid exchanging the established download performance
-for lower traffic without a controlled comparison. Raw runs and the diagnostic
-driver are retained under `.build/diagnostics/duplicate-rescue`.
+The user accepted the follow-up and confirmed that this swarm delivers in waves,
+with 20–60 MB/s expected. The one-second rescue guard is retained on main as
+`1baafe3`; the original experiment remains on `experiments/aged-duplicate-rescue`.
+Main passes the twelve focused picker/rescue tests, in addition to the candidate's
+211 engine tests. Public timings remain diagnostic observations rather than a
+controlled throughput comparison. Raw runs and the diagnostic driver are retained
+under `.build/diagnostics/duplicate-rescue`.
 
 ## Current matrix
 
