@@ -140,6 +140,9 @@ extension ButterUITests {
 			}
 			app.typeKey("w", modifierFlags: .command)
 			for tab in ["Info", "Trackers", "Peers", "Files"] { app.radioButtons[tab].click(); capture("Inspector-\(tab)-\(style)") }
+			row.click(); capture("SelectedTransfer-\(style)")
+			row.rightClick(); app.typeKey(.downArrow, modifierFlags: [])
+			capture("SelectedTransferMenu-\(style)"); app.typeKey(.escape, modifierFlags: [])
 		}
 	}
 	private func capture(_ name: String) {

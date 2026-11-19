@@ -1,6 +1,29 @@
 import SwiftUI
 import AppKit
 
+// Keep native list selection and keyboard handling, but let SwiftUI draw the
+// transfer row's subdued selection background instead of the system accent.
+struct TransferRowSelection: NSViewRepresentable {
+	func makeNSView(context: Context) -> NSView {
+		let view = SelectionView(); view.setAccessibilityElement(false); return view
+	}
+	func updateNSView(_ view: NSView, context: Context) { (view as? SelectionView)?.configure() }
+	private final class SelectionView: NSView {
+		override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); configure() }
+		override func hitTest(_ point: NSPoint) -> NSView? { nil }
+		func configure() {
+			var ancestor = superview
+			while let view = ancestor {
+				if let table = view as? NSTableView {
+					if table.selectionHighlightStyle != .none { table.selectionHighlightStyle = .none }
+					return
+				}
+				ancestor = view.superview
+			}
+		}
+	}
+}
+
 extension View {
 	// Icon-only controls need an action name for both pointer and VoiceOver users.
 	func controlHelp(_ label: String) -> some View {

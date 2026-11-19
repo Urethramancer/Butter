@@ -30,6 +30,10 @@ identifiers. Native checks exercise accessibility activation through mixed, on,
 off and disabled checkbox states; the file-selection/removal UI workflow passes.
 Peer rows expose spoken download/upload labels and folder controls expose their
 expanded state. Piece accessibility summaries count statuses in one pass.
+Transfer selection uses inset pale slate in Light mode and graphite in Dark mode
+with contrasting text, adapts to inactive windows, and leaves native menu highlights
+unchanged. Compositor captures cover the selected row with its menu open;
+keyboard multiple selection and context-menu removal pass together.
 
 [TODO](../TODO.md) retains unexplained failures: a native-sequence µTP handshake
 timeout, an earlier temporary-path disappearance and a combined-contract deadline.

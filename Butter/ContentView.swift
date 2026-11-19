@@ -18,6 +18,8 @@ enum TransferFilter: String, CaseIterable, Identifiable {
 }
 struct ContentView: View {
 	@EnvironmentObject private var store: TransferStore
+	@Environment(\.appearsActive) private var appearsActive
+	@Environment(\.colorScheme) private var colourScheme
 	@State private var filter: TransferFilter = .all
 	@State private var collapsed = Set<String>()
 	@State private var search = ""
@@ -66,7 +68,7 @@ struct ContentView: View {
 	@ViewBuilder private func groupSection(_ key: String, title: String, colour: String, members: [TransferSnapshot]) -> some View {
 		if !members.isEmpty {
 			Section {
-				if !collapsed.contains(key) { ForEach(members) { torrent in TorrentRow(torrent: torrent).tag(torrent.id).accessibilityElement(children: .contain).accessibilityIdentifier("transfer-row-\(torrent.id)").contextMenu { TransferMenu(torrent: torrent) } } }
+				if !collapsed.contains(key) { ForEach(members) { torrent in transferRow(torrent) } }
 			} header: {
 				HStack {
 					Button { if collapsed.contains(key) { collapsed.remove(key) } else { collapsed.insert(key) } } label: { HStack { Image(systemName: collapsed.contains(key) ? "chevron.right" : "chevron.down"); Circle().fill(groupColour(colour)).frame(width: 8, height: 8); Text(title); Text("\(members.count)").foregroundStyle(.secondary) } }.buttonStyle(.plain).controlHelp("\(collapsed.contains(key) ? "Expand" : "Collapse") group \(title)").accessibilityValue("\(members.count) transfers")
@@ -75,6 +77,19 @@ struct ContentView: View {
 				}
 			}
 		}
+	}
+	private func transferRow(_ torrent: TransferSnapshot) -> some View {
+		let selected = store.selection.contains(torrent.id)
+		return TorrentRow(torrent: torrent).tag(torrent.id)
+			.background(TransferRowSelection())
+			.listRowBackground(selected ? RoundedRectangle(cornerRadius: 6).fill(selectionBackground).padding(.horizontal, 10).padding(.vertical, 1) : nil)
+			.environment(\.backgroundProminence, selected && appearsActive && colourScheme == .dark ? .increased : .standard)
+			.accessibilityElement(children: .contain).accessibilityIdentifier("transfer-row-\(torrent.id)")
+			.contextMenu { TransferMenu(torrent: torrent) }
+	}
+	private var selectionBackground: Color {
+		if !appearsActive { return Color(nsColor: .unemphasizedSelectedContentBackgroundColor) }
+		return colourScheme == .dark ? Color(red: 0.40, green: 0.44, blue: 0.49) : Color(red: 0.88, green: 0.90, blue: 0.92)
 	}
 	private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
 		for provider in providers {
@@ -93,10 +108,15 @@ struct ContentView: View {
 func groupColour(_ name: String) -> Color { switch name { case "red": .red; case "orange": .orange; case "green": .green; case "purple": .purple; case "pink": .pink; case "grey": .gray; default: .blue } }
 struct TorrentRow: View {
 	@EnvironmentObject private var store: TransferStore
+	@Environment(\.backgroundProminence) private var prominence
 	let torrent: TransferSnapshot
+	private var selected: Bool { store.selection.contains(torrent.id) }
+	private var selectionForeground: Color { prominence == .increased ? .white : .primary }
+	private var detailColour: Color { selected ? selectionForeground : .secondary }
+	private var statusColour: Color { selected ? selectionForeground : (torrent.error.isEmpty ? .secondary : .red) }
 	var body: some View {
 		HStack(spacing: 12) {
-			Menu { PriorityMenu(ids: store.selection.contains(torrent.id) ? store.selection : [torrent.id]) } label: { Image(systemName: "line.3.horizontal.decrease.circle").font(.title3) }.menuStyle(.borderlessButton).frame(width: 23).controlHelp("Change priority for \(store.title(torrent))").accessibilityValue(store.priority(for: torrent).label)
+			Menu { PriorityMenu(ids: store.selection.contains(torrent.id) ? store.selection : [torrent.id]) } label: { Image(systemName: "line.3.horizontal.decrease.circle").symbolRenderingMode(.palette).font(.title3).foregroundStyle(prominence == .increased ? Color.white : Color.primary) }.menuStyle(.borderlessButton).frame(width: 23).controlHelp("Change priority for \(store.title(torrent))").accessibilityValue(store.priority(for: torrent).label)
 			VStack(alignment: .leading, spacing: 5) {
 				HStack {
 					Text(store.title(torrent)).font(.headline).lineLimit(1)
@@ -105,10 +125,10 @@ struct TorrentRow: View {
 							.padding(.horizontal, 5).padding(.vertical, 2).background(.quaternary, in: .rect(cornerRadius: 4)).fixedSize()
 							.accessibilityLabel("Torrent format: \(format)").help(format == "Hybrid" ? "Hybrid torrent supporting both v1 and v2." : "BitTorrent \(format) torrent.")
 					}
-					Spacer(); Text("\(Int(torrent.verifiedProgress * 100))%").monospacedDigit().foregroundStyle(.secondary)
+					Spacer(); Text("\(Int(torrent.verifiedProgress * 100))%").monospacedDigit().foregroundStyle(detailColour)
 				}
 				PieceProgress(pieces: torrent.pieces).frame(height: 7)
-				HStack { Text("\(bytes(torrent.done)) of \(bytes(torrent.wanted)) · \(store.state(torrent))").lineLimit(1); Spacer(); if torrent.down > 0 { Text("↓ \(speed(torrent.down))") }; if torrent.up > 0 { Text("↑ \(speed(torrent.up))") } }.font(.caption).foregroundStyle(torrent.error.isEmpty ? Color.secondary : Color.red).accessibilityElement(children: .ignore).accessibilityLabel("\(bytes(torrent.done)) of \(bytes(torrent.wanted)), \(store.state(torrent)). Download \(speed(torrent.down)), upload \(speed(torrent.up)).")
+				HStack { Text("\(bytes(torrent.done)) of \(bytes(torrent.wanted)) · \(store.state(torrent))").lineLimit(1); Spacer(); if torrent.down > 0 { Text("↓ \(speed(torrent.down))") }; if torrent.up > 0 { Text("↑ \(speed(torrent.up))") } }.font(.caption).foregroundStyle(statusColour).accessibilityElement(children: .ignore).accessibilityLabel("\(bytes(torrent.done)) of \(bytes(torrent.wanted)), \(store.state(torrent)). Download \(speed(torrent.down)), upload \(speed(torrent.up)).")
 			}
 			Button { Task { await store.setRunning([torrent.id], running: !(store.record(torrent.id)?.wanted ?? false)) } } label: { Image(systemName: store.record(torrent.id)?.wanted == true ? "pause.circle.fill" : "play.circle.fill").font(.title2) }.buttonStyle(.plain).controlHelp("\(store.record(torrent.id)?.wanted == true ? "Pause" : "Start") \(store.title(torrent))")
 			Button { store.reveal(torrent) } label: { Image(systemName: "folder").font(.title3) }.buttonStyle(.plain).controlHelp("Reveal \(store.title(torrent)) in Finder")

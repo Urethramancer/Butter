@@ -84,6 +84,19 @@ final class ButterUITests: XCTestCase {
 		app.menuBars.menuBarItems["Transfers"].click(); app.menuItems["Remove Selected"].click()
 		XCTAssertTrue(app.staticTexts["No transfers"].waitForExistence(timeout: 5))
 	}
+	func testKeyboardMultipleSelectionSurvivesContextMenu() throws {
+		let second = root.appendingPathComponent("second.torrent")
+		let metadata: [String: Any] = ["info": ["name": "second", "piece length": 16384, "pieces": Data(repeating: 0, count: 20), "length": 8]]
+		try bencode(metadata).write(to: second)
+		for source in [root.appendingPathComponent("fixture.torrent"), second] {
+			openPath(source); app.buttons["torrent-add"].click()
+		}
+		let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'transfer-row-'")).firstMatch
+		XCTAssertTrue(row.waitForExistence(timeout: 10)); row.click()
+		app.typeKey("a", modifierFlags: .command)
+		row.rightClick(); app.menuItems["Remove"].click()
+		XCTAssertTrue(app.staticTexts["No transfers"].waitForExistence(timeout: 10))
+	}
 	func testTypedPeerLimitAndPersistence() {
 		app.typeKey(",", modifierFlags: .command)
 		app.buttons["Network"].click()
