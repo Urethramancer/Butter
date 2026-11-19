@@ -73,7 +73,8 @@ final class StorageDirectory: @unchecked Sendable {
 		// The user chooses the root; aliases above it (e.g. /var) may resolve once.
 		self.url = url.standardizedFileURL.resolvingSymlinksInPath()
 		if create { try FileManager.default.createDirectory(at: self.url, withIntermediateDirectories: true) }
-		fd = open(self.url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+		// Anchors need search access; names() requests listing access separately.
+		fd = open(self.url.path, O_SEARCH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
 		StorageDiagnostics.opened(.directoryOpens)
 		guard fd >= 0 else { throw diskError("Cannot open storage root") }
 	}

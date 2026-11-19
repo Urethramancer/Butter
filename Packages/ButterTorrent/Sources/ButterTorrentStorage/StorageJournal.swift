@@ -148,7 +148,8 @@ extension StorageState {
 		payload = try StorageDirectory(URL(fileURLWithPath: record.destination), create: false)
 		// Bulk recovery can publish externally supplied or renamed files.
 		pendingFlush.formUnion(layout.files.indices.filter { !layout.files[$0].pad })
-		try prepareEmptyFiles()
+		// Trash must not recreate zero-length files that the operation just moved.
+		if journal.after.receipts.count == journal.before.receipts.count { try prepareEmptyFiles() }
 		// Preserve the stamps bound to checked content, then invalidate any later edits.
 		for entry in journal.entries {
 			let (directory, path) = location(entry.index)

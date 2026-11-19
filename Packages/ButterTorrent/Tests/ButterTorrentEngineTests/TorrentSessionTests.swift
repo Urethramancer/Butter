@@ -1,10 +1,43 @@
 import Foundation
+import Darwin
 import Testing
 import ButterTorrentMetadata
 import ButterTorrentStorage
 @testable import ButterTorrentEngine
 
 extension NativeSessionTests { @Suite struct TorrentSessionTests {
+	@Test(arguments: [false, true], [false, true]) func removalWorksWithoutListingTrash(_ running: Bool, _ partial: Bool) async throws {
+		try await withSession { fixture, session, _, source in
+			let fm = FileManager.default
+			let destination = fixture.root.appendingPathComponent(partial ? "partial" : "source")
+			if partial {
+				try fm.createDirectory(at: destination.appendingPathComponent("bundle"), withIntermediateDirectories: true)
+				try Data(fixture.bytes.prefix(300)).write(to: destination.appendingPathComponent("bundle/a"))
+			}
+			let neighbour = destination.appendingPathComponent("unrelated.txt"), sentinel = Data("preserve unrelated files".utf8)
+			try sentinel.write(to: neighbour)
+			_ = try await session.add(id: "transfer", source: source, destination: destination)
+			if running {
+				try await session.run(id: "transfer", running: true)
+				try await eventually { try await session.snapshot().transfers.first?.state.running == true }
+			}
+			let files = fixture.metadata.inspection.files.map { destination.appendingPathComponent($0.path) }
+			let expected = try files.filter { fm.fileExists(atPath: $0.path) }.map { try Data(contentsOf: $0) }
+			let trash = fixture.root.appendingPathComponent("Trash")
+			try fm.createDirectory(at: trash, withIntermediateDirectories: true)
+			let existing = trash.appendingPathComponent("unrelated.txt"); try sentinel.write(to: existing)
+			#expect(chmod(trash.path, 0o300) == 0)
+			defer { chmod(trash.path, 0o700) }
+			let receipts = try await session.remove(id: "transfer", trash: true, trashDirectory: trash)
+			#expect(receipts.count == expected.count)
+			#expect(try Set(receipts.map { try Data(contentsOf: $0) }) == Set(expected))
+			let remaining = files.filter { fm.fileExists(atPath: $0.path) }.map(\.lastPathComponent)
+			#expect(remaining.isEmpty, "Managed files left behind: \(remaining)")
+			#expect(try Data(contentsOf: neighbour) == sentinel)
+			#expect(try Data(contentsOf: existing) == sentinel)
+			#expect(try await session.snapshot().transfers.isEmpty)
+		}
+	}
 	@Test(arguments: [2, 3]) func sparseDownloadsAcquireHashesAndRestoreNativeCounters(_ version: Int) async throws {
 		let fixture = try V2Fixture(version: version), library = fixture.root.appendingPathComponent("library"), source = fixture.root.appendingPathComponent("input.torrent")
 		let sparse = try TorrentMetadata(infoBytes: fixture.metadata.originalInfo, expected: fixture.metadata.hashes)
