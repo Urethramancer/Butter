@@ -1,0 +1,10 @@
+{
+	"status": "predeclared",
+	"engine": "v0.18.0 (unchanged production package sources)",
+	"selection": "Completed 252-trial matrix: concurrent v1 has the largest relative download CPU gap; many-file hybrid has the lowest throughput ratio.",
+	"workloads": ["concurrent/v1/download", "many/hybrid/download"],
+	"protocol": "One Time Profiler diagnostic per engine per workload, then one separate counts-only diagnostic per engine per workload: eight transfers total, no warm-ups, retries or timing acceptance inference.",
+	"integrity": "Independent payload validation, checkpoint reopening and unchanged fingerprints required. Keep original baseline unchanged. No UI tests or application rendering.",
+	"interpretation": "Executing-stack weights identify likely costs, not measured savings or kernel residence. Counts describe operations, not CPU time. Any production optimisation requires a separately declared source comparison.",
+	"next": "Investigate cold-start discovery latency after CPU findings are recorded; leave the user's router configuration unchanged."
+}
