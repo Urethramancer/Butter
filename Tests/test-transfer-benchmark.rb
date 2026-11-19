@@ -297,7 +297,7 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 			profiler.finish(timeout: 2)
 		end
 	end
-	def test_profile_reports_stay_compact_and_raw_capture_retention_is_explicit
+	def test_profile_reports_stay_compact_and_raw_retention_cannot_be_enabled
 		previous = ENV['BUTTER_PROFILE_KEEP_RAW']
 		begin
 			%w[0 1].each do |keep|
@@ -310,10 +310,10 @@ class TransferBenchmarkHarnessTests < Minitest::Test
 					profile = {target_pid: 42, running_samples: 25, stacks: (0...25).map { |i| {frames: ["leaf-#{i}"], weight_ns: 1} }}
 					H.write_profile_report(prefix, profile)
 					profiler.cleanup
-					assert_equal keep == '1', File.exist?(prefix + '.trace')
-					%w[toc samples allocation-table].each { |name| assert_equal keep == '1', File.exist?(prefix + ".#{name}.xml") }
+					refute File.exist?(prefix + '.trace')
+					%w[toc samples allocation-table].each { |name| refute File.exist?(prefix + ".#{name}.xml") }
 					assert File.exist?(File.join(File.dirname(prefix), 'unrelated.xml'))
-					assert_equal keep == '1', File.exist?(prefix + '.cpu.json')
+					refute File.exist?(prefix + '.cpu.json')
 					result = JSON.parse(File.read(prefix + '.attribution.json'))
 					assert_equal 25, result.fetch('weight_ns')
 					assert_equal 20, result.fetch('leaves').length

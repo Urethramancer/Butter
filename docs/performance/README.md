@@ -1105,8 +1105,8 @@ Use `Scripts/test-benchmark.sh --write-profile OUTPUT` for the fixed write-pipel
 protocol; it selects off/counts/timed child environments automatically. Separate
 phase timing runs require `BUTTER_STORAGE_WRITE_TIMINGS=1` together with
 `BUTTER_STORAGE_DIAGNOSTICS=1` and a diagnostic command; acceptance runs reject it.
-Instrumented runs supply no timing acceptance evidence. Raw traces/XML are deleted
-after compact extraction unless `BUTTER_PROFILE_KEEP_RAW=1` is explicitly set.
+Instrumented runs supply no timing acceptance evidence. Raw traces/XML are always
+deleted after compact extraction. Raw capture retention is disabled.
 Fixtures, drivers and temporary compiler caches are removed after each run.
 
 Use `--receive-profile` with `BUTTER_BENCHMARK_PREVIOUS_REVISION` pointing to an

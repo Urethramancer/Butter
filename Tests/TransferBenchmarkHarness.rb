@@ -35,9 +35,6 @@ module TransferBenchmarkHarness
 		File.chmod(0600, path)
 	end
 	def self.write_profile_report(prefix, profile)
-		if ENV['BUTTER_PROFILE_KEEP_RAW'] == '1'
-			File.write(prefix + '.cpu.json', JSON.pretty_generate(profile))
-		end
 		attribution = ProfileAttribution.summarise(profile)
 		attribution[:leaves] = attribution[:leaves].first(20)
 		File.write(prefix + '.attribution.json', JSON.pretty_generate(attribution))
@@ -167,19 +164,17 @@ module TransferBenchmarkHarness
 				path = "#{@prefix}.#{suffix}.xml"
 				query = "/trace-toc/run[@number=\"1\"]/data/table[@schema=\"#{schema}\"]"
 				raise "Profiler table export failed: #{schema}" unless TransferBenchmarkHarness.run_bounded(['xcrun', 'xctrace', 'export', '--input', "#{@prefix}.trace", '--xpath', query, '--output', path], "#{path}.log", timeout: 60)
-				{schema: schema, file: File.basename(path), bytes: File.size(path), retained: ENV['BUTTER_PROFILE_KEEP_RAW'] == '1'}
+				{schema: schema, bytes: File.size(path), retained: false}
 			end
 			File.write("#{@prefix}.tables.json", JSON.pretty_generate(manifest))
 		end
 		def cleanup
 			TransferBenchmarkHarness.terminate(@pid) if @pid && !@reaped
 			@notification.close
-			unless ENV['BUTTER_PROFILE_KEEP_RAW'] == '1'
-				FileUtils.rm_rf(@prefix + '.trace')
-				folder, name = File.dirname(@prefix), File.basename(@prefix) + '.'
-				Dir.children(folder).each do |entry|
-					FileUtils.rm_f(File.join(folder, entry)) if entry.start_with?(name) && entry.end_with?('.xml')
-				end
+			FileUtils.rm_rf(@prefix + '.trace')
+			folder, name = File.dirname(@prefix), File.basename(@prefix) + '.'
+			Dir.children(folder).each do |entry|
+				FileUtils.rm_f(File.join(folder, entry)) if entry.start_with?(name) && entry.end_with?('.xml')
 			end
 		end
 	end

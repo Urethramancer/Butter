@@ -53,5 +53,5 @@ Session shutdown drains owned networking, storage and filesystem work. The app's
 single deadline includes polling, persistence and engine shutdown; expiry refuses
 termination while recoverable work remains owned.
 
-See [package APIs](../Packages/ButterTorrent/README.md), [audit results](audit.md),
+See [package APIs](../Packages/ButterTorrent/README.md),
 [validation](validation.md), [performance](performance/README.md) and [TODO](../TODO.md).

@@ -55,7 +55,7 @@ ruby -rjson -rdigest -ropen3 -e '
   scope: "Synthetic models rendered by production ContentView and optional adjacent TorrentInspector, with test-only Files initial selection; includes window creation and 12 updates one second apart; 2000 files or 200 torrents with 512 files each; no payload or networking",
   sampling: ENV["BUTTER_UI_COMPARE_SMOKE"] == "1" ? "Two uninstrumented functional checks with final frames; no timing acceptance" : ENV["BUTTER_UI_COMPARE_SOURCE"] == "1" ? "Uninstrumented fixed workload: four warm-ups and six balanced ABBA/BAAB blocks (24 measured samples), no repetitions" : "Single instrumented diagnostics, not timing acceptance",
   visible_only: ENV["BUTTER_UI_PROFILE_VISIBLE_ONLY"] == "1",
-  selected_case: ENV["BUTTER_UI_PROFILE_CASE"], previous_inspector_revision: ARGV[1], keep_raw: ENV["BUTTER_PROFILE_KEEP_RAW"] == "1",
+  selected_case: ENV["BUTTER_UI_PROFILE_CASE"], previous_inspector_revision: ARGV[1], keep_raw: false,
   test_inspector_sha256: Dir.glob(ARGV[0] + "/*/TorrentInspector.swift").to_h { |path| [File.basename(File.dirname(path)), Digest::SHA256.file(path).hexdigest] },
   source_sha256: files.sort.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }, driver_sha256: Dir.glob(ARGV[0] + "/ApplicationUIProfile-*").to_h { |path| [File.basename(path), Digest::SHA256.file(path).hexdigest] }, flags: "Release package; application swiftc -O -swift-version 5"})
 ' "$ui_profile_work" "$ui_profile_previous" > "$ui_profile_out/environment.json"

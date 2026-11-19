@@ -4,3 +4,11 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 .DS_Store
+docs/performance/raw/
+*[Aa][Uu][Dd][Ii][Tt]*.md
+*[Aa][Uu][Dd][Ii][Tt]*.json
+*[Aa][Uu][Dd][Ii][Tt]*.xml
+*[Aa][Uu][Dd][Ii][Tt]*.txt
+*[Aa][Uu][Dd][Ii][Tt]*.log
+*.trace/
+*.toc.xml

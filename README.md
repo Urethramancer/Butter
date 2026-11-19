@@ -78,8 +78,8 @@ interoperability and `benchmark` for the complete Release matrix. Add
 no reference installation.
 
 See [performance results](docs/performance/README.md),
-[validation scope](docs/validation.md), [architecture](docs/swift-engine.md),
-[audit results](docs/audit.md) and [remaining work](TODO.md).
+[validation scope](docs/validation.md), [architecture](docs/swift-engine.md)
+and [remaining work](TODO.md).
 Passing verification logs are removed automatically; failures print their path
 under `.build/test-logs`. Generated captures and reports belong under `.build/`.
 
