@@ -151,6 +151,27 @@ func pickerLayout(pieces: Int = 3, pieceLength: Int64 = 32768) throws -> Storage
 }
 
 @Suite struct PiecePickerTests {
+	@Test func sparseSelectionEndgameTracksStagedAcceptanceAndRejection() throws {
+		let layout = try pickerLayout(pieces: 24, pieceLength: 65536), owner = UUID(), rescuer = UUID()
+		var picker = PiecePicker(layout: layout, wanted: [2, 8, 19], completed: [0, 5, 7], maximumActive: 1)
+		for peer in [owner, rescuer] { picker.update(peer, bits: try PieceBitfield(count: 24, pieces: [2, 8, 19])) }
+		let first = picker.allocate(owner, limit: 4, now: 0)
+		#expect(first.count == 4 && first.allSatisfy { $0.piece == 2 })
+		#expect(picker.allocate(rescuer, limit: 4, now: 0).isEmpty)
+		_ = picker.stage(8)
+		#expect(picker.allocate(rescuer, limit: 4, now: 0).isEmpty)
+		_ = picker.stage(19)
+		#expect(picker.allocate(rescuer, limit: 4, now: 0) == first)
+		picker.release(rescuer)
+		let rejected = picker.settleStaged(8, valid: false); #expect(rejected)
+		#expect(picker.allocate(rescuer, limit: 4, now: 0.5).isEmpty)
+		let accepted = picker.settleStaged(19, valid: true); #expect(accepted)
+		#expect(picker.allocate(rescuer, limit: 4, now: 0.5).isEmpty)
+		_ = picker.verified(2, valid: true)
+		let last = picker.allocate(owner, limit: 4, now: 0.5)
+		#expect(last.count == 4 && last.allSatisfy { $0.piece == 8 })
+		#expect(picker.allocate(rescuer, limit: 4, now: 0.5) == last)
+	}
 	@Test func contiguousHTTPReservationsStopAtOtherOwnersAndCompletedBlocks() throws {
 		let peer = UUID(), other = UUID(), layout = try pickerLayout(pieces: 2, pieceLength: 131072)
 		var picker = PiecePicker(layout: layout, wanted: [0, 1], completed: [])
