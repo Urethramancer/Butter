@@ -7,6 +7,26 @@ import ButterTorrentStorage
 
 // Independent multi-session fixtures share the production disk and HTTP budgets.
 extension NativeSessionTests { @Suite struct SessionWebSeedTests {
+	@Test(arguments: [262144, 1048576], [false, true]) func adjacentBlocksUseBoundedHTTPRanges(_ pieceLength: Int, _ pieceProtocol: Bool) async throws {
+		let fixture = try TransferFixture(lengths: [pieceLength * 2 + 37, 0, 0, 0], pieceLength: pieceLength)
+		let transport = try SeedFileTransport(metadata: fixture.metadata, root: fixture.root.appendingPathComponent("source"))
+		let metadata = try webMetadata(fixture.metadata, urls: pieceProtocol ? [] : ["http://seed.invalid/files/"], pieces: pieceProtocol ? ["http://seed.invalid/piece"] : [])
+		let session = TorrentSession(storage: fixture.root.appendingPathComponent("library"), webSeedTransport: transport)
+		do {
+			try await addWebTransfer(session, metadata: metadata, root: fixture.root)
+			try await session.run(id: "transfer", running: true)
+			try await eventually { try await session.snapshot().transfers[0].state.transfer?.complete == true }
+			let snapshot = try await session.snapshot().transfers[0].state.transfer
+			#expect(snapshot?.downloaded == Int64(fixture.bytes.count))
+			#expect(snapshot?.redundantBytes == 0 && snapshot?.corruptBytes == 0)
+			try await session.close()
+			#expect(try Data(contentsOf: fixture.root.appendingPathComponent("download/bundle/a")) == fixture.bytes)
+			let requests = await transport.requests
+			#expect(requests.count == (fixture.bytes.count + 262143) / 262144)
+			#expect(requests.allSatisfy { $0.maximumResponseBytes <= 262144 })
+		} catch { try? await session.close(); await fixture.clean(); throw error }
+		await fixture.clean()
+	}
 	@Test(arguments: [1, 2, 3]) func remoteNamesSurviveLocalSanitisation(_ version: Int) async throws {
 		try await transferFixture { fixture in
 			let remoteName = "remote\\name\u{200B}.bin", bytes = Data("abc".utf8)
@@ -94,7 +114,7 @@ extension NativeSessionTests { @Suite struct SessionWebSeedTests {
 				#expect(try Data(contentsOf: fixture.root.appendingPathComponent("download/" + file.path)) == Data(contentsOf: fixture.root.appendingPathComponent("source/" + file.path)))
 			}
 			let requests = await transport.requests
-			#expect(!requests.isEmpty && requests.allSatisfy { $0.maximumResponseBytes <= 16384 && !$0.url.path.contains(".pad") })
+			#expect(!requests.isEmpty && requests.allSatisfy { $0.maximumResponseBytes <= 262144 && !$0.url.path.contains(".pad") })
 		} catch { try? await session.close(); await fixture.close(); throw error }; await fixture.close()
 	}
 	@Test func crossFileRangesRespectSelectionAndOriginalPaths() async throws {

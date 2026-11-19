@@ -47,7 +47,7 @@ public actor ManagedTransfer {
 		self.peerID = peerID
 		let native = webSeedTransport == nil ? NetworkHTTPTransport(clock: clock, addressFilter: configuration.addressFilter) : nil
 		nativeWebTransport = native
-		webClient = WebSeedClient(transport: webSeedTransport ?? native!, clock: clock, maximumBytes: 16384)
+		webClient = WebSeedClient(transport: webSeedTransport ?? native!, clock: clock, maximumBytes: TCPTransfer.webSeedMaximumBytes)
 	}
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
 		verificationPolicy: StorageVerificationPolicy = .deferred, readPolicy: StorageReadPolicy = .strict, configuration: TCPTransferConfiguration = .init(), resources: TransferResources = .shared,

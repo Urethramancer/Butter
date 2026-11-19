@@ -151,6 +151,27 @@ func pickerLayout(pieces: Int = 3, pieceLength: Int64 = 32768) throws -> Storage
 }
 
 @Suite struct PiecePickerTests {
+	@Test func contiguousHTTPReservationsStopAtOtherOwnersAndCompletedBlocks() throws {
+		let peer = UUID(), other = UUID(), layout = try pickerLayout(pieces: 2, pieceLength: 131072)
+		var picker = PiecePicker(layout: layout, wanted: [0, 1], completed: [])
+		for id in [peer, other] { picker.update(id, bits: try PieceBitfield(count: 2, pieces: [0, 1])) }
+		let first = try #require(picker.allocate(peer, limit: 1, now: 0).first)
+		let occupied = picker.allocate(other, limit: 2, now: 0)
+		#expect(picker.extendContiguousAllocation(peer, block: first, limit: 16, now: 0) == [first])
+		for block in occupied { picker.rejected(other, block: block) }
+		let prefix = picker.extendContiguousAllocation(peer, block: first, limit: 3, now: 0)
+		#expect(prefix.map(\.offset) == [0, 16384, 32768])
+		let written = try #require(picker.allocate(other, limit: 1, now: 0).first)
+		#expect(picker.begin(other, block: written) != nil)
+		#expect(picker.extendContiguousAllocation(peer, block: prefix.last!, limit: 16, now: 0) == [prefix.last!])
+		let ready = picker.written(written); #expect(!ready)
+		#expect(picker.extendContiguousAllocation(peer, block: prefix.last!, limit: 16, now: 0) == [prefix.last!])
+		let tail = try #require(picker.allocate(peer, limit: 1, now: 0).first)
+		let suffix = picker.extendContiguousAllocation(peer, block: tail, limit: 16, now: 0)
+		#expect(suffix.map(\.offset) == [65536, 81920, 98304, 114688])
+		#expect(suffix.allSatisfy { $0.piece == 0 })
+		#expect(picker.active.count == 1)
+	}
 	@Test(arguments: [false, true], [false, true]) func refillsPreserveLateRaritySuggestionsAndSelection(_ selective: Bool, _ suggested: Bool) throws {
 		let count = 64, layout = try pickerLayout(pieces: count, pieceLength: 16384), peer = UUID(), commonPeer = UUID()
 		let wanted = Set((0..<count).filter { !selective || $0 % 3 != 0 })

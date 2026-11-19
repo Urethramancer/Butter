@@ -105,6 +105,18 @@ struct PiecePicker {
 		}
 		return fresh
 	}
+	// Extend an existing reservation for one HTTP range without crossing a piece
+	// boundary or taking blocks already assigned to another source.
+	mutating func extendContiguousAllocation(_ peer: UUID, block: PeerBlock, limit: Int, now: TimeInterval) -> [PeerBlock] {
+		guard limit > 0, active[block.piece]?.owners[block.offset]?[peer] != nil else { return [] }
+		var result = [block]
+		for next in blocks(block.piece) where next.offset > block.offset {
+			guard result.count < limit, !active[block.piece]!.received.contains(next.offset),
+				!active[block.piece]!.writing.contains(next.offset), active[block.piece]!.owners[next.offset, default: [:]].isEmpty else { break }
+			active[block.piece]!.owners[next.offset] = [peer: now]; result.append(next)
+		}
+		return result
+	}
 	private mutating func reserve(_ peer: UUID, candidates: [Int], limit: Int, now: TimeInterval) -> [PeerBlock] {
 		var result: [PeerBlock] = []
 		for piece in candidates {

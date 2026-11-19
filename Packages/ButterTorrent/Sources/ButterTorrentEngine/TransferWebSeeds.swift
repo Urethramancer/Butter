@@ -27,6 +27,7 @@ final class TransferWebSeed {
 }
 
 extension TCPTransfer {
+	static let webSeedMaximumBytes = 262144
 	func startWebSeeds(client: WebSeedClient, admission: TransferPermits) {
 		webClient = client; webAdmission = admission
 		for (urls, pieceProtocol) in [(metadata.webSeeds, false), (metadata.httpSeeds, true)] {
@@ -57,20 +58,30 @@ extension TCPTransfer {
 				if !seed.registered { picker.update(seed.id, bits: try PieceBitfield(count: picker.layout.pieceCount, pieces: picker.wanted)); seed.registered = true }
 				guard let block = picker.allocate(seed.id, limit: 1, now: clock.now(), eligible: hashReady, excluding: Set(localRecoveries.keys)).first else { continue }
 				if deferForLocalRecovery(seed.id, block: block) { await localRecoveries[block.piece]?.value; return 0 }
+				let blocks = picker.extendContiguousAllocation(seed.id, block: block, limit: Self.webSeedMaximumBytes / 16384, now: clock.now())
+				let range = PeerBlock(piece: block.piece, offset: block.offset, length: blocks.reduce(0) { $0 + $1.length })
 				seed.active = true
 				let initialBytes = seed.downloaded
-				var delivered = false
+				var deliveredBytes: Int64 = 0
 				do {
-					let bytes = try await fetchWebBlock(seed, block: block, client: client, admission: admission)
-					try Task.checkCancellation()
-					try await disk.acquire()
-					do { try Task.checkCancellation(); delivered = true; try await receiveBlock(seed.id, block: block, bytes: bytes, payloadBytes: seed.downloaded - initialBytes) }
-					catch { await disk.release(); throw error }
-					await disk.release(); seed.active = false
+					let bytes = try await fetchWebBlock(seed, block: range, client: client, admission: admission)
+					for block in blocks {
+						let payload = seed.pieceProtocol ? Int64(block.length) : try picker.layout.segments(piece: block.piece, offset: block.offset, count: block.length).filter { !$0.padding }.reduce(Int64(0)) { $0 + Int64($1.count) }
+						try Task.checkCancellation()
+						try await disk.acquire()
+						do {
+							try Task.checkCancellation(); deliveredBytes += payload
+							let start = block.offset - range.offset
+							try await receiveBlock(seed.id, block: block, bytes: bytes.subdata(in: start..<(start + block.length)), payloadBytes: payload)
+						} catch { await disk.release(); throw error }
+						await disk.release()
+					}
+					seed.active = false
 					if !seed.banned { seed.message = "" }; fillAll(); return 0
 				} catch {
-					if !delivered { recordUnusablePayload(seed.downloaded - initialBytes) }
-					seed.active = false; picker.rejected(seed.id, block: block)
+					recordUnusablePayload(seed.downloaded - initialBytes - deliveredBytes)
+					seed.active = false
+					for block in blocks { picker.rejected(seed.id, block: block) }
 					if Task.isCancelled || error is CancellationError { picker.remove(seed.id); discardUnretainedPayload(); seed.registered = false; return nil }
 					seed.message = error.localizedDescription
 					if case PeerFailure.corruptPiece = error { await banWebSeed(seed) }
