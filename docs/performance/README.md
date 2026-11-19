@@ -62,6 +62,13 @@ passed 211 engine tests, including healthy multi-peer request counts, staggered
 request ages, immediate endgame duplication and a stalled TCP peer's rescue,
 cancellation, late-byte accounting and completion.
 
+A user-requested follow-up, capped at five minutes or completion, finished in
+64.46 s. It received 735,862,784 bytes, including only 503,808 redundant bytes
+(0.069% of the ISO size), and peaked at 24.53 MB/s over a two-second sample.
+Independent reopening again verified all 2,806 pieces. This shows the candidate
+can complete with very low overhead; the spread between its two runs still
+prevents attributing elapsed-time differences to the policy alone.
+
 The candidate remains on `experiments/aged-duplicate-rescue`; main retains the
 existing rescue policy. Avoid exchanging the established download performance
 for lower traffic without a controlled comparison. Raw runs and the diagnostic
