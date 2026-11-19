@@ -1,15 +1,17 @@
 # Transfer performance
 
-The latest full matrix validates **252/252 trials**. Five cases meet all targets;
-downloads use **2.01–3.52× libtorrent's CPU/GiB**. Competing builds and other CPU
-load were observed, so this is a **contended-host result**, not quiet-host release
-qualification. The earlier matrix and controlled source comparisons remain retained.
+The latest full matrix validates **252/252 trials** against the v0.18.0 engine.
+All nine seeding cases meet all targets; downloads use **1.41–2.92× libtorrent's
+CPU/GiB**. Download engine RSS is **15.9–26.3 MiB**. This is a **contended-host
+result**, not quiet-host release qualification. Earlier matrices and controlled
+source comparisons remain retained; differences between separate matrices do not
+establish the cause of a performance change.
 
 The later [request-window comparisons](#thirty-two-block-request-window) retain a
 thirty-two-block default after successive increases from eight and sixteen. They
 establish additional CPU gains with modest memory use. Larger windows help the
 tested 1 MiB-piece workload at 48, while 64 establishes no further gain. Those
-larger defaults remain isolated. The full matrix below predates both retained changes.
+larger defaults remain isolated. The current full matrix includes both retained changes.
 
 ## Public Debian download
 
@@ -78,6 +80,43 @@ controlled throughput comparison. Raw runs and the diagnostic driver are retaine
 under `.build/diagnostics/duplicate-rescue`.
 
 ## Current matrix
+
+19 November 2026, v0.18.0 production engine, controller revision `d5249a2`.
+Ratios are Butter/libtorrent; CPU runs through durable completion. Single/many-file
+download medians are 307–400 MB/s; four concurrent transfers reach 731–903 MB/s
+in aggregate. These are local loopback measurements, not Internet speed estimates.
+
+| Layout | Format | Download speed | Download CPU/GiB | Seed speed | Seed CPU/GiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Single | v1 | 84% | 1.94× | 160% | 1.10× |
+| Single | v2 | 90% | 1.87× | 168% | 1.14× |
+| Single | Hybrid | 81% | 1.41× | 210% | 1.04× |
+| Many | v1 | 81% | 1.82× | 170% | 1.13× |
+| Many | v2 | 80% | 1.85× | 174% | 1.13× |
+| Many | Hybrid | 68% | 1.49× | 126% | 1.07× |
+| Concurrent | v1 | 154% | 2.92× | 187% | 1.11× |
+| Concurrent | v2 | 160% | 2.86× | 174% | 1.05× |
+| Concurrent | Hybrid | 178% | 1.92× | 157% | 1.06× |
+
+Throughput passes **12/18**, CPU **9/18**, memory **18/18** and all targets **9/18**,
+using interval bounds rather than rounded table medians. All nine seeding cases
+pass; every download still misses the CPU target. Concurrent v1 has the largest
+relative CPU gap, while many-file hybrid has the lowest throughput ratio.
+
+One GiB per trial, 36 warm-ups and 216 measurements across six fixed balanced
+pairs per case. No samples were repeated, discarded or added after inspecting
+uncertainty. Every payload, strict checkpoint reopen and durable shutdown validates.
+Original-baseline fixture/trial hashes and tested source/binary fingerprints remain
+unchanged. No assistant builds or other tests ran during timing. A compiler was
+busy before the run; desktop/browser activity remained at midpoint. Host snapshots
+do not measure average contention. Reference archive/Boost provenance remains
+qualified as described below.
+
+[Protocol and compact results](release-matrix-20261119.json) include intervals,
+absolute medians, memory checks and archive hashes. Raw evidence and host snapshots
+remain under `.build/benchmarks/release-v0.18.0-full-20261119`.
+
+## Earlier matrix (15 November)
 
 15 November 2026, engine revision `450e229`, including worker fusion `047dcfc`.
 Values are Butter/libtorrent; speed is verified throughput, CPU is seconds/GiB

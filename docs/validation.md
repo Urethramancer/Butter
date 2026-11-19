@@ -14,9 +14,10 @@ checkpoints.
 
 Worker fusion passes 425 package tests, 98 focused tests under each sanitizer,
 native storage recovery/ENOSPC/read-only checks and 33 controller tests. Its source
-comparisons establish a concurrent-v2 gain. The latest full matrix validates
-**252/252 trials**: throughput passes 12/18 cases, CPU 5/18 and memory 18/18.
-Competing builds and other CPU load were observed; quiet-host release performance
+comparisons establish a concurrent-v2 gain. The v0.18.0 engine's latest full matrix
+validates **252/252 fixed trials**: throughput passes 12/18 cases, CPU 9/18 and
+memory 18/18. All nine seeding cases meet every target. The run used an active
+desktop, with compiler activity observed beforehand; quiet-host release performance
 validation remains pending. All nine downloads still miss the CPU target.
 See [measurements and methodology](performance/README.md).
 
