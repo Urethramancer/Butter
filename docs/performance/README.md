@@ -810,7 +810,35 @@ trailing-control burst coverage without requiring the unretained read geometry.
 The code remains on `experiment/full-window-tcp-read`;
 [protocol, counts and results](full-window-tcp-read-20261119.json) retain all outcomes.
 
-## Profiling targets
+## Current CPU diagnostics
+
+Eight fixed diagnostic transfers verify after the current full matrix: one Time
+Profiler and one separate counts-only run per engine for concurrent-v1 and
+many-file-hybrid downloads. Source/binary fingerprints remain unchanged.
+
+| Swift diagnostic | Concurrent v1 | Many hybrid |
+| --- | ---: | ---: |
+| Running samples | 3,985 | 3,941 |
+| Write-job ancestry | 47.25% | 25.30% |
+| Authentication ancestry | 20.68% | 41.54% |
+| Peer/transport ancestry | 21.28% | 22.46% |
+| Metadata/open/close executing leaves | 23.14% | 25.88% |
+| Payload write calls/GiB | 65,536 | 5,970 |
+| Write jobs/GiB | 8,342 | 4,601 |
+
+The ordinary single-file-v1 path still writes individual 16 KiB blocks inside a
+larger job. Its write ancestry includes fused verification, so 47.25% is not pure
+write CPU. Hybrid authenticates both hash families; metadata and hashing remain
+substantial even after payload coalescing. These are execution-sample weights and
+operation counts, not measured savings. A bounded v1 coalescing comparison under
+the current 32-block window is the next specific CPU candidate; earlier batching
+results do not authorise a throughput regression or reduced filesystem checking.
+No production change is retained from these diagnostics.
+
+[Protocol and compact findings](cpu-followup-20261119.json) retain the counts,
+rankings and raw-result locations. UI profiling remains stopped.
+
+## Earlier profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers
 and retains 4,993 Swift running samples. Disjoint sampled purposes attribute 31.9%

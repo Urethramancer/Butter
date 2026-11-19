@@ -12,6 +12,9 @@
   cover latency and multiple peers before generalising the 1 MiB-piece result.
 - Investigate guarded path opens/closes and peer transport overhead while
   preserving fresh filesystem observations and production resource limits.
+- Compare bounded single-file-v1 write coalescing under the current 32-block
+  window: fresh profiles show 65,536 payload writes/GiB. Require preserved
+  throughput, hashing and fresh filesystem observations before retaining it.
 - Repeat release performance validation without competing builds and heavy
   background work; include isolated fairness-batch `99afd53` and decoder-reuse
   `e3b33b5` in separately predeclared comparisons. Current runs remain contended-host evidence.

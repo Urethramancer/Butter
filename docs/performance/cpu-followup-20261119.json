@@ -1,10 +1,258 @@
 {
-	"status": "predeclared",
-	"engine": "v0.18.0 (unchanged production package sources)",
-	"selection": "Completed 252-trial matrix: concurrent v1 has the largest relative download CPU gap; many-file hybrid has the lowest throughput ratio.",
-	"workloads": ["concurrent/v1/download", "many/hybrid/download"],
-	"protocol": "One Time Profiler diagnostic per engine per workload, then one separate counts-only diagnostic per engine per workload: eight transfers total, no warm-ups, retries or timing acceptance inference.",
-	"integrity": "Independent payload validation, checkpoint reopening and unchanged fingerprints required. Keep original baseline unchanged. No UI tests or application rendering.",
-	"interpretation": "Executing-stack weights identify likely costs, not measured savings or kernel residence. Counts describe operations, not CPU time. Any production optimisation requires a separately declared source comparison.",
-	"next": "Investigate cold-start discovery latency after CPU findings are recorded; leave the user's router configuration unchanged."
+  "status": "Complete: 8/8 diagnostic transfers verified, no repetitions or production optimisation retained",
+  "engine": "v0.18.0 (unchanged production package sources)",
+  "selection": "Completed 252-trial matrix: concurrent v1 has the largest relative download CPU gap; many-file hybrid has the lowest throughput ratio.",
+  "workloads": [
+    "concurrent/v1/download",
+    "many/hybrid/download"
+  ],
+  "protocol": "One Time Profiler diagnostic per engine per workload, then one separate counts-only diagnostic per engine per workload: eight transfers total, no warm-ups, retries or timing acceptance inference.",
+  "integrity": "Independent payload validation, checkpoint reopening and unchanged fingerprints required. Keep original baseline unchanged. No UI tests or application rendering.",
+  "interpretation": "Executing-stack weights identify likely costs, not measured savings or kernel residence. Counts describe operations, not CPU time. Any production optimisation requires a separately declared source comparison.",
+  "next": "Investigate cold-start discovery latency after CPU findings are recorded; leave the user's router configuration unchanged.",
+  "findings": "Concurrent v1: 65,536 payload syscalls/GiB and substantial write ancestry. Many-file hybrid: 5,970 payload syscalls, more authentication and metadata ancestry. Write ancestry includes fused verification. Prioritise a separately measured bounded v1 batching experiment; preserve hashing and fresh filesystem observations. No timing or CPU savings inferred from instrumentation.",
+  "results": {
+    "concurrent-v1": {
+      "validated_transfers": 4,
+      "profile_directory": ".build/benchmarks/cpu-followup-concurrent-v1-profile-20261119",
+      "counts_directory": ".build/benchmarks/cpu-followup-concurrent-v1-counts-20261119",
+      "running_samples": 3985,
+      "purposes": [
+        {
+          "name": "download write jobs",
+          "percent": 47.25219573400251
+        },
+        {
+          "name": "peer wire and transport",
+          "percent": 21.279799247176914
+        },
+        {
+          "name": "stored-byte authentication",
+          "percent": 20.67754077791719
+        },
+        {
+          "name": "other runtime or unresolved purpose",
+          "percent": 6.599749058971142
+        },
+        {
+          "name": "piece and request selection",
+          "percent": 3.1116687578419073
+        },
+        {
+          "name": "checkpoints and durability",
+          "percent": 0.8782936010037641
+        },
+        {
+          "name": "connection deadlines",
+          "percent": 0.17565872020075282
+        },
+        {
+          "name": "filesystem guards outside attributed jobs",
+          "percent": 0.025094102885821833
+        }
+      ],
+      "categories": [
+        {
+          "name": "payload I/O",
+          "percent": 27.40276035131744
+        },
+        {
+          "name": "filesystem metadata/open/close",
+          "percent": 23.13676286072773
+        },
+        {
+          "name": "other user processing or unresolved execution",
+          "percent": 16.687578419071517
+        },
+        {
+          "name": "user hashing",
+          "percent": 9.335006273525721
+        },
+        {
+          "name": "user copying/clearing",
+          "percent": 5.846925972396487
+        },
+        {
+          "name": "unattributed",
+          "percent": 4.115432873274781
+        },
+        {
+          "name": "networking",
+          "percent": 3.864491844416562
+        },
+        {
+          "name": "scheduling and event delivery",
+          "percent": 3.1869510664993728
+        }
+      ],
+      "leaves": [
+        {
+          "name": "pwrite",
+          "percent": 24.943538268506902
+        },
+        {
+          "name": "close",
+          "percent": 10.13801756587202
+        },
+        {
+          "name": "AccelerateCrypto_SHA1_compress",
+          "percent": 9.284818067754077
+        },
+        {
+          "name": "__openat",
+          "percent": 5.62107904642409
+        },
+        {
+          "name": "_platform_memmove",
+          "percent": 4.818067754077791
+        },
+        {
+          "name": "start_wqthread",
+          "percent": 4.090338770388959
+        },
+        {
+          "name": "fstatat",
+          "percent": 3.6888331242158094
+        },
+        {
+          "name": "__recvmsg",
+          "percent": 2.6348808030112925
+        }
+      ],
+      "counts": {
+        "writeProfile.jobs": 8342,
+        "writeProfile.syscallAttempts": 65536,
+        "writeProfile.receivedBlocks": 65536,
+        "writeProfile.ordinaryJobs": 8342,
+        "descriptorOpens": 12602,
+        "descriptorDuplicates": 111546,
+        "fileDescriptorInspections": 143578,
+        "directoryOpens": 8,
+        "fileOpens": 12506,
+        "bytesHashed": 1073741824,
+        "sha1Bytes": 1073741824
+      },
+      "successful_stream_reads": 7962
+    },
+    "many-hybrid": {
+      "validated_transfers": 4,
+      "profile_directory": ".build/benchmarks/cpu-followup-many-hybrid-profile-20261119",
+      "counts_directory": ".build/benchmarks/cpu-followup-many-hybrid-counts-20261119",
+      "running_samples": 3941,
+      "purposes": [
+        {
+          "name": "stored-byte authentication",
+          "percent": 41.53768079167724
+        },
+        {
+          "name": "download write jobs",
+          "percent": 25.29814767825425
+        },
+        {
+          "name": "peer wire and transport",
+          "percent": 22.456229383405226
+        },
+        {
+          "name": "other runtime or unresolved purpose",
+          "percent": 5.658462319208323
+        },
+        {
+          "name": "piece and request selection",
+          "percent": 2.8672925653387464
+        },
+        {
+          "name": "checkpoints and durability",
+          "percent": 1.9538188277087034
+        },
+        {
+          "name": "connection deadlines",
+          "percent": 0.22836843440751078
+        }
+      ],
+      "categories": [
+        {
+          "name": "filesystem metadata/open/close",
+          "percent": 25.881755899517888
+        },
+        {
+          "name": "user hashing",
+          "percent": 24.30855112915504
+        },
+        {
+          "name": "other user processing or unresolved execution",
+          "percent": 18.675463080436437
+        },
+        {
+          "name": "user copying/clearing",
+          "percent": 7.079421466632835
+        },
+        {
+          "name": "payload I/O",
+          "percent": 7.054047196143111
+        },
+        {
+          "name": "networking",
+          "percent": 4.719614311088556
+        },
+        {
+          "name": "unattributed",
+          "percent": 3.374777975133215
+        },
+        {
+          "name": "scheduling and event delivery",
+          "percent": 2.9180411063181935
+        }
+      ],
+      "leaves": [
+        {
+          "name": "__openat",
+          "percent": 15.326059375792946
+        },
+        {
+          "name": "AccelerateCrypto_SHA256_compress",
+          "percent": 12.408018269474752
+        },
+        {
+          "name": "AccelerateCrypto_SHA1_compress",
+          "percent": 11.519918802334432
+        },
+        {
+          "name": "close",
+          "percent": 8.195889368180664
+        },
+        {
+          "name": "_platform_memmove",
+          "percent": 6.292819081451408
+        },
+        {
+          "name": "pwrite",
+          "percent": 4.846485663537173
+        },
+        {
+          "name": "__recvmsg",
+          "percent": 3.5270235980715556
+        },
+        {
+          "name": "start_wqthread",
+          "percent": 3.2986551636640447
+        }
+      ],
+      "counts": {
+        "writeProfile.jobs": 4601,
+        "writeProfile.syscallAttempts": 5970,
+        "writeProfile.receivedBlocks": 65536,
+        "writeProfile.ordinaryJobs": 60,
+        "writeProfile.coalescedJobs": 4541,
+        "descriptorOpens": 37546,
+        "descriptorDuplicates": 41534,
+        "fileDescriptorInspections": 20944,
+        "directoryOpens": 28472,
+        "fileOpens": 9004,
+        "bytesHashed": 1073741824,
+        "sha1Bytes": 1073741824,
+        "sha256Bytes": 1073741824
+      },
+      "successful_stream_reads": 4113
+    }
+  }
 }
