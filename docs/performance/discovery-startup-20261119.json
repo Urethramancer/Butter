@@ -1,0 +1,8 @@
+{
+	"status": "predeclared",
+	"hypothesis": "DHT peer delivery waits for complete iterative lookup and announcements even after usable peers are known.",
+	"controlled": "Prove that discovered peers can reach a running transfer before a silent routing referral or announcement is released. Preserve lookup, announcement, cancellation, private-swarm and resource bounds.",
+	"public": "One fresh v0.18.0-engine Debian session, capped at 60 seconds or 1 MiB from peers; 250 ms snapshots; independently reopen/hash every claimed verified piece. If a tested fix is retained, one fresh follow-up under the same cap. No retries or public-swarm timing causation claim.",
+	"isolation": "Disposable state/payload, ephemeral port, mapping disabled; leave the GUI client, its data, router configuration and other processes untouched.",
+	"evidence": ".build/diagnostics/startup-20261119"
+}

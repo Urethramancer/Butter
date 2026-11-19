@@ -6,7 +6,7 @@ import ButterTorrentNetworking
 
 extension NativeSessionTests { @Suite struct SessionLocalDiscoveryTests {
 	@Test func withdrawingATorrentCancelsItsDiscoveredConnectionBeforeReturning() async throws {
-		let fixture = try V2Fixture(version: 3), bus = LocalDiscoveryBus(), clock = EngineClock(), probe = LocalConnectionProbe()
+		let fixture = try V2Fixture(version: 3), bus = LocalDiscoveryBus(), clock = EngineClock(), probe = DiscoveryConnectionProbe()
 		let services = try bus.service(port: 6881, clock: clock)
 		let discovery = SessionLocalDiscovery(services: services, clock: clock) { _, _ in await probe.connect() }
 		do {
@@ -106,7 +106,7 @@ extension NativeSessionTests { @Suite struct SessionLocalDiscoveryTests {
 	}
 } }
 
-private actor LocalConnectionProbe {
+actor DiscoveryConnectionProbe {
 	var active = 0, cancelled = 0
 	func connect() async {
 		active += 1; defer { active -= 1 }

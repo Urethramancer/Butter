@@ -5,6 +5,34 @@ import ButterTorrentMetadata
 @testable import ButterTorrentEngine
 
 extension NativeSessionTests { @Suite struct SessionDHTTests {
+	@Test(arguments: [false, true]) func deliversPeersBeforeStalledReferralsOrAnnouncements(_ stallAnnouncement: Bool) async throws {
+		let fixture = try TransferFixture(), clock = EngineClock(), probe = DiscoveryConnectionProbe()
+		let silent = try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0))
+		let peer = try NetworkEndpoint("127.0.0.1", port: 7000)
+		let router = try await SessionDHTRouter.open(host: "127.0.0.1", metadata: nil,
+			replies: [fixture.metadata.hashes.v1!: [peer]], referral: stallAnnouncement ? nil : silent.localEndpoint,
+			announceToken: stallAnnouncement ? Data([1]) : nil)
+		let udp = UDPDispatcher(transport: try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0)), clock: clock)
+		let discovery = try SessionDHT(dispatchers: [udp], port: 6881, bootstrap: [router.endpoint], filter: .init(), clock: clock) { _, endpoint in
+			#expect(endpoint == peer); await probe.connect()
+		}
+		do {
+			let owner = try await ManagedTransfer.open(metadata: fixture.metadata, destination: fixture.root.appendingPathComponent("download"), stateDirectory: fixture.root.appendingPathComponent("state"), configuration: plainTransferConfiguration())
+			do {
+				try await discovery.update([SessionDHTTarget(id: "transfer", metadata: fixture.metadata, owner: owner)], metadata: [fixture.metadata])
+				try await eventually { await probe.active == 1 }
+				try await eventually { await udp.pendingCount == 1 }
+				#expect(await discovery.snapshot().searches == 1)
+				// The manual clock never advances: referral/announce timeouts cannot hide late delivery.
+				try await discovery.update([], metadata: [fixture.metadata])
+				#expect(await probe.active == 0)
+				#expect(await probe.cancelled == 1)
+				#expect(await udp.pendingCount == 0)
+				try await owner.close()
+			} catch { try? await owner.close(); throw error }
+		} catch { await discovery.shutdown(); try? await udp.shutdown(); try? await silent.shutdown(); await router.close(); await fixture.clean(); throw error }
+		await discovery.shutdown(); try await udp.shutdown(); try await silent.shutdown(); await router.close(); await fixture.clean()
+	}
 	@Test func privateArrivalDrainsUnresolvedDiscoveryAndItsPeerDelivery() async throws {
 		let fixture = try V2Fixture(version: 3, isPrivate: true), clock = EngineClock(), receiver = MagnetPeerDelivery()
 		let peer = try NetworkEndpoint("127.0.0.1", port: 7000)
@@ -185,16 +213,18 @@ actor SessionDHTRouter {
 	let udp: UDPDispatcher
 	let node: DHTNode?
 	let replies: [Data: [NetworkEndpoint]]
+	let referral: NetworkEndpoint?
+	let announceToken: Data?
 	var packets: [NetworkDatagram] = []
 	var announces: [Announce] = []
 	var pump: Task<Void, Never>?
-	init(endpoint: NetworkEndpoint, udp: UDPDispatcher, node: DHTNode?, replies: [Data: [NetworkEndpoint]]) { self.endpoint = endpoint; self.udp = udp; self.node = node; self.replies = replies }
-	static func open(host: String, metadata: TorrentMetadata?, replies: [Data: [NetworkEndpoint]] = [:]) async throws -> SessionDHTRouter {
+	init(endpoint: NetworkEndpoint, udp: UDPDispatcher, node: DHTNode?, replies: [Data: [NetworkEndpoint]], referral: NetworkEndpoint?, announceToken: Data?) { self.endpoint = endpoint; self.udp = udp; self.node = node; self.replies = replies; self.referral = referral; self.announceToken = announceToken }
+	static func open(host: String, metadata: TorrentMetadata?, replies: [Data: [NetworkEndpoint]] = [:], referral: NetworkEndpoint? = nil, announceToken: Data? = nil) async throws -> SessionDHTRouter {
 		let socket = try DatagramSocket(bind: NetworkEndpoint(host, port: 0)), udp = UDPDispatcher(transport: socket)
 		let node = try metadata.map { _ in try DHTNode(dispatcher: udp, bootstrap: []) }
 		do {
 			if let metadata { try await node?.setTorrents([metadata]) }
-			let router = SessionDHTRouter(endpoint: socket.localEndpoint, udp: udp, node: node, replies: replies), incoming = try await udp.subscribe(.raw)
+			let router = SessionDHTRouter(endpoint: socket.localEndpoint, udp: udp, node: node, replies: replies, referral: referral, announceToken: announceToken), incoming = try await udp.subscribe(.raw)
 			await router.start(incoming); return router
 		} catch { await node?.shutdown(); try? await udp.shutdown(); throw error }
 	}
@@ -205,7 +235,10 @@ actor SessionDHTRouter {
 		guard !replies.isEmpty, let root = try? BencodeDocument(packet.payload).root, root["q"]?.text == "get_peers",
 			let hash = root["a"]?["info_hash"]?.bytes, let peers = replies[hash], let transaction = root["t"]?.bytes else { return }
 		let values = peers.map { BencodeValue.bytes(DHTWire.compact($0)) }
-		if let reply = try? DHTWire.encode(["t": .bytes(transaction), "y": .bytes(Data("r".utf8)), "r": DHTWire.dictionary(["id": .bytes(Data(repeating: 41, count: 20)), "values": .list(values)])]) {
+		var response: [String: BencodeValue] = ["id": .bytes(Data(repeating: 41, count: 20)), "values": .list(values)]
+		if let referral { response["nodes"] = .bytes(Data(repeating: 42, count: 20) + DHTWire.compact(referral)) }
+		if let announceToken { response["token"] = .bytes(announceToken) }
+		if let reply = try? DHTWire.encode(["t": .bytes(transaction), "y": .bytes(Data("r".utf8)), "r": DHTWire.dictionary(response)]) {
 			try? await udp.send(reply, to: packet.source)
 		}
 	}

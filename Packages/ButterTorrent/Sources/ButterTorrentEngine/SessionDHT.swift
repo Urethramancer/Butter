@@ -104,7 +104,11 @@ actor SessionDHT {
 					do {
 						let peers: [NetworkEndpoint]
 						switch target {
-						case .transfer(let entry): peers = try await node.getPeers(for: entry.metadata, announcePort: port)
+						case .transfer(let entry):
+							_ = try await node.getPeers(for: entry.metadata, announcePort: port, onPeers: { [weak self] peers in
+								await self?.received(key, revision: revision, peers: peers)
+							})
+							peers = [] // Already delivered incrementally; avoid reconnecting the final result.
 						case .magnet(let entry): peers = try await node.getPeers(for: entry.magnet)
 						}
 						await self?.finished(key, revision: revision, peers: peers, error: nil)
@@ -113,6 +117,10 @@ actor SessionDHT {
 				}
 			}
 		}
+	}
+	private func received(_ key: Key, revision: UUID, peers: [NetworkEndpoint]) async {
+		guard !Task.isCancelled, revision == self.revision, !closed, !updating, targets[key.id]?.transfer != nil else { return }
+		await candidates?.enqueue(peers.map { Candidate(revision: revision, id: key.id, endpoint: $0) })
 	}
 	private func finished(_ key: Key, revision: UUID, peers: [NetworkEndpoint], error: Error?) async {
 		guard revision == self.revision, !closed, !updating else { return }

@@ -7,7 +7,51 @@ func dhtMetadata(_ isPrivate: Bool = false) throws -> TorrentMetadata {
 	try TorrentMetadata(DHTWire.dictionary(["info": DHTWire.dictionary(["name": .bytes(Data("a".utf8)), "length": .integer(1), "piece length": .integer(16384), "pieces": .bytes(Data(repeating: 42, count: 20)), "private": .integer(isPrivate ? 1 : 0)])]).encoded())
 }
 
+private actor DHTPeerCollector {
+	var peers: [NetworkEndpoint] = []
+	func receive(_ peers: [NetworkEndpoint]) { self.peers.append(contentsOf: peers) }
+}
+
 @Suite struct DHTTests {
+	@Test(arguments: [false, true]) func earlyDeliveryRequiresTheWholePeerListToValidate(_ malformed: Bool) async throws {
+		let transport = try InjectedDatagrams(), udp = UDPDispatcher(transport: transport), delivered = DHTPeerCollector()
+		let server = try NetworkEndpoint("127.0.0.1", port: 54321), peer = try NetworkEndpoint("127.0.0.1", port: 7000)
+		let node = try DHTNode(dispatcher: udp, bootstrap: [server]), metadata = try dhtMetadata()
+		try await node.setTorrents([metadata])
+		let lookup = Task { try await node.getPeers(for: metadata, onPeers: { await delivered.receive($0) }) }
+		do {
+			let packet = try await transport.nextSent(), request = try DHTWire.decode(packet.0)
+			var values: [BencodeValue] = [.bytes(DHTWire.compact(peer))]
+			if malformed { values.append(.integer(1)) }
+			let reply = try DHTWire.encode(["t": request["t"]!, "y": .bytes(Data("r".utf8)), "r": DHTWire.dictionary(["id": .bytes(Data(repeating: 9, count: 20)), "values": .list(values)])])
+			await transport.inject(reply, source: server)
+			if malformed { await #expect(throws: NetworkFailure.self) { try await lookup.value } }
+			else { #expect(try await lookup.value == [peer]) }
+			#expect(await delivered.peers == (malformed ? [] : [peer]))
+		} catch { await node.shutdown(); try? await udp.shutdown(); throw error }
+		await node.shutdown(); try await udp.shutdown()
+	}
+	@Test func earlyDeliveryDeduplicatesAndCapsPeersAcrossLookupRounds() async throws {
+		let transport = try InjectedDatagrams(), udp = UDPDispatcher(transport: transport), delivered = DHTPeerCollector()
+		let node = try DHTNode(dispatcher: udp, bootstrap: [NetworkEndpoint("127.0.0.1", port: 54321)]), metadata = try dhtMetadata()
+		try await node.setTorrents([metadata])
+		let lookup = Task { try await node.getPeers(for: metadata, onPeers: { await delivered.receive($0) }) }
+		do {
+			for hop in 0..<6 {
+				let packet = try await transport.nextSent(), request = try DHTWire.decode(packet.0)
+				let values = try (0..<50).map { BencodeValue.bytes(DHTWire.compact(try NetworkEndpoint("127.0.0.1", port: UInt16(7000 + hop * 49 + $0)))) }
+				var response: [String: BencodeValue] = ["id": .bytes(Data(repeating: UInt8(hop + 1), count: 20)), "values": .list(values)]
+				if hop < 5 {
+					response["nodes"] = .bytes(Data(repeating: UInt8(hop + 2), count: 20) + DHTWire.compact(try NetworkEndpoint("127.0.0.1", port: UInt16(54322 + hop))))
+				}
+				await transport.inject(try DHTWire.encode(["t": request["t"]!, "y": .bytes(Data("r".utf8)), "r": DHTWire.dictionary(response)]), source: packet.1)
+			}
+			#expect(try await lookup.value.count == 256)
+			let peers = await delivered.peers
+			#expect(peers.count == 256 && Set(peers).count == 256)
+		} catch { await node.shutdown(); try? await udp.shutdown(); throw error }
+		await node.shutdown(); try await udp.shutdown()
+	}
 	@Test(arguments: [0, 8, 16, 64]) func extendedNodeListsRetainBoundedReferrals(count: Int) throws {
 		let source = try NetworkEndpoint("127.0.0.1", port: 6881)
 		var fields: [String: BencodeValue] = [:]
@@ -118,19 +162,21 @@ func dhtMetadata(_ isPrivate: Bool = false) throws -> TorrentMetadata {
 	}
 	@Test func privatePolicyCancelsOutstandingLookupBeforeAnotherSend() async throws {
 		let transport = try InjectedDatagrams(), udp = UDPDispatcher(transport: transport)
+		let delivered = DHTPeerCollector()
 		let node = try DHTNode(dispatcher: udp, bootstrap: [NetworkEndpoint("127.0.0.1", port: 54321)])
 		let secret = try dhtMetadata(true), metadata = try dhtMetadata()
 		try await node.setTorrents([secret])
-		#expect(try await node.getPeers(for: secret, announcePort: 6881).isEmpty)
+		#expect(try await node.getPeers(for: secret, announcePort: 6881, onPeers: { await delivered.receive($0) }).isEmpty)
 		#expect(await transport.sentCount == 0)
 		try await node.setTorrents([metadata])
-		let lookup = Task { try await node.getPeers(for: metadata, announcePort: 6881) }
+		let lookup = Task { try await node.getPeers(for: metadata, announcePort: 6881, onPeers: { await delivered.receive($0) }) }
 		_ = try await transport.nextSent()
 		try await node.setTorrents([secret])
 		do { _ = try await lookup.value; Issue.record("Discovery survived public metadata removal") } catch {}
 		await node.shutdown()
 		#expect(await transport.sentCount == 1)
 		#expect(await udp.pendingCount == 0)
+		#expect(await delivered.peers.isEmpty)
 		try await udp.shutdown()
 	}
 	@Test func privateArrivalRevokesUnknownMagnetLookupEvenIfItRemainsRegistered() async throws {

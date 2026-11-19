@@ -68,10 +68,12 @@ public actor DHTNode {
 		peerCache = peerCache.mapValues { $0.filter { filter.allows($0.key.address) } }
 	}
 	/// Queries only identities from registered public metadata. An optional port announces this peer.
-	public func getPeers(for metadata: TorrentMetadata, announcePort: UInt16? = nil) async throws -> [NetworkEndpoint] {
+	/// The optional callback receives up to 256 distinct validated peers while the search continues.
+	public func getPeers(for metadata: TorrentMetadata, announcePort: UInt16? = nil,
+		onPeers: (@Sendable ([NetworkEndpoint]) async -> Void)? = nil) async throws -> [NetworkEndpoint] {
 		try Task.checkCancellation(); guard !closed else { throw NetworkFailure.closed }; guard !updating else { throw NetworkFailure.busy }
 		if metadata.inspection.private { return [] }
-		return try await getPeers(hashes: Self.wireHashes(metadata.hashes), announcePort: announcePort)
+		return try await getPeers(hashes: Self.wireHashes(metadata.hashes), announcePort: announcePort, onPeers: onPeers)
 	}
 	/// Looks up an explicitly registered magnet without announcing an unresolved transfer.
 	public func getPeers(for magnet: Magnet) async throws -> [NetworkEndpoint] {
@@ -80,13 +82,13 @@ public actor DHTNode {
 	private static func wireHashes(_ hashes: InfoHashes) -> [Data] {
 		Array(Set([hashes.v1, hashes.v2.map { Data($0.prefix(20)) }].compactMap { $0 }))
 	}
-	private func getPeers(hashes: [Data], announcePort: UInt16?) async throws -> [NetworkEndpoint] {
+	private func getPeers(hashes: [Data], announcePort: UInt16?, onPeers: (@Sendable ([NetworkEndpoint]) async -> Void)? = nil) async throws -> [NetworkEndpoint] {
 		try Task.checkCancellation(); guard !closed else { throw NetworkFailure.closed }; guard !updating else { throw NetworkFailure.busy }
 		guard hashes.allSatisfy({ permitted.contains($0) }), announcePort != 0 else { throw NetworkFailure.invalid("unregistered DHT swarm or announce port") }
 		guard jobs.count < 4 else { throw NetworkFailure.limit("DHT searches") }
 		guard activeHashes.isDisjoint(with: hashes) else { throw NetworkFailure.busy }
 		activeHashes.formUnion(hashes)
-		let id = UUID(), job = Task { try await self.search(hashes: hashes, announcePort: announcePort) }; jobs[id] = job
+		let id = UUID(), job = Task { try await self.search(hashes: hashes, announcePort: announcePort, onPeers: onPeers) }; jobs[id] = job
 		defer { jobs[id] = nil; activeHashes.subtract(hashes) }
 		return try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
 	}
@@ -132,19 +134,20 @@ public actor DHTNode {
 			table = DHTRoutingTable(id: id); fixedAddress = true; votes.removeAll()
 		}
 	}
-	private func search(hashes: [Data], announcePort: UInt16?) async throws -> [NetworkEndpoint] {
+	private func search(hashes: [Data], announcePort: UInt16?, onPeers: (@Sendable ([NetworkEndpoint]) async -> Void)?) async throws -> [NetworkEndpoint] {
 		let deadline = clock.now() + 30
+		let delivery = onPeers.map { DHTPeerDelivery(receive: $0) }
 		var peers: Set<NetworkEndpoint> = []
 		for hash in hashes {
 			try authorised(hash)
-			if let cached = results[hash], clock.now() - cached.0 < 60, announcePort == nil { peers.formUnion(cached.1); continue }
-			let found = try await lookup(hash: hash, announcePort: announcePort, deadline: deadline)
+			if let cached = results[hash], clock.now() - cached.0 < 60, announcePort == nil { peers.formUnion(cached.1); await delivery?.send(cached.1); continue }
+			let found = try await lookup(hash: hash, announcePort: announcePort, deadline: deadline, delivery: delivery)
 			if results[hash] != nil || results.count < 4096 { results[hash] = (clock.now(), found) }
 			peers.formUnion(found)
 		}
 		return Array(peers.prefix(256))
 	}
-	private func lookup(hash: Data, announcePort: UInt16?, deadline: TimeInterval) async throws -> [NetworkEndpoint] {
+	private func lookup(hash: Data, announcePort: UInt16?, deadline: TimeInterval, delivery: DHTPeerDelivery?) async throws -> [NetworkEndpoint] {
 		let family = dispatcher.localEndpoint.address.isIPv6
 		var candidates = table.closest(hash, now: clock.now(), count: 32)
 		if candidates.isEmpty {
@@ -167,21 +170,26 @@ public actor DHTNode {
 				do {
 					let response = try result.get()
 					let referrals = try DHTWire.contacts(response, source: contact.endpoint)
+					var offered: Set<NetworkEndpoint> = []
 					if let values = response["values"] {
 						guard let list = values.list, list.count <= 50 else { throw NetworkFailure.limit("DHT peer list") }
 						for value in list {
 							guard let bytes = value.bytes else { throw NetworkFailure.invalid("DHT peer") }
 							let peer = try DHTWire.endpoint(bytes)
-							if (contact.endpoint.address.isLocal || !peer.address.isLocal), addressFilter.allows(peer.address), peers.count < 256 { peers.insert(peer) }
+							if (contact.endpoint.address.isLocal || !peer.address.isLocal), addressFilter.allows(peer.address) { offered.insert(peer) }
 						}
 					}
 					if let token = response["token"]?.bytes, !token.isEmpty, token.count <= 64, let id = response["id"]?.bytes { responders.append((DHTContact(id: id, endpoint: contact.endpoint), token)) }
 					for referral in referrals where referral.endpoint.address.isIPv6 == family && !visited.contains(referral.endpoint) && !candidates.contains(where: { $0.endpoint == referral.endpoint }) {
 						if candidates.count < 64 { candidates.append(referral) }
 					}
+					// Publish only after the entire peer list and referral fields validate.
+					for peer in offered where peers.count < 256 { peers.insert(peer) }
 					successful += 1
 				} catch { failure = error; lastFailure = String(describing: error) }
 			}
+			try authorised(hash)
+			await delivery?.send(Array(peers))
 			candidates.sort { DHTRoutingTable.nearer($0.id, $1.id, to: hash) }
 		}
 		try authorised(hash)
@@ -201,5 +209,20 @@ public actor DHTNode {
 		let active = Array(jobs.values); for job in active { job.cancel() }; for job in active { _ = try? await job.value }
 		if let pump { await pump.value }; pump = nil
 		peerCache.removeAll(); results.removeAll(); announced.removeAll()
+	}
+}
+
+// Bound and deduplicate early delivery across both identities of a hybrid search.
+private actor DHTPeerDelivery {
+	let receive: @Sendable ([NetworkEndpoint]) async -> Void
+	var delivered: Set<NetworkEndpoint> = []
+	init(receive: @escaping @Sendable ([NetworkEndpoint]) async -> Void) { self.receive = receive }
+	func send(_ peers: [NetworkEndpoint]) async {
+		guard !Task.isCancelled else { return }
+		var fresh: [NetworkEndpoint] = []
+		for peer in peers where delivered.count < 256 {
+			if delivered.insert(peer).inserted { fresh.append(peer) }
+		}
+		if !fresh.isEmpty { await receive(fresh) }
 	}
 }
