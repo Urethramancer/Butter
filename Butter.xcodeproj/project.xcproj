@@ -74,6 +74,7 @@
         },
       ],
       "build-settings": {
+        "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
         "CODE_SIGN_STYLE": "Automatic",
         "ENABLE_APP_SANDBOX": "NO",
         "ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER": "readwrite",
