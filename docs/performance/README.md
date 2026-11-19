@@ -34,6 +34,29 @@ not quiet-host release qualification. The [compact results](bounded-v1-20261119.
 retain paired intervals, native controls and combined CPU, including the
 single-file sender's 1.6% CPU increase.
 
+A follow-up candidate, `39f5780`, uses a Boolean batch decision instead of an
+optional budget value. Fresh fixed comparisons against `v0.18.1` validate all
+252 trials, including warm-ups; the earlier candidate's samples remain separate.
+
+| Download workload | Fixed pairs | Client CPU/GiB | Throughput | Client CPU/GiB versus libtorrent |
+| --- | ---: | ---: | ---: | ---: |
+| Many-file hybrid guard | 24 | +1.8% | −0.9% | 1.46× |
+| Concurrent v1 | 24 | −4.9% | +3.8% | 2.87× |
+| Single-file v1 | 12 | −3.7% | +6.5% | 1.84× |
+
+The hybrid throughput guard passes its predeclared limits: median at least 99%
+of baseline and lower 95% bound at least 95%. Its observed interval is
+0.967–1.012, permitting a small slowdown rather than establishing parity.
+V1 client CPU and throughput intervals favour the candidate, and all original
+memory checks pass. However, the single-file sender uses 13.4% more CPU/GiB
+(interval +10.5% to +17.1%); combined client/sender CPU has a 3.6% higher median
+(interval −0.6% to +6.4%). Concurrent combined CPU falls 2.2%.
+The candidate remains on `experiment/bounded-v1-write-policy` because the
+single-file tradeoff is unresolved. The [compact results](bounded-v1-policy-20261119.json)
+retain paired intervals and native controls. These active-desktop comparisons
+do not establish the cause of differences between the two candidates or qualify
+a quiet-host release. No fixed comparison was extended or repeated.
+
 The later [request-window comparisons](#thirty-two-block-request-window) retain a
 thirty-two-block default after successive increases from eight and sixteen. They
 establish additional CPU gains with modest memory use. Larger windows help the

@@ -1,0 +1,233 @@
+{
+  "baseline_revision": "v0.18.1 (17cb45d)",
+  "candidate_revision": "39f5780",
+  "status": "isolated; single-file sender CPU increases despite client CPU and throughput gains",
+  "candidate": "Use a Boolean coalescing decision instead of extending the lifetime of an optional budget value; admit already available single-file v1 batches of at least 64 KiB. No established compiler/runtime cause inferred.",
+  "limits": "Unchanged 32-request window, 256 KiB receive-batch bound, shared 1 MiB write-buffer cap, integrity and filesystem guards.",
+  "sampling": "Fresh fixed 24-pair many-hybrid guard, then 24 concurrent-v1 and 12 single-v1 pairs. Balanced source and engine order, four warm-ups per workload. No extensions, retries or pooling with the earlier candidate.",
+  "hybrid_guard": "Declared before measurement: throughput median >=0.99 and 95% lower bound >=0.95 versus release. Passed; this permits a small slowdown and does not establish a hybrid gain.",
+  "intervals": "Arrays contain median, lower and upper paired percentile-bootstrap bounds (10000 resamples, 95%). Combined CPU includes client and sender; source ratios are candidate/release.",
+  "dependency_fingerprints_identical": true,
+  "qualification": "Active desktop, not quiet-host release qualification. All 252 trials verified and retained; original-baseline memory passes for all three cases. No production optimisation adopted.",
+  "results": [
+    {
+      "workload": "many/hybrid/download",
+      "pairs": 24,
+      "verified_trials": 100,
+      "source_ratios": {
+        "cpu_seconds_per_gib": [
+          1.0179202166465107,
+          0.9735707142457213,
+          1.0344189361851723
+        ],
+        "verified_bytes_per_second": [
+          0.9914675517302555,
+          0.9665801251319592,
+          1.0121269935700006
+        ],
+        "peak_rss": [
+          1.0,
+          0.9801038062283737,
+          1.0220458553791887
+        ],
+        "counterpart_cpu_seconds_per_gib": [
+          1.0054707399014875,
+          0.9601368429539988,
+          1.0228504622090053
+        ]
+      },
+      "combined_cpu_ratio": [
+        0.9964442904094499,
+        0.9731304588311278,
+        1.0278904135440716
+      ],
+      "native_control_ratios": {
+        "cpu_seconds_per_gib": [
+          0.9994875771305882,
+          0.9932566857402914,
+          1.0118128443977958
+        ],
+        "verified_bytes_per_second": [
+          0.9975738426633228,
+          0.9884808963062759,
+          1.0058282029288828
+        ]
+      },
+      "current_vs_libtorrent": {
+        "verified_bytes_per_second": [
+          0.6841221532994874,
+          0.6600964478148624,
+          0.7176108134306916
+        ],
+        "durable_bytes_per_second": [
+          0.6872595728207999,
+          0.6628405558580168,
+          0.7204988232565305
+        ],
+        "cpu_seconds_per_gib": [
+          1.4631922003763098,
+          1.4362964431636083,
+          1.5559039244426591
+        ]
+      },
+      "cpu_seconds_per_gib": {
+        "Swift": 3.7823745000000004,
+        "libtorrent": 2.5231265
+      },
+      "original_baseline_memory": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.27289829512051733,
+        "lower": 0.26425233644859814,
+        "upper": 0.2759433962264151,
+        "maximum_peak_rss_ratio": 0.28509074201699974,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      }
+    },
+    {
+      "workload": "concurrent/v1/download",
+      "pairs": 24,
+      "verified_trials": 100,
+      "source_ratios": {
+        "cpu_seconds_per_gib": [
+          0.9512823919628727,
+          0.9441626133773713,
+          0.9764647975052735
+        ],
+        "verified_bytes_per_second": [
+          1.0384398926791598,
+          1.018851343032793,
+          1.0554923321475225
+        ],
+        "peak_rss": [
+          1.0262557666039536,
+          0.9928894634776988,
+          1.0599013389711065
+        ],
+        "counterpart_cpu_seconds_per_gib": [
+          1.0153450509199593,
+          0.9551689941832148,
+          1.0553630486201888
+        ]
+      },
+      "combined_cpu_ratio": [
+        0.9779447938474306,
+        0.9606264611440123,
+        0.9987435617141317
+      ],
+      "native_control_ratios": {
+        "cpu_seconds_per_gib": [
+          1.0066034740773437,
+          0.9968081751151887,
+          1.0205879104561866
+        ],
+        "verified_bytes_per_second": [
+          0.9970909695533514,
+          0.9916785553650495,
+          1.000876595358677
+        ]
+      },
+      "current_vs_libtorrent": {
+        "verified_bytes_per_second": [
+          1.6381259881848695,
+          1.6210197575364698,
+          1.646482342370151
+        ],
+        "durable_bytes_per_second": [
+          1.7543424839644786,
+          1.7395088976106499,
+          1.7789253996476633
+        ],
+        "cpu_seconds_per_gib": [
+          2.872448692725603,
+          2.8199414913620693,
+          2.918124170669635
+        ]
+      },
+      "cpu_seconds_per_gib": {
+        "Swift": 5.750497,
+        "libtorrent": 1.9837194999999999
+      },
+      "original_baseline_memory": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.30652550137432555,
+        "lower": 0.3019902518277823,
+        "upper": 0.3134054274637829,
+        "maximum_peak_rss_ratio": 0.3308331644030002,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      }
+    },
+    {
+      "workload": "single/v1/download",
+      "pairs": 12,
+      "verified_trials": 52,
+      "source_ratios": {
+        "cpu_seconds_per_gib": [
+          0.9634330682579304,
+          0.9221295873265678,
+          0.9859993911304122
+        ],
+        "verified_bytes_per_second": [
+          1.0648566726198332,
+          1.0317283903436973,
+          1.1173566953408212
+        ],
+        "peak_rss": [
+          1.002014098690836,
+          0.9910601618400237,
+          1.0234298626974185
+        ],
+        "counterpart_cpu_seconds_per_gib": [
+          1.133822247629313,
+          1.1051909353157785,
+          1.1712809296741111
+        ]
+      },
+      "combined_cpu_ratio": [
+        1.0358395013870862,
+        0.9944776383970492,
+        1.0636017822433148
+      ],
+      "native_control_ratios": {
+        "cpu_seconds_per_gib": [
+          1.000184830024603,
+          0.9725954783609783,
+          1.0213480684223724
+        ],
+        "verified_bytes_per_second": [
+          0.9954945830124593,
+          0.9861546990723973,
+          1.005735509718729
+        ]
+      },
+      "current_vs_libtorrent": {
+        "verified_bytes_per_second": [
+          0.9222932982534944,
+          0.8510433631186045,
+          0.953747474106857
+        ],
+        "durable_bytes_per_second": [
+          0.97528756751517,
+          0.9050387606342447,
+          1.0130745293912755
+        ],
+        "cpu_seconds_per_gib": [
+          1.8367579651172812,
+          1.8022582826084987,
+          1.957743814419786
+        ]
+      },
+      "cpu_seconds_per_gib": {
+        "Swift": 3.0470655,
+        "libtorrent": 1.6672495
+      },
+      "original_baseline_memory": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.21269605765154725,
+        "lower": 0.21129883843717,
+        "upper": 0.22003596741775097,
+        "maximum_peak_rss_ratio": 0.2215417106652587,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      }
+    }
+  ]
+}
