@@ -28,12 +28,13 @@ final class TransferFixture {
 	let metadata: TorrentMetadata
 	let bytes: Data
 	let lengths: [Int]
-	let names = ["a", "skip", "c", "empty"]
+	let names: [String]
 	var engines: [TCPTransfer] = []
 	var stores: [TorrentStorage] = []
 	var listeners: [TCPListener] = []
 	init(lengths: [Int] = [10003, 50019, 30000, 0], pieceLength: Int = 32768) throws {
-		precondition(lengths.count == names.count && lengths.allSatisfy { $0 >= 0 } && pieceLength > 0)
+		precondition((1...4).contains(lengths.count) && lengths.allSatisfy { $0 >= 0 } && pieceLength > 0)
+		names = Array(["a", "skip", "c", "empty"].prefix(lengths.count))
 		self.lengths = lengths
 		root = FileManager.default.temporaryDirectory.appendingPathComponent("butter-peer-" + UUID().uuidString).resolvingSymlinksInPath()
 		try FileManager.default.createDirectory(at: root.appendingPathComponent("source/bundle"), withIntermediateDirectories: true)

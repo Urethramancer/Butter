@@ -193,9 +193,9 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 		}
 	}
 	@Test(arguments: [false, true], [false, true]) func availableReadSpansDecoderFeedsAndFlushesBeforeControl(_ encrypted: Bool, _ limited: Bool) async throws {
-		for large in [false, true] {
+		for (large, singleFile) in [(false, false), (true, false), (true, true)] {
 			let pieceLength = large ? 524288 : 32768, pieceCount = large ? 1 : 3
-			let fixture = try large ? TransferFixture(lengths: [524288, 0, 0, 0], pieceLength: pieceLength) : TransferFixture()
+			let fixture = try large ? TransferFixture(lengths: singleFile ? [524288] : [524288, 0, 0, 0], pieceLength: pieceLength) : TransferFixture()
 			try await transferFixture(fixture) { fixture in
 				var config = plainTransferConfiguration(); config.downloadLimit = limited ? 1048576 : 0
 				if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
