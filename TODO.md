@@ -2,6 +2,9 @@
 
 ## Performance
 
+- Reduce public-swarm startup latency and redundant endgame traffic. After the
+  DHT and HTTP-range fixes, the Debian ISO verified in about 108 s with 917.7 MB
+  received for a 735.4 MB payload; Transmission is reportedly much faster.
 - Reduce download CPU/GiB and improve single/many-file throughput against
   libtorrent. Downloads miss the CPU target in the
   [latest matrix](docs/performance/README.md), which ran under competing host load.

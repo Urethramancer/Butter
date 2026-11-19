@@ -11,6 +11,31 @@ establish additional CPU gains with modest memory use. Larger windows help the
 tested 1 MiB-piece workload at 48, while 64 establishes no further gain. Those
 larger defaults remain isolated. The full matrix below predates both retained changes.
 
+## Public Debian download
+
+19 November 2026, `debian-13.7.0-arm64-netinst.iso.torrent`, 735,358,976 bytes,
+256 KiB pieces. Fresh isolated Release sessions reproduced the reported slowdown:
+
+| Configuration | Observation |
+| --- | --- |
+| Original `0ef8ad2` | 4 MiB received in 40 s, entirely from HTTP; no peers |
+| DHT fix `dbe0c34` | 78.0 MB received in 38 s, including 74.1 MB from a peer |
+| Both fixes, HTTP only | 45.6 MB received in 40 s; approximately 11× the original fallback speed |
+| Both fixes `9c326d1`, discovery enabled | Entire ISO verified in approximately 108 s; 917.7 MB received including redundant data |
+
+DHT rejected replies containing more than eight compact nodes. It now accepts
+longer lists while admitting at most eight valid referrals per address family.
+HTTP seeds now coalesce adjacent blocks into ranges of at most 256 KiB within
+one piece, preserving 16 KiB storage blocks and existing integrity checks.
+
+The full download independently passed all 2,806 piece hashes after reopening
+the payload. Regression checks passed 208 engine tests, the focused DHT and
+web-seed/picker suites, ten native HTTP-to-libtorrent comparisons and the Release
+app build. The tracker timed out; public-peer availability and cold discovery
+vary. These are single diagnostic runs, with approximate sampling times and no
+controlled Transmission timing. Cold-start latency and redundant traffic remain
+targets; this does not establish parity with Transmission.
+
 ## Current matrix
 
 15 November 2026, engine revision `450e229`, including worker fusion `047dcfc`.
