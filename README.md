@@ -85,6 +85,33 @@ under `.build/test-logs`. Generated captures and reports belong under `.build/`.
 
 ## Versions and licence
 
+To set up local releases, install the GitHub CLI, run `gh auth login`, then run
+`Scripts/release.sh setup` in Terminal. This stores notarisation credentials in
+the `Butter-notary` Keychain profile. Enter your Developer Apple ID and an
+[app-specific password](https://support.apple.com/102654) at the prompts;
+credentials are never stored in the repository. Xcode's saved account alone
+does not configure this profile. The Mac also needs the project's Developer ID
+Application certificate and private key (team `ZWL2A2VN43`).
+
+After verification, create the chosen annotated `vMAJOR.MINOR.PATCH` tag, then
+run `Scripts/release.sh TAG`. It builds that exact tag in a disposable full
+checkout, exports a signed Release app, notarises it, staples and checks the
+ticket, and packages an Apple Silicon ZIP with SHA-256 checksums. It then pushes
+the tag and uploads a GitHub draft, checks the downloaded assets and publishes.
+Local changes are excluded. Existing releases and conflicting remote tags are
+rejected; nothing is overwritten. If publication stops after creating a draft,
+inspect that draft before retrying. This command does not replace release testing.
+
+Use `Scripts/release.sh TAG --prepare` to produce verified local assets without
+pushing or publishing. Use `Scripts/release.sh --prepare` to build the latest
+commit: when it has no annotated release tag, the ZIP name includes the version
+and `-dev-<commit>`; development builds stay local. Set `BUTTER_NOTARY_PROFILE`
+to use an existing profile.
+Artifacts and build/notarisation logs remain under `.build/releases/`; failed
+submissions retain Apple's response and log when available. After a timeout,
+Apple may still be processing the saved submission ID. The workflow follows
+[Apple's command-line notarisation guidance](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow).
+
 Builds derive versions from Git without changing source files. `CFBundleVersion`
 counts commits reachable from HEAD; the marketing version uses the nearest
 ancestor `vMAJOR.MINOR.PATCH` tag, defaulting to `0.1.0` before a release tag.

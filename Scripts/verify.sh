@@ -10,9 +10,11 @@ case "$mode" in
 	network) shift; exec Scripts/test-http.sh "$@" ;;
 	client|engine|contract|metadata|metadata-reference|creation|http|native-storage|native-diagnostics|restart-diagnostics|peer|peer-reference|benchmark|storage-benchmark|lifecycle|interface|storage|disk|interruption|ui|build) shift; exec "Scripts/test-$mode.sh" "$@" ;;
 	version) exec sh Tests/git-version.sh ;;
+	release) exec ruby Tests/release.rb ;;
 	all|final)
 		sh Tests/test-log.sh
 		sh Tests/git-version.sh
+		ruby Tests/release.rb
 		for suite in client storage disk native-storage creation contract lifecycle interface build; do "Scripts/test-$suite.sh"; done
 		if [ "$mode" = final ]; then Scripts/verify.sh coverage "${2:-final}"
 		else swift test --no-parallel --package-path Packages/ButterTorrent --scratch-path .build/ButterTorrent; fi
@@ -56,5 +58,5 @@ case "$mode" in
 			done
 		fi
 		;;
-	*) echo 'Usage: Scripts/verify.sh [all|final|reference|benchmark|storage-benchmark|native-diagnostics|restart-diagnostics|client|storage|native-storage|disk|interruption|engine|contract|metadata|metadata-reference|creation|http|network|peer|peer-reference|lifecycle|interface|ui|build|version|coverage|sanitizers|reference-sanitizers]' >&2; exit 2 ;;
+	*) echo 'Usage: Scripts/verify.sh [all|final|reference|benchmark|storage-benchmark|native-diagnostics|restart-diagnostics|client|storage|native-storage|disk|interruption|engine|contract|metadata|metadata-reference|creation|http|network|peer|peer-reference|lifecycle|interface|ui|build|version|release|coverage|sanitizers|reference-sanitizers]' >&2; exit 2 ;;
 esac
