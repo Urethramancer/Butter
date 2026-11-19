@@ -84,7 +84,10 @@ final class TransferFixture {
 }
 
 func transferFixture(_ body: (TransferFixture) async throws -> Void) async throws {
-	let fixture = try TransferFixture()
+	try await transferFixture(TransferFixture(), body)
+}
+
+func transferFixture(_ fixture: TransferFixture, _ body: (TransferFixture) async throws -> Void) async throws {
 	do { try await body(fixture) } catch { await fixture.clean(); throw error }; await fixture.clean()
 }
 

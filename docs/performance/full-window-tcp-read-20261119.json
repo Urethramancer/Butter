@@ -1,0 +1,162 @@
+{
+  "status": "Isolated: fewer stream reads do not establish lower CPU; throughput median is lower, so conditional guards are not triggered",
+  "baseline": "v0.17.0",
+  "candidate_branch": "experiment/full-window-tcp-read",
+  "change": "Increase only unrestricted TCP's maximum available-byte read from 256 KiB to 516 KiB, fitting a 32-block window plus framing. The underlying receive still returns available bytes without waiting to fill the maximum.",
+  "preserved": [
+    "32-block request window",
+    "eight active pieces",
+    "sixteen-block/256 KiB payload dispatch",
+    "64 KiB decoder feeds",
+    "rate-limited reads",
+    "uTP reads",
+    "yield cadence",
+    "hashing",
+    "fresh filesystem observations",
+    "one-second saturated rescue delay"
+  ],
+  "diagnostic": {
+    "case": "many",
+    "format": "hybrid",
+    "direction": "download",
+    "mode": "counts-only source comparison",
+    "trials": 4
+  },
+  "primary": {
+    "case": "many",
+    "format": "hybrid",
+    "direction": "download",
+    "piece_bytes": 262144,
+    "source_pairs": 24
+  },
+  "conditional_guards": [
+    {
+      "case": "concurrent",
+      "format": "v2",
+      "direction": "download",
+      "source_pairs": 12
+    },
+    {
+      "case": "single",
+      "format": "v1",
+      "direction": "download",
+      "source_pairs": 6
+    },
+    {
+      "case": "concurrent",
+      "format": "hybrid",
+      "direction": "download",
+      "source_pairs": 6
+    },
+    {
+      "case": "many",
+      "format": "hybrid",
+      "direction": "download",
+      "piece_bytes": 1048576,
+      "source_pairs": 12
+    }
+  ],
+  "gate": "Run primary only if all diagnostic trials validate and physical reads or write jobs per GiB decrease. Run guards only if primary upper paired 95% CPU/GiB ratio is below one. Retain only after reporting all guards, preserving throughput medians and passing matching original-baseline memory budgets. The 1 MiB fixture has a matched-source memory check only.",
+  "sampling": "Keep every trial. Do not extend or repeat runs after inspecting results. Separate counters from timing. Finish our builds/tests before timing; record unrelated host contention.",
+  "results": {
+    "directory": ".build/benchmarks/full-window-read-many-hybrid-24pairs-20261119",
+    "trials": 100,
+    "validated": 100,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 1.0142139356571138,
+        "lower": 0.9985520994557889,
+        "upper": 1.0305844232332042,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9916879282168714,
+        "lower": 0.9837024897474226,
+        "upper": 1.0055044819166556,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 1.0095469284908511,
+        "lower": 0.997431506849315,
+        "upper": 1.0661444734551784,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 1.0094402364377415,
+        "lower": 0.9563368349004828,
+        "upper": 1.0438880120725438,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_controls": {
+      "cpu_seconds_per_gib": {
+        "median": 0.9984320585075777,
+        "lower": 0.9893104824032259,
+        "upper": 1.0089287727174647,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 1.0024532681979537,
+        "lower": 0.9921193788375127,
+        "upper": 1.0085147552455713,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "original_baseline_memory": {
+      "previous": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.2710170487948266,
+        "lower": 0.2658052607291186,
+        "upper": 0.2758254716981132,
+        "maximum_peak_rss_ratio": 0.28509074201699974,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "current": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.27807172251616696,
+        "lower": 0.2727272727272727,
+        "upper": 0.2873305833824396,
+        "maximum_peak_rss_ratio": 0.3020905122903745,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      }
+    },
+    "source_and_binary_fingerprints_unchanged": true,
+    "conditional_guards": "Not triggered: primary upper CPU/GiB ratio is not below one",
+    "qualification": "Compiler, application and indexing activity observed; no quiet-host qualification"
+  },
+  "diagnostic_results": {
+    "directory": ".build/benchmarks/full-window-read-counts-many-hybrid-20261119",
+    "trials": 4,
+    "validated": 4,
+    "sources": [
+      {
+        "source": "previous",
+        "write_jobs": 4593,
+        "disk_jobs": 4614,
+        "descriptor_opens": 37391,
+        "bytes_hashed": 1073741824,
+        "stream_reads": 4118,
+        "wire_bytes": 1074594138,
+        "blocks": 65536,
+        "mean_blocks_per_dispatch": 14.268669714783366
+      },
+      {
+        "source": "current",
+        "write_jobs": 4796,
+        "disk_jobs": 5189,
+        "descriptor_opens": 41594,
+        "bytes_hashed": 1073741824,
+        "stream_reads": 2177,
+        "wire_bytes": 1074594138,
+        "blocks": 65536,
+        "mean_blocks_per_dispatch": 13.664720600500416
+      }
+    ],
+    "primary_gate": "Triggered: stream reads decrease; write-job increase requires separate CPU timing"
+  },
+  "validation": {
+    "engine_tests": 212,
+    "full_window_regression": "Baseline rejects full-burst expectation in plaintext/RC4; candidate passes large/small bursts with rate limits and trailing control"
+  },
+  "candidate_revision": "8801da172f2d923f06897c432ffaff068ffd3761"
+}

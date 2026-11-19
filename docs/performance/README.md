@@ -753,6 +753,24 @@ matches every selected fixture exactly against the full original baseline.
 [Protocol and results](picker-allocations-20261119.json) retain the zero-sample
 setup abort, correction, validation and all outcomes.
 
+## Isolated full-window TCP read experiment
+
+A 516 KiB unrestricted read fits the 32-block window and framing; rate-limited
+and µTP reads, decoder feeds and sixteen-block payload dispatch stay unchanged.
+Four diagnostic trials validate, with stream reads 4,118 → 2,177 but write jobs
+4,593 → 4,796 and disk jobs 4,614 → 5,189. Fewer reads alone are insufficient.
+
+The fixed 24-pair many-file hybrid comparison validates all 100 trials. CPU/GiB
+is 1.0142 (paired 95% interval 0.9986–1.0306), throughput 0.9917 (0.9837–1.0055)
+and RSS 1.0095 (0.9974–1.0661). Memory passes against the matching original
+baseline and native controls include one; source/binary fingerprints validate.
+The contended run establishes no CPU saving. No conditional guards run.
+
+Main retains its 256 KiB read and the expanded plaintext/RC4, rate-limited and
+trailing-control burst coverage without requiring the unretained read geometry.
+The code remains on `experiment/full-window-tcp-read`;
+[protocol, counts and results](full-window-tcp-read-20261119.json) retain all outcomes.
+
 ## Profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers

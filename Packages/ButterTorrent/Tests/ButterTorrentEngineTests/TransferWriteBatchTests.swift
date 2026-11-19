@@ -193,34 +193,39 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 		}
 	}
 	@Test(arguments: [false, true], [false, true]) func availableReadSpansDecoderFeedsAndFlushesBeforeControl(_ encrypted: Bool, _ limited: Bool) async throws {
-		try await transferFixture { fixture in
-			var config = plainTransferConfiguration(); config.downloadLimit = limited ? 1048576 : 0
-			if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
-			let down = try await fixture.transfer("download", configuration: config), listener = try await fixture.listen()
-			let endpoint = try NetworkEndpoint("127.0.0.1", port: listener.port), hash = fixture.metadata.hashes.v1!, encryption = config.encryption
-			let connecting = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption) }
-			do {
-				let stream = CoalescingPeerStream(try await listener.accept(timeout: 3))
-				_ = try await down.attach(stream)
-				let channel = try await connecting.value; defer { channel.close() }
-				let peer = WirePeer(channel: channel)
-				try await peer.hello(hash: hash, identity: 42); try await peer.seed(pieceCount: 3)
-				let requests = try await peer.requests(6)
-				var frames = Data()
-				for block in requests {
-					let start = block.piece * 32768 + block.offset
-					frames.append(try PeerMessage.piece(block.piece, block.offset, fixture.bytes.subdata(in: start..<(start + block.length))).encoded())
-				}
-				frames.append(try PeerMessage.choke.encoded()); stream.coalesce(frames.count)
-				try await channel.write(frames)
-				try await eventually {
-					let status = await down.snapshot()
-					return status.verifiedPieces == [0, 1, 2] && status.peers.first?.remoteChoking == true && status.peers.first?.pendingRequests == 0
-				}
-				#expect((stream.largestRead > 65536) == !limited)
-				#expect(stream.largestRead <= (limited ? 65536 : 262144))
-				#expect(await down.snapshot().downloaded == Int64(fixture.bytes.count))
-			} catch { connecting.cancel(); if let channel = try? await connecting.value { channel.close() }; throw error }
+		for large in [false, true] {
+			let pieceLength = large ? 524288 : 32768, pieceCount = large ? 1 : 3
+			let fixture = try large ? TransferFixture(lengths: [524288, 0, 0, 0], pieceLength: pieceLength) : TransferFixture()
+			try await transferFixture(fixture) { fixture in
+				var config = plainTransferConfiguration(); config.downloadLimit = limited ? 1048576 : 0
+				if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
+				let down = try await fixture.transfer("download", configuration: config), listener = try await fixture.listen()
+				let endpoint = try NetworkEndpoint("127.0.0.1", port: listener.port), hash = fixture.metadata.hashes.v1!, encryption = config.encryption
+				let connecting = Task { try await PeerStream.connect(to: endpoint, hash: hash, configuration: encryption) }
+				do {
+					let stream = CoalescingPeerStream(try await listener.accept(timeout: 3))
+					_ = try await down.attach(stream)
+					let channel = try await connecting.value; defer { channel.close() }
+					let peer = WirePeer(channel: channel)
+					try await peer.hello(hash: hash, identity: 42); try await peer.seed(pieceCount: pieceCount)
+					let requests = try await peer.requests(large ? 32 : 6)
+					var frames = Data()
+					for block in requests {
+						let start = block.piece * pieceLength + block.offset
+						frames.append(try PeerMessage.piece(block.piece, block.offset, fixture.bytes.subdata(in: start..<(start + block.length))).encoded())
+					}
+					frames.append(try PeerMessage.choke.encoded()); stream.coalesce(frames.count)
+					try await channel.write(frames)
+					try await eventually {
+						let status = await down.snapshot()
+						return status.verifiedPieces == Set(0..<pieceCount) && status.peers.first?.remoteChoking == true && status.peers.first?.pendingRequests == 0
+					}
+					#expect((stream.largestRead > 65536) == !limited)
+					#expect(stream.largestRead <= (limited ? 65536 : 262144))
+					if large && !limited { #expect(stream.largestRead == min(frames.count, 262144)) }
+					#expect(await down.snapshot().downloaded == Int64(fixture.bytes.count))
+				} catch { connecting.cancel(); if let channel = try? await connecting.value { channel.close() }; throw error }
+			}
 		}
 	}
 	@Test(arguments: [false, true]) func fairnessYieldPreservesPayloadBeforeControl(_ encrypted: Bool) async throws {
