@@ -23,11 +23,15 @@ enum DHTWire {
 		var contacts: [DHTContact] = []
 		for (key, size) in [("nodes", 26), ("nodes6", 38)] {
 			guard let field = value[key] else { continue }
-			guard let bytes = field.bytes, bytes.count % size == 0, bytes.count / size <= 8 else { throw NetworkFailure.invalid("DHT node list") }
+			guard let bytes = field.bytes, bytes.count % size == 0 else { throw NetworkFailure.invalid("DHT node list") }
+			// Routers may return more than one bucket. Accept the reply without
+			// increasing the number of referrals admitted from either address family.
+			let limit = contacts.count + 8
 			for offset in stride(from: 0, to: bytes.count, by: size) {
 				let id = bytes.subdata(in: offset..<offset + 20), peer = try endpoint(bytes.subdata(in: offset + 20..<offset + size))
 				guard source.address.isLocal || !peer.address.isLocal, DHTIdentity.valid(id, address: peer.address) else { continue }
 				contacts.append(DHTContact(id: id, endpoint: peer))
+				if contacts.count == limit { break }
 			}
 		}
 		return contacts

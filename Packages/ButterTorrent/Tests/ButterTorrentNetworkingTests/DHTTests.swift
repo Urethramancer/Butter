@@ -8,6 +8,33 @@ func dhtMetadata(_ isPrivate: Bool = false) throws -> TorrentMetadata {
 }
 
 @Suite struct DHTTests {
+	@Test(arguments: [0, 8, 16, 64]) func extendedNodeListsRetainBoundedReferrals(count: Int) throws {
+		let source = try NetworkEndpoint("127.0.0.1", port: 6881)
+		var fields: [String: BencodeValue] = [:]
+		for (key, address) in [("nodes", "127.0.0.1"), ("nodes6", "::1")] {
+			var bytes = Data()
+			for index in 0..<count {
+				bytes.append(Data(repeating: UInt8(index), count: 20))
+				bytes.append(try DHTWire.compact(NetworkEndpoint(address, port: UInt16(1000 + index))))
+			}
+			fields[key] = .bytes(bytes)
+		}
+		let contacts = try DHTWire.contacts(DHTWire.dictionary(fields), source: source)
+		#expect(contacts.count == min(count, 8) * 2)
+		#expect(contacts.filter { !$0.endpoint.address.isIPv6 }.map(\.endpoint.port) == (0..<min(count, 8)).map { UInt16(1000 + $0) })
+		#expect(contacts.filter { $0.endpoint.address.isIPv6 }.map(\.endpoint.port) == (0..<min(count, 8)).map { UInt16(1000 + $0) })
+	}
+	@Test func malformedNodeListsAndUnboundIdentitiesRemainRejected() throws {
+		let source = try NetworkEndpoint("8.8.8.8", port: 6881)
+		for key in ["nodes", "nodes6"] {
+			for field in [BencodeValue.integer(26), .bytes(Data(repeating: 0, count: 27))] {
+				#expect(throws: NetworkFailure.invalid("DHT node list")) { try DHTWire.contacts(DHTWire.dictionary([key: field]), source: source) }
+			}
+		}
+		var bytes = Data(repeating: 0, count: 20)
+		bytes.append(DHTWire.compact(source))
+		#expect(try DHTWire.contacts(DHTWire.dictionary(["nodes": .bytes(bytes)]), source: source).isEmpty)
+	}
 	@Test func blockedNodesCannotQueryOrReceiveRepliesAndLimitsRemainExplicit() async throws {
 		let serverSocket = try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0)), serverUDP = UDPDispatcher(transport: serverSocket)
 		let clientUDP = UDPDispatcher(transport: try DatagramSocket(bind: NetworkEndpoint("127.0.0.1", port: 0)))
