@@ -737,6 +737,22 @@ whose source/package fingerprints match `3d4107d` exactly. The tests impose no b
 allocation or compaction policy. Complete native validation is not run for this
 unretained production change. The branch and all raw results remain preserved.
 
+## Isolated picker allocation experiment
+
+Lazy block iteration, arithmetic block counts and an early endgame-count check
+validate all 100 trials in the fixed 24-pair many-file hybrid comparison against
+`v0.17.0`. CPU/GiB is 1.0004 (paired 95% interval 0.9859–1.0149); throughput is
+0.9901 (0.9821–1.0193). This establishes no CPU gain. Memory passes against the
+matching original baseline, native controls include one, and source/binary
+fingerprints remain unchanged. Compiler/application/indexing activity qualifies
+the run. The CPU gate fails, so no conditional guards run or samples are added.
+
+The code stays on `experiment/picker-allocation-counts`. Main retains only the
+independently useful sparse/staged endgame regression and the benchmark fix that
+matches every selected fixture exactly against the full original baseline.
+[Protocol and results](picker-allocations-20261119.json) retain the zero-sample
+setup abort, correction, validation and all outcomes.
+
 ## Profiling targets
 
 A fresh running-thread profile of cache-free `4d004b1` validates both transfers

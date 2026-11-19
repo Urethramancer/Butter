@@ -1,0 +1,128 @@
+{
+  "status": "Isolated: primary establishes no CPU saving and has a lower throughput median; conditional guards not triggered",
+  "baseline": "v0.17.0",
+  "candidate_branch": "experiment/picker-allocation-counts",
+  "changes": [
+    "Iterate piece blocks lazily instead of allocating an array",
+    "Count piece blocks arithmetically",
+    "Use the missing-piece count to rule out endgame before constructing remaining-piece sets"
+  ],
+  "preserved": [
+    "32-block request window",
+    "eight active pieces",
+    "one-second saturated rescue delay",
+    "immediate final-tail rescue",
+    "hashing",
+    "fresh filesystem observations",
+    "resource bounds"
+  ],
+  "primary": {
+    "case": "many",
+    "format": "hybrid",
+    "direction": "download",
+    "piece_bytes": 262144,
+    "source_pairs": 24
+  },
+  "conditional_guards": [
+    {
+      "case": "concurrent",
+      "format": "v2",
+      "direction": "download",
+      "source_pairs": 12
+    },
+    {
+      "case": "single",
+      "format": "v1",
+      "direction": "download",
+      "source_pairs": 6
+    },
+    {
+      "case": "concurrent",
+      "format": "hybrid",
+      "direction": "download",
+      "source_pairs": 6
+    },
+    {
+      "case": "many",
+      "format": "hybrid",
+      "direction": "download",
+      "piece_bytes": 1048576,
+      "source_pairs": 12
+    }
+  ],
+  "gate": "Run guards only if the primary upper paired 95% CPU/GiB ratio is below one. Retain only after reporting all guards, preserving throughput medians and passing matching original-baseline memory budgets. The 1 MiB fixture has a matched-source memory check only.",
+  "sampling": "Keep every trial; do not add samples, retries or exclusions after inspection. Keep counters and profilers disabled during timing. Finish our builds and GUI checks before timing; record any unrelated host contention.",
+  "setup": {
+    "aborted_directory": ".build/benchmarks/picker-allocations-many-hybrid-24pairs-20261119",
+    "measured_trials_before_abort": 0,
+    "reason": "Harness compared the selected workload manifest with the entire full-baseline manifest. Selected fixture matches the original exactly.",
+    "resolution": "Require exact membership for every unique selected workload, retaining the full original baseline unchanged. All 34 harness tests pass with 297 assertions; all 264 original baseline rows remain loaded."
+  },
+  "results": {
+    "directory": ".build/benchmarks/picker-allocations-many-hybrid-24pairs-run-20261119",
+    "trials": 100,
+    "validated": 100,
+    "source_ratios": {
+      "cpu_seconds_per_gib": {
+        "median": 1.000358279758247,
+        "lower": 0.9858754911640837,
+        "upper": 1.0149297986791908,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9900707397500419,
+        "lower": 0.9821009856223538,
+        "upper": 1.0192842395934063,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "peak_rss": {
+        "median": 0.9987245818174322,
+        "lower": 0.9805084745762712,
+        "upper": 1.007011393514461,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "counterpart_cpu_seconds_per_gib": {
+        "median": 1.0017580541146403,
+        "lower": 0.9734079205290694,
+        "upper": 1.0334517230404212,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "native_controls": {
+      "cpu_seconds_per_gib": {
+        "median": 0.9976306344632218,
+        "lower": 0.98538369880419,
+        "upper": 1.0086927718426828,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      },
+      "verified_bytes_per_second": {
+        "median": 0.9999373352928949,
+        "lower": 0.9967119445911692,
+        "upper": 1.0125495638092767,
+        "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+      }
+    },
+    "original_baseline_memory": {
+      "previous": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.27524985302763083,
+        "lower": 0.26929316338354575,
+        "upper": 0.2779740871613663,
+        "maximum_peak_rss_ratio": 0.288306914771422,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "current": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.2727807172251617,
+        "lower": 0.2669589293954776,
+        "upper": 0.27700471698113205,
+        "maximum_peak_rss_ratio": 0.2931311739030554,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      }
+    },
+    "source_and_binary_fingerprints_unchanged": true,
+    "conditional_guards": "Not triggered: primary upper CPU/GiB ratio is not below one",
+    "qualification": "Compiler, application and indexing activity observed; no quiet-host qualification"
+  },
+  "candidate_revision": "bf1c6aa54b36ede707c04a88c6a32ba03b40b375"
+}
