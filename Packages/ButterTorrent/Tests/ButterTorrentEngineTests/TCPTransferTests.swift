@@ -5,6 +5,34 @@ import ButterTorrentNetworking
 @testable import ButterTorrentEngine
 
 @Suite struct TCPTransferTests {
+	@Test func saturatedRequestsWaitBeforeRescueAndStillCancelLateDuplicates() async throws {
+		let fixture = try TransferFixture(lengths: [16 * 65536, 0, 0, 0], pieceLength: 65536), clock = EngineClock()
+		do {
+			let engine = try await fixture.transfer("download", clock: clock)
+			let owner = try await fixture.scripted(engine, identity: 11), rescuer = try await fixture.scripted(engine, identity: 12)
+			try await owner.seed(pieceCount: 16); let requests = try await owner.requests(32)
+			try await rescuer.seed(pieceCount: 16)
+			try await eventually { await engine.snapshot().peers.contains { $0.peerID == Data(repeating: 12, count: 20) && !$0.remoteChoking } }
+			#expect(await engine.snapshot().peers.first { $0.peerID == Data(repeating: 12, count: 20) }?.pendingRequests == 0)
+			clock.advance(1); await engine.tick()
+			#expect(try await rescuer.requests(32) == requests)
+			try await rescuer.reply(requests[0], bytes: fixture.bytes, pieceLength: 65536)
+			var cancelled: PeerBlock?
+			while cancelled == nil { if case .cancel(let block) = try await owner.next() { cancelled = block } }
+			#expect(cancelled == requests[0])
+			try await owner.reply(requests[0], bytes: fixture.bytes, pieceLength: 65536)
+			try await eventually { await engine.snapshot().redundantBytes == 16384 }
+			owner.stream.close()
+			for block in requests.dropFirst() { try await rescuer.reply(block, bytes: fixture.bytes, pieceLength: 65536) }
+			let remaining = try await rescuer.requests(32)
+			#expect(remaining.allSatisfy { $0.piece >= 8 })
+			for block in remaining { try await rescuer.reply(block, bytes: fixture.bytes, pieceLength: 65536) }
+			try await eventually { await engine.snapshot().complete }
+			let snapshot = await engine.snapshot()
+			#expect(snapshot.corruptPieces == 0 && snapshot.redundantBytes == 16384)
+			#expect(snapshot.downloaded == Int64(fixture.bytes.count + 16384))
+		} catch { await fixture.clean(); throw error }; await fixture.clean()
+	}
 	@Test func crossedTCPConnectionsSurviveTheSingleAddressPolicy() async throws {
 		try await transferFixture { fixture in
 			var configuration = plainTransferConfiguration(); configuration.allowSameIP = false

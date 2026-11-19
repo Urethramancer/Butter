@@ -271,12 +271,50 @@ func pickerLayout(pieces: Int = 3, pieceLength: Int64 = 32768) throws -> Storage
 		let layout = try pickerLayout(), a = UUID(), b = UUID(), c = UUID()
 		var picker = PiecePicker(layout: layout, wanted: [0, 1, 2], completed: [], maximumActive: 1)
 		for peer in [a, b, c] { picker.update(peer, bits: try PieceBitfield(count: 3, pieces: [0, 1, 2])) }
-		let stalled = picker.allocate(a, limit: 2, now: 0), rescue = picker.allocate(b, limit: 2, now: 1)
+		let stalled = picker.allocate(a, limit: 2, now: 0)
+		#expect(picker.allocate(b, limit: 2, now: 0).isEmpty)
+		#expect(picker.allocate(b, limit: 2, now: 0.999).isEmpty)
+		let rescue = picker.allocate(b, limit: 2, now: 1)
 		#expect(stalled == rescue && rescue.count == 2)
 		#expect(picker.allocate(c, limit: 2, now: 1).isEmpty)
 		for block in rescue { #expect(picker.begin(b, block: block) == [a]); _ = picker.written(block) }
 		_ = picker.verified(0, valid: true)
 		#expect(picker.allocate(b, limit: 2, now: 2).allSatisfy { $0.piece == 1 })
+	}
+	@Test func saturatedRescueDuplicatesOnlyOldRequestsWhileEndgameRemainsImmediate() throws {
+		let layout = try pickerLayout(pieces: 2, pieceLength: 65536), owner = UUID(), rescuer = UUID()
+		var picker = PiecePicker(layout: layout, wanted: [0, 1], completed: [], maximumActive: 1)
+		for peer in [owner, rescuer] { picker.update(peer, bits: try PieceBitfield(count: 2, pieces: [0, 1])) }
+		let old = picker.allocate(owner, limit: 2, now: 0)
+		let fresh = picker.allocate(owner, limit: 2, now: 0.8)
+		#expect(picker.allocate(rescuer, limit: 4, now: 1) == old)
+		#expect(picker.allocate(rescuer, limit: 2, now: 1.799).isEmpty)
+		#expect(picker.allocate(rescuer, limit: 2, now: 1.801) == fresh)
+		for block in old + fresh { #expect(picker.begin(rescuer, block: block) != nil); _ = picker.written(block) }
+		_ = picker.verified(0, valid: true)
+		let tail = picker.allocate(owner, limit: 4, now: 2)
+		#expect(picker.allocate(rescuer, limit: 4, now: 2) == tail)
+	}
+	@Test(arguments: [262144, 1048576], [5, 20]) func healthySwarmDuplicatesStayWithinTheFinalTail(_ pieceLength: Int, _ peerCount: Int) throws {
+		let layout = try pickerLayout(pieces: 64, pieceLength: Int64(pieceLength)), peers = (0..<peerCount).map { _ in UUID() }
+		var picker = PiecePicker(layout: layout, wanted: Set(0..<64), completed: [])
+		for peer in peers { picker.update(peer, bits: try PieceBitfield(count: 64, pieces: Set(0..<64))) }
+		var redundant = 0, received = 0, rounds = 0
+		while !picker.complete && rounds < 256 {
+			var replies: [(UUID, PeerBlock)] = []
+			for peer in peers { replies += picker.allocate(peer, limit: 32, now: Double(rounds) / 10).map { (peer, $0) } }
+			#expect(!replies.isEmpty)
+			for (peer, block) in replies {
+				received += block.length
+				if picker.begin(peer, block: block) != nil {
+					if picker.written(block) { _ = picker.verified(block.piece, valid: true) }
+				} else { redundant += block.length }
+			}
+			rounds += 1
+		}
+		#expect(picker.complete)
+		#expect(received - redundant == 64 * pieceLength)
+		#expect(redundant <= 32 * 16384)
 	}
 	@Test func rarestFirstPipelinesDisconnectAndCorruptionReset() throws {
 		let layout = try pickerLayout(), a = UUID(), b = UUID()

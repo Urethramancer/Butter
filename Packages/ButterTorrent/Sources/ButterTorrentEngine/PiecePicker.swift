@@ -77,13 +77,15 @@ struct PiecePicker {
 		}
 		// Duplicate the final bounded tail, or rescue a saturated active-piece budget
 		// when a stalled owner otherwise prevents a newly available peer making progress.
+		// Saturation alone is normal: give fresh requests a second to arrive before
+		// duplicating them throughout the download. The final tail stays immediate.
 		let remaining = wanted.subtracting(completed).subtracting(staged)
 		let tail = remaining.allSatisfy({ active[$0] != nil }) && remaining.reduce(0, { $0 + blocks($1).count - active[$1]!.received.count }) <= 32
 		if tail || (result.isEmpty && active.count >= maximumActive) {
 			for piece in candidates where active[piece]?.verifying == false {
 				for block in blocks(piece) where !active[piece]!.received.contains(block.offset) && !active[piece]!.writing.contains(block.offset) {
 					let owners = active[piece]!.owners[block.offset, default: [:]]
-					if owners.count == 1 && owners[peer] == nil {
+					if owners.count == 1, owners[peer] == nil, tail || now - owners.values.first! >= 1 {
 						active[piece]!.owners[block.offset]![peer] = now; result.append(block)
 						if result.count == limit { return result }
 					}
