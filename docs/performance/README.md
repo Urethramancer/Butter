@@ -13,6 +13,27 @@ differs. Cached compiler/header settings therefore do not establish the installe
 archive's provenance. Benchmark metadata labels them as unverified and retains
 archive fingerprints; neither archive was rebuilt or replaced for this check.
 
+## Bounded single-file v1 write experiment
+
+Candidate `6ae3439`, compared with `5af1747`, coalesces single-file v1 writes only
+when at least 64 KiB is already available. It preserves the 32-request window,
+256 KiB receive-batch bound and shared 1 MiB write-buffer cap.
+
+| Download workload | Fixed pairs | Client CPU/GiB | Throughput | Combined client/sender CPU/GiB |
+| --- | ---: | ---: | ---: | ---: |
+| Concurrent v1 | 24 | −6.1% | +5.3% | −6.0% |
+| Single-file v1 | 12 | −7.3% | +10.8% | −3.8% |
+| Many-file hybrid guard | 12 | +0.1% | −2.7% | −2.5% |
+
+All 204 trials, including warm-ups, verified. V1 CPU and throughput intervals
+favour the candidate; the hybrid throughput interval spans −6.1% to +2.2%, leaving
+that guard inconclusive. The candidate remains isolated. No fixed run was extended
+or repeated. All memory comparisons with the original baseline pass; reference
+archive fingerprints stayed unchanged. These are active-desktop measurements,
+not quiet-host release qualification. The [compact results](bounded-v1-20261119.json)
+retain paired intervals, native controls and combined CPU, including the
+single-file sender's 1.6% CPU increase.
+
 The later [request-window comparisons](#thirty-two-block-request-window) retain a
 thirty-two-block default after successive increases from eight and sixteen. They
 establish additional CPU gains with modest memory use. Larger windows help the
