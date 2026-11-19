@@ -4,6 +4,41 @@ require_relative 'TransferBenchmarkHarness'
 
 class TransferBenchmarkHarnessTests < Minitest::Test
 	H = TransferBenchmarkHarness
+	def test_selected_fixture_subset_requires_exact_full_baseline_matches
+		Dir.mktmpdir('butter-baseline-fixtures') do |root|
+			baseline, work = File.join(root, 'baseline'), File.join(root, 'work')
+			FileUtils.mkdir_p(baseline); FileUtils.mkdir_p(File.join(work, 'fixtures'))
+			fixtures = %w[single many concurrent].map { |name| {'case'=>name, 'bytes'=>32, 'files'=>[{'sha256'=>"payload-#{name}"}], 'torrent_sha256'=>{'hybrid'=>"metadata-#{name}"}} }
+			rows = fixtures.map { |f| {case: f['case'], accepted: true, engine: 'Swift'} }
+			original = rows.map { |r| JSON.generate(r) + "\n" }.join
+			File.write(File.join(baseline, 'environment.json'), JSON.generate(mode: '--full'))
+			File.write(File.join(baseline, 'fixtures.json'), JSON.generate(fixtures))
+			File.write(File.join(baseline, 'trials.jsonl'), original)
+			many = fixtures[1]
+			changed_payload = JSON.parse(JSON.generate(many)); changed_payload['files'][0]['sha256'] = 'changed'
+			changed_metadata = many.merge('torrent_sha256'=>{'hybrid'=>'changed'})
+			[
+				['full manifest', fixtures, true], ['selected workload', [many], true],
+				['reordered workloads', fixtures.reverse, true], ['payload mismatch', [changed_payload], false],
+				['metadata mismatch', [changed_metadata], false], ['size mismatch', [many.merge('bytes'=>64)], false],
+				['unknown workload', [many.merge('case'=>'other')], false], ['duplicate workload', [many, many], false],
+				['empty manifest', [], false]
+			].each do |label, selected, valid|
+				File.write(File.join(work, 'fixtures/manifest.json'), JSON.generate(selected))
+				if valid
+					runner = H::Runner.new('/swift', '/reference', root, work, baseline: baseline)
+					assert_equal rows, runner.instance_variable_get(:@baseline), label
+				else
+					error = assert_raises(RuntimeError, label) { H::Runner.new('/swift', '/reference', root, work, baseline: baseline) }
+					assert_match(/Baseline fixture hashes differ/, error.message, label)
+				end
+			end
+			assert_equal original, File.read(File.join(baseline, 'trials.jsonl'))
+			File.write(File.join(baseline, 'environment.json'), JSON.generate(mode: '--smoke'))
+			error = assert_raises(RuntimeError) { H::Runner.new('/swift', '/reference', root, work, baseline: baseline) }
+			assert_match(/representative full baseline/, error.message)
+		end
+	end
 	def test_profile_environment_excludes_unrelated_secrets_and_redacts_toc_metadata
 		Dir.mktmpdir do |root|
 			secret_key = 'BUTTER_TEST_UNRELATED_SECRET'

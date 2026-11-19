@@ -455,7 +455,9 @@ module TransferBenchmarkHarness
 			@trials = []
 			if baseline && !write_profile && !receive_profile
 				raise 'A representative full baseline is required' unless JSON.parse(File.read(File.join(baseline, 'environment.json')))['mode'] == '--full'
-				raise 'Baseline fixture hashes differ' unless JSON.parse(File.read(File.join(baseline, 'fixtures.json'))) == JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
+				original = JSON.parse(File.read(File.join(baseline, 'fixtures.json')))
+				selected = JSON.parse(File.read(File.join(work, 'fixtures', 'manifest.json')))
+				raise 'Baseline fixture hashes differ' unless !selected.empty? && selected.map { |f| f['case'] }.uniq.size == selected.size && selected.all? { |f| original.include?(f) }
 				@baseline = File.readlines(File.join(baseline, 'trials.jsonl')).map { |line| JSON.parse(line, symbolize_names: true) }
 			end
 		end
