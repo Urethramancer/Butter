@@ -1,8 +1,63 @@
 {
-	"status": "predeclared",
-	"hypothesis": "DHT peer delivery waits for complete iterative lookup and announcements even after usable peers are known.",
-	"controlled": "Prove that discovered peers can reach a running transfer before a silent routing referral or announcement is released. Preserve lookup, announcement, cancellation, private-swarm and resource bounds.",
-	"public": "One fresh v0.18.0-engine Debian session, capped at 60 seconds or 1 MiB from peers; 250 ms snapshots; independently reopen/hash every claimed verified piece. If a tested fix is retained, one fresh follow-up under the same cap. No retries or public-swarm timing causation claim.",
-	"isolation": "Disposable state/payload, ephemeral port, mapping disabled; leave the GUI client, its data, router configuration and other processes untouched.",
-	"evidence": ".build/diagnostics/startup-20261119"
+  "status": "Complete: incremental delivery retained as 53938a0; controlled regressions fail before the fix and pass after it",
+  "hypothesis": "DHT peer delivery waits for complete iterative lookup and announcements even after usable peers are known.",
+  "controlled": "Prove that discovered peers can reach a running transfer before a silent routing referral or announcement is released. Preserve lookup, announcement, cancellation, private-swarm and resource bounds.",
+  "public": "One fresh v0.18.0-engine Debian session, capped at 60 seconds or 1 MiB from peers; 250 ms snapshots; independently reopen/hash every claimed verified piece. If a tested fix is retained, one fresh follow-up under the same cap. No retries or public-swarm timing causation claim.",
+  "isolation": "Disposable state/payload, ephemeral port, mapping disabled; leave the GUI client, its data, router configuration and other processes untouched.",
+  "evidence": ".build/diagnostics/startup-20261119",
+  "controlled_results": {
+    "baseline": "Both stalled-referral and stalled-announcement cases hit the six-second fixture deadline without advancing the transport clock",
+    "retained": "Peers reach the connector before the outstanding referral or announcement completes; withdrawal drains active delivery and UDP work",
+    "validation": {
+      "engine_tests": 213,
+      "networking_tests": 106,
+      "thread_sanitizer_focused_tests": 19,
+      "optional_profile_test_skipped": 1,
+      "release_package_build": "passed",
+      "release_app_build": "passed",
+      "ui_tests_run": false
+    },
+    "scope": "Full-metadata torrent discovery; unresolved-magnet delivery is unchanged",
+    "limits": "Query/search limits, iterative search and announcements retained; early delivery is deduplicated and capped at 256 peers across both identities; malformed lists, filtering, private-swarm revocation and cancellation remain covered"
+  },
+  "public_results": {
+    "baseline": {
+      "first_contact_seconds": 0.30382795829791576,
+      "first_peer_seconds": 32.712824708316475,
+      "first_peer_payload_seconds": 53.83974712505005,
+      "independently_verified_observed_pieces": 226,
+      "last_sample": {
+        "elapsed": 54.35622462502215,
+        "downloaded": 59244544,
+        "peerBytes": 1261568,
+        "webSeedBytes": 57982976,
+        "peers": 3,
+        "contacts": 16,
+        "searches": 0,
+        "redundant": 0,
+        "corrupt": 0,
+        "error": ""
+      }
+    },
+    "candidate": {
+      "first_contact_seconds": 0.3014538750285283,
+      "first_peer_seconds": 7.328220625058748,
+      "first_peer_payload_seconds": 22.888257000013255,
+      "independently_verified_observed_pieces": 100,
+      "last_sample": {
+        "elapsed": 23.6904205000028,
+        "downloaded": 26214400,
+        "peerBytes": 1048576,
+        "webSeedBytes": 25165824,
+        "peers": 3,
+        "contacts": 18,
+        "searches": 1,
+        "redundant": 0,
+        "corrupt": 0,
+        "error": ""
+      }
+    }
+  },
+  "driver_sha256": "88a4135a66b6af23becf421163fcd3f35674b7cf9d33e47ddd32fd744987d6b7",
+  "public_qualification": "One fresh isolated session per source; DNS caches and swarm availability are uncontrolled. Timings are observations, not causal throughput or latency acceptance. All pieces claimed by each final observed snapshot passed independent reopening/hashing. Own temporary binaries, state and payloads were removed."
 }

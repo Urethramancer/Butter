@@ -79,6 +79,40 @@ Main passes the twelve focused picker/rescue tests, in addition to the candidate
 controlled throughput comparison. Raw runs and the diagnostic driver are retained
 under `.build/diagnostics/duplicate-rescue`.
 
+### DHT startup delivery
+
+The iterative DHT lookup held discovered peers until all remaining queries and
+announcements finished. `53938a0` delivers validated peers after each query batch
+while keeping the search and announcements running. Delivery is deduplicated and
+capped at 256 peers across both identities; query/search limits, endpoint filtering,
+private-swarm policy and cancellation remain intact. Unresolved-magnet delivery
+is unchanged.
+
+A controlled fixture holds either a routing referral or an announcement indefinitely
+with a manual clock. Both cases fail against the old engine; both now deliver peers
+before the stalled operation finishes, and withdrawing the target drains active
+connections and UDP work. Malformed peer lists cannot emit partially parsed results.
+The engine/networking suites report 213/106 tests, with one opt-in profiling test
+skipped; 19 focused DHT tests pass Thread Sanitizer. Release package/app builds pass.
+No UI tests ran.
+
+One fresh isolated Debian session per source, capped at 60 seconds or 1 MiB from
+peers, produced these observations:
+
+| Milestone | Before | Incremental delivery |
+| --- | ---: | ---: |
+| First DHT contact | 0.30 s | 0.30 s |
+| First connected peer | 32.71 s | 7.33 s |
+| First peer payload | 53.84 s | 22.89 s |
+| Observed verified pieces independently reopened/hashed | 226 | 100 |
+
+These sequential public sessions do not control DNS caches, peer availability or
+unchoking, so they do not establish a causal timing improvement. The controlled
+fixture establishes removal of the delivery barrier. Both runs have zero observed
+corrupt/redundant bytes. Ephemeral ports and disposable state leave the GUI client,
+its data and router settings untouched; temporary binaries and payloads were removed.
+[Protocol and results](discovery-startup-20261119.json) retain the scope and limits.
+
 ## Current matrix
 
 19 November 2026, v0.18.0 production engine, controller revision `d5249a2`.

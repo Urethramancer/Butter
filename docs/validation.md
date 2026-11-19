@@ -42,5 +42,13 @@ Passing isolated checks do not explain them. Platform permissions, default-handl
 registration, physical routers, interface discovery captures and long-duration
 cancellation stress also remain open.
 
+DHT discovery delivers validated peers before remaining lookup/announcement work
+finishes for full-metadata torrents. Controlled stalled-referral/announcement
+fixtures fail on the previous engine and pass with incremental delivery; cancellation,
+private policy, malformed replies and bounded deduplication are covered. The engine
+and networking suites report 213/106 tests with one opt-in profiling test skipped;
+19 focused DHT tests pass Thread Sanitizer and the final Release app builds with
+its new icon. Public startup observations remain single-session diagnostics.
+
 Generated logs and captures belong under ignored `.build/`. Correctness results
 and partial platform coverage are not release certification.

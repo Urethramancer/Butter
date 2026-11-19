@@ -2,7 +2,7 @@
 
 ## Performance
 
-- Reduce public-swarm discovery startup latency.
+- Measure cold-start magnet discovery and connection-queue latency across swarms.
 - Reduce download CPU/GiB and improve single/many-file throughput against
   libtorrent. Downloads miss the CPU target in the
   [latest matrix](docs/performance/README.md), which ran under competing host load.
