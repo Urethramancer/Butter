@@ -118,6 +118,12 @@ struct TorrentRow: View {
 struct PieceProgress: View {
 	let pieces: [UInt8]
 	private let colours: [Color] = [.gray.opacity(0.25), .green, .yellow, .blue, .red]
+	private var accessibilitySummary: String {
+		guard !pieces.isEmpty else { return "Availability unknown" }
+		var counts = [Int](repeating: 0, count: 5)
+		for piece in pieces where piece < 5 { counts[Int(piece)] += 1 }
+		return "\(counts[1]) verified, \(counts[2]) downloading, \(counts[3]) available, \(counts[4]) unavailable, \(counts[0]) unknown"
+	}
 	var body: some View {
 		Canvas { context, size in
 			guard !pieces.isEmpty else { context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(colours[0])); return }
@@ -128,7 +134,7 @@ struct PieceProgress: View {
 				while end < pieces.count && pieces[end] == pieces[start] { end += 1 }
 				context.fill(Path(CGRect(x: Double(start) * width, y: 0, width: Double(end - start) * width, height: size.height)), with: .color(colours[value])); start = end
 			}
-		}.clipShape(.rect(cornerRadius: 3)).accessibilityLabel("Pieces in original order").accessibilityValue(pieces.isEmpty ? "Availability unknown" : "\(pieces.filter { $0 == 1 }.count) verified, \(pieces.filter { $0 == 2 }.count) downloading, \(pieces.filter { $0 == 3 }.count) available, \(pieces.filter { $0 == 4 }.count) unavailable, \(pieces.filter { $0 == 0 }.count) unknown")
+		}.clipShape(.rect(cornerRadius: 3)).accessibilityLabel("Pieces in original order").accessibilityValue(accessibilitySummary)
 	}
 }
 struct PriorityMenu: View {

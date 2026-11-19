@@ -25,6 +25,12 @@ preservation, interrupted recovery and destination replacement. Application
 contracts, lifecycle checks, native UI automation and Light/Dark reviews cover
 common workflows. They do not replace complete keyboard/VoiceOver acceptance.
 
+Inspector file controls announce full paths while retaining their automation
+identifiers. Native checks exercise accessibility activation through mixed, on,
+off and disabled checkbox states; the file-selection/removal UI workflow passes.
+Peer rows expose spoken download/upload labels and folder controls expose their
+expanded state. Piece accessibility summaries count statuses in one pass.
+
 [TODO](../TODO.md) retains unexplained failures: a native-sequence µTP handshake
 timeout, an earlier temporary-path disappearance and a combined-contract deadline.
 Passing isolated checks do not explain them. Platform permissions, default-handler

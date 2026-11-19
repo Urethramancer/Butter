@@ -10,7 +10,7 @@ struct TorrentInspector: View {
 	var body: some View {
 		VStack(spacing: 14) {
 			HStack(alignment: .top) {
-				ZStack { Circle().stroke(.quaternary, lineWidth: 5); Circle().trim(from: 0, to: torrent.verifiedProgress).stroke(torrent.complete ? .green : .accentColor, style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90)); Image(systemName: torrent.complete ? "checkmark" : "arrow.down").font(.title2) }.frame(width: 48, height: 48).accessibilityLabel("\(Int(torrent.verifiedProgress * 100)) per cent verified")
+				ZStack { Circle().stroke(.quaternary, lineWidth: 5); Circle().trim(from: 0, to: torrent.verifiedProgress).stroke(torrent.complete ? .green : .accentColor, style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90)); Image(systemName: torrent.complete ? "checkmark" : "arrow.down").font(.title2) }.frame(width: 48, height: 48).accessibilityElement(children: .ignore).accessibilityLabel("\(Int(torrent.verifiedProgress * 100)) per cent verified")
 				VStack(alignment: .leading, spacing: 4) { Text(store.title(torrent)).font(.headline).textSelection(.enabled); Text("\(bytes(torrent.done)) / \(bytes(torrent.wanted)) selected").font(.caption).foregroundStyle(.secondary); Text(store.state(torrent)).font(.caption).foregroundStyle(torrent.error.isEmpty ? Color.secondary : .red) }
 				Spacer(minLength: 0)
 			}.padding(.horizontal)
@@ -52,7 +52,11 @@ struct TorrentInspector: View {
 		}
 	}
 	private var peers: some View {
-		List(torrent.peers, id: \.self) { peer in VStack(alignment: .leading, spacing: 4) { HStack { Text(peer.address).monospaced(); Spacer(); Text(peer.utp ? "µTP" : "TCP").foregroundStyle(.secondary) }; Text(peer.client).foregroundStyle(.secondary); Text("↓ \(speed(peer.down))    ↑ \(speed(peer.up))").monospacedDigit() }.font(.caption) }.overlay { if torrent.peers.isEmpty { ContentUnavailableView("No connected peers", systemImage: "person.2") } }
+		List(torrent.peers, id: \.self) { peer in VStack(alignment: .leading, spacing: 4) { HStack { Text(peer.address).monospaced(); Spacer(); Text(peer.utp ? "µTP" : "TCP").foregroundStyle(.secondary) }; Text(peer.client).foregroundStyle(.secondary); Text("↓ \(speed(peer.down))    ↑ \(speed(peer.up))").monospacedDigit() }.font(.caption)
+			.accessibilityElement(children: .ignore)
+			.accessibilityLabel("\(peer.client.isEmpty ? "Peer" : peer.client), \(peer.address)")
+			.accessibilityValue("\(peer.utp ? "µTP" : "TCP"). Download \(speed(peer.down)), upload \(speed(peer.up)).")
+		}.overlay { if torrent.peers.isEmpty { ContentUnavailableView("No connected peers", systemImage: "person.2") } }
 	}
 	private var files: some View {
 		VStack {
@@ -130,8 +134,8 @@ struct FileNodeRow: View {
 		if node.matches(search) {
 			VStack(alignment: .leading, spacing: 4) {
 				HStack(spacing: 5) {
-					if node.isFolder { Button { expanded.toggle() } label: { Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption2) }.buttonStyle(.plain).frame(width: 12).controlHelp("\(expanded ? "Collapse" : "Expand") folder \(node.title)") } else { Spacer().frame(width: 12) }
-					MixedCheckbox(state: node.selection, label: "Download \(node.title)") { value in
+					if node.isFolder { Button { expanded.toggle() } label: { Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption2) }.buttonStyle(.plain).frame(width: 12).controlHelp("\(expanded ? "Collapse" : "Expand") folder \(node.path)").accessibilityValue(expanded ? "Expanded" : "Collapsed") } else { Spacer().frame(width: 12) }
+					MixedCheckbox(state: node.selection, label: "Download \(node.path)", identifier: "Download \(node.title)") { value in
 						let indices = Set(node.files.map(\.index)); let selected = torrent.files.map { indices.contains($0.index) ? (value ? 1 : 0) : ($0.selected ? 1 : 0) }
 						Task { await store.command("select", id: torrent.id, extra: ["selected": selected]) }
 					}.frame(width: 18, height: 18)
@@ -152,14 +156,22 @@ struct FileNodeRow: View {
 struct MixedCheckbox: NSViewRepresentable {
 	var state: NSControl.StateValue
 	var label: String
+	var identifier: String
 	var action: (Bool) -> Void
 	func makeCoordinator() -> Coordinator { Coordinator(action) }
-	func makeNSView(context: Context) -> NSButton { let button = NSButton(checkboxWithTitle: "", target: context.coordinator, action: #selector(Coordinator.changed(_:))); button.allowsMixedState = true; return button }
-	func updateNSView(_ button: NSButton, context: Context) { button.state = state; button.toolTip = label; button.setAccessibilityLabel(label); button.setAccessibilityHelp("Include or exclude these contents from downloading. Mixed means only some files are selected."); context.coordinator.action = action; context.coordinator.state = state }
+	func makeNSView(context: Context) -> NSButton { let button = MixedCheckboxButton(checkboxWithTitle: "", target: context.coordinator, action: #selector(Coordinator.changed(_:))); button.allowsMixedState = true; return button }
+	func updateNSView(_ button: NSButton, context: Context) { button.state = state; button.toolTip = label; button.setAccessibilityLabel(label); button.setAccessibilityIdentifier(identifier); button.setAccessibilityHelp("Include or exclude these contents from downloading. Mixed means only some files are selected."); context.coordinator.action = action; context.coordinator.state = state }
 	final class Coordinator: NSObject {
 		var action: (Bool) -> Void
 		var state: NSControl.StateValue = .off
 		init(_ action: @escaping (Bool) -> Void) { self.action = action }
 		@objc func changed(_ sender: NSButton) { let enabled = state != .on; state = enabled ? .on : .off; sender.state = state; action(enabled) }
+	}
+}
+
+private final class MixedCheckboxButton: NSButton {
+	override func accessibilityPerformPress() -> Bool {
+		guard isEnabled else { return false }
+		performClick(nil); return true
 	}
 }

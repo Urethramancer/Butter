@@ -10,6 +10,7 @@ import AppKit
 			do {
 				guard NSImage(systemSymbolName: "arrow.up.arrow.down", accessibilityDescription: nil) != nil else { throw CocoaError(.coderInvalidValue) }
 				try await checkSearchField()
+				try await checkMixedCheckbox()
 				try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 				var saved = SavedState(); saved.preferences.port = 0; saved.preferences.dht = false; saved.preferences.lsd = false; saved.preferences.pex = false
 				try await StateStorage(root: root).save(saved)
@@ -51,6 +52,27 @@ import AppKit
 			field.stringValue = text
 			guard NSApp.sendAction(action, to: field.target, from: field), query == text else { throw CocoaError(.coderInvalidValue) }
 		}
+	}
+	@MainActor static func checkMixedCheckbox() async throws {
+		var selected: Bool?
+		let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 40, height: 40), styleMask: [.titled], backing: .buffered, defer: false)
+		let host = NSHostingView(rootView: MixedCheckbox(state: .mixed, label: "Download folder/a.bin", identifier: "Download a.bin") { selected = $0 })
+		window.contentView = host; window.orderFront(nil); defer { window.orderOut(nil) }
+		try await Task.sleep(for: .milliseconds(100))
+		func find(_ view: NSView) -> NSButton? { (view as? NSButton) ?? view.subviews.lazy.compactMap { find($0) }.first }
+		func failure(_ message: String) -> NSError { NSError(domain: "Butter.InterfaceTests", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+		guard let button = find(host) else { throw failure("Mixed checkbox was not created") }
+		guard button.accessibilityLabel() == "Download folder/a.bin", button.accessibilityIdentifier() == "Download a.bin", button.state == .mixed else {
+			throw failure("Mixed checkbox lost its path, identifier or initial mixed state: \(String(describing: button.accessibilityLabel())), \(button.accessibilityIdentifier()), \(button.state.rawValue)")
+		}
+		guard button.accessibilityPerformPress() else { throw failure("Mixed checkbox rejected its accessibility press") }
+		try await Task.sleep(for: .milliseconds(100))
+		guard selected == true, button.state == .on else { throw failure("Accessibility press did not select the mixed checkbox") }
+		guard button.accessibilityPerformPress() else { throw failure("Selected checkbox rejected its accessibility press") }
+		try await Task.sleep(for: .milliseconds(100))
+		guard selected == false, button.state == .off else { throw failure("Accessibility press did not clear the selected checkbox") }
+		button.isEnabled = false
+		guard !button.accessibilityPerformPress(), selected == false, button.state == .off else { throw failure("Disabled checkbox accepted an accessibility press") }
 	}
 	@MainActor static func capture(_ window: NSWindow, at url: URL) throws {
 		// NSView captures omit some compositor layers. These are smoke-test artefacts,
