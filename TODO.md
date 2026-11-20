@@ -8,8 +8,9 @@
   [latest matrix](docs/performance/README.md), which ran under competing host load.
   Targets remain ≥90% throughput, ≤1.25× CPU/GiB and peak RSS within 10% of the
   original Butter baseline.
-- Validate a per-torrent byte-window policy using the 32/48/64 calibration;
-  cover latency and multiple peers before generalising the 1 MiB-piece result.
+- Check whether a 48-request ceiling for 1 MiB TCP pieces meets the download
+  matrix and memory targets. The [two-peer latency comparison](docs/performance/peer-experiments-20261120.json)
+  favours fixed 48 on steady links.
 - Investigate guarded path opens/closes and peer transport overhead while
   preserving fresh filesystem observations and production resource limits.
 - Resolve the single-file sender CPU increase before promoting bounded v1 write

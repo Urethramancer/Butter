@@ -105,12 +105,19 @@ module PeerWindowBenchmark
 end
 
 if $PROGRAM_NAME == __FILE__
-	previous, current, reference, root, output = ARGV.map { |p| File.expand_path(p) }
+	abort 'Usage: ruby PeerWindowBenchmark.rb FIXED32 FIXED48 REFERENCE FIXTURES OUTPUT [ADAPTIVE]' unless (5..6).cover?(ARGV.size)
+	previous, current, reference, root, output, adaptive = ARGV.map { |p| File.expand_path(p) }
 	fixture = JSON.parse(File.read(File.join(root,'manifest.json'))).find { |f| f['case']=='many' }
 	raise 'Expected 1 MiB pieces' unless fixture.fetch('piece_length') == 1048576
 	drivers = {'32'=>previous,'48'=>current}
+	drivers['adaptive'] = adaptive if adaptive
+	orders = if adaptive
+		drivers.keys.permutation.to_a.shuffle(random: Random.new(20261120))
+	else
+		TransferBenchmarkHarness.orders(6,20261120,labels:drivers.keys)
+	end
 	File.open(output,File::WRONLY | File::CREAT | File::EXCL) do |io|
-		([%w[32 48]] + TransferBenchmarkHarness.orders(6,20261120,labels:%w[32 48])).each_with_index do |order,i|
+		([drivers.keys] + orders).each_with_index do |order,i|
 			order.each do |window|
 				data=Dir.mktmpdir('window-',File.dirname(output)) { |work| PeerWindowBenchmark.trial(drivers.fetch(window),reference,root,fixture,work,0.010) }
 				io.puts(JSON.generate(data.merge(window:window,pair:i-1))); io.flush

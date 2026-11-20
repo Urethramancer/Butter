@@ -33,6 +33,32 @@ in those categories. Inlined operations can be charged to their callers.
 The visible ownership share stayed similar as reads became smaller.
 [Compact ownership attribution](request-cadence-20261120.json).
 
+## Per-peer request windows under latency
+
+Two independent libtorrent seeders supplied one 1 GiB many-file hybrid torrent
+with 1 MiB pieces. A loopback relay added 10 ms in each direction per peer.
+In six balanced pairs, raising the fixed window from 32 to 48 increased verified
+throughput by 54.8% and reduced combined client and sender CPU/GiB by 18.1%.
+Both peers carried at least 49.9% of the payload traffic in the measured pairs.
+
+The adaptive candidate `50d8110` starts at 32 and uses the most recent delivery
+rate to target 50 ms of requests per peer, up to 48. It applies to automatic
+1 MiB-piece TCP connections. A separate six-round comparison used all six orders
+of the three variants. All 21 transfers verified, including three warm-ups.
+
+| Window | Verified MiB/s | Client CPU s/GiB | Two senders CPU s/GiB | Combined CPU s/GiB | Client peak MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Fixed 32 | 38.38 | 10.40 | 3.92 | 14.32 | 19.55 |
+| Fixed 48 | 58.92 | 7.79 | 3.67 | 11.47 | 19.54 |
+| Adaptive 32–48 | 57.92 | 7.82 | 4.03 | 11.80 | 19.59 |
+
+Relative to fixed 32, adaptive gained 50.5% in paired throughput and saved
+20.3% in combined CPU. Against fixed 48, adaptive throughput fell 1.6%
+(paired 95% interval −2.9% to −0.9%), with combined CPU +2.4% (−1.2% to
++5.3%). Absolute rows are medians of each metric. CPU excludes the relay.
+The candidate stays on `experiment/piece-size-request-window`.
+[Compact paired results](peer-experiments-20261120.json).
+
 ## Piece-at-a-time storage replay
 
 Run `Scripts/test-storage-benchmark.sh --replay` for the fixed 1 GiB experiment.

@@ -176,5 +176,119 @@
       "smaller_peer_fraction_median": 0.4996
     },
     "decision": "Advance the 48-request window for the tested large-piece TCP workload. A general default requires separate compatibility and workload validation."
+  },
+  "adaptive_window": {
+    "revision": "50d8110",
+    "branch": "experiment/piece-size-request-window",
+    "verified": 21,
+    "method": "Same two-peer delayed hybrid fixture as fixed windows above. One warm-up per source, then all six permutations of fixed 32, fixed 48 and adaptive in six measurement rounds. Each source downloads from the same two libtorrent seeders. Every payload and all checkpoints verified. CPU excludes relay processes.",
+    "policy": "Start at 32 on eligible 1 MiB TCP connections. At each existing transfer timer tick, target 50 ms of observed peer delivery at a 16 KiB block size, rounded up and bounded to 32–48. Remote and explicit local caps still apply. Outstanding requests drain on downshift.",
+    "smaller_peer_fraction_min": 0.4981,
+    "adaptive_over_32": {
+      "pairs": 6,
+      "medians": {
+        "baseline": {
+          "client": 10.40261,
+          "sender": 3.91786,
+          "combined": 14.32046,
+          "verified_mib_s": 38.37907,
+          "client_peak_mib": 19.55469,
+          "sum_sender_peaks_mib": 59.70313
+        },
+        "candidate": {
+          "client": 7.81907,
+          "sender": 4.03246,
+          "combined": 11.80146,
+          "verified_mib_s": 57.9194,
+          "client_peak_mib": 19.59375,
+          "sum_sender_peaks_mib": 59.84375
+        }
+      },
+      "paired_ratios": {
+        "client": [
+          0.737689,
+          0.727413,
+          0.791854
+        ],
+        "sender": [
+          0.940724,
+          0.875406,
+          1.060182
+        ],
+        "combined": [
+          0.797204,
+          0.778886,
+          0.854824
+        ],
+        "verified_mib_s": [
+          1.504875,
+          1.486734,
+          1.541754
+        ],
+        "client_peak_mib": [
+          1.003199,
+          0.995632,
+          1.016783
+        ],
+        "sum_sender_peaks_mib": [
+          1.002353,
+          0.977514,
+          1.010992
+        ]
+      }
+    },
+    "adaptive_over_48": {
+      "pairs": 6,
+      "medians": {
+        "baseline": {
+          "client": 7.7909,
+          "sender": 3.67223,
+          "combined": 11.46708,
+          "verified_mib_s": 58.91645,
+          "client_peak_mib": 19.53906,
+          "sum_sender_peaks_mib": 59.89844
+        },
+        "candidate": {
+          "client": 7.81907,
+          "sender": 4.03246,
+          "combined": 11.80146,
+          "verified_mib_s": 57.9194,
+          "client_peak_mib": 19.59375,
+          "sum_sender_peaks_mib": 59.84375
+        }
+      },
+      "paired_ratios": {
+        "client": [
+          1.016819,
+          0.96487,
+          1.030882
+        ],
+        "sender": [
+          1.084258,
+          0.997621,
+          1.101775
+        ],
+        "combined": [
+          1.024284,
+          0.988258,
+          1.052953
+        ],
+        "verified_mib_s": [
+          0.983925,
+          0.97089,
+          0.991285
+        ],
+        "client_peak_mib": [
+          1.001611,
+          0.990574,
+          1.018823
+        ],
+        "sum_sender_peaks_mib": [
+          0.991784,
+          0.975351,
+          1.001832
+        ]
+      }
+    }
   }
 }
