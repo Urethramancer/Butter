@@ -395,5 +395,117 @@
     "close_leaf_percent": 12.14,
     "scheduling_and_event_delivery_leaf_percent": 4.59,
     "scope": "Separate instrumented run from transfer start through checkpoint and shutdown; excluded from timing comparisons."
+  },
+  "paced_revision": "f7b3309",
+  "descriptor_comparison": {
+    "candidate": "Bounded payload-descriptor cache ported from aa31f7a onto the paced build. Eight idle handles per torrent and 32 across the process, with fresh effective-access, link and identity checks.",
+    "protocol": "One warm-up per build and rate, then six balanced pairs per rate; rate order alternates. Same 50 and 500 Mbps receiver cap, fixture, eight-second interval and validation as the fibre sweep. Candidate / paced baseline ratios use the paired median and percentile bootstrap (10,000 resamples).",
+    "criteria": "Both rates must reach 90–110% of the cap. At both rates require client CPU/GiB upper 95% ratio below 1, throughput median at least 0.99 and lower bound at least 0.95, combined CPU upper bound at most 1.03 and peak RSS ratio at most 1.10.",
+    "validated": 28,
+    "rates": {
+      "50": {
+        "cpu_s_gib": {
+          "baseline": 29.0936,
+          "cache": 27.8236,
+          "paired_ratio": [
+            0.89051,
+            0.7811,
+            1.20732
+          ]
+        },
+        "mbps": {
+          "baseline": 50.0219,
+          "cache": 50.0021,
+          "paired_ratio": [
+            0.99929,
+            0.99853,
+            1.00085
+          ]
+        },
+        "cpu_percent": {
+          "baseline": 16.943,
+          "cache": 16.1956,
+          "paired_ratio": [
+            0.89127,
+            0.77996,
+            1.20648
+          ]
+        },
+        "combined_cpu_s_gib": {
+          "baseline": 34.8044,
+          "cache": 33.421,
+          "paired_ratio": [
+            0.90485,
+            0.79166,
+            1.20289
+          ]
+        },
+        "rss_mib": {
+          "baseline": 22.8047,
+          "cache": 22.7891,
+          "paired_ratio": [
+            0.99589,
+            0.97612,
+            1.00863
+          ]
+        },
+        "all_rates_saturated": true
+      },
+      "500": {
+        "cpu_s_gib": {
+          "baseline": 10.5244,
+          "cache": 10.322,
+          "paired_ratio": [
+            0.95844,
+            0.92354,
+            1.05992
+          ]
+        },
+        "mbps": {
+          "baseline": 500.0641,
+          "cache": 500.0568,
+          "paired_ratio": [
+            0.99998,
+            0.99964,
+            1.00065
+          ]
+        },
+        "cpu_percent": {
+          "baseline": 61.2514,
+          "cache": 60.0936,
+          "paired_ratio": [
+            0.95866,
+            0.92332,
+            1.06022
+          ]
+        },
+        "combined_cpu_s_gib": {
+          "baseline": 17.4581,
+          "cache": 18.2664,
+          "paired_ratio": [
+            0.97083,
+            0.87228,
+            1.18895
+          ]
+        },
+        "rss_mib": {
+          "baseline": 23.0313,
+          "cache": 22.9219,
+          "paired_ratio": [
+            0.99455,
+            0.97736,
+            1.0131
+          ]
+        },
+        "all_rates_saturated": true
+      }
+    },
+    "baseline_revision": "f7b3309",
+    "storage_validation": "40 selected tests passed, including permission and ACL changes, hard links, symlinks, path replacement, descriptor bounds, cancellation and shutdown.",
+    "driver_sha256": {
+      "PreferenceBenchmark": "17144f32e172d008a4b34be6ee745614bc146ce417de9783aa24b7483b04866c",
+      "DescriptorBenchmark": "13f2b441c58d2d88276bfd09e43087f7b604875b3bd4102e4e7d98605bc19a3b"
+    },
+    "decision": "Keep the existing descriptor lifetime on main. Both rates saturated. Both client CPU intervals cross one and combined CPU upper bounds exceed 1.03."
   }
 }

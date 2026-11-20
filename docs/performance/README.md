@@ -50,6 +50,23 @@ from 3.98 to 7.63 s/GiB while client CPU fell from 14.76 to 10.84 s/GiB.
 All 40 timed partial downloads passed independent piece and checkpoint checks.
 [Per-run measurements and protocol](home-fibre-20261120.json).
 
+### Retesting the payload descriptor cache with download caps
+
+The archived cache from `aa31f7a` was tested against paced writes on
+`f7b3309`. All 28 runs reached the cap and passed piece and checkpoint checks.
+The candidate also passed 40 storage tests covering file replacement, access
+changes, links, handle bounds and cleanup.
+
+| Butter cap | Paired change in client CPU/GiB | 95% interval | Paired change in throughput |
+| --- | ---: | ---: | ---: |
+| 50 Mbps | −10.9% | −21.9% to +20.7% | −0.07% |
+| 500 Mbps | −4.2% | −7.6% to +6.0% | 0.00% |
+
+Capping the transfer removed the earlier throughput penalty. Six balanced
+pairs at each rate left the CPU effect uncertain, including combined client
+and sender CPU. Main keeps its existing descriptor lifetime.
+[Paired intervals and build fingerprints](home-fibre-20261120.json).
+
 ## Seeder availability announcements
 
 Receiving `HAVE_ALL` now fills the peer bitfield directly. A release replay
