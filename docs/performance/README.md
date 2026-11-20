@@ -59,6 +59,14 @@ Relative to fixed 32, adaptive gained 50.5% in paired throughput and saved
 The candidate stays on `experiment/piece-size-request-window`.
 [Compact paired results](peer-experiments-20261120.json).
 
+In a separate wire diagnostic, one peer was capped at 4 MiB/s and the two
+peers exchanged rate limits after eight seconds. During the settled intervals
+the adaptive window peaked at 32 requests on the slow peer and 48 on the fast
+peer in both directions of the swap. Fixed 48 peaked at 48 on both peers.
+At 16 KiB per request, adaptation kept 256 KiB less work outstanding on the
+slower peer. Both downloads and all six checkpoint reopens verified.
+[Rate-swap measurements](peer-experiments-20261120.json).
+
 ## Piece-at-a-time storage replay
 
 Run `Scripts/test-storage-benchmark.sh --replay` for the fixed 1 GiB experiment.

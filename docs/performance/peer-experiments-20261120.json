@@ -289,6 +289,68 @@
           1.001832
         ]
       }
-    }
+    },
+    "rate_swap": {
+      "protocol": "Two separate 1 GiB diagnostic downloads on the same two-peer fixture, fixed 48 then adaptive. Cap downstream bytes on the first TCP relay at 4 MiB/s initially. After eight seconds uncap it and cap the second relay instead. Each relay counts distinct on-wire requests, cancellations, rejections and piece replies in memory. Report maxima and payload delivery over settled five-second intervals from 2 to 7 s and 11 to 16 s. Both senders contributed in both trials. Payload SHA-256 and all six checkpoint reopens passed. Timing excluded for these instrumented runs.",
+      "results": {
+        "fixed48": {
+          "uploaded_bytes": [
+            739803136,
+            334462976
+          ],
+          "peers": [
+            [
+              {
+                "peak_requests": 48,
+                "delivered_mib_per_s": 3.9969
+              },
+              {
+                "peak_requests": 48,
+                "delivered_mib_per_s": 27.9313
+              }
+            ],
+            [
+              {
+                "peak_requests": 48,
+                "delivered_mib_per_s": 28.325
+              },
+              {
+                "peak_requests": 48,
+                "delivered_mib_per_s": 3.9938
+              }
+            ]
+          ]
+        },
+        "adaptive": {
+          "uploaded_bytes": [
+            742752256,
+            331497472
+          ],
+          "peers": [
+            [
+              {
+                "peak_requests": 32,
+                "delivered_mib_per_s": 4.0
+              },
+              {
+                "peak_requests": 48,
+                "delivered_mib_per_s": 28.925
+              }
+            ],
+            [
+              {
+                "peak_requests": 48,
+                "delivered_mib_per_s": 28.7781
+              },
+              {
+                "peak_requests": 32,
+                "delivered_mib_per_s": 4.0031
+              }
+            ]
+          ]
+        }
+      }
+    },
+    "decision": "Keep isolated. The adaptive window preserves most of the gain over fixed 32 and reduces slow-peer outstanding work to 32. Against fixed 48 the steady-link throughput median is below the 99% guard and the upper combined CPU ratio exceeds 1.03."
   }
 }
