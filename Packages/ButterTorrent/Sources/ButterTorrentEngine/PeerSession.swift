@@ -218,6 +218,14 @@ final class PeerSession: @unchecked Sendable {
 			try Task.checkCancellation()
 			let ready = claimOutgoing(items)
 			if ready.isEmpty { continue }
+			#if BUTTER_REQUEST_CADENCE
+			let requests = ready.filter { item in
+				guard item.range.count == 17 else { return false }
+				let bytes = item.bytes
+				return bytes[bytes.startIndex + 4] == 6
+			}.count
+			if requests > 0 { ReceivePipelineDiagnostics.merge(["cadence.requestWrites": 1, "cadence.requests": Int64(requests), "cadence.singleRequestWrites": requests == 1 ? 1 : 0]) }
+			#endif
 			return (Self.outputBytes(ready), ready.filter { $0.token != nil }.map(\.receipt))
 		}
 	}

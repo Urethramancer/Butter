@@ -212,6 +212,9 @@ extension TCPTransfer {
 	}
 	func fill(_ id: UUID) {
 		guard !stopping, storageError == nil, let peer = peers[id], peer.peerID != nil, !peer.closing else { return }
+		#if BUTTER_REQUEST_CADENCE
+		ReceivePipelineDiagnostics.merge(["cadence.fillCalls": 1, "cadence.fullCalls": peer.pending.count >= min(configuration.pipeline, peer.extensions.queueLimit) ? 1 : 0])
+		#endif
 		do {
 			let interested = picker.interested(id)
 			if interested != peer.interested { peer.interested = interested; try send(id, interested ? .interested : .notInterested) }

@@ -76,7 +76,27 @@ final class TransferPeer {
 	var interested = false
 	var remoteInterested = false
 	var firstMessage = true
+	#if BUTTER_REQUEST_CADENCE
+	// Count only intervals between the first request and the final retirement.
+	// Each peer belongs to the transfer actor. No block identities leave it.
+	private var emptySince: UInt64?
+	private var busySince: UInt64?
+	var pending: Set<PeerBlock> = [] {
+		didSet {
+			if pending.isEmpty, let start = busySince {
+				let now = ReceivePipelineDiagnostics.now()
+				ReceivePipelineDiagnostics.merge(["cadence.busyNs": Int64(now - start)])
+				emptySince = now; busySince = nil
+			} else if !pending.isEmpty, busySince == nil {
+				let now = ReceivePipelineDiagnostics.now()
+				if let start = emptySince { ReceivePipelineDiagnostics.merge(["cadence.emptyNs": Int64(now - start), "cadence.emptyIntervals": 1]) }
+				busySince = now; emptySince = nil
+			}
+		}
+	}
+	#else
 	var pending: Set<PeerBlock> = []
+	#endif
 	var recent: [PeerBlock: TimeInterval] = [:]
 	var uploads: [PeerBlock: UUID] = [:]
 	var downloaded: Int64 = 0

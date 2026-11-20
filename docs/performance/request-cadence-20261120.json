@@ -1,0 +1,55 @@
+{
+  "baseline": "f4fe33c",
+  "fixture": "Same 1 GiB byte stream in torrent order, 256 KiB pieces, window 32. One native sender process and one TCP peer per torrent.",
+  "payload_sha256": "8574e38710a21a2855ee526a6bc13ecfb1aea43b29ce8ff3657275d8461ed63b",
+  "protocol": "One warm-up per shape, six counter-free rounds using each order once, then three rotated counts runs per shape. CPU through durable completion. SHA-256 destination checks and checkpoint reopening for both endpoints.",
+  "diagnostics": "Successful request-bearing channel writes measured at the frame batch boundary for verified transfers. Empty time measures peer-local pending-set gaps between successive reservations, excluding initial and terminal idle. Aggregate across peers before calculating each fraction. Rates and metrics are medians of separate runs.",
+  "verified_trials": 30,
+  "workloads": {
+    "split-1": {
+      "client_cpu": 3.23329,
+      "sender_cpu": 2.15141,
+      "combined_cpu": 5.3705,
+      "kernel_cpu": 1.72056,
+      "mib_per_s": 349.14794,
+      "peak_mib": 16.07031,
+      "requests_per_write": 11.5788,
+      "single_request_writes_pct": 1.36674,
+      "blocks_per_read": 12.66641,
+      "request_writes": 5660.0,
+      "fill_calls": 11333.0,
+      "full_window_fills_pct": 49.99559,
+      "empty_peer_time_pct": 0.0
+    },
+    "split-2": {
+      "client_cpu": 4.33037,
+      "sender_cpu": 2.28425,
+      "combined_cpu": 6.61256,
+      "kernel_cpu": 2.45978,
+      "mib_per_s": 510.30024,
+      "peak_mib": 19.38281,
+      "requests_per_write": 8.70795,
+      "single_request_writes_pct": 1.4959,
+      "blocks_per_read": 9.25911,
+      "request_writes": 7526.0,
+      "fill_calls": 15076.0,
+      "full_window_fills_pct": 49.99337,
+      "empty_peer_time_pct": 0.0
+    },
+    "split-4": {
+      "client_cpu": 5.92806,
+      "sender_cpu": 2.25231,
+      "combined_cpu": 8.1972,
+      "kernel_cpu": 3.67325,
+      "mib_per_s": 670.17884,
+      "peak_mib": 23.84375,
+      "requests_per_write": 6.28221,
+      "single_request_writes_pct": 2.78452,
+      "blocks_per_read": 6.54509,
+      "request_writes": 10432.0,
+      "fill_calls": 20912.0,
+      "full_window_fills_pct": 49.98087,
+      "empty_peer_time_pct": 0.0
+    }
+  }
+}

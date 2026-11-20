@@ -50,7 +50,7 @@ import ButterTorrentEngine
 	static func main() async throws {
 		let args = CommandLine.arguments
 		if args.count >= 3, args[1] == "fixture" {
-			try fixture(URL(fileURLWithPath: args[2]), small: args.count == 4 && args[3] == "--small", sweep: args.count == 4 && args[3] == "--rate-sweep"); return
+			try fixture(URL(fileURLWithPath: args[2]), small: args.count == 4 && args[3] == "--small", sweep: args.count == 4 && args[3] == "--rate-sweep", split: args.count == 4 && args[3] == "--split-v1"); return
 		}
 		guard args.count == 3, ["--benchmark", "--verify"].contains(args[1]) else { throw PeerFailure.invalid("expected fixture ROOT [--small] or --benchmark/--verify JOB") }
 		let job = try JSONDecoder().decode(Job.self, from: Data(contentsOf: URL(fileURLWithPath: args[2])))
@@ -157,7 +157,7 @@ import ButterTorrentEngine
 		}
 	}
 
-	static func fixture(_ root: URL, small: Bool, sweep: Bool = false) throws {
+	static func fixture(_ root: URL, small: Bool, sweep: Bool = false, split: Bool = false) throws {
 		let fm = FileManager.default
 		let requestedPieceLength = ProcessInfo.processInfo.environment["BUTTER_BENCHMARK_PIECE_LENGTH"]
 		guard let pieceLength = Int(requestedPieceLength ?? "262144"), (16384...16777216).contains(pieceLength), pieceLength.nonzeroBitCount == 1 else {
@@ -165,6 +165,7 @@ import ButterTorrentEngine
 		}
 		var manifest: [[String: Any]] = []
 		var cases = sweep ? ["many"] : ["single", "many", "concurrent"]
+		if split { cases = ["split-1", "split-2", "split-4"] }
 		if let selected = ProcessInfo.processInfo.environment["BUTTER_BENCHMARK_FIXTURE_CASE"] {
 			guard cases.contains(selected) else { throw PeerFailure.invalid("unknown benchmark fixture case") }; cases = [selected]
 		}
@@ -178,7 +179,8 @@ import ButterTorrentEngine
 		for name in cases {
 			let folder = root.appendingPathComponent(name), seed = folder.appendingPathComponent("seed")
 			try fm.createDirectory(at: seed, withIntermediateDirectories: true)
-			let count = name == "many" ? 128 : name == "concurrent" ? 4 : 1
+			let torrentCount = split ? Int(name.dropFirst(6))! : name == "concurrent" ? 4 : 1
+			let count = name == "many" ? 128 : torrentCount
 			var files: [[String: Any]] = []
 			for index in 0..<count {
 				let path = name == "many" ? String(format: "bundle/file-%03d.bin", index) : "payload-\(index).bin"
@@ -186,20 +188,23 @@ import ButterTorrentEngine
 				try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
 				guard fm.createFile(atPath: url.path, contents: nil) else { throw CocoaError(.fileWriteUnknown) }
 				let file = try FileHandle(forWritingTo: url); var hash = SHA256()
-				var block = Data((0..<262144).map { UInt8(($0 * 17 + $0 / 97 + index) % 251) })
+				let pattern = split ? 0 : index
+				var block = Data((0..<262144).map { UInt8(($0 * 17 + $0 / 97 + pattern) % 251) })
 				for part in 0..<(total / count / block.count) {
-					block[0] = UInt8(truncatingIfNeeded: part); block[1] = UInt8(truncatingIfNeeded: part >> 8)
+					let sequence = part + (split ? index * (total / count / block.count) : 0)
+					block[0] = UInt8(truncatingIfNeeded: sequence); block[1] = UInt8(truncatingIfNeeded: sequence >> 8)
 					try file.write(contentsOf: block); hash.update(data: block)
 				}
 				try file.synchronize(); try file.close()
 				files.append(["path": path, "size": total / count, "sha256": hash.finalize().map { String(format: "%02x", $0) }.joined()])
+				if split { files[index]["torrent_index"] = index }
 			}
 			var torrents: [String: [String]] = [:], torrentHashes: [String: String] = [:]
-			for index in 0..<(name == "concurrent" ? 4 : 1) {
+			for index in 0..<torrentCount {
 				let source = seed.appendingPathComponent(name == "many" ? "bundle" : "payload-\(index).bin")
 				let hybrid = try TorrentCreator.create(source: source, trackers: [], isPrivate: false, pieceLength: pieceLength)
 				let document = try BencodeDocument(hybrid)
-				for format in (sweep ? ["hybrid", "v2"] : ["v1", "v2", "hybrid"]) {
+				for format in (split ? ["v1"] : sweep ? ["hybrid", "v2"] : ["v1", "v2", "hybrid"]) {
 					var info = document.root["info"]!.dictionary!, root = document.root.dictionary!
 					for key in format == "v1" ? ["meta version", "file tree"] : format == "v2" ? ["pieces", "files", "length"] : [] { info[Data(key.utf8)] = nil }
 					root[Data("info".utf8)] = .dictionary(info)

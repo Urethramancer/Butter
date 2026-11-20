@@ -553,7 +553,7 @@ module TransferBenchmarkHarness
 				end
 				# Measurements have ended. Check each file independently, then reopen native recovery state.
 				fixture['files'].each do |file|
-					index = fixture['case'] == 'concurrent' ? file['path'][/payload-(\d+)/, 1].to_i : 0
+					index = file.fetch('torrent_index') { fixture['case'] == 'concurrent' ? file['path'][/payload-(\d+)/, 1].to_i : 0 }
 					path = File.join(items[index][:destination], file['path'])
 					raise "Payload size/digest mismatch: #{file['path']}" unless File.size(path) == file['size'] && Digest::SHA256.file(path).hexdigest == file['sha256']
 				end
