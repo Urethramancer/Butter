@@ -19,6 +19,35 @@ archive fingerprints; neither archive was rebuilt or replaced for this check.
 
 ## Home-fibre download limits
 
+### Capped TCP downloads and uploads
+
+Butter now groups available payload frames within the configured allowance.
+When it runs out of credit, it sleeps for at least 16 ms and accounts for the
+elapsed time on waking. TCP downloads can refill their existing request window
+while an admitted disk write is in progress.
+
+Two opposite-order release pairs compared `8153873` with `704e38a` at each
+setting, using one 1 GiB hybrid torrent and one libtorrent TCP peer on loopback.
+Each CPU figure is the mean percentage of one core consumed by Butter during
+sustained transfer. The peer was unrestricted for this table.
+
+| Cap (Mbps) | Preferences (MB/s) | Download CPU, before → after | Upload CPU, before → after | Delivered Mbps, down / up |
+| ---: | ---: | ---: | ---: | ---: |
+| 50 | 6.25 | 23.1% → 11.6% | 19.2% → 2.3% | 50.2 / 50.1 |
+| 100 | 12.5 | 22.5% → 12.1% | 21.5% → 7.4% | 100.0 / 100.1 |
+| 250 | 31.25 | 32.2% → 11.9% | 33.6% → 13.6% | 250.3 / 250.2 |
+| 500 | 62.5 | 62.8% → 42.9% | 34.3% → 13.4% | 499.5 / 499.3 |
+| 1,000 | 125 | 73.4% → 43.3% | 71.5% → 27.1% | 997.2 / 998.7 |
+
+With the native sender paced at 500 Mbps, the updated receiver used
+23.0% CPU at 483.2 Mbps.
+Adding the matching Butter cap gave 20.2% CPU at 483.7 Mbps.
+Absolute CPU varied between runs. At 100 Mbps the two updated download trials
+used 6.1% and 18.1% of a core. Every timed download passed independent piece
+checks and checkpoint reopening. [Per-run results and CPU per GiB](tcp-bandwidth-caps-20261120.json).
+
+### Earlier 4 GiB download comparison
+
 A single hybrid download used one native TCP seeder on loopback. Each rate ran
 twice in opposite orders. CPU is process CPU during sustained transfer, with
 100% equal to one core. The sender-paced column approximates a line bottleneck.
