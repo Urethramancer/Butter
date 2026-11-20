@@ -9,7 +9,7 @@ import ButterTorrentEngine
 // Line-delimited JSON over bounded OS pipes. Only phase boundaries are emitted.
 @main struct TransferBenchmark {
 	struct Item: Codable { let torrent: String; let destination: String; let state: String }
-	struct Job: Codable { let role: String; let items: [Item]; let partial: Bool?; let profileHoldAfterStop: Bool?; let applicationInspector: Bool? }
+	struct Job: Codable { let role: String; let items: [Item]; let partial: Bool?; let profileHoldAfterStop: Bool?; let applicationInspector: Bool?; let peerCount: Int? }
 	struct Command: Decodable { let command: String; let ports: [UInt16]? }
 	static func emit(_ phase: String, ports: [UInt16] = [], bytes: Int64 = 0, errors: [String] = [], received: Int64 = 0, pieces: [Int]? = nil) throws {
 		var usage = rusage(); guard getrusage(RUSAGE_SELF, &usage) == 0 else { throw CocoaError(.fileReadUnknown) }
@@ -108,8 +108,17 @@ import ButterTorrentEngine
 				}
 				_ = try await command("verified") // The receiving engine, never upload byte counters, decides completion.
 			} else {
-				guard let ports = start.ports, ports.count == engines.count else { throw PeerFailure.invalid("benchmark ports") }
-				if job.partial == true {
+				guard let ports = start.ports else { throw PeerFailure.invalid("benchmark ports") }
+				if let count = job.peerCount {
+					guard engines.count == 1, job.partial != true, (2...4).contains(count), ports.count == count, Set(ports).count == count else { throw PeerFailure.invalid("benchmark peer count") }
+					let engine = engines[0]
+					try await withThrowingTaskGroup(of: Void.self) { group in
+						for port in ports { group.addTask { _ = try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: port)) } }
+						try await group.waitForAll()
+					}
+					try await engine.waitUntilComplete()
+				} else if ports.count != engines.count { throw PeerFailure.invalid("benchmark ports") }
+				else if job.partial == true {
 					for (engine, port) in zip(engines, ports) { _ = try await engine.connect(to: NetworkEndpoint("127.0.0.1", port: port)) }
 					for phase in ["measurement-start", "measurement-end"] {
 						_ = try await command(phase)

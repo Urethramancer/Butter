@@ -115,5 +115,66 @@
       }
     },
     "decision": "Isolated. Four-torrent client CPU did not demonstrate a saving."
+  },
+  "window": {
+    "source": "Window source changes from f11ff68 applied to the same release package. Only the candidate uses the larger fixed window.",
+    "protocol": "Six balanced source pairs and two warm-ups, one 1 GiB many-file hybrid torrent with 1 MiB pieces, two independent libtorrent seed processes. Each TCP relay adds 10 ms in each direction with bounded read-ahead. CPU includes the client and both seeders through durability. Relay CPU is excluded. Sender memory sums the two individual peaks. All payload digests, both senders’ positive contributions and all three checkpoint reopens checked in every transfer.",
+    "verified": 14,
+    "results": {
+      "pairs": 6,
+      "medians": {
+        "baseline": {
+          "client": 10.4561,
+          "sender": 4.28765,
+          "combined": 14.74376,
+          "verified_mib_s": 38.04063,
+          "client_peak_mib": 19.5,
+          "sum_sender_peaks_mib": 59.88281
+        },
+        "candidate": {
+          "client": 7.90145,
+          "sender": 4.12905,
+          "combined": 12.0305,
+          "verified_mib_s": 58.95443,
+          "client_peak_mib": 19.5625,
+          "sum_sender_peaks_mib": 60.3125
+        }
+      },
+      "paired_ratios": {
+        "client": [
+          0.763499,
+          0.732032,
+          0.774555
+        ],
+        "sender": [
+          0.938334,
+          0.853649,
+          0.997971
+        ],
+        "combined": [
+          0.819159,
+          0.767425,
+          0.837169
+        ],
+        "verified_mib_s": [
+          1.5481,
+          1.530059,
+          1.568435
+        ],
+        "client_peak_mib": [
+          1.006014,
+          0.990522,
+          1.013293
+        ],
+        "sum_sender_peaks_mib": [
+          1.00937,
+          0.990616,
+          1.025845
+        ]
+      },
+      "smaller_peer_fraction_min": 0.499,
+      "smaller_peer_fraction_median": 0.4996
+    },
+    "decision": "Advance the 48-request window for the tested large-piece TCP workload. A general default requires separate compatibility and workload validation."
   }
 }

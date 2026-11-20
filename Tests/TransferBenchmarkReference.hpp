@@ -13,6 +13,7 @@ static NSDictionary* benchmarkWindows = @{};
 static std::int64_t benchmarkBytes = 0;
 static NSMutableArray* benchmarkPeerErrors = [NSMutableArray array];
 static std::int64_t benchmarkReceived = 0;
+static std::int64_t benchmarkUploaded = 0;
 static NSArray* benchmarkPieces = nil;
 static void benchmarkEvent(char const* phase, std::vector<int> const& ports = {}) {
 	struct rusage usage{}; require(getrusage(RUSAGE_SELF, &usage) == 0, "Cannot read CPU accounting");
@@ -20,7 +21,7 @@ static void benchmarkEvent(char const* phase, std::vector<int> const& ports = {}
 	NSDictionary* event = @{@"phase":@(phase), @"pid":@(getpid()), @"time":@(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()),
 		@"user":@(usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6), @"system":@(usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1e6),
 		@"peak_rss":@(usage.ru_maxrss), @"ports":values, @"libtorrent":@(LIBTORRENT_VERSION),
-		@"received_payload_bytes":@(benchmarkReceived), @"verified_pieces":benchmarkPieces ?: @[], @"request_window":benchmarkWindows, @"peer_errors":benchmarkPeerErrors, @"payload_bytes":@(benchmarkBytes)};
+		@"received_payload_bytes":@(benchmarkReceived), @"uploaded_payload_bytes":@(benchmarkUploaded), @"verified_pieces":benchmarkPieces ?: @[], @"request_window":benchmarkWindows, @"peer_errors":benchmarkPeerErrors, @"payload_bytes":@(benchmarkBytes)};
 	NSData* bytes = [NSJSONSerialization dataWithJSONObject:event options:0 error:nil];
 	require(bytes && fwrite(bytes.bytes, 1, bytes.length, stdout) == bytes.length && fputc('\n', stdout) != EOF && fflush(stdout) == 0, "Cannot send benchmark event");
 }
@@ -208,6 +209,7 @@ static void benchmark(NSDictionary* job, bool verify) {
 		}
 	}
 	if (partial && !seed) collectPieces();
+	if (seed && [job[@"reportUploaded"] boolValue]) for (auto const& handle : handles) benchmarkUploaded += handle.status().total_payload_upload;
 	benchmarkEvent("durable"); benchmarkCommand("stop"); benchmarkEvent("shutdown");
 	} // Include session destruction in the shutdown phase and whole-process accounting.
 	benchmarkEvent("stopped");
