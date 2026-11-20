@@ -1,5 +1,9 @@
 # Transfer performance
 
+Current work is listed in [the performance backlog](../../TODO.md#performance).
+Historical experiment names below identify their original branches. On the
+benchmark host, retired tips are available as `refs/archive/<original-branch>`.
+
 The latest full matrix validates **252/252 trials** against the v0.18.0 engine.
 All nine seeding cases meet all targets; downloads use **1.41–2.92× libtorrent's
 CPU/GiB**. Download engine RSS is **15.9–26.3 MiB**. This is a **contended-host
