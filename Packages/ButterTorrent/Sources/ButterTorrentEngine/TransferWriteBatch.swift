@@ -11,7 +11,7 @@ struct IncomingPieceBlock: Sendable {
 
 extension TCPTransfer {
 	func prefillDuringDiskWork(_ id: UUID) {
-		guard !Task.isCancelled, configuration.downloadIsUnrestricted, wantedHashesReady,
+		guard !Task.isCancelled, wantedHashesReady,
 			peers[id]?.session.stream.kind == .tcp else { return }
 		fill(id)
 	}
@@ -46,7 +46,7 @@ extension TCPTransfer {
 			let item = blocks[0]; try await received(id, message: .piece(item.piece, item.offset, item.bytes), profile: profile); return
 		}
 		let rateStarted = profile?.tick()
-		let admission = await downloadRate.downloadAdmission(bytes: size)
+		let admission = await downloadRate.downloadAdmission(bytes: size, tcp: peers[id]?.session.stream.kind == .tcp)
 		profile?.end(.rateAdmission, since: rateStarted)
 		if admission == .individual {
 			for item in blocks { try await received(id, message: .piece(item.piece, item.offset, item.bytes), profile: profile) }; return

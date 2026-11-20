@@ -84,6 +84,21 @@ private final class BudgetPeerStream: PeerByteStream, Sendable {
 		#expect(last.map(\.bytes) == [try PeerMessage.unchoke.encoded()])
 		session.close(); #expect(session.claimOutgoing(last).isEmpty)
 	}
+	@Test func pacedWritesRespectPayloadAllowanceAndControlOrder() throws {
+		let session = PeerSession(stream: BudgetPeerStream())
+		defer { session.close() }
+		func take(_ allowance: Int) -> [PeerSession.Outbound] {
+			session.takeOutgoing(maximumCount: 16, maximumBytes: 262144, pacedPayload: allowance)
+		}
+		try session.send(.unchoke)
+		for offset in 0..<4 { try session.send(.piece(0, offset * 16384, Data(count: 16384))) }
+		try session.send(.choke)
+		#expect(take(32768).map(\.bytes) == [try PeerMessage.unchoke.encoded()])
+		#expect(take(32768).map(\.payload) == [16384, 16384])
+		#expect(take(0).map(\.payload) == [16384])
+		#expect(take(32768).map(\.payload) == [16384])
+		#expect(take(0).map(\.bytes) == [try PeerMessage.choke.encoded()])
+	}
 	@Test func smallFramesRespectTheBatchMessageBound() throws {
 		let session = PeerSession(stream: BudgetPeerStream())
 		defer { session.close() }

@@ -192,12 +192,13 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 			#expect(status.downloaded - status.redundantBytes == Int64(fixture.bytes.count))
 		}
 	}
-	@Test(arguments: [false, true], [false, true]) func availableReadSpansDecoderFeedsAndFlushesBeforeControl(_ encrypted: Bool, _ limited: Bool) async throws {
+	@Test(arguments: [false, true], [(0, 262144), (1_048_576, 65536), (2_000_000, 6 * 16397)])
+	func availableReadSpansDecoderFeedsAndFlushesBeforeControl(_ encrypted: Bool, _ cap: (rate: Int, maximum: Int)) async throws {
 		for (large, singleFile) in [(false, false), (true, false), (true, true)] {
 			let pieceLength = large ? 524288 : 32768, pieceCount = large ? 1 : 3
 			let fixture = try large ? TransferFixture(lengths: singleFile ? [524288] : [524288, 0, 0, 0], pieceLength: pieceLength) : TransferFixture()
 			try await transferFixture(fixture) { fixture in
-				var config = plainTransferConfiguration(); config.downloadLimit = limited ? 1048576 : 0
+				var config = plainTransferConfiguration(); config.downloadLimit = cap.rate
 				if encrypted { config.encryption = .init(incoming: .required, outgoing: .required, levels: .rc4) }
 				let down = try await fixture.transfer("download", configuration: config), listener = try await fixture.listen()
 				let endpoint = try NetworkEndpoint("127.0.0.1", port: listener.port), hash = fixture.metadata.hashes.v1!, encryption = config.encryption
@@ -220,9 +221,7 @@ private final class CoalescingPeerStream: PeerByteStream, @unchecked Sendable {
 						let status = await down.snapshot()
 						return status.verifiedPieces == Set(0..<pieceCount) && status.peers.first?.remoteChoking == true && status.peers.first?.pendingRequests == 0
 					}
-					#expect((stream.largestRead > 65536) == !limited)
-					#expect(stream.largestRead <= (limited ? 65536 : 262144))
-					if large && !limited { #expect(stream.largestRead == min(frames.count, 262144)) }
+					#expect(stream.largestRead == min(frames.count, cap.maximum))
 					#expect(await down.snapshot().downloaded == Int64(fixture.bytes.count))
 				} catch { connecting.cancel(); if let channel = try? await connecting.value { channel.close() }; throw error }
 			}

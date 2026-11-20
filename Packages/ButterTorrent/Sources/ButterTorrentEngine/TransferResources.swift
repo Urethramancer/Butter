@@ -33,7 +33,6 @@ actor TransferPermits {
 	}
 }
 
-/// TransferRateLimiter bounds payload bytes with a one-second burst and cancellable waits.
 /// Shares payload bandwidth across every transfer using the same limits.
 public struct SessionBandwidthLimits: Sendable {
 	let download: TransferRateLimiter
@@ -51,6 +50,7 @@ public struct SessionBandwidthLimits: Sendable {
 	}
 }
 
+/// Bounds payload bytes with a one-second burst and cancellable waits.
 actor TransferRateLimiter {
 	private var rate: Int
 	private var tokens: Double
@@ -68,28 +68,35 @@ actor TransferRateLimiter {
 		self.rate = rate; tokens = min(tokens, Double(rate)); updated = clock.now()
 		configuredRate.withLock { $0 = rate }
 	}
-	// Grant only currently unrestricted work; later limit changes apply to the next batch.
-	func consumeUnrestrictedBatch() -> Bool { rate == 0 && shared?.isLimited != true }
-	enum DownloadAdmission { case unrestricted, paced, individual }
-	func downloadAdmission(bytes: Int) -> DownloadAdmission {
+	// TCP readers can amortise disk admission over 50 ms of payload. Writers and
+	// other transports use 20 ms. An oversized frame can still proceed on its own.
+	func pacedBatchBytes(forTCPDownload: Bool = false) -> Int? {
 		let aggregate = shared?.configuredRate.withLock { $0 } ?? 0
-		if rate == 0 && aggregate == 0 { return .unrestricted }
-		// Keep a batch only when it fits within 20 ms of each configured rate.
-		// Slower links retain block-sized progress and cancellation boundaries.
-		if (rate == 0 || bytes <= rate / 50) && (aggregate == 0 || bytes <= aggregate / 50) { return .paced }
-		return .individual
+		if rate == 0 && aggregate == 0 { return nil }
+		let limit = rate == 0 || aggregate == 0 ? max(rate, aggregate) : min(rate, aggregate)
+		return min(262144, limit / (forTCPDownload ? 20 : 50))
 	}
-	func consume(_ bytes: Int, isCancelled: @Sendable () -> Bool = { false }) async throws {
-		var remaining = Double(bytes)
-		while remaining > 0 {
+	enum DownloadAdmission { case unrestricted, paced, individual }
+	func downloadAdmission(bytes: Int, tcp: Bool) -> DownloadAdmission {
+		guard let maximum = pacedBatchBytes(forTCPDownload: tcp) else { return .unrestricted }
+		return bytes <= maximum ? .paced : .individual
+	}
+	func consume(_ bytes: Int, livePayload: (@Sendable () -> Int)? = nil) async throws {
+		var paid = 0.0
+		while paid < Double(bytes) {
 			try Task.checkCancellation()
-			if isCancelled() { throw CancellationError() }
-			if rate == 0 { break }
+			let remaining = Double(livePayload?() ?? bytes) - paid
+			if remaining <= 0 || rate == 0 { break }
 			let now = clock.now(); tokens = min(Double(rate), tokens + max(0, now - updated) * Double(rate)); updated = now
-			let count = min(remaining, tokens); remaining -= count; tokens -= count
-			if remaining > 0 { try await clock.sleep(for: min(1, max(0.001, remaining / Double(rate)))) }
+			let count = min(remaining, tokens); paid += count; tokens -= count
+			let deficit = remaining - count
+			if deficit > 0 {
+				// Let credit accumulate across several frames when a fast peer hits
+				// the cap. Charge actual elapsed time on waking.
+				try await clock.sleep(for: min(1, max(0.016, deficit / Double(rate))))
+			}
 		}
-		if let shared, shared.isLimited { try await shared.consume(bytes, isCancelled: isCancelled) }
+		if let shared, shared.isLimited { try await shared.consume(bytes, livePayload: livePayload) }
 	}
 }
 

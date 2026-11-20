@@ -182,11 +182,18 @@ final class PeerSession: @unchecked Sendable {
 		lock.withLock { closed = true; tokens.removeAll(); reservations.removeAll(); reservedBytes = 0; outgoing.removeAll(); queuedBytes = 0; queuedMessages = 0 }
 		outputReady.continuation.finish(); stream.close()
 	}
-	func takeOutgoing(maximumCount: Int, maximumBytes: Int) -> [Outbound] {
+	func takeOutgoing(maximumCount: Int, maximumBytes: Int, pacedPayload: Int? = nil) -> [Outbound] {
 		lock.withLock {
-			var count = 0, bytes = 0
+			var count = 0, bytes = 0, payload = 0
 			for item in outgoing.prefix(maximumCount) {
 				guard item.range.count <= maximumBytes - bytes else { break }
+				if let pacedPayload {
+					// Send leading control replies immediately. An already admitted
+					// control frame must never wait for a later payload's credit.
+					if count > 0, (item.payload == 0) != (payload == 0) { break }
+					guard count == 0 || item.payload <= pacedPayload - payload else { break }
+					payload += item.payload
+				}
 				count += 1; bytes += item.range.count
 			}
 			let result = Array(outgoing.prefix(count)); outgoing.removeFirst(count)
@@ -204,15 +211,19 @@ final class PeerSession: @unchecked Sendable {
 	private func nextOutput(upload: TransferRateLimiter) async throws -> (bytes: Data, receipts: [OutputReceipt])? {
 		while true {
 			try Task.checkCancellation()
-			let unrestricted = await upload.consumeUnrestrictedBatch()
+			let pacedPayload = await upload.pacedBatchBytes()
 			// µTP retains each write against a shared transport budget; keep its frame-sized admission.
-			let items = takeOutgoing(maximumCount: unrestricted && stream.kind == .tcp ? 16 : 1, maximumBytes: 262144)
-			if items.isEmpty { return nil }
-			if !unrestricted, let item = items.first {
-				if let token = item.token, !lock.withLock({ tokens.contains(token) }) { continue }
-				do { try await upload.consume(item.payload) { item.token.map { token in !self.lock.withLock({ self.tokens.contains(token) }) } ?? false } }
-				catch is CancellationError {
-					if !Task.isCancelled, let token = item.token, !lock.withLock({ tokens.contains(token) }) { continue }; throw CancellationError()
+			let items = takeOutgoing(maximumCount: stream.kind == .tcp ? 16 : 1, maximumBytes: 262144, pacedPayload: pacedPayload)
+			guard let first = items.first else { return nil }
+			if pacedPayload != nil, first.payload > 0 {
+				let payload = items.reduce(0) { $0 + $1.payload }
+				try await upload.consume(payload) {
+					self.lock.withLock {
+						items.reduce(0) { sum, item in
+							if let token = item.token, !self.tokens.contains(token) { return sum }
+							return sum + item.payload
+						}
+					}
 				}
 			}
 			try Task.checkCancellation()
@@ -244,8 +255,13 @@ final class PeerSession: @unchecked Sendable {
 		while true {
 			let cycleStarted = ReceivePipelineDiagnostics.tick()
 			let admissionStarted = ReceivePipelineDiagnostics.tick()
-			var maximum = 65536
-			if stream.kind == .tcp, await download.consumeUnrestrictedBatch() { maximum = 262144 }
+			var batchBytes = 262144, maximum = 65536
+			if stream.kind == .tcp {
+				batchBytes = await download.pacedBatchBytes(forTCPDownload: true) ?? 262144
+				// Include the 13-byte wire header for each full payload block.
+				let framedBytes = (batchBytes / 16384) * (16384 + 13)
+				maximum = max(65536, min(262144, framedBytes))
+			}
 			let admissionEnded = ReceivePipelineDiagnostics.tick()
 			let readStarted = ReceivePipelineDiagnostics.tick()
 			let waitStart = measureWait && ready ? clock.now() : nil
@@ -301,7 +317,7 @@ final class PeerSession: @unchecked Sendable {
 					while let message = try decoder.next() {
 						try Task.checkCancellation()
 						if case .piece(let piece, let offset, let bytes) = message {
-							if bytes.count > 262144 - blockBytes || blocks.count == 16 { try await flushBlocks(.budget) }
+							if bytes.count > batchBytes - blockBytes || blocks.count == 16 { try await flushBlocks(.budget) }
 							cycle?.count("decodedBlocks"); cycle?.count("payloadBytes", bytes.count)
 							let block = IncomingPieceBlock(piece: piece, offset: offset, bytes: bytes)
 							if let first = firstBlock {

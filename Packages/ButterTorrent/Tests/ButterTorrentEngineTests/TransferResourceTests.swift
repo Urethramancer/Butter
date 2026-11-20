@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 import ButterTorrentMetadata
 import ButterTorrentNetworking
@@ -207,13 +208,13 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 	}
 	@Test func unrestrictedAdmissionTracksCompletedRateChanges() async throws {
 		let clock = EngineClock(), limiter = TransferRateLimiter(rate: 0, clock: clock)
-		#expect(await limiter.consumeUnrestrictedBatch())
+		#expect(await limiter.pacedBatchBytes() == nil)
 		for rate in [100, 10] {
-			await limiter.set(rate); #expect(await limiter.consumeUnrestrictedBatch() == false)
+			await limiter.set(rate); #expect(await limiter.pacedBatchBytes() != nil)
 			let consuming = Task { try await limiter.consume(rate / 2) }
 			#expect(try await clock.nextSleep() == 0.5)
 			clock.advance(0.5); try await consuming.value
-			await limiter.set(0); #expect(await limiter.consumeUnrestrictedBatch())
+			await limiter.set(0); #expect(await limiter.pacedBatchBytes() == nil)
 			try await limiter.consume(1_000_000)
 		}
 	}
@@ -223,30 +224,55 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 		let second = TransferRateLimiter(rate: 0, clock: clock, shared: limits.download)
 		let upload = TransferRateLimiter(rate: 0, clock: clock, shared: limits.upload)
 		try await limits.set(download: 100, upload: 0)
-		#expect(await first.consumeUnrestrictedBatch() == false)
-		#expect(await upload.consumeUnrestrictedBatch())
+		#expect(await first.pacedBatchBytes() != nil)
+		#expect(await upload.pacedBatchBytes() == nil)
 		clock.advance(1)
 		try await first.consume(75)
 		let waiting = Task { try await second.consume(50) }
 		#expect(try await clock.nextSleep() == 0.25)
 		clock.advance(0.25); try await waiting.value
 		try await limits.set(download: 0, upload: 10)
-		#expect(await second.consumeUnrestrictedBatch())
-		#expect(await upload.consumeUnrestrictedBatch() == false)
+		#expect(await second.pacedBatchBytes() == nil)
+		#expect(await upload.pacedBatchBytes() != nil)
 		await second.set(20)
-		#expect(await second.consumeUnrestrictedBatch() == false)
+		#expect(await second.pacedBatchBytes() != nil)
 	}
 	@Test func pacedDownloadsBoundBatchesByBothRates() async throws {
 		let clock = EngineClock(), limits = SessionBandwidthLimits(clock: clock)
 		let lane = TransferRateLimiter(rate: 0, clock: clock, shared: limits.download)
-		#expect(await lane.downloadAdmission(bytes: 65_536) == .unrestricted)
+		#expect(await lane.downloadAdmission(bytes: 65_536, tcp: false) == .unrestricted)
 		try await limits.set(download: 6_250_000, upload: 0)
-		#expect(await lane.downloadAdmission(bytes: 65_536) == .paced)
+		#expect(await lane.downloadAdmission(bytes: 65_536, tcp: false) == .paced)
 		await lane.set(1_638_400)
-		#expect(await lane.downloadAdmission(bytes: 32_768) == .paced)
-		#expect(await lane.downloadAdmission(bytes: 49_152) == .individual)
+		#expect(await lane.downloadAdmission(bytes: 32_768, tcp: false) == .paced)
+		#expect(await lane.downloadAdmission(bytes: 49_152, tcp: false) == .individual)
+		#expect(await lane.downloadAdmission(bytes: 81_920, tcp: true) == .paced)
+		#expect(await lane.downloadAdmission(bytes: 81_921, tcp: true) == .individual)
 		try await limits.set(download: 125_000, upload: 0)
-		#expect(await lane.downloadAdmission(bytes: 32_768) == .individual)
+		#expect(await lane.downloadAdmission(bytes: 32_768, tcp: false) == .individual)
+	}
+	@Test func cancelledUploadFramesShrinkThePendingSharedDebit() async throws {
+		let clock = EngineClock(), limits = SessionBandwidthLimits(clock: clock)
+		let lane = TransferRateLimiter(rate: 0, clock: clock, shared: limits.upload)
+		try await limits.set(download: 0, upload: 100)
+		let live = OSAllocatedUnfairLock(initialState: 100)
+		let sending = Task { try await lane.consume(100) { live.withLock { $0 } } }
+		#expect(try await clock.nextSleep() == 1)
+		live.withLock { $0 = 30 }
+		clock.advance(1)
+		try await sending.value
+		// The seventy cancelled bytes are available to another transfer immediately.
+		let other = TransferRateLimiter(rate: 0, clock: clock, shared: limits.upload)
+		try await engineDeadline { try await other.consume(70) }
+	}
+	@Test func aShortWaitAccumulatesCreditForTheFollowingFrames() async throws {
+		let clock = EngineClock(), limiter = TransferRateLimiter(rate: 1_000_000, clock: clock)
+		try await limiter.consume(1_000_000)
+		let first = Task { try await limiter.consume(100) }
+		#expect(try await clock.nextSleep() == 0.016)
+		clock.advance(0.016)
+		try await first.value
+		try await engineDeadline { try await limiter.consume(15_000) }
 	}
 	@Test func permitsCancelQueuedWorkAndCloseAllWaiters() async throws {
 		let permits = TransferPermits(1); try await permits.acquire()
