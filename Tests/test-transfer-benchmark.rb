@@ -1,9 +1,31 @@
 require 'minitest/autorun'
 require 'open3'
 require_relative 'TransferBenchmarkHarness'
+require_relative 'PeerWindowProbe'
 
 class TransferBenchmarkHarnessTests < Minitest::Test
 	H = TransferBenchmarkHarness
+	def test_window_probe_counts_distinct_outstanding_requests_in_fragmented_streams
+		probe = PeerWindowProbe.new
+		H.stub(:now, 0.0) { probe.connected }
+		hello = "\x13BitTorrent protocol".ljust(68, "\0")
+		frame = ->(id, bytes) { [1 + bytes.bytesize, id].pack('NC') + bytes }
+		key = ->(piece) { [piece, 0, 1].pack('N3') }
+		H.stub(:now, 3.0) do
+			probe.observe(0, hello[0,7]); probe.observe(0, hello[7..-1])
+			probe.observe(1, hello)
+			request = frame.call(6, key.call(1))
+			probe.observe(0, request + request + frame.call(6, key.call(2)))
+			reply = frame.call(7, [1, 0].pack('N2') + 'x')
+			probe.observe(1, reply[0,4]); probe.observe(1, reply[4..-1])
+			probe.observe(0, frame.call(8, key.call(2)))
+			probe.observe(0, frame.call(6, key.call(3)))
+			probe.observe(1, frame.call(16, key.call(3)))
+			probe.observe(0, frame.call(6, key.call(4)) + frame.call(6, key.call(5)))
+		end
+		assert_equal 2, probe.peak
+		assert_equal [{peak: 2, payload_bytes: 1}, {peak: 0, payload_bytes: 0}], probe.periods
+	end
 	def test_fixed_matrix_never_extends_uncertain_cases
 		previous_signal = Signal.trap('TERM', 'DEFAULT')
 		[6, 12].each do |count|

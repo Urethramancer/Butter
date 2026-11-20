@@ -5,7 +5,7 @@ require_relative 'TransferBenchmarkHarness'
 # allow multiple chunks in flight and preserve TCP order with bounded memory.
 class DelayedPeerRelay
 	attr_reader :port
-	def initialize(target, delay)
+	def initialize(target, delay, probe: nil)
 		@listener = TCPServer.new('127.0.0.1', 0)
 		@port = @listener.addr[1]
 		@threads = []
@@ -13,7 +13,8 @@ class DelayedPeerRelay
 			@client = @listener.accept
 			@seed = TCPSocket.new('127.0.0.1', target)
 			[@client, @seed].each { |socket| socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) }
-			[[@client, @seed], [@seed, @client]].each do |input, output|
+			probe&.connected
+			[[@client, @seed], [@seed, @client]].each_with_index do |(input, output), direction|
 				queue = SizedQueue.new(32)
 				@threads << Thread.new do
 					begin
@@ -29,8 +30,10 @@ class DelayedPeerRelay
 				@threads << Thread.new do
 					begin
 						while (chunk = queue.pop)
-							remaining = chunk[0] - TransferBenchmarkHarness.now
+							due = probe ? probe.delivery_time(direction, chunk[0], chunk[1].bytesize) : chunk[0]
+							remaining = due - TransferBenchmarkHarness.now
 							sleep(remaining) if remaining.positive?
+							probe&.observe(direction, chunk[1])
 							output.write(chunk[1])
 						end
 						output.close_write
@@ -51,7 +54,7 @@ end
 
 module PeerWindowBenchmark
 	Harness = TransferBenchmarkHarness
-	def self.trial(driver, reference, root, fixture, work, delay)
+	def self.trial(driver, reference, root, fixture, work, delay, probes: nil)
 		raise 'Expected one hybrid torrent' unless fixture.fetch('torrents').fetch('hybrid').length == 1
 		files = fixture.fetch('files')
 		bytes = fixture.fetch('bytes')
@@ -79,8 +82,8 @@ module PeerWindowBenchmark
 			down, *seeds = children
 			wait.call(children,'ready')
 			raise 'Unexpected payload geometry' unless children.all? { |child| child.phase('ready').fetch('payload_bytes') == bytes }
-			seeds.each do |child|
-				relays << DelayedPeerRelay.new(child.phase('ready').fetch('ports').fetch(0),delay)
+			seeds.each_with_index do |child, i|
+				relays << DelayedPeerRelay.new(child.phase('ready').fetch('ports').fetch(0),delay,probe: probes&.fetch(i))
 				child.send_command('start')
 			end
 			down.send_command('start', ports: relays.map(&:port))
