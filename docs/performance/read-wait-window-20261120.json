@@ -1,0 +1,406 @@
+{
+  "baseline": "4db3c88",
+  "candidate": "062f711",
+  "probe": "b280bca",
+  "signal": "Eligible automatically configured 1 MiB TCP peers sample monotonic stream read awaits. In at least 250 ms require three or more read waits of at least 3 ms accounting for at least 25% of the interval. Target 50 ms of decoded piece bytes clamped to 32–48 blocks. Growth requires at least 32 requests outstanding, an unchoked peer, unlimited download and sufficient advertised remote queue. Local processing contributes only to elapsed denominator.",
+  "provenance": {
+    "base": "f3a3cd772cfeeaf95556717852ae871fa103ab9225a90ee94592d60bf6c673e7",
+    "candidate": "0b454711398bfa1a07bb1dc5276a62a3d78bf2407ed5ec69ea579007b13f1c12",
+    "TCPPeerReference": "d0b87148133cca5d25064d6b1561e861237d58cd10255311382436265ae1b511"
+  },
+  "protocol": "Fixed before timing: three separate diagnostic downloads (no added delay, two 20 ms RTT peers, same delays with a 4 MiB/s cap swapped at eight seconds). Then one warm-up per source and six balanced fresh pairs per workload. Delayed order seed 20261121, ordinary guards 20261122 through 20261125. Fixed 1 GiB payloads, same local libtorrent reference. CPU through durability, verified MiB/s, whole-process peak RSS in MiB. Sum individual sender peaks for two-peer case. Relay CPU excluded. SHA-256 checked and all checkpoints reopened. Ratios are paired medians followed by 95% percentile-bootstrap bounds from 10000 resamples. Single-host tests, no quiet-host qualification.",
+  "gates": "Target client CPU upper ratio below 1.0, median throughput at least 0.99, combined CPU upper ratio at most 1.03 and matched client RSS upper ratio at most 1.10. Apply the latter three to ordinary guards.",
+  "tests": {
+    "swift": 46,
+    "controller": 37,
+    "controller_assertions": 344
+  },
+  "wire": [
+    {
+      "mode": "loopback",
+      "peaks": [
+        32,
+        32
+      ],
+      "periods": [
+        [
+          {
+            "peak": 32,
+            "payload_bytes": 166592512
+          },
+          {
+            "peak": 0,
+            "payload_bytes": 0
+          }
+        ],
+        [
+          {
+            "peak": 32,
+            "payload_bytes": 161054720
+          },
+          {
+            "peak": 0,
+            "payload_bytes": 0
+          }
+        ]
+      ],
+      "sender_bytes": [
+        539361280,
+        534642688
+      ]
+    },
+    {
+      "mode": "delayed",
+      "peaks": [
+        48,
+        48
+      ],
+      "periods": [
+        [
+          {
+            "peak": 48,
+            "payload_bytes": 159989760
+          },
+          {
+            "peak": 48,
+            "payload_bytes": 154140672
+          }
+        ],
+        [
+          {
+            "peak": 48,
+            "payload_bytes": 159645696
+          },
+          {
+            "peak": 48,
+            "payload_bytes": 154779648
+          }
+        ]
+      ],
+      "sender_bytes": [
+        536969216,
+        536772608
+      ]
+    },
+    {
+      "mode": "swap",
+      "peaks": [
+        48,
+        48
+      ],
+      "periods": [
+        [
+          {
+            "peak": 32,
+            "payload_bytes": 20987904
+          },
+          {
+            "peak": 48,
+            "payload_bytes": 147652608
+          }
+        ],
+        [
+          {
+            "peak": 48,
+            "payload_bytes": 149831680
+          },
+          {
+            "peak": 32,
+            "payload_bytes": 20922368
+          }
+        ]
+      ],
+      "sender_bytes": [
+        739475456,
+        334675968
+      ]
+    }
+  ],
+  "timing": {
+    "delayed": {
+      "verified": 14,
+      "pairs": 6,
+      "medians": {
+        "shipping": {
+          "client": 11.59413,
+          "senders": 6.11658,
+          "combined": 17.7204,
+          "verified_mib_s": 37.97591,
+          "client_peak_mib": 19.50781,
+          "senders_peak_mib": 59.14844
+        },
+        "candidate": {
+          "client": 8.37502,
+          "senders": 4.66917,
+          "combined": 13.05441,
+          "verified_mib_s": 58.83302,
+          "client_peak_mib": 19.46094,
+          "senders_peak_mib": 59.97656
+        }
+      },
+      "ratio": {
+        "client": [
+          0.719763,
+          0.712701,
+          0.746232
+        ],
+        "senders": [
+          0.799304,
+          0.744542,
+          0.900541
+        ],
+        "combined": [
+          0.744759,
+          0.725649,
+          0.794845
+        ],
+        "verified_mib_s": [
+          1.551088,
+          1.544055,
+          1.565439
+        ],
+        "client_peak_mib": [
+          0.994825,
+          0.98811,
+          1.01165
+        ],
+        "senders_peak_mib": [
+          1.019206,
+          0.998048,
+          1.039457
+        ]
+      },
+      "throughput_pass": true,
+      "combined_pass": true,
+      "matched_memory_pass": true
+    },
+    "large-hybrid": {
+      "verified": 14,
+      "pairs": 6,
+      "medians": {
+        "shipping": {
+          "client": 3.5228,
+          "senders": 2.24405,
+          "combined": 5.7612,
+          "verified_mib_s": 296.73868,
+          "client_peak_mib": 16.85938,
+          "senders_peak_mib": 29.8125
+        },
+        "candidate": {
+          "client": 3.51609,
+          "senders": 2.29899,
+          "combined": 5.79762,
+          "verified_mib_s": 293.88127,
+          "client_peak_mib": 16.09375,
+          "senders_peak_mib": 29.95313
+        }
+      },
+      "ratio": {
+        "client": [
+          0.99492,
+          0.98127,
+          1.010482
+        ],
+        "senders": [
+          1.010337,
+          0.948499,
+          1.100146
+        ],
+        "combined": [
+          0.992575,
+          0.983991,
+          1.036331
+        ],
+        "verified_mib_s": [
+          0.995635,
+          0.967945,
+          1.03072
+        ],
+        "client_peak_mib": [
+          0.955134,
+          0.917392,
+          1.030325
+        ],
+        "senders_peak_mib": [
+          1.002619,
+          0.998186,
+          1.006028
+        ]
+      },
+      "throughput_pass": true,
+      "combined_pass": false,
+      "matched_memory_pass": true
+    },
+    "single-v1": {
+      "verified": 14,
+      "pairs": 6,
+      "medians": {
+        "shipping": {
+          "client": 3.1327,
+          "senders": 2.19745,
+          "combined": 5.36614,
+          "verified_mib_s": 369.89668,
+          "client_peak_mib": 15.75781,
+          "senders_peak_mib": 16.8125
+        },
+        "candidate": {
+          "client": 3.13916,
+          "senders": 2.10029,
+          "combined": 5.2404,
+          "verified_mib_s": 374.83798,
+          "client_peak_mib": 15.61719,
+          "senders_peak_mib": 16.80469
+        }
+      },
+      "ratio": {
+        "client": [
+          0.998057,
+          0.988159,
+          1.024033
+        ],
+        "senders": [
+          0.955787,
+          0.904317,
+          1.056984
+        ],
+        "combined": [
+          0.984436,
+          0.957839,
+          1.028569
+        ],
+        "verified_mib_s": [
+          0.998548,
+          0.973547,
+          1.026042
+        ],
+        "client_peak_mib": [
+          0.995022,
+          0.965503,
+          1.023759
+        ],
+        "senders_peak_mib": [
+          0.998603,
+          0.983926,
+          1.006533
+        ]
+      },
+      "throughput_pass": true,
+      "combined_pass": true,
+      "matched_memory_pass": true
+    },
+    "concurrent-v1": {
+      "verified": 14,
+      "pairs": 6,
+      "medians": {
+        "shipping": {
+          "client": 5.92665,
+          "senders": 2.43079,
+          "combined": 8.3074,
+          "verified_mib_s": 706.0528,
+          "client_peak_mib": 23.89844,
+          "senders_peak_mib": 18.14063
+        },
+        "candidate": {
+          "client": 5.82216,
+          "senders": 2.31492,
+          "combined": 8.19614,
+          "verified_mib_s": 712.49568,
+          "client_peak_mib": 23.23438,
+          "senders_peak_mib": 18.25781
+        }
+      },
+      "ratio": {
+        "client": [
+          0.995845,
+          0.97105,
+          1.02653
+        ],
+        "senders": [
+          0.959175,
+          0.867788,
+          1.232004
+        ],
+        "combined": [
+          0.982884,
+          0.960708,
+          1.064312
+        ],
+        "verified_mib_s": [
+          1.01244,
+          0.984249,
+          1.036434
+        ],
+        "client_peak_mib": [
+          0.969221,
+          0.950259,
+          1.012488
+        ],
+        "senders_peak_mib": [
+          1.00862,
+          0.98519,
+          1.024899
+        ]
+      },
+      "throughput_pass": true,
+      "combined_pass": false,
+      "matched_memory_pass": true
+    },
+    "many-hybrid": {
+      "verified": 14,
+      "pairs": 6,
+      "medians": {
+        "shipping": {
+          "client": 3.59111,
+          "senders": 2.16136,
+          "combined": 5.74269,
+          "verified_mib_s": 310.08805,
+          "client_peak_mib": 17.94531,
+          "senders_peak_mib": 29.75781
+        },
+        "candidate": {
+          "client": 3.56475,
+          "senders": 2.14058,
+          "combined": 5.76147,
+          "verified_mib_s": 313.01699,
+          "client_peak_mib": 17.78906,
+          "senders_peak_mib": 29.75781
+        }
+      },
+      "ratio": {
+        "client": [
+          0.995398,
+          0.961915,
+          1.038678
+        ],
+        "senders": [
+          0.9829,
+          0.921725,
+          1.019997
+        ],
+        "combined": [
+          0.991966,
+          0.956604,
+          1.018568
+        ],
+        "verified_mib_s": [
+          1.002223,
+          0.962888,
+          1.041245
+        ],
+        "client_peak_mib": [
+          0.992706,
+          0.948221,
+          1.018554
+        ],
+        "senders_peak_mib": [
+          1.000526,
+          0.998953,
+          1.003946
+        ]
+      },
+      "throughput_pass": true,
+      "combined_pass": true,
+      "matched_memory_pass": true
+    }
+  }
+}

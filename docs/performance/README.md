@@ -46,6 +46,28 @@ and the implementation is archived. [Decoder comparison and host load](peer-expe
 
 ## Per-peer request windows under latency
 
+Candidate `062f711` measures socket read waits on automatically configured TCP
+connections with 1 MiB pieces. During a sample of at least 250 ms, it requires
+at least three reads that wait for 3 ms or longer. Those waits must account
+for at least a quarter of the interval before a full queue can grow. The
+proposed window covers 50 ms of delivered payload, bounded to 32–48 requests.
+Time spent writing and verifying contributes only to the elapsed denominator.
+
+On a 1 GiB hybrid download, both peers peaked at 32 on unshaped loopback and
+48 with 20 ms of added round-trip delay. When a 4 MiB/s limit moved from one
+peer to the other, settled peaks moved from 32 and 48 to 48 and 32.
+Across six uninstrumented delayed-link pairs, verified throughput rose 55.1%
+and combined CPU/GiB fell 25.5%. All four ordinary-download comparisons met
+the throughput and matched-memory limits. Combined CPU upper bounds were
++3.63% for 1 MiB hybrid and +6.43% for concurrent v1, above the 3% tolerance.
+The other two met that limit. [Wire diagnostics and fixed comparisons](read-wait-window-20261120.json).
+
+An independent confirmation covers those two uncertain workloads in sixteen
+four-transfer blocks apiece. Within each block both builds occupy symmetric
+positions in ABBA or BAAB order, with equal counts of each order per workload.
+The unit of analysis is the ratio of the two build means within a block.
+The confirmation uses its own paired intervals and the same acceptance limits.
+
 Two independent libtorrent seeders supplied one 1 GiB many-file hybrid torrent
 with 1 MiB pieces. A loopback relay added 10 ms in each direction per peer.
 In six balanced pairs, raising the fixed window from 32 to 48 increased verified
