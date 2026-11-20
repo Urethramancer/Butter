@@ -84,6 +84,7 @@ struct AddRequest: Identifiable {
 			try await storage.save(launchState)
 			loadedState = true
 			_ = try await engine.perform("restorePolicy", ["cleanShutdown": saved.cleanShutdown])
+			try await applyBandwidthLimits()
 			if !allowsSystemIntegration {
 				preferences.incompleteFolder = root.appendingPathComponent("Downloads").path
 				preferences.port = 0
@@ -221,12 +222,22 @@ struct AddRequest: Identifiable {
 		portStatus = allowsSystemIntegration ? await PortChecker().check(boundPort) : "Unknown — isolated test configuration"
 	}
 	func settingsChanged(from old: Preferences) async {
+		if old.downloadLimit != preferences.downloadLimit || old.uploadLimit != preferences.uploadLimit {
+			do { try await applyBandwidthLimits() } catch { report(error) }
+		}
 		await persist()
 		if old.utp != preferences.utp || old.port != preferences.port || old.peers != preferences.peers || old.torrentPeers != preferences.torrentPeers || old.dht != preferences.dht || old.pex != preferences.pex || old.lsd != preferences.lsd || old.blocklists != preferences.blocklists { await applyNetwork() }
 		if allowsSystemIntegration && preferences.notifications && !old.notifications {
 			do { _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) } catch { report(error) }
 		}
 		decisions = [:]
+	}
+	private func applyBandwidthLimits() async throws {
+		while true {
+			let download = preferences.downloadLimit ?? 0, upload = preferences.uploadLimit ?? 0
+			_ = try await engine.perform("bandwidth", ["downloadLimit": download, "uploadLimit": upload])
+			if download == (preferences.downloadLimit ?? 0), upload == (preferences.uploadLimit ?? 0) { return }
+		}
 	}
 	func chooseTorrent() {
 		let panel = NSOpenPanel(); panel.allowedContentTypes = [UTType(filenameExtension: "torrent") ?? .data]; panel.allowsMultipleSelection = true

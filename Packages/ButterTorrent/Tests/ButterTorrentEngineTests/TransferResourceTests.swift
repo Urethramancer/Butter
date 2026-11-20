@@ -217,6 +217,25 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 			try await limiter.consume(1_000_000)
 		}
 	}
+	@Test func transfersShareSessionBandwidthAndKeepIndependentUploadLimits() async throws {
+		let clock = EngineClock(), limits = SessionBandwidthLimits(clock: clock)
+		let first = TransferRateLimiter(rate: 0, clock: clock, shared: limits.download)
+		let second = TransferRateLimiter(rate: 0, clock: clock, shared: limits.download)
+		let upload = TransferRateLimiter(rate: 0, clock: clock, shared: limits.upload)
+		try await limits.set(download: 100, upload: 0)
+		#expect(await first.consumeUnrestrictedBatch() == false)
+		#expect(await upload.consumeUnrestrictedBatch())
+		clock.advance(1)
+		try await first.consume(75)
+		let waiting = Task { try await second.consume(50) }
+		#expect(try await clock.nextSleep() == 0.25)
+		clock.advance(0.25); try await waiting.value
+		try await limits.set(download: 0, upload: 10)
+		#expect(await second.consumeUnrestrictedBatch())
+		#expect(await upload.consumeUnrestrictedBatch() == false)
+		await second.set(20)
+		#expect(await second.consumeUnrestrictedBatch() == false)
+	}
 	@Test func permitsCancelQueuedWorkAndCloseAllWaiters() async throws {
 		let permits = TransferPermits(1); try await permits.acquire()
 		let cancelled = Task { try await permits.acquire() }

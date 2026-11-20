@@ -100,6 +100,18 @@ extension ButterUITests {
 		XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("Downloads/renamed/new.bin")), original)
 		XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("Downloads/renamed/b.bin")), original)
 	}
+	@objc func testBandwidthLimitsPersistInDecimalMegabytes() {
+		app.typeKey(",", modifierFlags: .command); app.buttons["Transfers"].click()
+		app.windows.firstMatch.scrollViews.firstMatch.scroll(byDeltaX: 0, deltaY: -600)
+		let separator = Locale.current.decimalSeparator ?? "."
+		replace("download-bandwidth", with: "62" + separator + "5")
+		replace("upload-bandwidth", with: "1" + separator + "25")
+		waitForPreferences("Fractional bandwidth limits persist in bytes per second") {
+			$0["downloadLimit"] as? Int == 62_500_000 && $0["uploadLimit"] as? Int == 1_250_000
+		}
+		replace("download-bandwidth", with: "0")
+		waitForPreferences("Download cap clears independently") { $0["downloadLimit"] == nil && $0["uploadLimit"] as? Int == 1_250_000 }
+	}
 	@objc func testGroupAndTrackerEditorsPersist() {
 		app.typeKey(",", modifierFlags: .command); app.buttons["Groups"].click(); app.buttons["Add group"].click()
 		replace("group-name", with: "Linux")

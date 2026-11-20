@@ -2,6 +2,7 @@ import Foundation
 
 @MainActor final class FakeEngine: EngineOperations, @unchecked Sendable {
 	var commands: [String] = []
+	var bandwidth: [String: Int] = [:]
 	var addFailure = false
 	var holdSnapshot = false
 	var holdShutdown = false
@@ -14,6 +15,7 @@ import Foundation
 	nonisolated func cancelCreation() { }
 	func perform(_ command: String, _ payload: [String: Any]) async throws -> Data {
 		commands.append(command)
+		if command == "bandwidth" { bandwidth = payload as? [String: Int] ?? [:] }
 		if command == "shutdown", holdShutdown { await wait() }
 		if command == "add" && addFailure { throw CocoaError(.fileReadNoPermission) }
 		await Task.yield()
@@ -44,6 +46,7 @@ enum StoreRegressionTests {
 		let retained = try Data(contentsOf: url)
 		try check(!stopped && retained == corrupt, "Shutdown must retain unreadable saved state")
 		var saved = SavedState()
+		saved.preferences.downloadLimit = 62_500_000
 		saved.transfers = [TransferRecord(id: "restored", source: "magnet:?xt=test", destination: root.path)]
 		try await StateStorage(root: root).save(saved)
 		let engine = FakeEngine(), store = TransferStore(root: root, engine: engine, automaticPolling: false, allowsSystemIntegration: false)
@@ -51,6 +54,12 @@ enum StoreRegressionTests {
 		async let second: Void = store.start()
 		_ = await (first, second)
 		try check(store.ready && engine.commands.filter { $0 == "add" }.count == 1, "Concurrent startup restores exactly once")
+		try check(engine.bandwidth == ["downloadLimit": 62_500_000, "uploadLimit": 0], "Restore the download cap before starting transfers")
+		let previous = store.preferences
+		store.preferences.downloadLimit = nil; store.preferences.uploadLimit = 1_250_000
+		await store.settingsChanged(from: previous)
+		let updated = try await StateStorage(root: root).load().preferences
+		try check(updated == store.preferences && engine.bandwidth == ["downloadLimit": 0, "uploadLimit": 1_250_000], "Editing a cap updates the live engine and persists both directions")
 		let failedEngine = FakeEngine(); failedEngine.addFailure = true
 		let failedRestore = TransferStore(root: root, engine: failedEngine, automaticPolling: false, allowsSystemIntegration: false)
 		await failedRestore.start(); await failedRestore.refresh()

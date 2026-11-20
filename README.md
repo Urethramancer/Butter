@@ -62,7 +62,9 @@ are disabled by default. Private torrents suppress discovery and keep their trac
 The manual port check uses [Transmission's checker](https://github.com/transmission/transmission/blob/main/libtransmission/rpcimpl.cc).
 External TCP reachability and local UDP binding are separate results; service
 failures report unknown status. Bandwidth estimates come from observed traffic
-and probes, rather than an ISP connection measurement.
+and probes. In Settings → Transfers → Bandwidth, set separate download and upload
+limits in decimal MB/s, shared across all torrents. Enter 0 for unlimited or
+62.5 MB/s for a 500 Mbps payload limit.
 
 ## Verification and performance
 

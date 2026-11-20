@@ -11,7 +11,7 @@ struct IncomingPieceBlock: Sendable {
 
 extension TCPTransfer {
 	func prefillDuringDiskWork(_ id: UUID) {
-		guard !Task.isCancelled, configuration.downloadLimit == 0, wantedHashesReady,
+		guard !Task.isCancelled, configuration.downloadIsUnrestricted, wantedHashesReady,
 			peers[id]?.session.stream.kind == .tcp else { return }
 		fill(id)
 	}

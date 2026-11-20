@@ -53,6 +53,9 @@ struct Preferences: Codable, Equatable {
 	var startOnAdd = true
 	var activeDownloads = 3
 	var activeSeeds = 5
+	// Missing in older saved state. Both nil and zero mean unlimited.
+	var downloadLimit: Int?
+	var uploadLimit: Int?
 	var idleMinutes = 0
 	var utp = true
 	var port = 6881

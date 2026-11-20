@@ -17,6 +17,8 @@ public struct TCPTransferConfiguration: Sendable {
 	public var idleTimeout: TimeInterval = 180
 	public var downloadLimit = 0
 	public var uploadLimit = 0
+	public var bandwidthLimits: SessionBandwidthLimits?
+	var downloadIsUnrestricted: Bool { downloadLimit == 0 && bandwidthLimits?.download.isLimited != true }
 	public var enableFast = true
 	public var enableExtensions = true
 	public var enablePEX = true
@@ -205,7 +207,8 @@ public actor TCPTransfer {
 		hello = try PeerHandshake(infoHash: hash, peerID: peerID, reserved: reserved)
 		let discoveries = AsyncStream<ExchangedPeer>.makeStream(bufferingPolicy: .bufferingNewest(256)); discoveredPeers = discoveries.stream; discovery = discoveries.continuation
 		let nodes = AsyncStream<NetworkEndpoint>.makeStream(bufferingPolicy: .bufferingNewest(64)); discoveredNodes = nodes.stream; nodeDiscovery = nodes.continuation
-		uploadRate = TransferRateLimiter(rate: configuration.uploadLimit, clock: clock); downloadRate = TransferRateLimiter(rate: configuration.downloadLimit, clock: clock)
+		uploadRate = TransferRateLimiter(rate: configuration.uploadLimit, clock: clock, shared: configuration.bandwidthLimits?.upload)
+		downloadRate = TransferRateLimiter(rate: configuration.downloadLimit, clock: clock, shared: configuration.bandwidthLimits?.download)
 		let disk = TransferDiskScope(resources: resources)
 		self.disk = disk; writeBuffers = resources.writeBuffers; cache = VerifiedPieceCache(storage: storage, resources: resources, disk: disk)
 		// Single-file v1 coalescing increased counterpart CPU in paired comparisons.

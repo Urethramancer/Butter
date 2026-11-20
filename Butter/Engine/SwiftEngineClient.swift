@@ -6,11 +6,13 @@ import ButterTorrentStorage
 
 final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 	private let session: TorrentSession
+	private let bandwidth = SessionBandwidthLimits()
 	private let metadata = MetadataInspectionWorker()
 	private let creation: TorrentCreationWorker
 	private let snapshots = NativeSnapshotMapper()
 	init(storage: URL) {
 		var configuration = TCPTransferConfiguration(); configuration.allowSameIP = false
+		configuration.bandwidthLimits = bandwidth
 		session = TorrentSession(storage: storage, readPolicy: .trustedVerified, configuration: configuration)
 		creation = TorrentCreationWorker(storage: storage) { try TransferRepository.publishCreatedTorrent($0, id: $1, root: storage) }
 	}
@@ -23,6 +25,10 @@ final class SwiftEngineClient: EngineOperations, @unchecked Sendable {
 			if command == "inspect" { return try await metadata.inspect(URL(fileURLWithPath: input.text("source"))) }
 			if command == "shutdown" { await creation.waitForCompletion(); let eligible = try await session.shutdownEligibility(); return try JSONEncoder().encode(["cleanShutdownEligible": eligible]) }
 			if command == "restorePolicy" { try await session.setRestorePolicy(input.flag("cleanShutdown") ? .trustCompleted : .validateAll); return Data("{}".utf8) }
+			if command == "bandwidth" {
+				try await bandwidth.set(download: input.integer("downloadLimit"), upload: input.integer("uploadLimit"))
+				return Data("{}".utf8)
+			}
 			if command == "settings" {
 				let dht = try input.flag("dht"), lsd = try input.flag("lsd"), mapping = try input.optionalInteger("mapping") ?? 1
 				let port = try input.integer("port"); guard (0...65535).contains(port) else { throw NetworkFailure.invalid("listening port") }

@@ -57,7 +57,46 @@ struct TransferPreferences: View {
 				Stepper("Stop idle seeds after \(store.preferences.idleMinutes) minutes (0 disables)", value: $store.preferences.idleMinutes, in: 0...1440)
 				Text("Idle time counts only running seeds without upload demand. Force Start bypasses the active-transfer limits.").font(.caption).foregroundStyle(.secondary)
 			}
+			Section("Bandwidth") {
+				BandwidthField(title: "Download limit", id: "download-bandwidth", bytesPerSecond: $store.preferences.downloadLimit)
+				BandwidthField(title: "Upload limit", id: "upload-bandwidth", bytesPerSecond: $store.preferences.uploadLimit)
+				Text("Shared across all transfers. Use 0 for unlimited.").font(.caption).foregroundStyle(.secondary)
+			}
 		}.formStyle(.grouped)
+	}
+}
+private struct BandwidthField: View {
+	let title: String
+	let id: String
+	@Binding var bytesPerSecond: Int?
+	@EnvironmentObject private var store: TransferStore
+	@FocusState private var focused: Bool
+	@State private var draft = ""
+	private var formatted: String {
+		(Double(bytesPerSecond ?? 0) / 1_000_000).formatted(.number.grouping(.never).precision(.fractionLength(0...6)))
+	}
+	var body: some View {
+		LabeledContent(title) {
+			TextField(title, text: $draft).focused($focused).onSubmit(commit)
+				.labelsHidden().frame(width: 95).accessibilityLabel("\(title) in MB/s").accessibilityIdentifier(id)
+			Text("MB/s")
+		}
+		.onAppear { draft = formatted }
+		.onChange(of: bytesPerSecond) { if !focused { draft = formatted } }
+		.onChange(of: focused) { if !focused { commit() } }
+		.onDisappear { if focused { commit() } }
+	}
+	private func commit() {
+		guard draft != formatted else { return }
+		let number = draft.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")
+		guard let mb = Double(number), mb >= 0, mb <= Double(Int32.max) / 1_000_000,
+			mb == 0 || mb >= 0.000001 else {
+			draft = formatted
+			store.error = "Enter 0 for unlimited or a rate between 0.000001 and 2147.483647 MB/s."
+			return
+		}
+		bytesPerSecond = mb == 0 ? nil : Int((mb * 1_000_000).rounded())
+		draft = formatted
 	}
 }
 struct NetworkPreferences: View {

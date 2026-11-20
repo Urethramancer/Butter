@@ -212,7 +212,7 @@ extension TCPTransfer {
 	}
 	func observeReadWindow(_ id: UUID, proposed: Int) {
 		guard let peer = peers[id] else { return }
-		let canGrow = configuration.downloadLimit == 0 && !peer.remoteChoking && peer.pending.count >= 32
+		let canGrow = configuration.downloadIsUnrestricted && !peer.remoteChoking && peer.pending.count >= 32
 		peer.requestLimit = canGrow ? min(proposed, peer.extensions.queueLimit) : 32
 		if ReceivePipelineDiagnostics.enabled {
 			ReceivePipelineDiagnostics.merge(["window.samples": 1, "window.expanded": peer.requestLimit > 32 ? 1 : 0])

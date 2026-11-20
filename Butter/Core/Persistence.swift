@@ -66,6 +66,9 @@ actor StateStorage: StatePersisting {
 			}
 		}
 		let p = state.preferences
+		guard [p.downloadLimit, p.uploadLimit].allSatisfy({ (0...Int(Int32.max)).contains($0 ?? 0) }) else {
+			throw NSError(domain: "Butter.Storage", code: 3, userInfo: [NSLocalizedDescriptionKey: "Saved preferences contain an invalid bandwidth limit."])
+		}
 		guard (0...65535).contains(p.port), (1...5000).contains(p.peers), (1...1000).contains(p.torrentPeers), (0...100).contains(p.activeDownloads), (0...100).contains(p.activeSeeds), (0...1440).contains(p.idleMinutes), p.ratioLimit.isFinite, p.ratioLimit >= 0 else {
 			throw NSError(domain: "Butter.Storage", code: 3, userInfo: [NSLocalizedDescriptionKey: "Saved preferences contain an invalid network or queue limit. Repair state.json or restore a backup."])
 		}
