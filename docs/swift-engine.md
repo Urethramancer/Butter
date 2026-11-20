@@ -53,5 +53,10 @@ Session shutdown drains owned networking, storage and filesystem work. The app's
 single deadline includes polling, persistence and engine shutdown; expiry refuses
 termination while recoverable work remains owned.
 
+**Remove and Delete Data** stages only journalled payload files in private
+directories under their storage roots. macOS then moves each staged file to
+Trash through `FileManager.trashItem`, which works without direct access to the
+protected Trash directory. Retrying a removal resumes the recorded handoff.
+
 See [package APIs](../Packages/ButterTorrent/README.md),
 [validation](validation.md), [performance](performance/README.md) and [TODO](../TODO.md).

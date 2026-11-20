@@ -36,16 +36,19 @@ enum EngineContractCases {
 		defer { try? fm.removeItem(at: root) }
 		let bytes = Data([19, 23, 42]), input = destination.appendingPathComponent("ButterTrash-\(identifier).bin")
 		try bytes.write(to: input)
-		let trash = try fm.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: destination, create: true).standardizedFileURL.resolvingSymlinksInPath()
+		let neighbour = destination.appendingPathComponent("keep.bin")
+		try bytes.write(to: neighbour)
 		let engine = makeEngine(root.appendingPathComponent("library"))
 		let created = try object(await engine.perform("create", ["id": "trash", "source": input.path]))
 		_ = try await engine.perform("add", ["id": "trash", "source": created["source"] as? String ?? "", "destination": destination.path])
 		let removed = try object(await engine.perform("remove", ["id": "trash", "trash": true]))
 		guard let paths = removed["trashed"] as? [String], paths.count == 1 else { throw Failure(description: "Expected one system Trash receipt") }
 		let receipt = URL(fileURLWithPath: paths[0]).standardizedFileURL
-		try require(receipt.deletingLastPathComponent().resolvingSymlinksInPath().path == trash.path && receipt.lastPathComponent.hasSuffix(input.lastPathComponent), "Receipt was outside the system Trash or named an unexpected file")
 		defer { try? fm.removeItem(at: receipt) }
+		let trash = try fm.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: destination, create: false).standardizedFileURL.resolvingSymlinksInPath()
+		try require(receipt.deletingLastPathComponent().resolvingSymlinksInPath().path == trash.path && receipt.lastPathComponent.hasSuffix(input.lastPathComponent), "Receipt was outside the system Trash or named an unexpected file")
 		try require(try Data(contentsOf: receipt) == bytes && !fm.fileExists(atPath: input.path), "System Trash did not retain exact payload bytes")
+		try require(try fm.contentsOfDirectory(atPath: destination.path) == [neighbour.lastPathComponent] && Data(contentsOf: neighbour) == bytes, "System Trash changed unrelated files or left staging behind")
 		_ = try await engine.perform("shutdown")
 	}
 	static func runSimultaneous(makeEngine: (URL) -> any EngineOperations) async throws {

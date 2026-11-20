@@ -147,6 +147,34 @@ private enum ReadCancellation: CaseIterable, Sendable { case none, first, second
 			try await storage.shutdown()
 		}
 	}
+	#if os(macOS)
+	@Test func interruptedSystemTrashKeepsStagedBytesAndRejectsReplacements() async throws {
+		try await storageFixture { root in
+			let (metadata, bytes) = try storageMetadata(root), gate = DiskGate()
+			let destination = root.appendingPathComponent("data"), state = root.appendingPathComponent("state")
+			let storage = try await TorrentStorage.open(metadata: metadata, destination: destination, stateDirectory: state, event: {
+				if $0 == .checkpointDurable { gate.enter() }
+			})
+			try await storage.importFiles(from: root)
+			gate.arm()
+			let removal = Task { try await storage.trash() }
+			try await gate.wait(); removal.cancel(); gate.release()
+			await #expect(throws: CancellationError.self) { try await removal.value }
+			#expect(try await storage.snapshot().needsRecovery)
+			let journal = try PropertyListDecoder().decode(StorageJournal.self, from: Data(contentsOf: state.appendingPathComponent("operation.plist")))
+			#expect(journal.trashStaged == true)
+			let entry = try #require(journal.entries.first)
+			let staged = URL(fileURLWithPath: entry.destinationRoot).appendingPathComponent(entry.destination)
+			#expect(try Data(contentsOf: staged) == bytes)
+			let saved = root.appendingPathComponent("saved.bin"), replacement = Data([42])
+			try FileManager.default.moveItem(at: staged, to: saved)
+			try replacement.write(to: staged)
+			await #expect(throws: StorageFailure.self) { try await storage.trash() }
+			#expect(try Data(contentsOf: staged) == replacement)
+			#expect(try Data(contentsOf: saved) == bytes)
+		}
+	}
+	#endif
 	@Test func boundedWorkerRejectsExcessAndSettlesActiveCancellation() async throws {
 		let worker = StorageWorker(), gate = DiskGate()
 		gate.arm()

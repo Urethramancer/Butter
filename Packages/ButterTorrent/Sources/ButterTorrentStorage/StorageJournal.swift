@@ -45,8 +45,15 @@ struct StorageJournal: Codable {
 	var after: StorageCheckpoint
 	var entries: [Entry]
 	var repairs: [StorageRepairEntry]?
+	// Present for a native Trash operation. False while the guarded moves
+	// are in progress, true once only the system handoff remains.
+	var trashStaged: Bool?
+	var trashInFlight: Int?
 	func validate(layout: StorageLayout, identity: Data) throws {
 		guard (version == 1 && repairs == nil) || (version == 2 && repairs != nil && entries.isEmpty), entries.count <= layout.files.count else { throw StorageFailure.invalid("operation journal version or count") }
+		if let index = trashInFlight {
+			guard trashStaged == true, entries.indices.contains(index), entries[index].published != nil else { throw StorageFailure.invalid("system Trash handoff") }
+		}
 		try before.validate(layout: layout, identity: identity); try after.validate(layout: layout, identity: identity)
 		if let repairs {
 			guard !repairs.isEmpty, repairs.count <= layout.files.count, before.paths == after.paths, before.destination == after.destination,
@@ -74,6 +81,15 @@ struct StorageJournal: Codable {
 				entry.digest.count == 32, entry.original.size >= 0 else { throw StorageFailure.invalid("operation journal entry") }
 			for path in [entry.source, entry.destination, entry.temporary] { _ = try StorageLayout.components(path) }
 			guard URL(fileURLWithPath: entry.temporary).lastPathComponent.hasPrefix(".butter-copy-") else { throw StorageFailure.invalid("operation temporary path") }
+			if trashStaged != nil {
+				let target = URL(fileURLWithPath: entry.destinationRoot)
+				guard entry.removeSource, target.deletingLastPathComponent().path == entry.sourceRoot,
+					target.lastPathComponent.hasPrefix(".butter-trash-"),
+					UUID(uuidString: String(target.lastPathComponent.dropFirst(".butter-trash-".count))) != nil,
+					!entry.destination.contains("/") else {
+					throw StorageFailure.invalid("system Trash staging path")
+				}
+			}
 		}
 	}
 	func encoded() throws -> Data {
@@ -85,23 +101,29 @@ struct StorageJournal: Codable {
 
 extension StorageState {
 	func persist(_ journal: StorageJournal) throws { try state.atomic(journal.encoded(), path: "operation.plist") }
-	func perform(after: StorageCheckpoint, entries: [StorageJournal.Entry], check: () throws -> Void) throws {
+	func perform(after: StorageCheckpoint, entries: [StorageJournal.Entry], systemTrash: Bool = false, check: () throws -> Void) throws {
 		try ready(); try check()
 		try save()
 		try invalidateChangedFiles()
 		var after = after
 		for index in after.verified.indices { after.verified[index] &= record.verified[index] }
-		let journal = StorageJournal(before: record, after: after, entries: entries)
+		let journal = StorageJournal(before: record, after: after, entries: entries, trashStaged: systemTrash ? false : nil)
 		try journal.validate(layout: layout, identity: record.metadataHash)
 		try claim(extra: futurePaths(after) + entries.map { URL(fileURLWithPath: $0.destinationRoot).appendingPathComponent($0.destination) })
-		do { try persist(journal) } catch { try? claim(); throw error }
+		do { try persist(journal) }
+		catch {
+			// An atomic publish can fail during the directory flush after renaming.
+			do { hasJournal = try state.inspect("operation.plist") != nil } catch { hasJournal = true }
+			if !hasJournal { try? claim() }
+			throw error
+		}
 		hasJournal = true; event(.journalDurable)
 		try recover(acceptMatchingCopies: false, check: check)
 	}
 	func recover(acceptMatchingCopies: Bool, check: () throws -> Void) throws {
 		guard !closed else { throw StorageFailure.closed }
 		guard hasJournal else { return }
-		var journal = try PropertyListDecoder().decode(StorageJournal.self, from: state.read("operation.plist", maximum: 33_554_432))
+		var journal = try operationJournal()
 		try journal.validate(layout: layout, identity: record.metadataHash)
 		if journal.version == 2 { try recoverRepair(&journal, check: check); return }
 		try claim(extra: futurePaths(journal.after) + journal.entries.flatMap {
@@ -109,6 +131,11 @@ extension StorageState {
 			 URL(fileURLWithPath: $0.sourceRoot).appendingPathComponent($0.claimedSource),
 			 URL(fileURLWithPath: $0.destinationRoot).appendingPathComponent($0.destination)]
 		})
+		if journal.trashStaged == true {
+			try finishSystemTrash(&journal, check: check)
+			try finishOperation()
+			return
+		}
 		for index in journal.entries.indices {
 			try check()
 			var entry = journal.entries[index]
@@ -149,7 +176,7 @@ extension StorageState {
 		// Bulk recovery can publish externally supplied or renamed files.
 		pendingFlush.formUnion(layout.files.indices.filter { !layout.files[$0].pad })
 		// Trash must not recreate zero-length files that the operation just moved.
-		if journal.after.receipts.count == journal.before.receipts.count { try prepareEmptyFiles() }
+		if journal.trashStaged == nil && journal.after.receipts.count == journal.before.receipts.count { try prepareEmptyFiles() }
 		// Preserve the stamps bound to checked content, then invalidate any later edits.
 		for entry in journal.entries {
 			let (directory, path) = location(entry.index)
@@ -165,6 +192,18 @@ extension StorageState {
 			guard try source.identity().sameFile(entry.sourceDirectory) else { throw StorageFailure.recoveryRequired("source directory was replaced before cleanup") }
 			try removeCopiedSource(entry, from: source, check: check)
 		}
+		if journal.trashStaged == false {
+			journal.after = record
+			journal.trashStaged = true
+			try persist(journal)
+			try finishSystemTrash(&journal, check: check)
+		}
+		try finishOperation()
+	}
+	func operationJournal() throws -> StorageJournal {
+		try PropertyListDecoder().decode(StorageJournal.self, from: state.read("operation.plist", maximum: 33_554_432))
+	}
+	private func finishOperation() throws {
 		guard let operation = try state.inspect("operation.plist") else { throw StorageFailure.invalid("missing operation journal") }
 		try state.remove("operation.plist", expected: operation)
 		hasJournal = false; try claim()

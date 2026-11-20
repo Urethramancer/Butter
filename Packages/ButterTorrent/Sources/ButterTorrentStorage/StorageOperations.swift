@@ -74,25 +74,25 @@ extension TorrentStorage {
 	}
 	/// Uses the system Trash by default; fixtures may supply a disposable Trash directory.
 	public func trash(directory: URL? = nil) async throws -> [URL] {
+		guard let directory else {
+			#if os(macOS)
+			await drainCheckpointTimer()
+			return try await worker.run(bulk: true) { [state] cancellation in
+				try state.trashInSystem(check: cancellation.check)
+			}
+			#else
+			throw StorageFailure.invalid("supply a Trash directory on this platform")
+			#endif
+		}
 		try await flush()
 		return try await worker.run(bulk: true) { [state] cancellation in
 			try state.ready()
-			let url: URL
-			if let directory { url = directory }
-			else {
-				#if os(macOS)
-				url = try FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: state.payload.url, create: true)
-				#else
-				throw StorageFailure.invalid("supply a Trash directory on this platform")
-				#endif
-			}
-			let target = try StorageDirectory(url)
+			let target = try StorageDirectory(directory)
 			var entries: [StorageJournal.Entry] = [], after = state.record
 			after.verified = Data(repeating: 0, count: after.verified.count)
 			for index in after.paths.indices where !state.layout.files[index].pad {
 				let (source, path) = state.location(index)
-				let basename = URL(fileURLWithPath: after.paths[index]).lastPathComponent
-				let receipt = UUID().uuidString + "-" + String(decoding: basename.utf8.prefix(160), as: UTF8.self)
+				let receipt = state.trashName(index)
 				if let entry = try state.entry(index, source: source, path: path, target: target, destination: receipt, move: true, check: cancellation.check) {
 					entries.append(entry); after.receipts.append(target.url.appendingPathComponent(receipt).path)
 				}
@@ -105,6 +105,10 @@ extension TorrentStorage {
 }
 
 extension StorageState {
+	func trashName(_ index: Int) -> String {
+		let basename = URL(fileURLWithPath: record.paths[index]).lastPathComponent
+		return UUID().uuidString + "-" + String(decoding: basename.utf8.prefix(160), as: UTF8.self)
+	}
 	func entry(_ index: Int, source: StorageDirectory, path: String, target: StorageDirectory, destination: String, move: Bool, check: () throws -> Void) throws -> StorageJournal.Entry? {
 		try check()
 		// Check every destination before journalling or touching a source.
