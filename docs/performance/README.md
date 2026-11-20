@@ -17,6 +17,39 @@ differs. Cached compiler/header settings therefore do not establish the installe
 archive's provenance. Benchmark metadata labels them as unverified and retains
 archive fingerprints; neither archive was rebuilt or replaced for this check.
 
+## Home-fibre download limits
+
+A single hybrid download used one native TCP seeder on loopback. Each rate ran
+twice in opposite orders. CPU is process CPU during sustained transfer, with
+100% equal to one core. The sender-paced column approximates a line bottleneck.
+The Preferences column uses Butter's shared download limit with an unrestricted
+sender. MB/s and Mbps are decimal.
+
+| Target Mbps | Setting MB/s | CPU with sender pacing | CPU with Preferences cap | Delivered Mbps with cap |
+| ---: | ---: | ---: | ---: | ---: |
+| 50 | 6.25 | 5.7% | 19.7% | 50.0 |
+| 100 | 12.5 | 8.2% | 35.2% | 100.0 |
+| 250 | 31.25 | 14.8% | 54.6% | 250.0 |
+| 500 | 62.5 | 23.4% | 63.1% | 499.9 |
+| 1,000 | 125 | 44.0% | 73.5% | 999.9 |
+
+With both sides unrestricted, the Preferences build reached 2,525 Mbps at
+101.1% CPU (3.44 CPU s/GiB). At 500 Mbps its cap lowered CPU per second and
+increased CPU per GiB to 10.84 seconds. With the sender already set to 500 Mbps,
+the receiver achieved about 457 Mbps at 23.4% CPU. Adding the matching Butter
+cap yielded 456 Mbps at 35.7%. The libtorrent receiver reached 458 Mbps at
+16.2% CPU with the same sender pacing.
+
+On the original capped path, 50 Mbps took 37.8% of a core. In a separate
+3,533-sample profile, download write jobs accounted for 50.1% of running
+samples. The executing leaf was `openat` in 23.6% and `close` in 12.1%.
+Pacing already-received batches that fit within 20 ms of the configured rates
+reduced file operations per batch and brought client CPU down across all five
+tiers. The sender cost varied. At the 500 Mbps receiver cap, sender CPU rose
+from 3.98 to 7.63 s/GiB while client CPU fell from 14.76 to 10.84 s/GiB.
+All 40 timed partial downloads passed independent piece and checkpoint checks.
+[Per-run measurements and protocol](home-fibre-20261120.json).
+
 ## Seeder availability announcements
 
 Receiving `HAVE_ALL` now fills the peer bitfield directly. A release replay

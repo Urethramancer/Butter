@@ -1,0 +1,399 @@
+{
+  "fixture": "Single hybrid torrent, 128 aligned files, 4 GiB, 256 KiB pieces, one native TCP seeder on loopback.",
+  "sampling": "Two samples per setting in shuffled then reverse order. Two seconds to settle, eight measured (four for unlimited). Each reported piece was byte-checked and its checkpoint reopened. CPU sums user and system time of the client during the measurement; 100% is one core. Mbps and MB/s are decimal. Exploratory partial transfers.",
+  "limiter": "sender sets the native upload limit only; butter sets only the receiving engine limit; both sets both sides. Neither side is capped for unlimited.",
+  "original_revision": "6974e84, download limit supplied to the transfer.",
+  "original": [
+    {
+      "limiter": "both",
+      "target_mbps": 500,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 433.76,
+          "cpu_percent": 79.42,
+          "cpu_seconds_per_gib": 15.728,
+          "sender_cpu_seconds_per_gib": 17.119
+        },
+        {
+          "payload_mbps": 450.56,
+          "cpu_percent": 79.13,
+          "cpu_seconds_per_gib": 15.087,
+          "sender_cpu_seconds_per_gib": 14.711
+        }
+      ]
+    },
+    {
+      "limiter": "butter",
+      "target_mbps": 50,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 49.96,
+          "cpu_percent": 36.35,
+          "cpu_seconds_per_gib": 62.49,
+          "sender_cpu_seconds_per_gib": 12.786
+        },
+        {
+          "payload_mbps": 49.99,
+          "cpu_percent": 39.19,
+          "cpu_seconds_per_gib": 67.333,
+          "sender_cpu_seconds_per_gib": 11.023
+        }
+      ]
+    },
+    {
+      "limiter": "butter",
+      "target_mbps": 100,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 99.98,
+          "cpu_percent": 50.63,
+          "cpu_seconds_per_gib": 43.496,
+          "sender_cpu_seconds_per_gib": 11.292
+        },
+        {
+          "payload_mbps": 100.02,
+          "cpu_percent": 51.21,
+          "cpu_seconds_per_gib": 43.981,
+          "sender_cpu_seconds_per_gib": 16.442
+        }
+      ]
+    },
+    {
+      "limiter": "butter",
+      "target_mbps": 250,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 250.03,
+          "cpu_percent": 71.49,
+          "cpu_seconds_per_gib": 24.562,
+          "sender_cpu_seconds_per_gib": 16.666
+        },
+        {
+          "payload_mbps": 250.0,
+          "cpu_percent": 70.95,
+          "cpu_seconds_per_gib": 24.378,
+          "sender_cpu_seconds_per_gib": 9.146
+        }
+      ]
+    },
+    {
+      "limiter": "butter",
+      "target_mbps": 500,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 500.11,
+          "cpu_percent": 84.07,
+          "cpu_seconds_per_gib": 14.44,
+          "sender_cpu_seconds_per_gib": 3.379
+        },
+        {
+          "payload_mbps": 519.77,
+          "cpu_percent": 91.3,
+          "cpu_seconds_per_gib": 15.089,
+          "sender_cpu_seconds_per_gib": 4.58
+        }
+      ]
+    },
+    {
+      "limiter": "butter",
+      "target_mbps": 1000,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 709.94,
+          "cpu_percent": 118.05,
+          "cpu_seconds_per_gib": 14.284,
+          "sender_cpu_seconds_per_gib": 18.328
+        },
+        {
+          "payload_mbps": 801.62,
+          "cpu_percent": 118.1,
+          "cpu_seconds_per_gib": 12.655,
+          "sender_cpu_seconds_per_gib": 4.237
+        }
+      ]
+    },
+    {
+      "limiter": "sender",
+      "target_mbps": 50,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 48.6,
+          "cpu_percent": 5.74,
+          "cpu_seconds_per_gib": 10.14,
+          "sender_cpu_seconds_per_gib": 4.561
+        },
+        {
+          "payload_mbps": 48.84,
+          "cpu_percent": 5.69,
+          "cpu_seconds_per_gib": 10.008,
+          "sender_cpu_seconds_per_gib": 4.609
+        }
+      ]
+    },
+    {
+      "limiter": "sender",
+      "target_mbps": 100,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 91.64,
+          "cpu_percent": 8.21,
+          "cpu_seconds_per_gib": 7.694,
+          "sender_cpu_seconds_per_gib": 4.032
+        },
+        {
+          "payload_mbps": 91.47,
+          "cpu_percent": 8.18,
+          "cpu_seconds_per_gib": 7.684,
+          "sender_cpu_seconds_per_gib": 3.905
+        }
+      ]
+    },
+    {
+      "limiter": "sender",
+      "target_mbps": 250,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 229.05,
+          "cpu_percent": 15.07,
+          "cpu_seconds_per_gib": 5.653,
+          "sender_cpu_seconds_per_gib": 3.361
+        },
+        {
+          "payload_mbps": 228.59,
+          "cpu_percent": 14.59,
+          "cpu_seconds_per_gib": 5.484,
+          "sender_cpu_seconds_per_gib": 3.119
+        }
+      ]
+    },
+    {
+      "limiter": "sender",
+      "target_mbps": 500,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 456.92,
+          "cpu_percent": 23.56,
+          "cpu_seconds_per_gib": 4.429,
+          "sender_cpu_seconds_per_gib": 2.825
+        },
+        {
+          "payload_mbps": 456.92,
+          "cpu_percent": 23.16,
+          "cpu_seconds_per_gib": 4.354,
+          "sender_cpu_seconds_per_gib": 2.514
+        }
+      ]
+    },
+    {
+      "limiter": "sender",
+      "target_mbps": 500,
+      "downloader": "libtorrent",
+      "samples": [
+        {
+          "payload_mbps": 457.73,
+          "cpu_percent": 15.96,
+          "cpu_seconds_per_gib": 2.995,
+          "sender_cpu_seconds_per_gib": 2.296
+        },
+        {
+          "payload_mbps": 457.66,
+          "cpu_percent": 16.39,
+          "cpu_seconds_per_gib": 3.076,
+          "sender_cpu_seconds_per_gib": 2.325
+        }
+      ]
+    },
+    {
+      "limiter": "sender",
+      "target_mbps": 1000,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 975.35,
+          "cpu_percent": 46.31,
+          "cpu_seconds_per_gib": 4.078,
+          "sender_cpu_seconds_per_gib": 2.465
+        },
+        {
+          "payload_mbps": 913.95,
+          "cpu_percent": 41.68,
+          "cpu_seconds_per_gib": 3.917,
+          "sender_cpu_seconds_per_gib": 2.626
+        }
+      ]
+    },
+    {
+      "limiter": "unlimited",
+      "target_mbps": null,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 2577.73,
+          "cpu_percent": 107.14,
+          "cpu_seconds_per_gib": 3.57,
+          "sender_cpu_seconds_per_gib": 2.192
+        },
+        {
+          "payload_mbps": 2590.07,
+          "cpu_percent": 102.25,
+          "cpu_seconds_per_gib": 3.391,
+          "sender_cpu_seconds_per_gib": 2.146
+        }
+      ]
+    }
+  ],
+  "paced": "App-wide Preferences budget and paced writes on e2dafa5 plus the bounded download batch change. All rates use the same engine path as the Preferences cap.",
+  "paced_measurements": [
+    {
+      "limiter": "both",
+      "target_mbps": 500,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 456.44,
+          "cpu_percent": 35.69,
+          "cpu_seconds_per_gib": 6.716,
+          "sender_cpu_seconds_per_gib": 4.556
+        },
+        {
+          "payload_mbps": 456.34,
+          "cpu_percent": 35.74,
+          "cpu_seconds_per_gib": 6.728,
+          "sender_cpu_seconds_per_gib": 5.15
+        }
+      ]
+    },
+    {
+      "limiter": "butter",
+      "target_mbps": 50,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 50.02,
+          "cpu_percent": 20.43,
+          "cpu_seconds_per_gib": 35.09,
+          "sender_cpu_seconds_per_gib": 6.54
+        },
+        {
+          "payload_mbps": 50.04,
+          "cpu_percent": 19.05,
+          "cpu_seconds_per_gib": 32.698,
+          "sender_cpu_seconds_per_gib": 6.768
+        }
+      ]
+    },
+    {
+      "limiter": "butter",
+      "target_mbps": 100,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 99.96,
+          "cpu_percent": 33.75,
+          "cpu_seconds_per_gib": 28.999,
+          "sender_cpu_seconds_per_gib": 5.811
+        },
+        {
+          "payload_mbps": 100.08,
+          "cpu_percent": 36.58,
+          "cpu_seconds_per_gib": 31.395,
+          "sender_cpu_seconds_per_gib": 6.312
+        }
+      ]
+    },
+    {
+      "limiter": "butter",
+      "target_mbps": 250,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 250.05,
+          "cpu_percent": 56.18,
+          "cpu_seconds_per_gib": 19.3,
+          "sender_cpu_seconds_per_gib": 7.947
+        },
+        {
+          "payload_mbps": 250.02,
+          "cpu_percent": 53.01,
+          "cpu_seconds_per_gib": 18.212,
+          "sender_cpu_seconds_per_gib": 9.602
+        }
+      ]
+    },
+    {
+      "limiter": "butter",
+      "target_mbps": 500,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 499.87,
+          "cpu_percent": 61.79,
+          "cpu_seconds_per_gib": 10.618,
+          "sender_cpu_seconds_per_gib": 8.764
+        },
+        {
+          "payload_mbps": 500.02,
+          "cpu_percent": 64.39,
+          "cpu_seconds_per_gib": 11.062,
+          "sender_cpu_seconds_per_gib": 6.502
+        }
+      ]
+    },
+    {
+      "limiter": "butter",
+      "target_mbps": 1000,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 999.89,
+          "cpu_percent": 73.7,
+          "cpu_seconds_per_gib": 6.332,
+          "sender_cpu_seconds_per_gib": 3.142
+        },
+        {
+          "payload_mbps": 999.98,
+          "cpu_percent": 73.3,
+          "cpu_seconds_per_gib": 6.297,
+          "sender_cpu_seconds_per_gib": 3.414
+        }
+      ]
+    },
+    {
+      "limiter": "unlimited",
+      "target_mbps": null,
+      "downloader": "Swift",
+      "samples": [
+        {
+          "payload_mbps": 2559.64,
+          "cpu_percent": 101.75,
+          "cpu_seconds_per_gib": 3.415,
+          "sender_cpu_seconds_per_gib": 2.077
+        },
+        {
+          "payload_mbps": 2490.29,
+          "cpu_percent": 100.39,
+          "cpu_seconds_per_gib": 3.463,
+          "sender_cpu_seconds_per_gib": 2.122
+        }
+      ]
+    }
+  ],
+  "original_50_mbps_profile": {
+    "running_samples": 3533,
+    "download_write_job_percent": 50.07,
+    "openat_leaf_percent": 23.58,
+    "close_leaf_percent": 12.14,
+    "scheduling_and_event_delivery_leaf_percent": 4.59,
+    "scope": "Separate instrumented run from transfer start through checkpoint and shutdown; excluded from timing comparisons."
+  }
+}

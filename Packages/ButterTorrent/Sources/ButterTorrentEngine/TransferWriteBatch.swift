@@ -46,9 +46,9 @@ extension TCPTransfer {
 			let item = blocks[0]; try await received(id, message: .piece(item.piece, item.offset, item.bytes), profile: profile); return
 		}
 		let rateStarted = profile?.tick()
-		let unrestricted = await downloadRate.consumeUnrestrictedBatch()
+		let admission = await downloadRate.downloadAdmission(bytes: size)
 		profile?.end(.rateAdmission, since: rateStarted)
-		if !unrestricted {
+		if admission == .individual {
 			for item in blocks { try await received(id, message: .piece(item.piece, item.offset, item.bytes), profile: profile) }; return
 		}
 		var payload: Int64 = 0
@@ -59,6 +59,10 @@ extension TCPTransfer {
 			}
 		} catch { recordUnusablePayload(payload); throw error }
 		do {
+			if admission == .paced {
+				let started = profile?.tick(); defer { profile?.end(.rateAdmission, since: started) }
+				try await downloadRate.consume(size)
+			}
 			let started = profile?.tick(); defer { profile?.end(.diskAdmission, since: started) }
 			try Task.checkCancellation(); try await disk.acquire()
 		}

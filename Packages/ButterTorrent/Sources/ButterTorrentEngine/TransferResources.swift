@@ -57,19 +57,28 @@ actor TransferRateLimiter {
 	private var updated: TimeInterval
 	private let clock: any TransportClock
 	private let shared: TransferRateLimiter?
-	private let enabled: OSAllocatedUnfairLock<Bool>
-	nonisolated var isLimited: Bool { enabled.withLock { $0 } }
+	private let configuredRate: OSAllocatedUnfairLock<Int>
+	nonisolated var isLimited: Bool { configuredRate.withLock { $0 > 0 } }
 	init(rate: Int, clock: any TransportClock, shared: TransferRateLimiter? = nil) {
 		self.rate = rate; tokens = Double(rate); self.clock = clock; updated = clock.now()
-		self.shared = shared; enabled = OSAllocatedUnfairLock(initialState: rate > 0)
+		self.shared = shared; configuredRate = OSAllocatedUnfairLock(initialState: rate)
 	}
 	func set(_ rate: Int) {
 		guard self.rate != rate else { return }
 		self.rate = rate; tokens = min(tokens, Double(rate)); updated = clock.now()
-		enabled.withLock { $0 = rate > 0 }
+		configuredRate.withLock { $0 = rate }
 	}
 	// Grant only currently unrestricted work; later limit changes apply to the next batch.
 	func consumeUnrestrictedBatch() -> Bool { rate == 0 && shared?.isLimited != true }
+	enum DownloadAdmission { case unrestricted, paced, individual }
+	func downloadAdmission(bytes: Int) -> DownloadAdmission {
+		let aggregate = shared?.configuredRate.withLock { $0 } ?? 0
+		if rate == 0 && aggregate == 0 { return .unrestricted }
+		// Keep a batch only when it fits within 20 ms of each configured rate.
+		// Slower links retain block-sized progress and cancellation boundaries.
+		if (rate == 0 || bytes <= rate / 50) && (aggregate == 0 || bytes <= aggregate / 50) { return .paced }
+		return .individual
+	}
 	func consume(_ bytes: Int, isCancelled: @Sendable () -> Bool = { false }) async throws {
 		var remaining = Double(bytes)
 		while remaining > 0 {

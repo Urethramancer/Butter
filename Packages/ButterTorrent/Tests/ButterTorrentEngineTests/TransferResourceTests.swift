@@ -236,6 +236,18 @@ final class EngineClock: TransportClock, @unchecked Sendable {
 		await second.set(20)
 		#expect(await second.consumeUnrestrictedBatch() == false)
 	}
+	@Test func pacedDownloadsBoundBatchesByBothRates() async throws {
+		let clock = EngineClock(), limits = SessionBandwidthLimits(clock: clock)
+		let lane = TransferRateLimiter(rate: 0, clock: clock, shared: limits.download)
+		#expect(await lane.downloadAdmission(bytes: 65_536) == .unrestricted)
+		try await limits.set(download: 6_250_000, upload: 0)
+		#expect(await lane.downloadAdmission(bytes: 65_536) == .paced)
+		await lane.set(1_638_400)
+		#expect(await lane.downloadAdmission(bytes: 32_768) == .paced)
+		#expect(await lane.downloadAdmission(bytes: 49_152) == .individual)
+		try await limits.set(download: 125_000, upload: 0)
+		#expect(await lane.downloadAdmission(bytes: 32_768) == .individual)
+	}
 	@Test func permitsCancelQueuedWorkAndCloseAllWaiters() async throws {
 		let permits = TransferPermits(1); try await permits.acquire()
 		let cancelled = Task { try await permits.acquire() }
