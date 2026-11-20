@@ -17,6 +17,22 @@ differs. Cached compiler/header settings therefore do not establish the installe
 archive's provenance. Benchmark metadata labels them as unverified and retains
 archive fingerprints; neither archive was rebuilt or replaced for this check.
 
+## Seeder availability announcements
+
+Receiving `HAVE_ALL` now fills the peer bitfield directly. A release replay
+timed bitfield construction and the picker's availability update for a peer
+initially advertising zero pieces. Median process CPU per announcement fell
+from 0.143 to 0.031 ms at 4,096 pieces and from 14.59 to 3.07 ms at the
+400,000-piece limit. Four runs per build used ABBA then BAAB order, with one
+warm-up per size and 200 or three measured announcements per run respectively.
+These measurements cover peer setup. Whole-download CPU and throughput were
+outside the replay.
+
+A separate release replay measured the padding check on 65,536 consecutive
+16 KiB blocks with no padding. Median CPU across five passes was 3.38 ms/GiB
+for one file and 4.15 ms/GiB for 128 files. This small cost leaves little to
+gain from a padding-free fast path on these layouts.
+
 ## Request cadence and peer ownership
 
 Splitting the same 1 GiB v1 payload across one, two and four torrents increased

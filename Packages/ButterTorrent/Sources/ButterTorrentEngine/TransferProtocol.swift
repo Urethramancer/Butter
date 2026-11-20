@@ -70,7 +70,7 @@ extension TCPTransfer {
 		case .keepAlive: break
 		case .bitfield(let bytes): picker.update(id, bits: try PieceBitfield(count: picker.layout.pieceCount, bytes: bytes)); fill(id)
 		case .have(let piece): try picker.have(id, piece: piece); fill(id)
-		case .haveAll: picker.update(id, bits: try PieceBitfield(count: picker.layout.pieceCount, pieces: Set(0..<picker.layout.pieceCount))); fill(id)
+		case .haveAll: picker.update(id, bits: try PieceBitfield(count: picker.layout.pieceCount, all: true)); fill(id)
 		case .haveNone: picker.update(id, bits: try PieceBitfield(count: picker.layout.pieceCount)); fill(id)
 		case .allowedFast(let piece), .suggest(let piece):
 			guard (0..<picker.layout.pieceCount).contains(piece) else { throw PeerFailure.invalid("Fast piece index") }

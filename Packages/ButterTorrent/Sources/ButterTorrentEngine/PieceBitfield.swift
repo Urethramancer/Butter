@@ -3,9 +3,14 @@ import Foundation
 struct PieceBitfield: Sendable {
 	private(set) var bytes: Data
 	let count: Int
-	init(count: Int, pieces: Set<Int> = []) throws {
-		guard (0...400_000).contains(count), pieces.allSatisfy({ (0..<count).contains($0) }) else { throw PeerFailure.invalid("piece bitfield") }
-		self.count = count; bytes = Data(repeating: 0, count: (count + 7) / 8)
+	init(count: Int, all: Bool = false) throws {
+		guard (0...400_000).contains(count) else { throw PeerFailure.invalid("piece bitfield") }
+		self.count = count; bytes = Data(repeating: all ? 0xff : 0, count: (count + 7) / 8)
+		if all, count % 8 != 0 { bytes[count / 8] = 0xff << (8 - count % 8) }
+	}
+	init(count: Int, pieces: Set<Int>) throws {
+		try self.init(count: count)
+		guard pieces.allSatisfy({ (0..<count).contains($0) }) else { throw PeerFailure.invalid("piece bitfield") }
 		for piece in pieces { insert(piece) }
 	}
 	init(count: Int, bytes: Data) throws {

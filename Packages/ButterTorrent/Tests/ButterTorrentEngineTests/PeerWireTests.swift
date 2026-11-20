@@ -143,6 +143,12 @@ import ButterTorrentStorage
 		var parser = PeerWireDecoder(); try parser.feed(Data([19]))
 		#expect(throws: PeerFailure.self) { try parser.finish() }
 	}
+	@Test(arguments: Array(0...17) + [399_999, 400_000])
+	func haveAllSetsOnlyValidPieceBits(_ count: Int) throws {
+		let field = try PieceBitfield(count: count, all: true)
+		let decoded = try PieceBitfield(count: count, bytes: field.bytes)
+		#expect(decoded.pieces == Array(0..<count))
+	}
 }
 
 func pickerLayout(pieces: Int = 3, pieceLength: Int64 = 32768) throws -> StorageLayout {
