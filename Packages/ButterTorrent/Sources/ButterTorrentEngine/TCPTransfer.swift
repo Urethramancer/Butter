@@ -9,7 +9,9 @@ public struct TCPTransferConfiguration: Sendable {
 	public var maximumPeers = 50
 	public var allowSameIP = true
 	public var addressFilter = PeerAddressFilter()
-	public var pipeline = 32
+	/// Assigning a window pins the per-peer limit, including an explicit 32.
+	public var pipeline = 32 { didSet { automaticPipeline = false } }
+	private(set) var automaticPipeline = true
 	public var uploadSlots = 4
 	public var requestTimeout: TimeInterval = 30
 	public var idleTimeout: TimeInterval = 180
@@ -65,6 +67,7 @@ public struct TCPTransferSnapshot: Sendable {
 
 final class TransferPeer {
 	let session: PeerSession
+	var requestLimit: Int
 	var task: Task<Void, Never>?
 	var peerID: Data?
 	var closing = false
@@ -125,7 +128,9 @@ final class TransferPeer {
 	var hashRequests: [MerkleHashRequest: TimeInterval] = [:]
 	var hashRequestSize = 512
 	let connectedAt: TimeInterval
-	init(session: PeerSession, now: TimeInterval) { self.session = session; lastSent = now; window = now; connectedAt = now }
+	init(session: PeerSession, requestLimit: Int, now: TimeInterval) {
+		self.session = session; self.requestLimit = requestLimit; lastSent = now; window = now; connectedAt = now
+	}
 }
 
 /// TCPTransfer runs v1, v2 and hybrid plaintext swarms against the native storage layer.
@@ -287,7 +292,9 @@ public actor TCPTransfer {
 		}
 		if let address = stream.remoteEndpoint?.address, !configuration.addressFilter.allows(address) { stream.close(); throw PeerFailure.invalid("blocked peer") }
 		guard !stopping, storageError == nil, peers.count < configuration.maximumPeers else { stream.close(); throw PeerFailure.limit("active peers") }
-		let id = UUID(), session = PeerSession(stream: stream, transport: transport), peer = TransferPeer(session: session, now: clock.now())
+		let id = UUID(), session = PeerSession(stream: stream, transport: transport)
+		let peer = TransferPeer(session: session, requestLimit: configuration.pipeline, now: clock.now())
+		let measureWait = configuration.automaticPipeline && storage.layout.pieceLength == 1_048_576 && stream.kind == .tcp
 		peers[id] = peer
 		peer.outgoing = outgoing
 		peer.alternateHash = alternateHash; peer.retryTransport = utp
@@ -296,7 +303,7 @@ public actor TCPTransfer {
 		peer.task = Task { [weak self] in
 			guard let self else { session.close(); return }
 			var failure: Error?
-			do { try await session.run(id: id, hello: hello, outgoing: outgoing, engine: self, upload: rate, download: download, idleTimeout: timeout, hashes: hashes, encryption: encryption, clock: clock) } catch { failure = error }
+			do { try await session.run(id: id, hello: hello, outgoing: outgoing, engine: self, upload: rate, download: download, idleTimeout: timeout, hashes: hashes, encryption: encryption, clock: clock, measureWait: measureWait) } catch { failure = error }
 			try? await stream.shutdown()
 			await self.ended(id, error: failure)
 		}
@@ -371,6 +378,7 @@ public actor TCPTransfer {
 	public func setLimits(download: Int, upload: Int) async throws {
 		guard !stopping, (0...Int(Int32.max)).contains(download), (0...Int(Int32.max)).contains(upload) else { throw PeerFailure.invalid("rate limits or closed transfer") }
 		configuration.downloadLimit = download; configuration.uploadLimit = upload
+		if download > 0 { for peer in peers.values { peer.requestLimit = configuration.pipeline } }
 		await downloadRate.set(download); await uploadRate.set(upload)
 	}
 	/// Persists counters and verified progress after draining the completion checkpoint.

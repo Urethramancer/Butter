@@ -254,7 +254,7 @@ import ButterTorrentNetworking
 		#expect(handshake.queueLimit == 32)
 		for remote in [1, 31, 32, 48, 64, 2000, 65536] {
 			try handshake.apply(extensionDictionary(["reqq": .integer(Int64(remote))]).encoded())
-			#expect(handshake.queueLimit == min(32, remote))
+			#expect(handshake.queueLimit == min(48, remote))
 		}
 		for remote in [0, 65537] {
 			#expect(throws: (any Error).self) { try handshake.apply(extensionDictionary(["reqq": .integer(Int64(remote))]).encoded()) }
@@ -265,6 +265,22 @@ import ButterTorrentNetworking
 	}
 	@Test(arguments: zip([16384, 32768, 65536, 262144, 1048576], [8, 16, 32, 32, 32])) func requestWindowRespectsAvailablePieces(_ pieceLength: Int, _ expected: Int) async throws {
 		try await checkRequestWindow(remoteLimit: 64, configured: 32, pieceLength: pieceLength, expectedRequests: expected)
+	}
+	@Test func readWindowDistinguishesWaitsFromLocalWorkAndSlowDelivery() {
+		var window = PeerReadWindow()
+		// Exactly representable interval boundaries keep the assertions independent of rounding.
+		func quarter(_ base: Double, wait: Double, payload: Int) -> Int? {
+			var result: Int?
+			for i in 1...16 {
+				let end = base + Double(i) / 64
+				result = window.record(start: i == 1 && base == 0 ? 0 : end - wait, end: end, payload: payload)
+			}
+			return result
+		}
+		#expect(quarter(0, wait: 0.0001, payload: 262_144) == 32)
+		#expect(quarter(0.25, wait: 0.010, payload: 262_144) == 48)
+		#expect(quarter(0.5, wait: 0.010, payload: 65_536) == 32)
+		#expect(window.record(start: 0.75, end: 1.75, payload: 262_144) == 32)
 	}
 	private func checkRequestWindow(remoteLimit: Int, configured: Int, pieceLength: Int, expectedRequests: Int? = nil) async throws {
 		let fixture = try TransferFixture(lengths: [2097152, 0, 0, 0], pieceLength: pieceLength)

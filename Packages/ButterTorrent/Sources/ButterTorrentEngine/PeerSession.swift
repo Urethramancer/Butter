@@ -238,8 +238,9 @@ final class PeerSession: @unchecked Sendable {
 			}
 		}
 	}
-	private func readInput(_ channel: PeerStream, id: UUID, engine: TCPTransfer, download: TransferRateLimiter, idleTimeout: TimeInterval) async throws {
+	private func readInput(_ channel: PeerStream, id: UUID, engine: TCPTransfer, download: TransferRateLimiter, idleTimeout: TimeInterval, clock: any TransportClock, measureWait: Bool) async throws {
 		var decoder = PeerWireDecoder(), ready = false, frames = 0
+		var window = PeerReadWindow()
 		while true {
 			let cycleStarted = ReceivePipelineDiagnostics.tick()
 			let admissionStarted = ReceivePipelineDiagnostics.tick()
@@ -247,6 +248,7 @@ final class PeerSession: @unchecked Sendable {
 			if stream.kind == .tcp, await download.consumeUnrestrictedBatch() { maximum = 262144 }
 			let admissionEnded = ReceivePipelineDiagnostics.tick()
 			let readStarted = ReceivePipelineDiagnostics.tick()
+			let waitStart = measureWait && ready ? clock.now() : nil
 			let bytes: Data
 			do { bytes = try await channel.read(maximumBytes: maximum, timeout: ready ? idleTimeout : 10) }
 			catch {
@@ -254,6 +256,7 @@ final class PeerSession: @unchecked Sendable {
 				failed?.finish(error is CancellationError ? "cancelled" : "failed"); throw error
 			}
 			let readEnded = ReceivePipelineDiagnostics.tick()
+			let waitEnd = waitStart == nil ? nil : clock.now()
 			if bytes.isEmpty {
 				let terminal = ReceivePipelineDiagnostics.sample(.terminalRead, started: readStarted)
 				var outcome = "failed"
@@ -267,6 +270,7 @@ final class PeerSession: @unchecked Sendable {
 			var cycleOutcome = "failed"
 			defer { cycle?.finish(cycleOutcome) }
 			var firstBlock: IncomingPieceBlock?, blocks: [IncomingPieceBlock] = [], blockBytes = 0
+			var readPayload = 0
 			func flushBlocks(_ reason: ReceivePipelineSample.Flush) async throws {
 				guard let first = firstBlock else { return }
 				let batch = blocks, payloadBytes = blockBytes; blocks = []; firstBlock = nil; blockBytes = 0
@@ -304,6 +308,7 @@ final class PeerSession: @unchecked Sendable {
 								if blocks.isEmpty { blocks = [first, block] } else { blocks.append(block) }
 							} else { firstBlock = block }
 							blockBytes += bytes.count
+							readPayload += bytes.count
 						} else {
 							try await flushBlocks(.control)
 							let started = cycle?.tick(); defer { cycle?.end(.controlDispatch, since: started) }
@@ -325,10 +330,13 @@ final class PeerSession: @unchecked Sendable {
 			// Flush a short batch before the next network wait; never wait to fill it.
 			do { try await flushBlocks(.readEnd); cycleOutcome = "succeeded" }
 			catch { cycleOutcome = error is CancellationError ? "cancelled" : "failed"; throw error }
+			if let waitStart, let waitEnd, let limit = window.record(start: waitStart, end: waitEnd, payload: readPayload) {
+				await engine.observeReadWindow(id, proposed: limit)
+			}
 		}
 	}
 	func run(id: UUID, hello: PeerHandshake, outgoing: Bool, engine: TCPTransfer, upload: TransferRateLimiter, download: TransferRateLimiter, idleTimeout: TimeInterval,
-		hashes: [Data], encryption: PeerEncryptionConfiguration, clock: any TransportClock) async throws {
+		hashes: [Data], encryption: PeerEncryptionConfiguration, clock: any TransportClock, measureWait: Bool = false) async throws {
 		defer { close() }
 		let channel: PeerStream
 		if let transport { channel = transport } else { channel = try await PeerStream.accept(stream, hashes: hashes, configuration: encryption, clock: clock) }
@@ -336,7 +344,7 @@ final class PeerSession: @unchecked Sendable {
 		if outgoing { try handshake(hello) }
 		try await withThrowingTaskGroup(of: Void.self) { group in
 			group.addTask { try await self.writeOutput(channel, id: id, engine: engine, upload: upload) }
-			group.addTask { try await self.readInput(channel, id: id, engine: engine, download: download, idleTimeout: idleTimeout) }
+			group.addTask { try await self.readInput(channel, id: id, engine: engine, download: download, idleTimeout: idleTimeout, clock: clock, measureWait: measureWait) }
 			do { _ = try await group.next(); group.cancelAll(); close(); try await group.waitForAll() }
 			catch { group.cancelAll(); close(); throw error }
 		}

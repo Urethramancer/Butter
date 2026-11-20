@@ -210,10 +210,19 @@ extension TCPTransfer {
 	func discardUnretainedPayload() {
 		for piece in activePayloadBytes.keys where picker.active[piece] == nil { recordUnusablePayload(activePayloadBytes.removeValue(forKey: piece) ?? 0) }
 	}
+	func observeReadWindow(_ id: UUID, proposed: Int) {
+		guard let peer = peers[id] else { return }
+		let canGrow = configuration.downloadLimit == 0 && !peer.remoteChoking && peer.pending.count >= 32
+		peer.requestLimit = canGrow ? min(proposed, peer.extensions.queueLimit) : 32
+		if ReceivePipelineDiagnostics.enabled {
+			ReceivePipelineDiagnostics.merge(["window.samples": 1, "window.expanded": peer.requestLimit > 32 ? 1 : 0])
+		}
+	}
 	func fill(_ id: UUID) {
 		guard !stopping, storageError == nil, let peer = peers[id], peer.peerID != nil, !peer.closing else { return }
+		let limit = min(peer.requestLimit, peer.extensions.queueLimit)
 		#if BUTTER_REQUEST_CADENCE
-		ReceivePipelineDiagnostics.merge(["cadence.fillCalls": 1, "cadence.fullCalls": peer.pending.count >= min(configuration.pipeline, peer.extensions.queueLimit) ? 1 : 0])
+		ReceivePipelineDiagnostics.merge(["cadence.fillCalls": 1, "cadence.fullCalls": peer.pending.count >= limit ? 1 : 0])
 		#endif
 		do {
 			let interested = picker.interested(id)
@@ -222,11 +231,16 @@ extension TCPTransfer {
 			try requestHashes(id)
 			guard !peer.remoteChoking || !peer.allowedOutgoing.isEmpty else { return }
 			let eligible = legacyHybrid && !peer.features.v2 ? nil : hashReady
-			var requests = picker.allocate(id, limit: min(configuration.pipeline, peer.extensions.queueLimit) - peer.pending.count, now: clock.now(), eligible: eligible, allowed: peer.remoteChoking ? peer.allowedOutgoing : nil, suggestions: peer.suggestions, excluding: Set(localRecoveries.keys))
+			var requests = picker.allocate(id, limit: limit - peer.pending.count, now: clock.now(), eligible: eligible, allowed: peer.remoteChoking ? peer.allowedOutgoing : nil, suggestions: peer.suggestions, excluding: Set(localRecoveries.keys))
 			requests.removeAll { deferForLocalRecovery(id, block: $0) }
 			if !requests.isEmpty {
 				for block in requests { peer.pending.insert(block) }
-				try peer.session.sendRequests(requests); peer.lastSent = clock.now()
+				if requests.count <= 32 { try peer.session.sendRequests(requests) }
+				else {
+					try peer.session.sendRequests(Array(requests.prefix(32)))
+					try peer.session.sendRequests(Array(requests.dropFirst(32)))
+				}
+				peer.lastSent = clock.now()
 			}
 		} catch { drop(id, error: error) }
 	}

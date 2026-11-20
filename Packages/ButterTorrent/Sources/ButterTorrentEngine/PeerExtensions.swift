@@ -27,7 +27,7 @@ struct ExtensionHandshake {
 			guard let count = size.integer, (0...33_554_432).contains(count) else { throw PeerFailure.limit("metadata size") }; metadataSize = count == 0 ? nil : Int(count)
 		}
 		if let port = root["p"]?.integer { guard (0...65535).contains(port) else { throw PeerFailure.invalid("extension port") }; self.port = port == 0 ? nil : UInt16(port) }
-		if let queue = root["reqq"]?.integer { guard (1...65536).contains(queue) else { throw PeerFailure.invalid("request queue") }; queueLimit = min(32, Int(queue)) }
+		if let queue = root["reqq"]?.integer { guard (1...65536).contains(queue) else { throw PeerFailure.invalid("request queue") }; queueLimit = min(48, Int(queue)) }
 	}
 }
 
