@@ -523,5 +523,5 @@
     }
   },
   "verified_downloads": 205,
-  "decision": "Archive 062f711 at refs/archive/experiment/read-wait-request-window. The latency signal distinguished the tested links and substantially reduced client and combined CPU on the delayed target. The independent concurrent-v1 combined CPU upper ratio of 1.036509 exceeded 1.03; ordinary workloads do not establish broad CPU savings."
+  "decision": "Integrated 062f711 on main as 07802e3 for the delayed-link CPU saving. The independent concurrent-v1 combined CPU upper ratio of 1.036509 exceeded the 1.03 limit. Integration accepts that uncertainty. Ordinary workloads do not establish broad CPU savings."
 }

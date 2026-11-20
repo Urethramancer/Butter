@@ -46,11 +46,12 @@ and the implementation is archived. [Decoder comparison and host load](peer-expe
 
 ## Per-peer request windows under latency
 
-Candidate `062f711` measures socket read waits on automatically configured TCP
+Main includes the read-wait window in `07802e3` (tested as `062f711`).
+It measures socket read waits on automatically configured TCP
 connections with 1 MiB pieces. During a sample of at least 250 ms, it requires
 at least three reads that wait for 3 ms or longer. Those waits must account
 for at least a quarter of the interval before a full queue can grow. The
-proposed window covers 50 ms of delivered payload, bounded to 32–48 requests.
+window targets 50 ms of delivered payload, bounded to 32–48 requests.
 Time spent writing and verifying contributes only to the elapsed denominator.
 
 On a 1 GiB hybrid download, both peers peaked at 32 on unshaped loopback and
@@ -74,8 +75,8 @@ by +0.60% (−0.49% to +3.65%), leaving its upper bound above the 3% limit.
 Both passed throughput and matched memory checks. The delayed-link combined
 CPU saving was 25.5% (20.5–27.4%). Concurrent v1 used 256 KiB pieces and
 kept a 32-request ceiling in both builds. The resource comparison therefore
-leaves the source of the concurrent difference unresolved. The implementation
-is available locally at `refs/archive/experiment/read-wait-request-window`.
+leaves the source of the concurrent difference unresolved. The integration
+accepts this uncertainty for the measured CPU saving on delayed links.
 [Confirmation and CPU bounds](read-wait-window-20261120.json).
 
 Two independent libtorrent seeders supplied one 1 GiB many-file hybrid torrent
