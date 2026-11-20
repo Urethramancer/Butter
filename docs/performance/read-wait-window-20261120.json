@@ -402,5 +402,126 @@
       "combined_pass": true,
       "matched_memory_pass": true
     }
-  }
+  },
+  "confirmation": {
+    "protocol": "Independent fixed confirmation on the two uncertain ordinary guards. Each workload had one warm-up per source then 16 symmetric four-transfer blocks. Eight ABBA and eight BAAB orders per workload, seeded 20261171 and 20261172. Workloads interleaved with alternating priority. Each block contributes one candidate-to-shipping ratio of arithmetic means. Fixed bootstrap and gates as above. No samples pooled with the first experiment.",
+    "results": {
+      "large-hybrid": {
+        "verified": 66,
+        "blocks": 16,
+        "medians": {
+          "shipping": {
+            "client": 3.52232,
+            "senders": 2.35678,
+            "combined": 5.89977,
+            "verified_mib_s": 311.27902,
+            "client_peak_mib": 16.50781,
+            "senders_peak_mib": 29.91797
+          },
+          "candidate": {
+            "client": 3.53687,
+            "senders": 2.29211,
+            "combined": 5.82495,
+            "verified_mib_s": 312.19075,
+            "client_peak_mib": 16.36719,
+            "senders_peak_mib": 29.82031
+          }
+        },
+        "ratio": {
+          "client": [
+            0.998223,
+            0.991708,
+            1.00545
+          ],
+          "senders": [
+            0.980101,
+            0.933728,
+            1.008877
+          ],
+          "combined": [
+            0.990897,
+            0.96749,
+            1.003625
+          ],
+          "verified_mib_s": [
+            1.002395,
+            0.992653,
+            1.013198
+          ],
+          "client_peak_mib": [
+            0.983715,
+            0.97351,
+            1.008146
+          ],
+          "senders_peak_mib": [
+            0.997647,
+            0.992943,
+            1.005986
+          ]
+        },
+        "combined_pass": true,
+        "throughput_pass": true,
+        "matched_memory_pass": true
+      },
+      "concurrent-v1": {
+        "verified": 66,
+        "blocks": 16,
+        "medians": {
+          "shipping": {
+            "client": 5.89428,
+            "senders": 2.25767,
+            "combined": 8.18314,
+            "verified_mib_s": 712.36676,
+            "client_peak_mib": 23.19141,
+            "senders_peak_mib": 18.22266
+          },
+          "candidate": {
+            "client": 5.96209,
+            "senders": 2.33705,
+            "combined": 8.29051,
+            "verified_mib_s": 705.7693,
+            "client_peak_mib": 23.39063,
+            "senders_peak_mib": 18.28906
+          }
+        },
+        "ratio": {
+          "client": [
+            1.011427,
+            0.997213,
+            1.017702
+          ],
+          "senders": [
+            1.017251,
+            0.971977,
+            1.036337
+          ],
+          "combined": [
+            1.006002,
+            0.9951,
+            1.036509
+          ],
+          "verified_mib_s": [
+            0.991549,
+            0.976411,
+            1.017986
+          ],
+          "client_peak_mib": [
+            1.004415,
+            0.997617,
+            1.013242
+          ],
+          "senders_peak_mib": [
+            1.003008,
+            0.998285,
+            1.009434
+          ]
+        },
+        "combined_pass": false,
+        "throughput_pass": true,
+        "matched_memory_pass": true
+      }
+    }
+  },
+  "verified_downloads": 205,
+  "decision": "Archive 062f711 at refs/archive/experiment/read-wait-request-window. The latency signal distinguished the tested links and substantially reduced client and combined CPU on the delayed target. The independent concurrent-v1 combined CPU upper ratio of 1.036509 exceeded 1.03; ordinary workloads do not establish broad CPU savings."
 }

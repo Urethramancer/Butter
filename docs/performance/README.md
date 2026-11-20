@@ -68,6 +68,16 @@ positions in ABBA or BAAB order, with equal counts of each order per workload.
 The unit of analysis is the ratio of the two build means within a block.
 The confirmation uses its own paired intervals and the same acceptance limits.
 
+All 132 confirmation downloads verified. Combined CPU/GiB on 1 MiB hybrid
+changed by −0.91% (95% interval −3.25% to +0.36%). Concurrent v1 changed
+by +0.60% (−0.49% to +3.65%), leaving its upper bound above the 3% limit.
+Both passed throughput and matched memory checks. The delayed-link combined
+CPU saving was 25.5% (20.5–27.4%). Concurrent v1 used 256 KiB pieces and
+kept a 32-request ceiling in both builds. The resource comparison therefore
+leaves the source of the concurrent difference unresolved. The implementation
+is available locally at `refs/archive/experiment/read-wait-request-window`.
+[Confirmation and CPU bounds](read-wait-window-20261120.json).
+
 Two independent libtorrent seeders supplied one 1 GiB many-file hybrid torrent
 with 1 MiB pieces. A loopback relay added 10 ms in each direction per peer.
 In six balanced pairs, raising the fixed window from 32 to 48 increased verified

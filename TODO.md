@@ -8,9 +8,10 @@
   [latest matrix](docs/performance/README.md), which ran under competing host load.
   Targets remain ≥90% throughput, ≤1.25× CPU/GiB and peak RSS within 10% of the
   original Butter baseline.
-- Identify a per-peer signal that distinguishes a latency-limited download
-  before increasing its request window. The [window comparisons](docs/performance/peer-experiments-20261120.json)
-  show a gain with delayed peers and mixed ordinary-download results.
+- Resolve the concurrent-v1 CPU uncertainty before promoting read-wait-based
+  windows. Delayed peers save 25.5% combined CPU/GiB. On 256 KiB concurrent
+  v1 the window stays at 32, but the confirmed combined CPU upper bound is
+  +3.65%. [Matched comparisons](docs/performance/read-wait-window-20261120.json).
 - Investigate guarded path opens/closes and peer transport overhead while
   preserving fresh filesystem observations and production resource limits.
 - Resolve the single-file sender CPU increase before promoting bounded v1 write
