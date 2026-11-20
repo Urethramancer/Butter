@@ -3,7 +3,7 @@
   "fixture": "Same 1 GiB byte stream in torrent order, 256 KiB pieces, window 32. One native sender process and one TCP peer per torrent.",
   "payload_sha256": "8574e38710a21a2855ee526a6bc13ecfb1aea43b29ce8ff3657275d8461ed63b",
   "protocol": "One warm-up per shape, six counter-free rounds using each order once, then three rotated counts runs per shape. CPU through durable completion. SHA-256 destination checks and checkpoint reopening for both endpoints.",
-  "diagnostics": "Successful request-bearing channel writes measured at the frame batch boundary for verified transfers. Empty time measures peer-local pending-set gaps between successive reservations, excluding initial and terminal idle. Aggregate across peers before calculating each fraction. Rates and metrics are medians of separate runs.",
+  "diagnostics": "Request-bearing batches submitted to the channel for verified transfers. Empty time measures peer-local pending-set gaps between successive reservations, excluding initial and terminal idle. Aggregate across peers before calculating each fraction. Rates and metrics are medians of separate runs.",
   "verified_trials": 30,
   "workloads": {
     "split-1": {
@@ -50,6 +50,60 @@
       "fill_calls": 20912.0,
       "full_window_fills_pct": 49.98087,
       "empty_peer_time_pct": 0.0
+    }
+  },
+  "ownership_profile": {
+    "protocol": "One separate Time Profiler download per shape, same release driver and fixture, native sender uninstrumented, all three byte-verified and reopened. Each target-process running sample counted once by executing leaf. Reference counting includes recognisable Swift and Objective-C retain/release, bridge/unknown-object variants and RefCounts increment/decrement. Destruction includes symbols containing dealloc. These sampled weights omit inlined work and do not measure a removable CPU cost.",
+    "workloads": {
+      "split-1": {
+        "running_samples": 3088,
+        "unavailable_backtraces": 0,
+        "reference_counting_pct": 2.753,
+        "destruction_pct": 0.518,
+        "ownership_weight_ms": 101.0,
+        "ownership_pct": 3.271,
+        "pct_of_all_samples_by_ownership_caller": {
+          "peer wire and transport": 1.781,
+          "download write jobs": 0.518,
+          "other runtime or unresolved purpose": 0.486,
+          "piece and request selection": 0.291,
+          "stored-byte authentication": 0.162,
+          "connection deadlines": 0.032
+        }
+      },
+      "split-2": {
+        "running_samples": 3931,
+        "unavailable_backtraces": 1,
+        "reference_counting_pct": 2.544,
+        "destruction_pct": 0.509,
+        "ownership_weight_ms": 120.0,
+        "ownership_pct": 3.053,
+        "pct_of_all_samples_by_ownership_caller": {
+          "peer wire and transport": 1.781,
+          "download write jobs": 0.483,
+          "piece and request selection": 0.432,
+          "stored-byte authentication": 0.178,
+          "other runtime or unresolved purpose": 0.153,
+          "snapshot integrity and presentation": 0.025
+        }
+      },
+      "split-4": {
+        "running_samples": 5008,
+        "unavailable_backtraces": 3,
+        "reference_counting_pct": 2.596,
+        "destruction_pct": 0.439,
+        "ownership_weight_ms": 152.0,
+        "ownership_pct": 3.035,
+        "pct_of_all_samples_by_ownership_caller": {
+          "peer wire and transport": 2.017,
+          "download write jobs": 0.379,
+          "piece and request selection": 0.26,
+          "other runtime or unresolved purpose": 0.2,
+          "stored-byte authentication": 0.12,
+          "connection deadlines": 0.04,
+          "checkpoints and durability": 0.02
+        }
+      }
     }
   }
 }

@@ -13,6 +13,26 @@ differs. Cached compiler/header settings therefore do not establish the installe
 archive's provenance. Benchmark metadata labels them as unverified and retains
 archive fingerprints; neither archive was rebuilt or replaced for this check.
 
+## Request cadence and peer ownership
+
+Splitting the same 1 GiB v1 payload across one, two and four torrents increased
+verified throughput from 349 to 510 to 670 MiB/s. Client CPU rose from 3.23 to
+4.33 to 5.93 s/GiB, with 1.95 s/GiB of the 2.69 increase in kernel CPU. The
+receiver decoded 12.7, 9.3 and 6.5 blocks per read and submitted 11.6, 8.7
+and 6.3 requests per outgoing request-bearing batch. Median time with an empty
+request set between reservations was zero for all three. Skipping a refill
+when the window was already full gave a four-torrent client CPU ratio of
+1.008 (paired 95% interval 0.982–1.022). The shortcut stays isolated.
+[Cadence measurements](request-cadence-20261120.json) and
+[refill comparison](peer-experiments-20261120.json).
+
+Three separate running-thread profiles attributed 3.27%, 3.05% and 3.04% of
+sample weight to identifiable reference-count operations and destruction.
+Peer wire and transport accounted for 1.78%, 1.78% and 2.02% of all samples
+in those categories. Inlined operations can be charged to their callers.
+The visible ownership share stayed similar as reads became smaller.
+[Compact ownership attribution](request-cadence-20261120.json).
+
 ## Piece-at-a-time storage replay
 
 Run `Scripts/test-storage-benchmark.sh --replay` for the fixed 1 GiB experiment.
