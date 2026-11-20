@@ -6,6 +6,10 @@ import ButterTorrentStorage
 @main struct StorageBenchmark {
 	static func main() async throws {
 		let arguments = CommandLine.arguments
+		if arguments.count == 5, arguments[1] == "replay" {
+			try await StorageReplay.run(root: URL(fileURLWithPath: arguments[2]), workload: arguments[3], mode: arguments[4])
+			return
+		}
 		guard arguments.count == 4 else { throw StorageFailure.invalid("expected fixture ROOT FILES or write ROOT FORMAT") }
 		let root = URL(fileURLWithPath: arguments[2])
 		if arguments[1] == "fixture", let files = Int(arguments[3]), (1...1024).contains(files) {

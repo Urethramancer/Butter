@@ -63,6 +63,12 @@ extension StorageState {
 		}
 	}
 	func writeOperations(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int, coalescing: Bool = false, budgetFallback: Bool = false, diagnosticRecorder: StorageWriteProfile? = StorageWriteProfile.make(), check: () throws -> Void) throws {
+		#if BUTTER_STORAGE_REPLAY_CAPTURE
+		guard layout.pieceLength == 262144, writes.allSatisfy({ $0.offset.isMultiple(of: 16384) && $0.data.count == 16384 }) else {
+			throw StorageFailure.invalid("unexpected replay block geometry")
+		}
+		capturedWriteJobs.append(writes.map { $0.piece * 16 + $0.offset / 16384 })
+		#endif
 		let profile = diagnosticRecorder; writeProfile = profile
 		var outcome = "failed"
 		defer { profile?.finish(outcome: outcome); writeProfile = nil }

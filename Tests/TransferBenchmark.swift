@@ -133,6 +133,14 @@ import ButterTorrentEngine
 			_ = try await command("persist")
 			try emit("persistence")
 			for engine in engines { try await engine.checkpoint() }
+			#if BUTTER_STORAGE_REPLAY_CAPTURE
+			if job.role == "download" {
+				for (item, store) in zip(job.items, stores) {
+					let jobs = try await store.capturedWriteJobs()
+					try JSONEncoder().encode(jobs).write(to: URL(fileURLWithPath: item.torrent + ".jobs"))
+				}
+			}
+			#endif
 			try emit("durable", pieces: job.partial == true ? try await stores[0].snapshot().verifiedPieces.sorted() : nil)
 			_ = try await command("stop"); try emit("shutdown")
 			for listener in listeners { try await listener.shutdown() }

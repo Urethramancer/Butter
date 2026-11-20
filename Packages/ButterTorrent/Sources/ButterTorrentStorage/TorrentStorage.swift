@@ -16,6 +16,11 @@ public actor TorrentStorage {
 	public nonisolated let layout: StorageLayout
 	public nonisolated let infoHashes: InfoHashes
 	public nonisolated let merkleIndex: MerkleIndex
+	#if BUTTER_STORAGE_REPLAY_CAPTURE
+	public func capturedWriteJobs() async throws -> [[Int]] {
+		try await worker.run { [state] _ in state.capturedWriteJobs }
+	}
+	#endif
 	private init(state: StorageState, worker: StorageWorker, clock: any StorageCheckpointClock) { self.state = state; self.worker = worker; checkpointClock = clock; layout = state.layout; infoHashes = state.metadata.hashes; merkleIndex = state.merkle.index }
 	public static func open(metadata: TorrentMetadata, destination: URL, stateDirectory: URL, selected: [Bool]? = nil,
 		coordinator: StorageCoordinator = .shared, preparedState: PreparedTransferState? = nil, checkpointPolicy: StorageCheckpointPolicy = .immediate,
@@ -83,6 +88,9 @@ final class StorageState: @unchecked Sendable {
 	let event: @Sendable (StorageEvent) -> Void
 	let lease: StorageLease
 	var writeProfile: StorageWriteProfile?
+	#if BUTTER_STORAGE_REPLAY_CAPTURE
+	var capturedWriteJobs: [[Int]] = []
+	#endif
 	var diagnosticVerificationDepth = 0
 	var closed = false
 	var hasJournal = false

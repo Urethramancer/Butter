@@ -1,5 +1,17 @@
 # Transfer performance
 
+## Piece-at-a-time storage replay
+
+Run `Scripts/test-storage-benchmark.sh --replay` for the fixed 1 GiB experiment.
+The diagnostic build captures disk-job boundaries from three verified live downloads.
+The release replay prepares input before timing, checks destination bytes and reopens
+every checkpoint. Six balanced pairs saved 0.448 CPU s/GiB on single-file v1,
+2.018 on four concurrent v1 torrents and 0.113 on many-file hybrid. Both v1
+workloads qualify for the live prototype. Hybrid stays on its coalescing path.
+Full-piece submission uses the existing guarded 64 KiB write chunks.
+[Paired CPU measurements and separate syscall counts](piece-storage-replay-20261120.json).
+
+
 The latest full matrix validates **252/252 trials** against the v0.18.0 engine.
 All nine seeding cases meet all targets; downloads use **1.41–2.92× libtorrent's
 CPU/GiB**. Download engine RSS is **15.9–26.3 MiB**. This is a **contended-host

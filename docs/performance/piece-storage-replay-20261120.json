@@ -1,0 +1,198 @@
+{
+  "release": "v0.18.1",
+  "fixture": "1 GiB per workload, 256 KiB pieces, release transfer-harness payloads and native libtorrent sender",
+  "method": "One independently validated live download supplies the ordered 16 KiB blocks and job boundaries for each torrent. One task per torrent replays those jobs or submits preassembled pieces in completion order. Both paths use managed checkpoints, fused stored-byte verification, and a final durable checkpoint. Preparation, independent byte comparison and strict checkpoint reopening are outside process CPU timing.",
+  "sampling": "Six alternating current/piece and piece/current pairs with fresh processes and destinations. One additional counts-only run per mode. Gates use the median of paired total CPU differences.",
+  "pair_columns": [
+    "current_user",
+    "current_kernel",
+    "piece_user",
+    "piece_kernel"
+  ],
+  "unit": "CPU seconds per GiB",
+  "results": {
+    "single": {
+      "pairs": [
+        [
+          0.70933,
+          1.085419,
+          0.651339,
+          0.834182
+        ],
+        [
+          0.725891,
+          1.048754,
+          0.60892,
+          0.688966
+        ],
+        [
+          0.722269,
+          1.052041,
+          0.612134,
+          0.669029
+        ],
+        [
+          0.723222,
+          1.056484,
+          0.607062,
+          0.661456
+        ],
+        [
+          0.705798,
+          1.018937,
+          0.609271,
+          0.696246
+        ],
+        [
+          0.699557,
+          1.056256,
+          0.660848,
+          0.859141
+        ]
+      ],
+      "saving": 0.447988,
+      "threshold": 0.28,
+      "advance": true,
+      "counts": {
+        "current": {
+          "bytesHashed": 1073741824,
+          "descriptorDuplicates": 102008,
+          "descriptorOpens": 9426,
+          "fileDescriptorInspections": 140433,
+          "writeProfile.jobs": 5201,
+          "writeProfile.syscallAttempts": 65536
+        },
+        "piece": {
+          "bytesHashed": 1073741824,
+          "descriptorDuplicates": 37253,
+          "descriptorOpens": 8321,
+          "fileDescriptorInspections": 16448,
+          "writeProfile.jobs": 4096,
+          "writeProfile.syscallAttempts": 16384
+        }
+      }
+    },
+    "concurrent": {
+      "pairs": [
+        [
+          0.887498,
+          2.764038,
+          0.653573,
+          1.028568
+        ],
+        [
+          0.89383,
+          2.783047,
+          0.65639,
+          0.998426
+        ],
+        [
+          0.891891,
+          2.811422,
+          0.688716,
+          1.194354
+        ],
+        [
+          0.93535,
+          3.148082,
+          0.685838,
+          1.205506
+        ],
+        [
+          0.892692,
+          2.789665,
+          0.652757,
+          1.015109
+        ],
+        [
+          0.900046,
+          2.973087,
+          0.651932,
+          0.997194
+        ]
+      ],
+      "saving": 2.018276,
+      "threshold": 0.88,
+      "advance": true,
+      "counts": {
+        "current": {
+          "bytesHashed": 1073741824,
+          "descriptorDuplicates": 126137,
+          "descriptorOpens": 17467,
+          "fileDescriptorInspections": 148471,
+          "writeProfile.jobs": 13239,
+          "writeProfile.syscallAttempts": 65536
+        },
+        "piece": {
+          "bytesHashed": 1073741824,
+          "descriptorDuplicates": 37268,
+          "descriptorOpens": 8324,
+          "fileDescriptorInspections": 16448,
+          "writeProfile.jobs": 4096,
+          "writeProfile.syscallAttempts": 16384
+        }
+      }
+    },
+    "many": {
+      "pairs": [
+        [
+          1.322874,
+          1.149683,
+          1.26231,
+          1.091967
+        ],
+        [
+          1.329334,
+          1.169102,
+          1.257943,
+          1.064961
+        ],
+        [
+          1.3232,
+          1.134278,
+          1.26005,
+          1.069586
+        ],
+        [
+          1.319697,
+          1.091343,
+          1.258896,
+          1.06717
+        ],
+        [
+          1.325485,
+          1.112365,
+          1.258301,
+          1.072481
+        ],
+        [
+          1.311888,
+          1.083257,
+          1.263088,
+          1.079932
+        ]
+      ],
+      "saving": 0.112674,
+      "threshold": 0.145,
+      "advance": false,
+      "counts": {
+        "current": {
+          "bytesHashed": 1073741824,
+          "descriptorDuplicates": 42348,
+          "descriptorOpens": 38367,
+          "fileDescriptorInspections": 21687,
+          "writeProfile.jobs": 4838,
+          "writeProfile.syscallAttempts": 6223
+        },
+        "piece": {
+          "bytesHashed": 1073741824,
+          "descriptorDuplicates": 37698,
+          "descriptorOpens": 33538,
+          "fileDescriptorInspections": 16512,
+          "writeProfile.jobs": 4096,
+          "writeProfile.syscallAttempts": 16384
+        }
+      }
+    }
+  }
+}
