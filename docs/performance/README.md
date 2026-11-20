@@ -37,6 +37,13 @@ in those categories. Inlined operations can be charged to their callers.
 The visible ownership share stayed similar as reads became smaller.
 [Compact ownership attribution](request-cadence-20261120.json).
 
+Decoder storage reuse on current sources verified 76 transfers. Across 24
+many-file hybrid pairs, client CPU changed by −0.16% (paired 95% interval
+−1.40% to +1.42%). Across twelve single-file v1 pairs, throughput rose by
+1.11%, with combined CPU's upper bound at +3.71%. One of 36 preflight
+checks reached 90% host idle. The comparison leaves the CPU saving unresolved
+and the implementation is archived. [Decoder comparison and host load](peer-experiments-20261120.json).
+
 ## Per-peer request windows under latency
 
 Two independent libtorrent seeders supplied one 1 GiB many-file hybrid torrent

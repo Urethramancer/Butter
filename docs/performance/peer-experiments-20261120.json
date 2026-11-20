@@ -352,5 +352,165 @@
       }
     },
     "decision": "Keep isolated. The adaptive window preserves most of the gain over fixed 32 and reduces slow-peer outstanding work to 32. Against fixed 48 the steady-link throughput median is below the 99% guard and the upper combined CPU ratio exceeds 1.03."
+  },
+  "decoder": {
+    "source": "Only the PeerWire.swift reuse change from experiment/decoder-buffer-reuse (93efe11) applied to the same release sources.",
+    "verified": 76,
+    "protocol": "One warm-up per source per workload. Fixed balanced pairs, 24 for many/hybrid and 12 for single/v1. Every payload checked and both checkpoints reopened. Background CPU estimated by subtracting both measured processes from aggregate host busy ticks, averaged over all ten cores. Two initial idle waits of up to 120 seconds missed 90%. After a break between complete pairs, remaining pairs used one three-second idle preflight each with all outcomes retained.",
+    "host": {
+      "many": {
+        "preflight_idle_pct_median": 81.833,
+        "preflights_at_least_90_pct": 0,
+        "preflights": 24,
+        "estimated_other_busy_pct_median": 25.859,
+        "estimated_other_busy_pct_range": [
+          19.0,
+          33.88
+        ]
+      },
+      "single": {
+        "preflight_idle_pct_median": 83.833,
+        "preflights_at_least_90_pct": 1,
+        "preflights": 12,
+        "estimated_other_busy_pct_median": 24.23,
+        "estimated_other_busy_pct_range": [
+          18.46,
+          42.38
+        ]
+      }
+    },
+    "original_memory": {
+      "many": {
+        "original_peak_mib": 66.4453,
+        "comparison": {
+          "status": "pass",
+          "median_peak_rss_ratio": 0.266549088771311,
+          "lower": 0.26095017381228275,
+          "upper": 0.27028301886792455,
+          "maximum_peak_rss_ratio": 0.28623937514357917,
+          "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+        }
+      },
+      "single": {
+        "original_peak_mib": 73.7188,
+        "comparison": {
+          "status": "pass",
+          "median_peak_rss_ratio": 0.2110004239084358,
+          "lower": 0.2099535080304311,
+          "upper": 0.21547438945320943,
+          "maximum_peak_rss_ratio": 0.22323125659978882,
+          "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+        }
+      }
+    },
+    "results": {
+      "many": {
+        "pairs": 24,
+        "medians": {
+          "baseline": {
+            "client": 3.5979,
+            "sender": 2.17748,
+            "combined": 5.80695,
+            "verified_mib_s": 297.29144,
+            "client_peak_mib": 17.92969,
+            "sender_peak_mib": 29.75
+          },
+          "candidate": {
+            "client": 3.62616,
+            "sender": 2.15275,
+            "combined": 5.80433,
+            "verified_mib_s": 299.77272,
+            "client_peak_mib": 17.71094,
+            "sender_peak_mib": 29.78906
+          }
+        },
+        "paired_ratios": {
+          "client": [
+            0.998421,
+            0.986049,
+            1.014162
+          ],
+          "sender": [
+            0.984232,
+            0.967756,
+            1.035788
+          ],
+          "combined": [
+            0.996757,
+            0.980776,
+            1.010185
+          ],
+          "verified_mib_s": [
+            1.006078,
+            0.991319,
+            1.014466
+          ],
+          "client_peak_mib": [
+            0.986461,
+            0.974472,
+            1.0
+          ],
+          "sender_peak_mib": [
+            1.000526,
+            0.997384,
+            1.004739
+          ]
+        }
+      },
+      "single": {
+        "pairs": 12,
+        "medians": {
+          "baseline": {
+            "client": 3.18201,
+            "sender": 2.05387,
+            "combined": 5.23433,
+            "verified_mib_s": 369.57991,
+            "client_peak_mib": 15.86719,
+            "sender_peak_mib": 16.8125
+          },
+          "candidate": {
+            "client": 3.14426,
+            "sender": 2.11974,
+            "combined": 5.27518,
+            "verified_mib_s": 374.52415,
+            "client_peak_mib": 15.55469,
+            "sender_peak_mib": 16.78906
+          }
+        },
+        "paired_ratios": {
+          "client": [
+            0.988247,
+            0.978429,
+            1.006314
+          ],
+          "sender": [
+            1.018069,
+            0.980187,
+            1.115675
+          ],
+          "combined": [
+            1.01197,
+            0.986127,
+            1.03706
+          ],
+          "verified_mib_s": [
+            1.011054,
+            0.992565,
+            1.02921
+          ],
+          "client_peak_mib": [
+            0.980212,
+            0.975088,
+            0.983185
+          ],
+          "sender_peak_mib": [
+            0.996279,
+            0.978972,
+            1.003246
+          ]
+        }
+      }
+    },
+    "decision": "Archive. The hybrid client CPU interval crosses parity and the upper single-v1 combined CPU bound exceeds 1.03. Background work prevented a quiet-host qualification."
   }
 }

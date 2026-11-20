@@ -14,13 +14,12 @@
 - Investigate guarded path opens/closes and peer transport overhead while
   preserving fresh filesystem observations and production resource limits.
 - Resolve the single-file sender CPU increase before promoting bounded v1 write
-  coalescing (`experiment/bounded-v1-write-policy`). The revised candidate passes
+  coalescing (`refs/archive/experiment/bounded-v1-write-policy`). The revised candidate passes
   its hybrid throughput guard and reduces v1 client CPU, but single-file combined
   CPU has a higher median; see the [results](docs/performance/bounded-v1-policy-20261119.json).
   Preserve the separate earlier experiment and do not extend fixed runs.
-- Repeat release performance validation without competing builds and heavy
-  background work; include isolated fairness-batch `99afd53` and decoder-reuse
-  `e3b33b5` in separately predeclared comparisons. Current runs remain contended-host evidence.
+- Repeat release performance validation on a quiet host. For the fairness-batch
+  comparison use `refs/archive/experiment/fairness-batch-retention`.
 - Locate the remaining verification/worker delay in descriptor-cache experiments;
   direct baseline timing shows checkpoint execution is a small target.
 - Resolve grouped-upload/request-burst uncertainty with matched source comparisons.
