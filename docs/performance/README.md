@@ -1,17 +1,5 @@
 # Transfer performance
 
-## Piece-at-a-time storage replay
-
-Run `Scripts/test-storage-benchmark.sh --replay` for the fixed 1 GiB experiment.
-The diagnostic build captures disk-job boundaries from three verified live downloads.
-The release replay prepares input before timing, checks destination bytes and reopens
-every checkpoint. Six balanced pairs saved 0.448 CPU s/GiB on single-file v1,
-2.018 on four concurrent v1 torrents and 0.113 on many-file hybrid. Both v1
-workloads qualify for the live prototype. Hybrid stays on its coalescing path.
-Full-piece submission uses the existing guarded 64 KiB write chunks.
-[Paired CPU measurements and separate syscall counts](piece-storage-replay-20261120.json).
-
-
 The latest full matrix validates **252/252 trials** against the v0.18.0 engine.
 All nine seeding cases meet all targets; downloads use **1.41–2.92× libtorrent's
 CPU/GiB**. Download engine RSS is **15.9–26.3 MiB**. This is a **contended-host
@@ -24,6 +12,32 @@ object payloads match the cached Apple-build archive; `bt_peer_connection.cpp.o`
 differs. Cached compiler/header settings therefore do not establish the installed
 archive's provenance. Benchmark metadata labels them as unverified and retains
 archive fingerprints; neither archive was rebuilt or replaced for this check.
+
+## Piece-at-a-time storage replay
+
+Run `Scripts/test-storage-benchmark.sh --replay` for the fixed 1 GiB experiment.
+The diagnostic build captures disk-job boundaries from three verified live downloads.
+The release replay prepares input before timing, checks destination bytes and reopens
+every checkpoint. Six balanced pairs saved 0.448 CPU s/GiB on single-file v1,
+2.018 on four concurrent v1 torrents and 0.113 on many-file hybrid. Both v1
+workloads qualify for the live prototype. Hybrid stays on its coalescing path.
+Full-piece submission uses the existing guarded 64 KiB write chunks.
+[Paired CPU measurements and separate syscall counts](piece-storage-replay-20261120.json).
+
+The prototype at `050d00f` stays on `experiment/piece-write-replay`. All 102
+live downloads verified, including six warm-ups. The table shows paired median
+changes against v0.18.1, with the upper paired 95% bound for combined CPU.
+
+| Download | Pairs | Client CPU/GiB | Sender CPU/GiB | Combined CPU/GiB | Combined upper bound | Verified throughput |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Single-file v1 | 12 | +25.19% | −2.74% | +13.98% | +16.22% | −15.35% |
+| Concurrent v1 | 24 | +0.45% | +12.30% | +4.57% | +6.28% | −10.65% |
+| Many-file hybrid | 12 | −0.63% | −3.14% | −1.34% | +2.47% | +0.70% |
+
+Both v1 workloads missed the client CPU, combined CPU and throughput gates.
+Hybrid passed its guard. All three passed the original-baseline memory limit.
+The live rejection ended the experiment before the full libtorrent download matrix.
+[Absolute CPU, throughput, peak RSS and paired bounds](piece-buffer-live-20261120.json).
 
 ## Bounded single-file v1 write experiment
 

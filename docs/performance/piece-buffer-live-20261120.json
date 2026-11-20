@@ -1,0 +1,223 @@
+{
+  "baseline": "v0.18.1 (17cb45d)",
+  "candidate": "050d00f",
+  "branch": "experiment/piece-write-replay",
+  "benchmark": "1 GiB per workload, 256 KiB pieces, tagged and candidate release drivers, identical native libtorrent sender. Process CPU through durable completion. Verified throughput and whole-process peak RSS. All destinations independently compared by SHA-256, all checkpoints reopened.",
+  "sampling": "One warm-up per source and workload. Fixed 24 concurrent-v1, 12 single-v1 and 12 many-hybrid source pairs, equal numbers in each order, shuffled with seeds 11011–11013. No retries. Intervals are paired median candidate/baseline ratios with 10000 bootstrap resamples and 95% bounds.",
+  "gates": "Target both v1 workloads. Require upper client CPU ratio below 1 for each target. All three workloads require upper combined CPU ratio at most 1.03, median verified throughput ratio at least 0.99, and the original-baseline memory test. Run the full download matrix only for a retained candidate.",
+  "tests": "Out-of-order/stalled final block, refill while incomplete, replacement, checkpoint reopen, shared budget exhaustion, shutdown and subsequent removal. Actual ENOSPC on a disposable 16 MiB volume, clean verified retry after freeing space. Existing write-batch, storage, crash-recovery and read-only checks passed.",
+  "fingerprints": {
+    "previous": "b9d0d26a4024db346a36c7280949b064288a4dac5112df6db057313b227c717e",
+    "current": "d3cc8d23570f0654d89c733790f52461eb178e43799fb71e2cfde893a702b3fe",
+    "sender": "3720c5c48cde6a430fa524854c362dc456e28856efc32937d126c78492311b42"
+  },
+  "verified_trials": 102,
+  "results": {
+    "concurrent": {
+      "format": "v1",
+      "pairs": 24,
+      "medians": {
+        "previous": {
+          "client_cpu": 5.88277,
+          "sender_cpu": 2.34905,
+          "combined_cpu": 8.2111,
+          "verified_mib_per_s": 690.25444,
+          "client_peak_mib": 23.44531,
+          "sender_peak_mib": 18.17969
+        },
+        "current": {
+          "client_cpu": 5.9318,
+          "sender_cpu": 2.69275,
+          "combined_cpu": 8.62337,
+          "verified_mib_per_s": 610.04492,
+          "client_peak_mib": 26.40625,
+          "sender_peak_mib": 18.28906
+        }
+      },
+      "paired_ratios": {
+        "client_cpu": {
+          "median": 1.004527,
+          "lower": 0.992492,
+          "upper": 1.011988
+        },
+        "sender_cpu": {
+          "median": 1.122974,
+          "lower": 1.089352,
+          "upper": 1.19336
+        },
+        "combined_cpu": {
+          "median": 1.04574,
+          "lower": 1.023263,
+          "upper": 1.062771
+        },
+        "verified_mib_per_s": {
+          "median": 0.893507,
+          "lower": 0.847111,
+          "upper": 0.918262
+        },
+        "client_peak_mib": {
+          "median": 1.118162,
+          "lower": 1.095433,
+          "upper": 1.138382
+        },
+        "sender_peak_mib": {
+          "median": 1.005115,
+          "lower": 1.001715,
+          "upper": 1.007712
+        }
+      },
+      "original_baseline_memory": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.34409040008144154,
+        "lower": 0.3407490560261251,
+        "upper": 0.34595753368721927,
+        "maximum_peak_rss_ratio": 0.3553618487735658,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "gates": {
+        "combined_cpu": false,
+        "throughput": false,
+        "memory": true,
+        "client_cpu": false
+      }
+    },
+    "single": {
+      "format": "v1",
+      "pairs": 12,
+      "medians": {
+        "previous": {
+          "client_cpu": 3.35774,
+          "sender_cpu": 2.44247,
+          "combined_cpu": 5.82324,
+          "verified_mib_per_s": 348.00632,
+          "client_peak_mib": 15.73438,
+          "sender_peak_mib": 16.82813
+        },
+        "current": {
+          "client_cpu": 4.19068,
+          "sender_cpu": 2.40731,
+          "combined_cpu": 6.64238,
+          "verified_mib_per_s": 294.75836,
+          "client_peak_mib": 16.92969,
+          "sender_peak_mib": 16.84375
+        }
+      },
+      "paired_ratios": {
+        "client_cpu": {
+          "median": 1.251901,
+          "lower": 1.222101,
+          "upper": 1.266996
+        },
+        "sender_cpu": {
+          "median": 0.972605,
+          "lower": 0.95683,
+          "upper": 1.04391
+        },
+        "combined_cpu": {
+          "median": 1.139761,
+          "lower": 1.12319,
+          "upper": 1.162177
+        },
+        "verified_mib_per_s": {
+          "median": 0.846476,
+          "lower": 0.831595,
+          "upper": 0.85232
+        },
+        "client_peak_mib": {
+          "median": 1.067554,
+          "lower": 1.054225,
+          "upper": 1.094585
+        },
+        "sender_peak_mib": {
+          "median": 1.001853,
+          "lower": 0.995829,
+          "upper": 1.006994
+        }
+      },
+      "original_baseline_memory": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.22965239508266214,
+        "lower": 0.22537597966532513,
+        "upper": 0.234709314890858,
+        "maximum_peak_rss_ratio": 0.2405491024287223,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "gates": {
+        "combined_cpu": false,
+        "throughput": false,
+        "memory": true,
+        "client_cpu": false
+      }
+    },
+    "many": {
+      "format": "hybrid",
+      "pairs": 12,
+      "medians": {
+        "previous": {
+          "client_cpu": 3.81317,
+          "sender_cpu": 2.41341,
+          "combined_cpu": 6.24943,
+          "verified_mib_per_s": 287.5984,
+          "client_peak_mib": 18.02344,
+          "sender_peak_mib": 29.80469
+        },
+        "current": {
+          "client_cpu": 3.97457,
+          "sender_cpu": 2.37919,
+          "combined_cpu": 6.37517,
+          "verified_mib_per_s": 277.90589,
+          "client_peak_mib": 17.94531,
+          "sender_peak_mib": 29.89063
+        }
+      },
+      "paired_ratios": {
+        "client_cpu": {
+          "median": 0.993667,
+          "lower": 0.960758,
+          "upper": 1.063439
+        },
+        "sender_cpu": {
+          "median": 0.968627,
+          "lower": 0.948822,
+          "upper": 0.983598
+        },
+        "combined_cpu": {
+          "median": 0.986603,
+          "lower": 0.963944,
+          "upper": 1.024735
+        },
+        "verified_mib_per_s": {
+          "median": 1.00698,
+          "lower": 0.939072,
+          "upper": 1.043307
+        },
+        "client_peak_mib": {
+          "median": 0.995648,
+          "lower": 0.958438,
+          "upper": 1.009784
+        },
+        "sender_peak_mib": {
+          "median": 1.002377,
+          "lower": 0.993469,
+          "upper": 1.017553
+        }
+      },
+      "original_baseline_memory": {
+        "status": "pass",
+        "median_peak_rss_ratio": 0.2700764256319812,
+        "lower": 0.26442641946697565,
+        "upper": 0.27195767195767195,
+        "maximum_peak_rss_ratio": 0.27015851137146796,
+        "method": "independent median percentile bootstrap, 10000 resamples, 95%; also require observed maximum ratio <= 1.10"
+      },
+      "gates": {
+        "combined_cpu": true,
+        "throughput": true,
+        "memory": true
+      }
+    }
+  },
+  "retain": false,
+  "test_revision": "0456a62 (test-only follow-up to the measured candidate)",
+  "qualification": "Local loopback measurements on this host. Replay timing used one captured block schedule per workload. The live comparison measures both endpoints. A retained candidate qualifies for the full download matrix."
+}
