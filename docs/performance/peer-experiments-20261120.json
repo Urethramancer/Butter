@@ -351,7 +351,238 @@
         }
       }
     },
-    "decision": "Keep isolated. The adaptive window preserves most of the gain over fixed 32 and reduces slow-peer outstanding work to 32. Against fixed 48 the steady-link throughput median is below the 99% guard and the upper combined CPU ratio exceeds 1.03."
+    "decision": "Archived without promotion. Against shipping fixed 32, the 20 ms two-peer throughput and combined CPU gains are clear. The unshaped single-v1 throughput median missed 0.99. Three of four ordinary-workload upper combined CPU bounds exceeded 1.03. Memory passed on matched sources. The direct-loopback comparisons do not establish that changing window size caused those differences, including on 256 KiB pieces which retain a cap of 32.",
+    "shipping_guards": {
+      "verified": 56,
+      "protocol": "Adaptive vs shipping fixed 32. One warm-up per source and six balanced pairs per case, all through one unshaped native TCP peer per torrent on loopback. Standard 256 KiB work plus a 1 MiB many-file hybrid. Same payloads, two strict reopens per trial. Throughput median >=0.99 and combined CPU upper <=1.03. Matched peak RSS documented separately for each comparison.",
+      "results": {
+        "concurrent-v1": {
+          "pairs": 6,
+          "medians": {
+            "baseline": {
+              "client": 5.91725,
+              "sender": 2.21289,
+              "combined": 8.20182,
+              "verified_mib_s": 712.8949,
+              "client_peak_mib": 23.22656,
+              "sender_peak_mib": 18.02344
+            },
+            "candidate": {
+              "client": 5.92898,
+              "sender": 2.43543,
+              "combined": 8.41897,
+              "verified_mib_s": 707.80936,
+              "client_peak_mib": 23.20313,
+              "sender_peak_mib": 18.35156
+            }
+          },
+          "paired_ratios": {
+            "client": [
+              1.005928,
+              0.968269,
+              1.028762
+            ],
+            "sender": [
+              1.053304,
+              0.957191,
+              1.219804
+            ],
+            "combined": [
+              1.009883,
+              0.990779,
+              1.061455
+            ],
+            "verified_mib_s": [
+              0.995144,
+              0.966915,
+              1.00396
+            ],
+            "client_peak_mib": [
+              0.992982,
+              0.944204,
+              1.068382
+            ],
+            "sender_peak_mib": [
+              1.015085,
+              0.989391,
+              1.023479
+            ]
+          },
+          "throughput_guard": true,
+          "combined_guard": false,
+          "memory_guard": true
+        },
+        "large-hybrid": {
+          "pairs": 6,
+          "medians": {
+            "baseline": {
+              "client": 3.41347,
+              "sender": 2.16987,
+              "combined": 5.58952,
+              "verified_mib_s": 320.53321,
+              "client_peak_mib": 16.41406,
+              "sender_peak_mib": 29.92969
+            },
+            "candidate": {
+              "client": 3.39505,
+              "sender": 2.21293,
+              "combined": 5.58678,
+              "verified_mib_s": 322.95301,
+              "client_peak_mib": 16.44531,
+              "sender_peak_mib": 29.90625
+            }
+          },
+          "paired_ratios": {
+            "client": [
+              0.997341,
+              0.972542,
+              1.005834
+            ],
+            "sender": [
+              0.99986,
+              0.971997,
+              1.152292
+            ],
+            "combined": [
+              0.998318,
+              0.979029,
+              1.053836
+            ],
+            "verified_mib_s": [
+              1.001359,
+              0.973712,
+              1.033843
+            ],
+            "client_peak_mib": [
+              0.999963,
+              0.933942,
+              1.045176
+            ],
+            "sender_peak_mib": [
+              0.999478,
+              0.963663,
+              1.020386
+            ]
+          },
+          "throughput_guard": true,
+          "combined_guard": false,
+          "memory_guard": true
+        },
+        "many-hybrid": {
+          "pairs": 6,
+          "medians": {
+            "baseline": {
+              "client": 3.41139,
+              "sender": 2.09881,
+              "combined": 5.55133,
+              "verified_mib_s": 325.64023,
+              "client_peak_mib": 17.75781,
+              "sender_peak_mib": 29.70313
+            },
+            "candidate": {
+              "client": 3.41553,
+              "sender": 2.0692,
+              "combined": 5.47852,
+              "verified_mib_s": 327.13992,
+              "client_peak_mib": 17.66406,
+              "sender_peak_mib": 29.72656
+            }
+          },
+          "paired_ratios": {
+            "client": [
+              0.995659,
+              0.975385,
+              1.023383
+            ],
+            "sender": [
+              0.96157,
+              0.941427,
+              1.011627
+            ],
+            "combined": [
+              0.980266,
+              0.972727,
+              1.009743
+            ],
+            "verified_mib_s": [
+              1.015463,
+              0.961954,
+              1.064859
+            ],
+            "client_peak_mib": [
+              0.994281,
+              0.969628,
+              1.001337
+            ],
+            "sender_peak_mib": [
+              1.002109,
+              0.997372,
+              1.005806
+            ]
+          },
+          "throughput_guard": true,
+          "combined_guard": true,
+          "memory_guard": true
+        },
+        "single-v1": {
+          "pairs": 6,
+          "medians": {
+            "baseline": {
+              "client": 3.0518,
+              "sender": 1.98275,
+              "combined": 5.04169,
+              "verified_mib_s": 380.53333,
+              "client_peak_mib": 15.99219,
+              "sender_peak_mib": 16.78906
+            },
+            "candidate": {
+              "client": 3.11923,
+              "sender": 2.04431,
+              "combined": 5.19491,
+              "verified_mib_s": 377.24183,
+              "client_peak_mib": 15.96875,
+              "sender_peak_mib": 16.78906
+            }
+          },
+          "paired_ratios": {
+            "client": [
+              1.009762,
+              0.990561,
+              1.038976
+            ],
+            "sender": [
+              1.022029,
+              0.925815,
+              1.172291
+            ],
+            "combined": [
+              1.020667,
+              0.972422,
+              1.077246
+            ],
+            "verified_mib_s": [
+              0.987429,
+              0.960017,
+              1.01293
+            ],
+            "client_peak_mib": [
+              0.988826,
+              0.980049,
+              1.017296
+            ],
+            "sender_peak_mib": [
+              1.000004,
+              0.991252,
+              1.005627
+            ]
+          },
+          "throughput_guard": false,
+          "combined_guard": false,
+          "memory_guard": true
+        }
+      }
+    },
+    "validation": "34 release tests across TCP, µTP and batch writes, including on-wire growth, remote limits, draining after a rate drop, and explicit configuration."
   },
   "decoder": {
     "source": "Only the PeerWire.swift reuse change from experiment/decoder-buffer-reuse (93efe11) applied to the same release sources.",
@@ -512,5 +743,31 @@
       }
     },
     "decision": "Archive. The hybrid client CPU interval crosses parity and the upper single-v1 combined CPU bound exceeds 1.03. Background work prevented a quiet-host qualification."
+  },
+  "request_claim_replay": {
+    "method": "Release Swift replay of PeerSession control-frame claiming, same outbound frame and receipt types, lock, and token checks. Compared filter against removing cancelled elements from a copy-on-write array. Six balanced process pairs at each batch size, 32 GiB-equivalent iterations per trial, thread CPU normalised to 65,536 requests per GiB. Replay excludes socket I/O, payloads and upload cancellations.",
+    "seconds_per_gib": {
+      "6": {
+        "filter_cpu": 0.004769034485605703,
+        "remove_cpu": 0.002847985153550295,
+        "saving": {
+          "median": 0.0019208214880881197,
+          "lower": 0.0019046899570788936,
+          "upper": 0.002484202869120473,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      },
+      "12": {
+        "filter_cpu": 0.00382703738023903,
+        "remove_cpu": 0.002095285336629244,
+        "saving": {
+          "median": 0.0017299603805251331,
+          "lower": 0.0017099674605081958,
+          "upper": 0.0019377378606333187,
+          "method": "paired median percentile bootstrap, 10000 resamples, 95%"
+        }
+      }
+    },
+    "decision": "A 1.7–1.9 ms/GiB saving on control-only requests is too small to advance to a live engine change."
   }
 }

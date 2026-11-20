@@ -67,7 +67,7 @@ Relative to fixed 32, adaptive gained 50.5% in paired throughput and saved
 20.3% in combined CPU. Against fixed 48, adaptive throughput fell 1.6%
 (paired 95% interval −2.9% to −0.9%), with combined CPU +2.4% (−1.2% to
 +5.3%). Absolute rows are medians of each metric. CPU excludes the relay.
-The candidate stays on `experiment/piece-size-request-window`.
+The candidate is archived at `refs/archive/experiment/piece-size-request-window`.
 [Compact paired results](peer-experiments-20261120.json).
 
 In a separate wire diagnostic, one peer was capped at 4 MiB/s and the two
@@ -77,6 +77,16 @@ peer in both directions of the swap. Fixed 48 peaked at 48 on both peers.
 At 16 KiB per request, adaptation kept 256 KiB less work outstanding on the
 slower peer. Both downloads and all six checkpoint reopens verified.
 [Rate-swap measurements](peer-experiments-20261120.json).
+
+Against shipping fixed 32 on ordinary loopback downloads, all 56 trials passed
+payload and checkpoint checks. Single-file v1 throughput fell 1.26% (paired 95%
+interval −4.0% to +1.3%). Combined CPU upper bounds were +7.7% on single-file
+v1, +6.1% on concurrent v1 and +5.4% on 1 MiB hybrid, above the 3% tolerance.
+The 256 KiB hybrid case passed each guard. All four passed matched memory checks.
+The 256 KiB cases used a 32-request ceiling with both binaries. The evidence
+supports keeping the shipping default. A separate control-frame replay saved
+only 1.7–1.9 ms/GiB by avoiding a filtered array in the writer.
+[Ordinary downloads and request-queue replay](peer-experiments-20261120.json).
 
 ## Piece-at-a-time storage replay
 
