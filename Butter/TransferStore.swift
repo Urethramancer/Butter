@@ -5,6 +5,11 @@ import OSLog
 import UserNotifications
 import UniformTypeIdentifiers
 
+struct RenamePathTarget: Equatable {
+	var torrentID: String
+	var path: String
+}
+
 struct AddRequest: Identifiable {
 	var id = UUID()
 	var source: String
@@ -32,6 +37,9 @@ struct AddRequest: Identifiable {
 	@Published var showCreator = false
 	@Published var showMagnet = false
 	@Published var showInspector = true
+	@Published var renamingTransferID: String?
+	@Published var renamingPath: RenamePathTarget?
+	@Published var pendingRemoval: Set<String> = []
 	private let root: URL
 	let engine: any EngineOperations
 	let allowsSystemIntegration: Bool
@@ -302,6 +310,7 @@ struct AddRequest: Identifiable {
 	}
 	func remove(_ ids: Set<String>, trash: Bool) async {
 		guard !shuttingDown else { return }
+		pendingRemoval.subtract(ids)
 		activeOperations += 1; defer { activeOperations -= 1 }
 		for id in ids {
 			guard !removing.contains(id), let original = record(id) else { continue }
@@ -322,9 +331,18 @@ struct AddRequest: Identifiable {
 		}
 	}
 	func confirmRemoval(_ ids: Set<String>) {
-		let alert = NSAlert(); alert.messageText = "Move downloaded files to Trash?"; alert.informativeText = "Only the selected torrents’ managed files will be moved to Trash. Other files in their destination folders will be kept."; alert.alertStyle = .warning
-		alert.addButton(withTitle: "Move to Trash"); alert.addButton(withTitle: "Cancel")
-		if alert.runModal() == .alertFirstButtonReturn { Task { await remove(ids, trash: true) } }
+		let valid = Set(ids.filter { record($0) != nil })
+		guard !valid.isEmpty else { return }
+		pendingRemoval = valid
+	}
+	func cancelRemoval() {
+		pendingRemoval = []
+	}
+	func commitRemoval() {
+		let ids = pendingRemoval
+		pendingRemoval = []
+		guard !ids.isEmpty else { return }
+		Task { await remove(ids, trash: true) }
 	}
 	func reveal(_ torrent: TransferSnapshot) { let files = torrent.files.filter { !$0.pad }.map { URL(fileURLWithPath: torrent.path).appendingPathComponent($0.path) }; NSWorkspace.shared.activateFileViewerSelecting(files.isEmpty ? [URL(fileURLWithPath: torrent.path)] : files) }
 	func copyMagnet(_ id: String) async {
@@ -337,15 +355,18 @@ struct AddRequest: Identifiable {
 		} }
 	}
 	func renameTorrent(_ torrent: TransferSnapshot) {
-		let folder = torrent.localRootFolder
-		let field = NSTextField(string: title(torrent)); field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
-		field.setAccessibilityIdentifier("transfer-name")
-		let alert = NSAlert(); alert.messageText = "Rename transfer"
-		alert.informativeText = folder == nil ? "This changes the display name." : "This renames the local folder and changes the display name. Original torrent metadata is preserved."
-		alert.accessoryView = field; alert.addButton(withTitle: "Rename"); alert.addButton(withTitle: "Cancel")
-		guard alert.runModal() == .alertFirstButtonReturn else { return }
-		let name = field.stringValue
-		Task { await renameTransfer(torrent.id, to: name) }
+		guard !shuttingDown, !renaming.contains(torrent.id) else { return }
+		renamingPath = nil
+		renamingTransferID = torrent.id
+	}
+	func cancelRenameTransfer() {
+		renamingTransferID = nil
+	}
+	func commitRenameTransfer(_ id: String, to value: String) {
+		renamingTransferID = nil
+		guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+		if let torrent = transfers.first(where: { $0.id == id }), title(torrent) == value { return }
+		Task { await renameTransfer(id, to: value) }
 	}
 	func renameTransfer(_ id: String, to title: String) async {
 		guard !shuttingDown, !title.isEmpty, renaming.insert(id).inserted else { return }
@@ -363,17 +384,25 @@ struct AddRequest: Identifiable {
 		} catch { report(error) }
 	}
 	func renamePath(_ path: String, torrent: TransferSnapshot) {
-		let field = NSTextField(string: (path as NSString).lastPathComponent); field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
-		field.setAccessibilityIdentifier("local-name")
-		let alert = NSAlert(); alert.messageText = "Rename local contents"; alert.informativeText = "Original torrent names and swarm identity are preserved. Transfers pause while the engine renames files."; alert.accessoryView = field; alert.addButton(withTitle: "Rename"); alert.addButton(withTitle: "Cancel")
-		guard alert.runModal() == .alertFirstButtonReturn else { return }
-		let value = field.stringValue
+		guard !shuttingDown, !renaming.contains(torrent.id) else { return }
+		renamingTransferID = nil
+		renamingPath = RenamePathTarget(torrentID: torrent.id, path: path)
+	}
+	func cancelRenamePath() {
+		renamingPath = nil
+	}
+	func commitRenamePath(_ target: RenamePathTarget, to value: String) {
+		renamingPath = nil
+		let originalName = (target.path as NSString).lastPathComponent
+		guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, value != originalName else { return }
 		Task {
-			guard !shuttingDown, renaming.insert(torrent.id).inserted else { return }
+			guard !shuttingDown, renaming.insert(target.torrentID).inserted else { return }
 			activeOperations += 1
-			defer { activeOperations -= 1; renaming.remove(torrent.id) }
-			do { try await renameLocalPath(path, to: localName(value), torrent: torrent) }
-			catch { report(error) }
+			defer { activeOperations -= 1; renaming.remove(target.torrentID) }
+			do {
+				guard let torrent = transfers.first(where: { $0.id == target.torrentID }) else { return }
+				try await renameLocalPath(target.path, to: localName(value), torrent: torrent)
+			} catch { report(error) }
 		}
 	}
 	private func localName(_ value: String) throws -> String {

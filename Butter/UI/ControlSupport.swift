@@ -86,3 +86,85 @@ struct TransferSearchField: NSViewRepresentable {
 		}
 	}
 }
+
+struct InlineRenameField: NSViewRepresentable {
+	let initialText: String
+	let identifier: String
+	let label: String
+	let font: NSFont
+	var onCommit: (String) -> Void
+	var onCancel: () -> Void
+
+	func makeCoordinator() -> Coordinator { Coordinator(onCommit: onCommit, onCancel: onCancel) }
+
+	func makeNSView(context: Context) -> RenameTextField {
+		let field = RenameTextField()
+		field.stringValue = initialText
+		field.font = font
+		field.isBordered = true
+		field.isBezeled = true
+		field.bezelStyle = .roundedBezel
+		field.focusRingType = .default
+		field.usesSingleLineMode = true
+		field.lineBreakMode = .byTruncatingTail
+		field.cell?.sendsActionOnEndEditing = false
+		field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+		field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+		field.delegate = context.coordinator
+		field.setAccessibilityLabel(label)
+		field.setAccessibilityIdentifier(identifier)
+		return field
+	}
+
+	func updateNSView(_ field: RenameTextField, context: Context) {
+		context.coordinator.onCommit = onCommit
+		context.coordinator.onCancel = onCancel
+	}
+
+	final class RenameTextField: NSTextField {
+		private var didFocus = false
+		override func viewDidMoveToWindow() {
+			super.viewDidMoveToWindow()
+			guard window != nil, !didFocus else { return }
+			didFocus = true
+			DispatchQueue.main.async { [weak self] in
+				guard let self, let window = self.window else { return }
+				window.makeFirstResponder(self)
+				self.currentEditor()?.selectAll(nil)
+			}
+		}
+	}
+
+	final class Coordinator: NSObject, NSTextFieldDelegate {
+		var onCommit: (String) -> Void
+		var onCancel: () -> Void
+		private var finished = false
+
+		init(onCommit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+			self.onCommit = onCommit
+			self.onCancel = onCancel
+		}
+
+		func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+			if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+				guard !finished else { return true }
+				finished = true
+				onCommit(control.stringValue)
+				return true
+			}
+			if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+				guard !finished else { return true }
+				finished = true
+				onCancel()
+				return true
+			}
+			return false
+		}
+
+		func controlTextDidEndEditing(_ notification: Notification) {
+			guard !finished, let field = notification.object as? NSTextField else { return }
+			finished = true
+			onCommit(field.stringValue)
+		}
+	}
+}

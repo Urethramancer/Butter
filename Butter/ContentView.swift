@@ -31,6 +31,18 @@ struct ContentView: View {
 			}.navigationTitle("Butter").navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 250)
 		} detail: {
 			VStack(spacing: 0) {
+				if !store.pendingRemoval.isEmpty {
+					let singleName = store.pendingRemoval.count == 1
+						? store.transfers.first(where: { store.pendingRemoval.contains($0.id) }).map { store.title($0) }
+						: nil
+					RemovalConfirmationBanner(
+						count: store.pendingRemoval.count,
+						name: singleName,
+						onCancel: { store.cancelRemoval() },
+						onConfirm: { store.commitRemoval() }
+					)
+					Divider()
+				}
 				if !store.ready { ProgressView("Restoring transfers…").frame(maxWidth: .infinity, maxHeight: .infinity) }
 				else if visible.isEmpty { ContentUnavailableView(search.isEmpty ? "No transfers" : "No matching transfers", systemImage: "arrow.down.doc", description: Text(search.isEmpty ? "Open a torrent file or add a magnet link to begin." : "Try another search or filter.")).frame(maxWidth: .infinity, maxHeight: .infinity) }
 				else {
@@ -119,7 +131,18 @@ struct TorrentRow: View {
 			Menu { PriorityMenu(ids: store.selection.contains(torrent.id) ? store.selection : [torrent.id]) } label: { Image(systemName: "line.3.horizontal.decrease.circle").symbolRenderingMode(.palette).font(.title3).foregroundStyle(prominence == .increased ? Color.white : Color.primary) }.menuStyle(.borderlessButton).frame(width: 23).controlHelp("Change priority for \(store.title(torrent))").accessibilityValue(store.priority(for: torrent).label)
 			VStack(alignment: .leading, spacing: 5) {
 				HStack {
-					Text(store.title(torrent)).font(.headline).lineLimit(1)
+					if store.renamingTransferID == torrent.id {
+						InlineRenameField(
+							initialText: store.title(torrent),
+							identifier: "transfer-name",
+							label: "Transfer name",
+							font: .preferredFont(forTextStyle: .headline),
+							onCommit: { store.commitRenameTransfer(torrent.id, to: $0) },
+							onCancel: { store.cancelRenameTransfer() }
+						)
+					} else {
+						Text(store.title(torrent)).font(.headline).lineLimit(1)
+					}
 					if let format = torrent.formatLabel {
 						Text(format).font(.caption2.weight(.semibold)).foregroundStyle(.primary)
 							.padding(.horizontal, 5).padding(.vertical, 2).background(.quaternary, in: .rect(cornerRadius: 4)).fixedSize()
@@ -174,7 +197,7 @@ struct TransferMenu: View {
 		Button("Pause") { Task { await store.setRunning(ids, running: false) } }.help("Pause selected transfers and retain their data.")
 		Button("Force Start") { Task { await store.setRunning(ids, running: true, force: true) } }.help("Start selected transfers beyond the active-transfer limits.")
 		Menu("Priority") { PriorityMenu(ids: ids) }
-		Divider(); Button("Rename…") { store.renameTorrent(torrent) }.help(torrent.localRootFolder == nil ? "Change this transfer’s display name." : "Rename this transfer and its local folder.")
+		Divider(); Button("Rename") { store.renameTorrent(torrent) }.help(torrent.localRootFolder == nil ? "Change this transfer’s display name." : "Rename this transfer and its local folder.")
 		Button("Verify Local Data") { Task { for id in ids { await store.command("recheck", id: id) } } }.disabled(!torrent.metadata).help("Hash local data again and retry damaged or missing pieces.")
 		Button("Repair from Folder…") { store.repairFolder(torrent) }.disabled(!torrent.metadata).help("Repair this torrent from matching local files, preserving the source folder.")
 		Button("Retry Completion Move") { Task { await store.retryMove(torrent) } }.disabled(!torrent.complete).help("Retry moving completed data to the final destination.")
@@ -197,5 +220,37 @@ struct StatusBar: View {
 			if store.preferences.statusItems.contains("Upload speed") { Text("↑ \(speed(store.transfers.reduce(0) { $0 + $1.up }))") }
 			if !store.networkError.isEmpty { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).help(store.networkError).accessibilityLabel("Network warning").accessibilityValue(store.networkError) }
 		}.font(.caption).foregroundStyle(.secondary).monospacedDigit()
+	}
+}
+struct RemovalConfirmationBanner: View {
+	let count: Int
+	let name: String?
+	var onCancel: () -> Void
+	var onConfirm: () -> Void
+	var body: some View {
+		HStack(spacing: 12) {
+			Image(systemName: "trash")
+				.font(.title3)
+				.foregroundStyle(.red)
+				.accessibilityHidden(true)
+			VStack(alignment: .leading, spacing: 2) {
+				Text(count == 1 && name != nil ? "Move downloaded files for “\(name!)” to Trash?" : "Move downloaded files for \(count) transfers to Trash?")
+					.font(.headline)
+				Text("Only managed files will be moved to Trash. Other files in destination folders will be kept.")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			}
+			Spacer(minLength: 8)
+			Button("Cancel", action: onCancel)
+				.keyboardShortcut(.cancelAction)
+			Button("Move to Trash", role: .destructive, action: onConfirm)
+				.buttonStyle(.borderedProminent)
+				.tint(.red)
+		}
+		.padding(.horizontal, 14)
+		.padding(.vertical, 10)
+		.background(.bar)
+		.accessibilityElement(children: .contain)
+		.accessibilityIdentifier("removal-confirmation")
 	}
 }

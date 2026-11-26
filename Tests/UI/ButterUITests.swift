@@ -10,7 +10,16 @@ final class ButterUITests: XCTestCase {
 		try Data().write(to: root.appendingPathComponent(".butter-ui-test"))
 		let metadata: [String: Any] = ["info": ["name": "folder", "piece length": 16384, "pieces": Data(repeating: 0, count: 20), "files": [["length": 4, "path": ["a.bin"]], ["length": 4, "path": ["b.bin"]]]]]
 		try bencode(metadata).write(to: root.appendingPathComponent("fixture.torrent"))
-		app = XCUIApplication()
+		let products = Bundle.main.bundleURL.deletingLastPathComponent()
+		let isolatedHost = products.appendingPathComponent("ButterUITestHost.app")
+		let devApp = products.appendingPathComponent("Butter.app")
+		if FileManager.default.fileExists(atPath: isolatedHost.path) {
+			app = XCUIApplication(url: isolatedHost)
+		} else if FileManager.default.fileExists(atPath: devApp.path) {
+			app = XCUIApplication(url: devApp)
+		} else {
+			app = XCUIApplication()
+		}
 		app.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
 		app.launchEnvironment["BUTTER_UI_TEST_ROOT"] = root.path
 		app.launch()
@@ -73,10 +82,9 @@ final class ButterUITests: XCTestCase {
 		expectation(for: selected, evaluatedWith: a); expectation(for: selected, evaluatedWith: b)
 		waitForExpectations(timeout: 5)
 		app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'transfer-row-'")).firstMatch.rightClick()
-		app.menuItems["Rename…"].click()
+		app.menuItems["Rename"].click()
 		let rename = app.textFields["transfer-name"]
-		XCTAssertTrue(rename.waitForExistence(timeout: 5)); rename.click(); rename.typeKey("a", modifierFlags: .command); rename.typeText("Renamed fixture")
-		app.buttons["Rename"].click()
+		XCTAssertTrue(rename.waitForExistence(timeout: 5)); rename.click(); rename.typeKey("a", modifierFlags: .command); rename.typeText("Renamed fixture"); rename.typeKey(.return, modifierFlags: [])
 		XCTAssertTrue(app.staticTexts["Renamed fixture"].firstMatch.waitForExistence(timeout: 5))
 		app.menuBars.menuBarItems["Transfers"].click()
 		app.menuItems["Remove and Delete Data…"].click()

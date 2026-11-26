@@ -140,11 +140,26 @@ struct FileNodeRow: View {
 						Task { await store.command("select", id: torrent.id, extra: ["selected": selected]) }
 					}.frame(width: 18, height: 18)
 					Image(systemName: node.isFolder ? "folder" : "doc").foregroundStyle(.secondary).accessibilityHidden(true)
-					VStack(alignment: .leading, spacing: 2) { Text(node.title).lineLimit(1); if node.original != node.path { Text("Original: \((node.original as NSString).lastPathComponent)").font(.caption2).foregroundStyle(.secondary).lineLimit(1) } }
+					VStack(alignment: .leading, spacing: 2) {
+						let target = RenamePathTarget(torrentID: torrent.id, path: node.path)
+						if store.renamingPath == target {
+							InlineRenameField(
+								initialText: node.title,
+								identifier: "local-name",
+								label: "Local \(node.isFolder ? "folder" : "file") name",
+								font: .systemFont(ofSize: NSFont.systemFontSize),
+								onCommit: { store.commitRenamePath(target, to: $0) },
+								onCancel: { store.cancelRenamePath() }
+							)
+						} else {
+							Text(node.title).lineLimit(1)
+						}
+						if node.original != node.path { Text("Original: \((node.original as NSString).lastPathComponent)").font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+					}
 					Spacer(); Text(bytes(node.files.reduce(0) { $0 + $1.size })).font(.caption2).foregroundStyle(.secondary)
 				}.contextMenu {
 					Button("Verify Local Data") { Task { await store.command("recheck", id: torrent.id, extra: ["files": node.files.map(\.index)]) } }.help("Hash complete pieces overlapping these files, including shared boundary bytes.")
-					Button("Rename Local \(node.isFolder ? "Folder" : "File")…") { store.renamePath(node.path, torrent: torrent) }.help("Rename local contents while preserving the original torrent metadata.")
+					Button("Rename Local \(node.isFolder ? "Folder" : "File")") { store.renamePath(node.path, torrent: torrent) }.help("Rename local contents while preserving the original torrent metadata.")
 					if !node.isFolder, let file = node.files.first, !file.pad {
 						Button("Repair from local file…") { store.repairFile(file.index, torrent: torrent) }.help("Repair this file from a local copy, preserving the source.")
 					}
