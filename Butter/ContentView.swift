@@ -174,7 +174,7 @@ struct TransferMenu: View {
 		Button("Pause") { Task { await store.setRunning(ids, running: false) } }.help("Pause selected transfers and retain their data.")
 		Button("Force Start") { Task { await store.setRunning(ids, running: true, force: true) } }.help("Start selected transfers beyond the active-transfer limits.")
 		Menu("Priority") { PriorityMenu(ids: ids) }
-		Divider(); Button("Rename…") { store.renameTorrent(torrent) }.help("Change this transfer’s display name.")
+		Divider(); Button("Rename…") { store.renameTorrent(torrent) }.help(torrent.localRootFolder == nil ? "Change this transfer’s display name." : "Rename this transfer and its local folder.")
 		Button("Verify Local Data") { Task { for id in ids { await store.command("recheck", id: id) } } }.disabled(!torrent.metadata).help("Hash local data again and retry damaged or missing pieces.")
 		Button("Repair from Folder…") { store.repairFolder(torrent) }.disabled(!torrent.metadata).help("Repair this torrent from matching local files, preserving the source folder.")
 		Button("Retry Completion Move") { Task { await store.retryMove(torrent) } }.disabled(!torrent.complete).help("Retry moving completed data to the final destination.")

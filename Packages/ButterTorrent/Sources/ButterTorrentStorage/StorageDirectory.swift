@@ -111,6 +111,12 @@ final class StorageDirectory: @unchecked Sendable {
 		guard try FileStamp(value).sameFile(expected.identity()), value.st_mode & S_IFMT == S_IFDIR else { throw StorageFailure.recoveryRequired("state directory identity changed") }
 		guard unlinkat(fd, name, AT_REMOVEDIR) == 0 else { throw diskError("Cannot remove state directory") }; try sync(fd)
 	}
+	func pruneEmptyDirectory(_ path: String) {
+		// A non-recursive removal preserves unrelated contents and refuses symlinks.
+		try? parent(path) { directory, name in
+			if unlinkat(directory, name, AT_REMOVEDIR) == 0 { try sync(directory) }
+		}
+	}
 	func identity() throws -> FileStamp {
 		var value = stat()
 		guard fstat(fd, &value) == 0 else { throw diskError("Cannot inspect storage root") }

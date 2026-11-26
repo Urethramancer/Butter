@@ -117,6 +117,14 @@ struct TransferSnapshot: Codable, Identifiable {
 	var files: [TransferFile]
 	var trackers: [TrackerSnapshot]
 	var peers: [PeerSnapshot]
+	var localRootFolder: String? {
+		let payload = files.filter { !$0.pad }
+		guard let first = payload.first, first.original.utf8.contains(47),
+			let slash = first.path.utf8.firstIndex(of: 47) else { return nil }
+		let prefix = first.path.utf8[...slash]
+		guard payload.allSatisfy({ $0.path.utf8.starts(with: prefix) }) else { return nil }
+		return String(decoding: prefix.dropLast(), as: UTF8.self)
+	}
 	var formatLabel: String? {
 		guard metadata else { return nil }
 		switch (hashes.contains { $0.count == 40 }, hashes.contains { $0.count == 64 }) {

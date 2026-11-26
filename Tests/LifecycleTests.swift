@@ -74,6 +74,52 @@ func check(_ condition: @autoclosure () -> Bool, _ message: String) throws { if 
 			let restored = try await StateStorage(root: root).load()
 			try check(restored.transfers.count == 4 && restored.watchedImports.count == 1, "Persist transfer and watcher state")
 			print("PASS: completion move/auto-remove retaining data, creation in place, duplicate selection, stable watched import/copy/deletion, private tracker restriction, orderly persistence")
+			try await directoryRename(root.appendingPathComponent("folder-test"))
 		} catch { fputs("FAIL: \(error)\n", stderr); exit(1) }
+	}
+	@MainActor private static func directoryRename(_ root: URL) async throws {
+		let fm = FileManager.default, store = TransferStore(root: root, automaticPolling: false, allowsSystemIntegration: false)
+		await store.start()
+		let folder = root.appendingPathComponent("original"), nested = folder.appendingPathComponent("nested")
+		try fm.createDirectory(at: nested, withIntermediateDirectories: true)
+		let bytes = Data([3, 1, 4])
+		try bytes.write(to: nested.appendingPathComponent("a.bin"))
+		try bytes.write(to: folder.appendingPathComponent("b.bin"))
+		let added = await store.create(source: folder.path, trackers: [], isPrivate: false, start: false)
+		try check(added, "Create the directory torrent")
+		await store.refresh()
+		guard let before = store.transfers.first else { throw Failure(description: "Directory torrent is missing") }
+
+		let collision = root.appendingPathComponent("occupied/b.bin")
+		try fm.createDirectory(at: collision.deletingLastPathComponent(), withIntermediateDirectories: true)
+		try Data([9]).write(to: collision)
+		await store.renameTransfer(before.id, to: "occupied")
+		let occupied = try Data(contentsOf: collision)
+		try check(store.error != nil && store.title(before) == "original" && occupied == Data([9]), "A collision preserves the old title and the destination file")
+		try check(fm.fileExists(atPath: nested.appendingPathComponent("a.bin").path), "A collision preserves the source")
+
+		// A display alias saved by older versions can be applied without changing its text.
+		store.records[0].name = "renamed"
+		await store.renameTransfer(before.id, to: "renamed")
+		await store.refresh()
+		let renamed = root.appendingPathComponent("renamed")
+		let moved = try Data(contentsOf: renamed.appendingPathComponent("nested/a.bin"))
+		try check(moved == bytes && !fm.fileExists(atPath: folder.path), "Rename moves nested payload and removes the empty old folder")
+
+		let unrelated = renamed.appendingPathComponent("notes.txt")
+		try bytes.write(to: unrelated)
+		await store.renameTransfer(before.id, to: "final")
+		let retained = try Data(contentsOf: unrelated)
+		try check(!fm.fileExists(atPath: renamed.appendingPathComponent("nested").path) && retained == bytes, "Repeated rename keeps unrelated files and prunes vacated directories")
+		let stopped = await store.shutdown()
+		try check(stopped, "Save the renamed torrent")
+		// Simulate process exit by releasing the native lease while retaining saved state.
+		_ = try await store.engine.perform("remove", ["id": before.id, "retainState": true])
+		let restored = TransferStore(root: root, automaticPolling: false, allowsSystemIntegration: false)
+		await restored.start(); await restored.refresh()
+		guard let after = restored.transfers.first else { throw Failure(description: "Renamed torrent did not restore") }
+		try check(restored.title(after) == "final" && after.localRootFolder == "final" && after.hashes == before.hashes, "Restart restores the local folder and title with the original swarm identity")
+		_ = await restored.shutdown()
+		print("PASS: directory rename, collision safety, unrelated files, and restart")
 	}
 }

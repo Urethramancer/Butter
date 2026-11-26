@@ -48,6 +48,7 @@ struct AddRequest: Identifiable {
 	private var polling: Task<Void, Never>?
 	private var lastSave = Date.distantPast
 	private var moving = Set<String>()
+	private var renaming = Set<String>()
 	private var repairing = Set<String>()
 	private var refreshing = false
 	private var starting = false
@@ -193,7 +194,7 @@ struct AddRequest: Identifiable {
 		} catch { report(error) }
 	}
 	private func processCompletion(_ torrent: TransferSnapshot) async {
-		guard let record = record(torrent.id), torrent.complete && torrent.metadata && torrent.error.isEmpty else { return }
+		guard let record = record(torrent.id), !renaming.contains(torrent.id), torrent.complete && torrent.metadata && torrent.error.isEmpty else { return }
 		if !notified.contains(torrent.id) && !record.completionHandled { notified.insert(torrent.id); notify(torrent) }
 		let requiresMove = !record.creation && !preferences.finalFolder.isEmpty && URL(fileURLWithPath: torrent.path).standardizedFileURL.path != URL(fileURLWithPath: preferences.finalFolder).standardizedFileURL.path
 		if requiresMove && !record.moved && !record.moveFailed && !moving.contains(torrent.id) {
@@ -336,22 +337,76 @@ struct AddRequest: Identifiable {
 		} }
 	}
 	func renameTorrent(_ torrent: TransferSnapshot) {
+		let folder = torrent.localRootFolder
 		let field = NSTextField(string: title(torrent)); field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
 		field.setAccessibilityIdentifier("transfer-name")
-		let alert = NSAlert(); alert.messageText = "Rename transfer"; alert.informativeText = "This changes the display name."; alert.accessoryView = field; alert.addButton(withTitle: "Rename"); alert.addButton(withTitle: "Cancel")
-		if alert.runModal() == .alertFirstButtonReturn, !field.stringValue.isEmpty, let i = records.firstIndex(where: { $0.id == torrent.id }) { records[i].name = field.stringValue; Task { await persist() } }
+		let alert = NSAlert(); alert.messageText = "Rename transfer"
+		alert.informativeText = folder == nil ? "This changes the display name." : "This renames the local folder and changes the display name. Original torrent metadata is preserved."
+		alert.accessoryView = field; alert.addButton(withTitle: "Rename"); alert.addButton(withTitle: "Cancel")
+		guard alert.runModal() == .alertFirstButtonReturn else { return }
+		let name = field.stringValue
+		Task { await renameTransfer(torrent.id, to: name) }
+	}
+	func renameTransfer(_ id: String, to title: String) async {
+		guard !shuttingDown, !title.isEmpty, renaming.insert(id).inserted else { return }
+		activeOperations += 1
+		defer { activeOperations -= 1; renaming.remove(id) }
+		var name = title
+		do {
+			if let torrent = transfers.first(where: { $0.id == id }), let folder = torrent.localRootFolder {
+				name = try localName(title)
+				if folder != name { try await renameLocalPath(folder, to: name, torrent: torrent) }
+			}
+			guard let index = records.firstIndex(where: { $0.id == id }) else { return }
+			records[index].name = name
+			await persist()
+		} catch { report(error) }
 	}
 	func renamePath(_ path: String, torrent: TransferSnapshot) {
 		let field = NSTextField(string: (path as NSString).lastPathComponent); field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
 		field.setAccessibilityIdentifier("local-name")
 		let alert = NSAlert(); alert.messageText = "Rename local contents"; alert.informativeText = "Original torrent names and swarm identity are preserved. Transfers pause while the engine renames files."; alert.accessoryView = field; alert.addButton(withTitle: "Rename"); alert.addButton(withTitle: "Cancel")
 		guard alert.runModal() == .alertFirstButtonReturn else { return }
-		let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !name.isEmpty && name != "." && name != ".." && !name.contains("/") && !name.contains(":") else { error = "Choose a single safe file or folder name."; return }
+		let value = field.stringValue
+		Task {
+			guard !shuttingDown, renaming.insert(torrent.id).inserted else { return }
+			activeOperations += 1
+			defer { activeOperations -= 1; renaming.remove(torrent.id) }
+			do { try await renameLocalPath(path, to: localName(value), torrent: torrent) }
+			catch { report(error) }
+		}
+	}
+	private func localName(_ value: String) throws -> String {
+		let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !name.isEmpty, name != ".", name != "..", name.utf8.count <= 255,
+			!name.utf8.contains(where: { $0 == 0 || $0 == 47 || $0 == 58 }) else {
+			throw CocoaError(.fileWriteInvalidFileName, userInfo: [NSLocalizedDescriptionKey: "Choose a single safe file or folder name."])
+		}
+		return name
+	}
+	private func renameLocalPath(_ path: String, to name: String, torrent: TransferSnapshot) async throws {
 		let parent = (path as NSString).deletingLastPathComponent
 		let replacement = parent.isEmpty ? name : parent + "/" + name
-		let changes = torrent.files.filter { $0.path == path || $0.path.hasPrefix(path + "/") }.map { ["index": $0.index, "path": replacement + String($0.path.dropFirst(path.count))] as [String: Any] }
-		Task { await command("rename", id: torrent.id, extra: ["changes": changes]) }
+		let prefix = (path + "/").utf8
+		let current = transfers.first { $0.id == torrent.id } ?? torrent
+		var paths: [Int: String] = [:]
+		for file in current.files where !file.pad {
+			if file.path == path { paths[file.index] = replacement }
+			else if file.path.utf8.starts(with: prefix) {
+				paths[file.index] = replacement + "/" + String(decoding: file.path.utf8.dropFirst(prefix.count), as: UTF8.self)
+			}
+		}
+		guard !paths.isEmpty else { throw CocoaError(.fileNoSuchFile) }
+		let changes = paths.map { ["index": $0.key, "path": $0.value] as [String: Any] }
+		_ = try await engine.perform("rename", ["id": torrent.id, "changes": changes])
+		decisions[torrent.id] = nil
+		if let index = transfers.firstIndex(where: { $0.id == torrent.id }) {
+			var updated = transfers[index]
+			for file in updated.files.indices {
+				if let path = paths[updated.files[file].index] { updated.files[file].path = path }
+			}
+			transfers[index] = updated
+		}
 	}
 	func repairFile(_ index: Int, torrent: TransferSnapshot) {
 		chooseRepair(torrent, index: index)

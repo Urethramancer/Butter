@@ -198,7 +198,32 @@ extension StorageState {
 			try persist(journal)
 			try finishSystemTrash(&journal, check: check)
 		}
+		pruneRenamedDirectories(journal)
 		try finishOperation()
+	}
+	private func pruneRenamedDirectories(_ journal: StorageJournal) {
+		guard journal.before.destination == journal.after.destination, journal.trashStaged == nil,
+			let identity = try? payload.identity() else { return }
+		var obsolete: Set<String> = []
+		for entry in journal.entries where entry.removeSource && entry.sourceRoot == journal.before.destination &&
+			entry.destinationRoot == entry.sourceRoot && identity.sameFile(entry.sourceDirectory) &&
+			entry.source == journal.before.paths[entry.index] && entry.destination == journal.after.paths[entry.index] && entry.source != entry.destination {
+			var parent = (entry.source as NSString).deletingLastPathComponent
+			while !parent.isEmpty, obsolete.insert(parent).inserted {
+				parent = (parent as NSString).deletingLastPathComponent
+			}
+		}
+		guard !obsolete.isEmpty else { return }
+		var retained: Set<String> = []
+		for index in journal.after.paths.indices where !layout.files[index].pad {
+			var parent = (journal.after.paths[index] as NSString).deletingLastPathComponent
+			while !parent.isEmpty, retained.insert(StorageLayout.pathKey(parent)).inserted {
+				parent = (parent as NSString).deletingLastPathComponent
+			}
+		}
+		for path in obsolete.sorted(by: { $0.utf8.count > $1.utf8.count }) where !retained.contains(StorageLayout.pathKey(path)) {
+			payload.pruneEmptyDirectory(path)
+		}
 	}
 	func operationJournal() throws -> StorageJournal {
 		try PropertyListDecoder().decode(StorageJournal.self, from: state.read("operation.plist", maximum: 33_554_432))

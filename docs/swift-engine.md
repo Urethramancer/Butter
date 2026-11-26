@@ -41,6 +41,11 @@ owners. Session budgets bound disk work, download buffers and immutable upload
 caches. Peer requests for one piece share its read. Limits stay source-defined;
 experiments must preserve production request windows and filesystem observations.
 
+The transfer menu's **Rename** command updates a directory torrent's local paths
+through the storage journal, then saves its display name. The engine prunes
+vacated directories when empty and preserves unrelated files and the original
+torrent metadata.
+
 ## Protocols and shutdown
 
 The engine supports v1/v2/hybrid transfers, TCP/µTP, peer encryption, metadata
