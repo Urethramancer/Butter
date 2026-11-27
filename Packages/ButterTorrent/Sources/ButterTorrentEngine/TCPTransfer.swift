@@ -212,7 +212,7 @@ public actor TCPTransfer {
 		let disk = TransferDiskScope(resources: resources)
 		self.disk = disk; writeBuffers = resources.writeBuffers; cache = VerifiedPieceCache(storage: storage, resources: resources, disk: disk)
 		// Single-file v1 coalescing increased counterpart CPU in paired comparisons.
-		coalesceWrites = metadata.hashes.v2 != nil || metadata.inspection.files.lazy.filter { !$0.pad }.prefix(2).count > 1
+		coalesceWrites = true
 		var offset: Int64 = 0, wanted: Set<Int> = []
 		for file in storage.layout.files {
 			if !file.pad, initial.selected[file.index], file.size > 0 {

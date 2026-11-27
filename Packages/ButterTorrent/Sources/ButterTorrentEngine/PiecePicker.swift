@@ -51,8 +51,14 @@ struct PiecePicker {
 		return wanted.contains { !completed.contains($0) && !staged.contains($0) && bits.contains($0) }
 	}
 	func has(_ peer: UUID, piece: Int) -> Bool { peers[peer]?.contains(piece) == true }
+	func pieceLength(_ piece: Int) -> Int {
+		lengths[piece] ?? ((try? layout.length(of: piece)) ?? 0)
+	}
+	func blockCount(of piece: Int) -> Int {
+		(pieceLength(piece) + 16383) / 16384
+	}
 	func blocks(_ piece: Int) -> [PeerBlock] {
-		let length = lengths[piece] ?? ((try? layout.length(of: piece)) ?? 0)
+		let length = pieceLength(piece)
 		return stride(from: 0, to: length, by: 16384).map { PeerBlock(piece: piece, offset: $0, length: min(16384, length - $0)) }
 	}
 	mutating func allocate(_ peer: UUID, limit: Int, now: TimeInterval, eligible: Set<Int>? = nil, allowed: Set<Int>? = nil, suggestions: Set<Int> = [], excluding: Set<Int> = []) -> [PeerBlock] {
@@ -126,9 +132,11 @@ struct PiecePicker {
 				guard active.count < maximumActive else { break }; active[piece] = Active()
 			}
 			guard !active[piece]!.verifying else { continue }
-			for block in blocks(piece) where !active[piece]!.received.contains(block.offset) && !active[piece]!.writing.contains(block.offset) {
-				if active[piece]!.owners[block.offset, default: [:]].isEmpty {
-					active[piece]!.owners[block.offset] = [peer: now]; result.append(block)
+			let length = pieceLength(piece)
+			for offset in stride(from: 0, to: length, by: 16384) where !active[piece]!.received.contains(offset) && !active[piece]!.writing.contains(offset) {
+				if active[piece]!.owners[offset, default: [:]].isEmpty {
+					active[piece]!.owners[offset] = [peer: now]
+					result.append(PeerBlock(piece: piece, offset: offset, length: min(16384, length - offset)))
 					if result.count == limit { return result }
 				}
 			}
@@ -157,7 +165,7 @@ struct PiecePicker {
 	mutating func written(_ block: PeerBlock) -> Bool {
 		guard var item = active[block.piece] else { return false }
 		item.writing.remove(block.offset); item.received.insert(block.offset)
-		let ready = item.received.count == blocks(block.piece).count && item.writing.isEmpty
+		let ready = item.received.count == blockCount(of: block.piece) && item.writing.isEmpty
 		if ready { item.verifying = true }; active[block.piece] = item; return ready
 	}
 	mutating func abortedWrite(_ block: PeerBlock) {

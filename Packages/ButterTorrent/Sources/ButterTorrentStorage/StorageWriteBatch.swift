@@ -12,30 +12,36 @@ public struct StorageWrite: Sendable {
 extension TorrentStorage {
 	/// Writes at most sixteen blocks and 256 KiB in one admitted disk job.
 	public func writeBatch(_ writes: [StorageWrite]) async throws {
-		try await performWriteBatch(writes, bufferBudget: nil) { _, _ in () }
+		try await performWriteBatch(writes, bufferBudget: nil) { _, _, _ in () }
 	}
 	/// Writes received blocks using contiguous file ranges within a shared 1 MiB buffer budget.
 	public func writeDownloadBatch(_ writes: [StorageWrite], bufferBudget: DownloadWriteBufferBudget) async throws {
-		try await performWriteBatch(writes, bufferBudget: bufferBudget) { _, _ in () }
+		try await performWriteBatch(writes, bufferBudget: bufferBudget) { _, _, _ in () }
 	}
 	/// Writes a batch and verifies one completed piece in the same disk job.
 	/// Write failures throw; verification failures are returned after successful writes.
 	public func writeAndVerifyBatch(_ writes: [StorageWrite], piece: Int, bufferBudget: DownloadWriteBufferBudget? = nil) async throws -> Result<Bool, Error> {
-		let result = try await performWriteBatch(writes, bufferBudget: bufferBudget) { state, cancellation in
-			let verified = Result { try state.verify(piece: piece, profileKind: .verificationInWrite, check: cancellation.check) }
+		let result = try await performWriteBatch(writes, bufferBudget: bufferBudget, retainDescriptors: true) { state, openFiles, cancellation in
+			let verified = Result { try state.verify(piece: piece, profileKind: .verificationInWrite, openFiles: openFiles, check: cancellation.check) }
 			return (verified, state.checkpointDeadline)
 		}
 		armCheckpointTimer(result.1); return result.0
 	}
-	private func performWriteBatch<Output: Sendable>(_ writes: [StorageWrite], bufferBudget: DownloadWriteBufferBudget?, afterWrite: @escaping @Sendable (StorageState, DiskCancellation) throws -> Output) async throws -> Output {
+	private func performWriteBatch<Output: Sendable>(_ writes: [StorageWrite], bufferBudget: DownloadWriteBufferBudget?, retainDescriptors: Bool = false, afterWrite: @escaping @Sendable (StorageState, [Int: (fd: Int32, stamp: FileStamp)], DiskCancellation) throws -> Output) async throws -> Output {
 		let maximumBytes = bufferBudget == nil ? 262144 : 1_048_576, maximumCount = bufferBudget == nil ? 16 : 64
 		try StorageState.validateWrites(writes, maximumBytes: maximumBytes, maximumCount: maximumCount)
 		let size = bufferBudget == nil ? 0 : writes.reduce(0) { $0 + $1.data.count }
 		let reserved = writes.count > 1 && bufferBudget?.reserve(size) == true
 		defer { if reserved { bufferBudget?.release(size) } }
 		return try await worker.run(write: true) { [state] cancellation in
-			try state.writeOperations(writes, maximumBytes: maximumBytes, maximumCount: maximumCount, coalescing: reserved, budgetFallback: bufferBudget != nil && writes.count > 1 && !reserved, check: cancellation.check)
-			return try afterWrite(state, cancellation)
+			var openFiles: [Int: (fd: Int32, stamp: FileStamp)] = [:]
+			defer { for entry in openFiles.values { close(entry.fd) } }
+			if retainDescriptors {
+				try state.writeOperations(writes, maximumBytes: maximumBytes, maximumCount: maximumCount, coalescing: reserved, budgetFallback: bufferBudget != nil && writes.count > 1 && !reserved, retainedFiles: &openFiles, check: cancellation.check)
+			} else {
+				try state.writeOperations(writes, maximumBytes: maximumBytes, maximumCount: maximumCount, coalescing: reserved, budgetFallback: bufferBudget != nil && writes.count > 1 && !reserved, check: cancellation.check)
+			}
+			return try afterWrite(state, openFiles, cancellation)
 		}
 	}
 }
@@ -62,7 +68,7 @@ extension StorageState {
 			total += write.data.count
 		}
 	}
-	func writeOperations(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int, coalescing: Bool = false, budgetFallback: Bool = false, diagnosticRecorder: StorageWriteProfile? = StorageWriteProfile.make(), check: () throws -> Void) throws {
+	func writeOperations(_ writes: [StorageWrite], maximumBytes: Int, maximumCount: Int, coalescing: Bool = false, budgetFallback: Bool = false, diagnosticRecorder: StorageWriteProfile? = StorageWriteProfile.make(), retainedFiles: UnsafeMutablePointer<[Int: (fd: Int32, stamp: FileStamp)]>? = nil, check: () throws -> Void) throws {
 		#if BUTTER_STORAGE_REPLAY_CAPTURE
 		guard layout.pieceLength == 262144, writes.allSatisfy({ $0.offset.isMultiple(of: 16384) && $0.data.count == 16384 }) else {
 			throw StorageFailure.invalid("unexpected replay block geometry")
@@ -104,10 +110,16 @@ extension StorageState {
 		}
 		for piece in pieces { try forgetPendingVerification(piece) }
 		if coalescing {
-			try writeContiguousRanges(writes, segments: segments, check: checked); outcome = "succeeded"; return
+			try writeContiguousRanges(writes, segments: segments, retainedFiles: retainedFiles, check: checked); outcome = "succeeded"; return
 		}
-		var files: [Int: Int32] = [:], order: [Int] = []
-		defer { profile?.enter(.cleanup); for file in files.values { close(file); profile?.count("descriptorCloses") } }
+		var files: [Int: (fd: Int32, stamp: FileStamp)] = [:], order: [Int] = []
+		var transferred = false
+		defer {
+			if !transferred {
+				profile?.enter(.cleanup)
+				for entry in files.values { close(entry.fd); profile?.count("descriptorCloses") }
+			}
+		}
 		for index in writes.indices {
 			profile?.enter(.prewriteChecks)
 			if index > 0 { try checked() }
@@ -120,15 +132,17 @@ extension StorageState {
 				profile?.count("descriptorAcquisitions")
 				let (directory, path) = location(segment.file)
 				let file: Int32
+				var freshStamp: FileStamp?
 				if let cached = files[segment.file] {
-					file = cached; profile?.count("descriptorHits"); StorageDiagnostics.count(.writeDescriptorCacheHits)
+					file = cached.fd; profile?.count("descriptorHits"); StorageDiagnostics.count(.writeDescriptorCacheHits)
 				} else {
-					if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!); profile?.count("descriptorCloses"); profile?.enter(.descriptorAcquisition) }
-					file = try directory.openFile(path, write: true); files[segment.file] = file; order.append(segment.file)
+					if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!.fd); profile?.count("descriptorCloses"); profile?.enter(.descriptorAcquisition) }
+					let (openedFile, openedStamp) = try directory.openFileWithStamp(path, write: true)
+					file = openedFile; freshStamp = openedStamp; files[segment.file] = (openedFile, openedStamp); order.append(segment.file)
 				}
 				profile?.enter(.prewriteChecks)
 				// Re-check even the first open: replacement can occur after the initial scan.
-				let opened = try directory.stamp(file)
+				let opened = try freshStamp ?? directory.stamp(file)
 				guard let current = try directory.inspect(path), current.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
 				if current != record.stamps[segment.file] {
 					profile?.count(record.stamps[segment.file] == nil ? "ordinaryMismatchAbsent" : "ordinaryMismatchRecorded")
@@ -137,8 +151,14 @@ extension StorageState {
 				pendingFlush.insert(segment.file)
 				try StorageDirectory.write(write.data[cursor..<(cursor + segment.count)], to: file, offset: segment.offset, profile: profile, check: checked)
 				profile?.enter(.postwriteStamping)
-				record.stamps[segment.file] = try directory.stamp(file)
+				let finalStamp = try directory.stamp(file)
+				record.stamps[segment.file] = finalStamp
+				files[segment.file] = (file, finalStamp)
 			}
+		}
+		if let retainedFiles {
+			retainedFiles.pointee = files
+			transferred = true
 		}
 		outcome = "succeeded"
 	}

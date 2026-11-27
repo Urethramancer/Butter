@@ -9,7 +9,8 @@ final class StorageStampScan {
 	private var root: StorageDirectory?
 	private var parentPath: String?
 	private var descriptor: Int32 = -1
-	deinit { if descriptor >= 0 { close(descriptor) } }
+	private var ownsDescriptor = false
+	deinit { if ownsDescriptor && descriptor >= 0 { close(descriptor) } }
 	func inspect(_ path: String, in directory: StorageDirectory) throws -> FileStamp? {
 		// The parent was validated when this scan opened it. Compare exact UTF-8
 		// bytes before reusing that validation; every new leaf still needs validation.
@@ -28,15 +29,21 @@ final class StorageStampScan {
 		}
 		let parts = try StorageLayout.components(path), parent = parts.dropLast().joined(separator: "/")
 		if root !== directory || parentPath != parent {
-			if descriptor >= 0 { close(descriptor) }; descriptor = -1
+			if ownsDescriptor && descriptor >= 0 { close(descriptor) }
+			descriptor = -1; ownsDescriptor = false
 			root = directory; parentPath = parent
-			do {
-				descriptor = try directory.parent(path) { parent, _ in
-					let copy = dup(parent)
-					StorageDiagnostics.count(.descriptorDuplicates)
-					guard copy >= 0 else { throw diskError("Cannot retain inspection directory") }; return copy
-				}
-			} catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
+			if parent.isEmpty {
+				descriptor = directory.fd
+			} else {
+				do {
+					descriptor = try directory.parent(path) { parent, _ in
+						let copy = dup(parent)
+						StorageDiagnostics.count(.descriptorDuplicates)
+						guard copy >= 0 else { throw diskError("Cannot retain inspection directory") }; return copy
+					}
+					ownsDescriptor = true
+				} catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) { return nil }
+			}
 		}
 		guard descriptor >= 0 else { return nil }
 		return try directory.inspect(parts.last!, at: descriptor)
@@ -124,26 +131,30 @@ final class StorageDirectory: @unchecked Sendable {
 	}
 	func parent<T>(_ path: String, create: Bool = false, _ body: (Int32, String) throws -> T) throws -> T {
 		let parts = try StorageLayout.components(path)
-		var directory = dup(fd)
-		StorageDiagnostics.count(.descriptorDuplicates)
-		guard directory >= 0 else { throw diskError("Cannot duplicate directory") }
-		defer { close(directory) }
+		if parts.count == 1 { return try body(fd, parts[0]) }
+		var directory = fd
+		var owns = false
+		defer { if owns { close(directory) } }
 		for part in parts.dropLast() {
 			if create, mkdirat(directory, part, 0o700) == 0 { try sync(directory) }
 			let next = openat(directory, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
 			StorageDiagnostics.opened(.directoryOpens)
 			guard next >= 0 else { throw diskError("Cannot open managed directory") }
-			close(directory); directory = next
+			if owns { close(directory) }
+			directory = next; owns = true
 		}
 		return try body(directory, parts.last!)
 	}
 	func openFile(_ path: String, write: Bool = false, exclusive: Bool = false) throws -> Int32 {
+		try openFileWithStamp(path, write: write, exclusive: exclusive).0
+	}
+	func openFileWithStamp(_ path: String, write: Bool = false, exclusive: Bool = false) throws -> (Int32, FileStamp) {
 		try parent(path, create: write) { directory, name in
 			let flags = (write ? O_RDWR | O_CREAT : O_RDONLY) | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK | (exclusive ? O_EXCL : 0)
 			let file = openat(directory, name, flags, 0o600)
 			StorageDiagnostics.opened(.fileOpens)
 			guard file >= 0 else { throw diskError("Cannot open managed file") }
-			do { _ = try stamp(file, shared: !write); return file } catch { close(file); throw error }
+			do { let value = try stamp(file, shared: !write); return (file, value) } catch { close(file); throw error }
 		}
 	}
 	func stamp(_ file: Int32, shared: Bool = false) throws -> FileStamp {
@@ -181,17 +192,22 @@ final class StorageDirectory: @unchecked Sendable {
 			guard bytes.count <= maximum - result.count else { throw StorageFailure.limit("state bytes") }; result.append(bytes)
 		}
 	}
-	static func read(_ file: Int32, offset: Int64, count: Int) throws -> Data {
-		var bytes = Data(count: count)
+	static func read(_ file: Int32, offset: Int64, into buffer: UnsafeMutableRawBufferPointer) throws -> Int {
+		guard let base = buffer.baseAddress, !buffer.isEmpty else { return 0 }
 		while true {
-			let readCount = bytes.withUnsafeMutableBytes { pread(file, $0.baseAddress, count, off_t(offset)) }
+			let readCount = pread(file, base, buffer.count, off_t(offset))
 			if readCount < 0 {
 				if errno == EINTR { continue }; throw diskError("Cannot read file")
 			}
-			bytes.count = readCount
 			StorageDiagnostics.io(read: true, bytes: readCount)
-			return bytes
+			return readCount
 		}
+	}
+	static func read(_ file: Int32, offset: Int64, count: Int) throws -> Data {
+		var bytes = Data(count: count)
+		let readCount = try bytes.withUnsafeMutableBytes { try read(file, offset: offset, into: $0) }
+		bytes.count = readCount
+		return bytes
 	}
 	static func write(_ data: Data, to file: Int32, offset: Int64, maximumChunk: Int = 65536, profile: StorageWriteProfile? = nil, check: () throws -> Void) throws {
 		try data.withUnsafeBytes { bytes in

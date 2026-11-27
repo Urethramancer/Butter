@@ -63,6 +63,14 @@ extension TCPTransfer {
 		}
 		return (peer, now)
 	}
+	func receivedRequests(_ id: UUID, blocks: [PeerBlock]) throws {
+		guard let first = blocks.first else { return }
+		let (peer, _) = try prepareMessage(id, message: .request(first))
+		for block in blocks {
+			try validate(block)
+			if try !requestUpload(id, block: block) { try recordControlMessage(peer) }
+		}
+	}
 	func received(_ id: UUID, message: PeerMessage, profile: ReceivePipelineSample? = nil) async throws {
 		profile?.enteredEngine()
 		let (peer, now) = try prepareMessage(id, message: message)

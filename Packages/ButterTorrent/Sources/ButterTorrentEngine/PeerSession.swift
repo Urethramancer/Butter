@@ -81,8 +81,21 @@ final class PeerSession: @unchecked Sendable {
 		if blocks.count <= 1 || stream.kind != .tcp {
 			for block in blocks { try send(.request(block)) }; return
 		}
-		var bytes = Data(capacity: blocks.count * 17)
-		for block in blocks { try PeerMessage.appendRequest(block, to: &bytes) }
+		let totalBytes = blocks.count * 17
+		guard let raw = malloc(totalBytes) else { throw PeerFailure.limit("peer request allocation") }
+		var bytes = Data(bytesNoCopy: raw, count: totalBytes, deallocator: .free)
+		try bytes.withUnsafeMutableBytes { buffer in
+			let base = buffer.baseAddress!.assumingMemoryBound(to: UInt8.self)
+			for (index, block) in blocks.enumerated() {
+				guard (1...16384).contains(block.length) else { throw PeerFailure.invalid("request length") }
+				let cursor = base.advanced(by: index * 17)
+				try PeerBytes.write(13, to: cursor)
+				cursor[4] = 6
+				try PeerBytes.write(block.piece, to: cursor.advanced(by: 5))
+				try PeerBytes.write(block.offset, to: cursor.advanced(by: 9))
+				try PeerBytes.write(block.length, to: cursor.advanced(by: 13))
+			}
+		}
 		let buffer = WireBuffer(bytes)
 		let frames = blocks.indices.map { Outbound(controlBuffer: buffer, range: ($0 * 17)..<(($0 + 1) * 17)) }
 		try lock.withLock {
@@ -115,11 +128,28 @@ final class PeerSession: @unchecked Sendable {
 				guard block.length + 13 <= 262144 - size else { break }
 				size += block.length + 13; end += 1
 			}
-			var bytes = Data(capacity: size), ranges: [Range<Int>] = []
-			for request in requests[start..<end] {
-				let block = request.block, lower = bytes.count, offset = piece.startIndex + block.offset
-				try PeerMessage.appendPiece(block.piece, block.offset, piece[offset..<(offset + block.length)], to: &bytes)
-				ranges.append(lower..<bytes.count)
+			guard let raw = malloc(size) else { throw PeerFailure.limit("peer piece allocation") }
+			var bytes = Data(bytesNoCopy: raw, count: size, deallocator: .free)
+			var ranges: [Range<Int>] = []
+			ranges.reserveCapacity(end - start)
+			try piece.withUnsafeBytes { source in
+				try bytes.withUnsafeMutableBytes { dest in
+					let dstBase = dest.baseAddress!.assumingMemoryBound(to: UInt8.self)
+					let srcBase = source.baseAddress!
+					var cursor = 0
+					for request in requests[start..<end] {
+						let block = request.block
+						let frameSize = block.length + 13
+						let dst = dstBase.advanced(by: cursor)
+						try PeerBytes.write(block.length + 9, to: dst)
+						dst[4] = 7
+						try PeerBytes.write(block.piece, to: dst.advanced(by: 5))
+						try PeerBytes.write(block.offset, to: dst.advanced(by: 9))
+						memcpy(dst.advanced(by: 13), srcBase.advanced(by: block.offset), block.length)
+						ranges.append(cursor..<(cursor + frameSize))
+						cursor += frameSize
+					}
+				}
 			}
 			let buffer = WireBuffer(bytes)
 			try lock.withLock {
@@ -286,7 +316,15 @@ final class PeerSession: @unchecked Sendable {
 			var cycleOutcome = "failed"
 			defer { cycle?.finish(cycleOutcome) }
 			var firstBlock: IncomingPieceBlock?, blocks: [IncomingPieceBlock] = [], blockBytes = 0
+			var requestBatch: [PeerBlock] = []
 			var readPayload = 0
+			func flushRequests() async throws {
+				guard !requestBatch.isEmpty else { return }
+				let batch = requestBatch; requestBatch.removeAll(keepingCapacity: true)
+				let started = cycle?.tick(); defer { cycle?.end(.controlDispatch, since: started) }
+				if batch.count == 1 { try await engine.received(id, message: .request(batch[0])) }
+				else { try await engine.receivedRequests(id, blocks: batch) }
+			}
 			func flushBlocks(_ reason: ReceivePipelineSample.Flush) async throws {
 				guard let first = firstBlock else { return }
 				let batch = blocks, payloadBytes = blockBytes; blocks = []; firstBlock = nil; blockBytes = 0
@@ -316,7 +354,9 @@ final class PeerSession: @unchecked Sendable {
 					}
 					while let message = try decoder.next() {
 						try Task.checkCancellation()
-						if case .piece(let piece, let offset, let bytes) = message {
+						switch message {
+						case .piece(let piece, let offset, let bytes):
+							try await flushRequests()
 							if bytes.count > batchBytes - blockBytes || blocks.count == 16 { try await flushBlocks(.budget) }
 							cycle?.count("decodedBlocks"); cycle?.count("payloadBytes", bytes.count)
 							let block = IncomingPieceBlock(piece: piece, offset: offset, bytes: bytes)
@@ -325,26 +365,32 @@ final class PeerSession: @unchecked Sendable {
 							} else { firstBlock = block }
 							blockBytes += bytes.count
 							readPayload += bytes.count
-						} else {
+						case .request(let block):
 							try await flushBlocks(.control)
+							requestBatch.append(block)
+							if requestBatch.count >= Self.uploadRequestLimit { try await flushRequests() }
+						default:
+							try await flushBlocks(.control)
+							try await flushRequests()
 							let started = cycle?.tick(); defer { cycle?.end(.controlDispatch, since: started) }
 							try await engine.received(id, message: message)
 						}
 						frames += 1
 						if frames % 128 == 0 {
 							try await flushBlocks(.yield)
+							try await flushRequests()
 							let started = cycle?.tick(); await Task.yield(); cycle?.end(.schedulerYield, since: started)
 						}
 					}
 				}
 			} catch {
 				let failure = error
-				do { try await flushBlocks(.error) }
+				do { try await flushBlocks(.error); try await flushRequests() }
 				catch { cycleOutcome = error is CancellationError ? "cancelled" : "failed"; throw error }
 				cycleOutcome = failure is CancellationError ? "cancelled" : "failed"; throw failure
 			}
 			// Flush a short batch before the next network wait; never wait to fill it.
-			do { try await flushBlocks(.readEnd); cycleOutcome = "succeeded" }
+			do { try await flushBlocks(.readEnd); try await flushRequests(); cycleOutcome = "succeeded" }
 			catch { cycleOutcome = error is CancellationError ? "cancelled" : "failed"; throw error }
 			if let waitStart, let waitEnd, let limit = window.record(start: waitStart, end: waitEnd, payload: readPayload) {
 				await engine.observeReadWindow(id, proposed: limit)

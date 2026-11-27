@@ -78,6 +78,7 @@ public actor TorrentStorage {
 // Access is confined to the session's serial disk worker after initialisation.
 final class StorageState: @unchecked Sendable {
 	let metadata: TorrentMetadata
+	let legacyPieceHashes: Data?
 	let layout: StorageLayout
 	let state: StorageDirectory
 	var payload: StorageDirectory
@@ -113,7 +114,7 @@ final class StorageState: @unchecked Sendable {
 	}
 	init(metadata: TorrentMetadata, layout: StorageLayout, destination: URL, stateDirectory: URL, selected: [Bool]?, coordinator: StorageCoordinator, anchoredState: StorageDirectory? = nil,
 		checkpointPolicy: StorageCheckpointPolicy = .immediate, verificationPolicy: StorageVerificationPolicy = .eager, readPolicy: StorageReadPolicy = .strict, checkpointClock: any StorageCheckpointClock = ContinuousStorageCheckpointClock(), event: @escaping @Sendable (StorageEvent) -> Void, check: () throws -> Void) throws {
-		self.readPolicy = readPolicy; self.metadata = metadata; self.layout = layout; self.coordinator = coordinator; self.event = event
+		self.readPolicy = readPolicy; self.metadata = metadata; self.legacyPieceHashes = metadata.document.root["info"]?["pieces"]?.bytes; self.layout = layout; self.coordinator = coordinator; self.event = event
 		try checkpointPolicy.validate(); self.checkpointPolicy = checkpointPolicy; self.checkpointClock = checkpointClock
 		committedVerified = Data(repeating: 0, count: (layout.pieceCount + 7) / 8); pendingVerified = committedVerified; recoveryChecked = committedVerified
 		verificationPending = committedVerified; fileGenerations = Array(repeating: 0, count: layout.files.count)
@@ -287,16 +288,30 @@ final class StorageState: @unchecked Sendable {
 				return checked.bytes
 			} catch { record.set(piece, false); throw error }
 		}
-		var result = Data()
-		for segment in segments {
-			try check()
-			if segment.padding { result.append(Data(repeating: 0, count: segment.count)); continue }
-			let (directory, path) = overlay[segment.file] ?? location(segment.file), file = try directory.openFile(path)
-			defer { close(file) }
-			var done = 0
-			while done < segment.count {
-				try check(); let data = try StorageDirectory.read(file, offset: segment.offset + Int64(done), count: min(65536, segment.count - done))
-				guard !data.isEmpty else { throw StorageFailure.invalid("short payload read") }; done += data.count; result.append(data)
+		let raw = count > 0 ? malloc(count) : nil
+		if count > 0, raw == nil { throw diskError("Cannot allocate read buffer", code: ENOMEM) }
+		var result = raw.map { Data(bytesNoCopy: $0, count: count, deallocator: .free) } ?? Data()
+		try result.withUnsafeMutableBytes { buffer in
+			var cursor = 0
+			for segment in segments {
+				try check()
+				if segment.padding {
+					if segment.count > 0 { memset(buffer.baseAddress!.advanced(by: cursor), 0, segment.count) }
+					cursor += segment.count
+					continue
+				}
+				let (directory, path) = overlay[segment.file] ?? location(segment.file), file = try directory.openFile(path)
+				defer { close(file) }
+				var done = 0
+				while done < segment.count {
+					try check()
+					let chunk = min(262144, segment.count - done)
+					let slice = UnsafeMutableRawBufferPointer(start: buffer.baseAddress!.advanced(by: cursor + done), count: chunk)
+					let readCount = try StorageDirectory.read(file, offset: segment.offset + Int64(done), into: slice)
+					guard readCount > 0 else { throw StorageFailure.invalid("short payload read") }
+					done += readCount
+				}
+				cursor += segment.count
 			}
 		}
 		return result
@@ -305,14 +320,14 @@ final class StorageState: @unchecked Sendable {
 		try writeOperations([StorageWrite(piece: piece, offset: offset, data: data)], maximumBytes: 1_048_576, maximumCount: 1, check: check)
 	}
 
-	func verify(piece: Int, profileKind: StorageSynchronousProfile.Kind = .verification, check: () throws -> Void) throws -> Bool {
+	func verify(piece: Int, profileKind: StorageSynchronousProfile.Kind = .verification, openFiles: [Int: (fd: Int32, stamp: FileStamp)] = [:], check: () throws -> Void) throws -> Bool {
 		let profile = beginVerificationProfile(profileKind); defer { finishVerificationProfile(profile) }
 		try ready()
 		_ = try layout.length(of: piece)
 		let before = try observe(piece: piece)
 		try prepareVerification(of: piece)
 		let wasVerified = record.contains(piece); record.set(piece, false)
-		let valid = try checkedPiece(piece, before: before, check: check).valid
+		let valid = try checkedPiece(piece, before: before, openFiles: openFiles, check: check).valid
 		if valid { try requireFlush(piece: piece) }
 		record.set(piece, valid)
 		finishVerificationAttempt(piece)
@@ -331,51 +346,95 @@ final class StorageState: @unchecked Sendable {
 		} catch { record.set(piece, false); throw error }
 	}
 	private func trustedBytes(_ piece: Int, offset: Int, count: Int, before: [StorageFileObservation], check: () throws -> Void) throws -> Data {
-		var bytes = Data()
-		bytes.reserveCapacity(count)
-		for start in stride(from: 0, to: count, by: 262144) {
-			bytes.append(try read(piece: piece, offset: offset + start, count: min(262144, count - start), verifiedOnly: false, check: check))
-		}
+		let bytes = try read(piece: piece, offset: offset, count: count, verifiedOnly: false, check: check)
 		guard try observe(piece: piece) == before else { throw StorageFailure.invalid("payload changed during read") }
 		return bytes
 	}
-	private func checkedPiece(_ piece: Int, range: Range<Int>? = nil, before: [StorageFileObservation], check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
+	private func checkedPiece(_ piece: Int, range: Range<Int>? = nil, before: [StorageFileObservation], openFiles: [Int: (fd: Int32, stamp: FileStamp)] = [:], check: () throws -> Void) throws -> (valid: Bool, bytes: Data) {
 		let expected = merkle.expected(piece)
 		if merkle.index.enabled && expected == nil { throw StorageFailure.missingHashes }
 		// The invalidation scan is also the verification baseline. Keep it across
 		// checkpoint work so replacements in that interval cannot escape detection.
-		let result = try digestPiece(piece, range: range, check: check)
+		let reusable: [Int: Int32]
+		if openFiles.isEmpty {
+			reusable = [:]
+		} else {
+			var matched: [Int: Int32] = [:]
+			for observation in before {
+				if let stamp = observation.stamp, let entry = openFiles[observation.index], stamp.sameFile(entry.stamp) {
+					matched[observation.index] = entry.fd
+				}
+			}
+			reusable = matched
+		}
+		let result = try digestPiece(piece, range: range, openFiles: reusable, check: check)
 		guard try observe(piece: piece) == before else { throw StorageFailure.invalid("payload changed during verification") }
 		return (result.legacyValid && result.root == expected, result.bytes)
 	}
-	func digestPiece(_ piece: Int, range: Range<Int>? = nil, overlay: [Int: (StorageDirectory, String)] = [:], check: () throws -> Void) throws -> (legacyValid: Bool, root: Data?, bytes: Data) {
+	func digestPiece(_ piece: Int, range: Range<Int>? = nil, overlay: [Int: (StorageDirectory, String)] = [:], openFiles: [Int: Int32] = [:], check: () throws -> Void) throws -> (legacyValid: Bool, root: Data?, bytes: Data) {
 		let length = try layout.length(of: piece)
-		let hashes = metadata.document.root["info"]?["pieces"]?.bytes
+		let hashes = legacyPieceHashes
 		let mapping = merkle.index.pieces[piece]
 		var hash: Insecure.SHA1? = hashes == nil ? nil : Insecure.SHA1()
 		var offset = 0, result = Data(), leaves: [Data] = []
 		if let range { result.reserveCapacity(range.count) }
+		let chunkCapacity = min(1_048_576, max(1, length))
+		let scratch = UnsafeMutableRawBufferPointer.allocate(byteCount: chunkCapacity, alignment: 16)
+		defer { scratch.deallocate() }
+		var openIndex = -1
+		var openDescriptor: Int32 = -1
+		var ownsOpenDescriptor = false
+		defer { if ownsOpenDescriptor && openDescriptor >= 0 { close(openDescriptor) } }
 		while offset < length {
-			try check(); let count = min(262144, length - offset)
-			let data = try read(piece: piece, offset: offset, count: count, verifiedOnly: false, overlay: overlay, check: check)
-			StorageDiagnostics.count(.bytesHashed, data.count)
-			if hash != nil { StorageDiagnostics.count(.sha1Bytes, data.count) }
-			hash?.update(data: data)
+			try check()
+			let count = min(chunkCapacity, length - offset)
+			var written = 0
+			for segment in try layout.segments(piece: piece, offset: offset, count: count) {
+				if segment.padding {
+					memset(scratch.baseAddress!.advanced(by: written), 0, segment.count)
+					written += segment.count
+					continue
+				}
+				if openIndex != segment.file {
+					if ownsOpenDescriptor && openDescriptor >= 0 { close(openDescriptor) }
+					openDescriptor = -1; ownsOpenDescriptor = false
+					if overlay[segment.file] == nil, let reused = openFiles[segment.file] {
+						openDescriptor = reused
+					} else {
+						let (directory, path) = overlay[segment.file] ?? location(segment.file)
+						openDescriptor = try directory.openFile(path)
+						ownsOpenDescriptor = true
+					}
+					openIndex = segment.file
+				}
+				let slice = UnsafeMutableRawBufferPointer(rebasing: scratch[written..<(written + segment.count)])
+				let readCount = try StorageDirectory.read(openDescriptor, offset: segment.offset, into: slice)
+				guard readCount == segment.count else { throw StorageFailure.invalid("short payload read") }
+				written += segment.count
+			}
+			let chunk = UnsafeRawBufferPointer(start: scratch.baseAddress, count: count)
+			StorageDiagnostics.count(.bytesHashed, count)
+			if hash != nil { StorageDiagnostics.count(.sha1Bytes, count) }
+			hash?.update(bufferPointer: chunk)
 			if let mapping {
-				for block in stride(from: offset, to: min(offset + count, mapping.length), by: 16384) {
+				let limit = min(offset + count, mapping.length)
+				for block in stride(from: offset, to: limit, by: 16384) {
 					let end = min(block + 16384, mapping.length)
-					leaves.append(Data(SHA256.hash(data: data.subdata(in: (block - offset)..<(end - offset)))))
+					let slice = UnsafeRawBufferPointer(rebasing: chunk[(block - offset)..<(end - offset)])
+					leaves.append(Data(SHA256.hash(data: slice)))
 					StorageDiagnostics.count(.sha256Bytes, end - block)
 				}
 			}
 			if let range {
 				let lower = max(offset, range.lowerBound), upper = min(offset + count, range.upperBound)
-				if lower < upper { result.append(data.subdata(in: (lower - offset)..<(upper - offset))) }
+				if lower < upper {
+					result.append(scratch.baseAddress!.advanced(by: lower - offset).assumingMemoryBound(to: UInt8.self), count: upper - lower)
+				}
 			}
 			offset += count
 		}
 		let valid: Bool
-		if let hashes, let hash { valid = Data(hash.finalize()) == hashes.subdata(in: (piece * 20)..<(piece * 20 + 20)) }
+		if let hashes, let hash { valid = Data(hash.finalize()) == hashes[(piece * 20)..<(piece * 20 + 20)] }
 		else { valid = hashes == nil }
 		var root: Data?
 		if let mapping, let file = merkle.index.files[mapping.root] {

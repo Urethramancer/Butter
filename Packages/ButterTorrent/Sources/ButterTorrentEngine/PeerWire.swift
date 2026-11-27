@@ -99,9 +99,23 @@ enum PeerBytes {
 		guard let number = UInt32(exactly: value) else { throw PeerFailure.invalid("wire integer") }
 		var encoded = number.bigEndian; withUnsafeBytes(of: &encoded) { data.append(contentsOf: $0) }
 	}
+	static func write(_ value: Int, to base: UnsafeMutablePointer<UInt8>) throws {
+		guard let number = UInt32(exactly: value) else { throw PeerFailure.invalid("wire integer") }
+		let encoded = number.bigEndian
+		base[0] = UInt8(truncatingIfNeeded: encoded)
+		base[1] = UInt8(truncatingIfNeeded: encoded >> 8)
+		base[2] = UInt8(truncatingIfNeeded: encoded >> 16)
+		base[3] = UInt8(truncatingIfNeeded: encoded >> 24)
+	}
 	static func integer(_ data: Data, at offset: Int) throws -> Int {
 		guard offset >= 0, offset <= data.count - 4 else { throw PeerFailure.invalid("truncated integer") }
-		return (offset..<offset + 4).reduce(0) { ($0 << 8) | Int(data[$1]) }
+		return data.withUnsafeBytes { raw in
+			let b0 = UInt32(raw[offset]) << 24
+			let b1 = UInt32(raw[offset + 1]) << 16
+			let b2 = UInt32(raw[offset + 2]) << 8
+			let b3 = UInt32(raw[offset + 3])
+			return Int(b0 | b1 | b2 | b3)
+		}
 	}
 }
 
@@ -115,8 +129,20 @@ public struct PeerWireDecoder: Sendable {
 	public mutating func negotiate(_ features: PeerFeatures) { self.features = features }
 	public mutating func feed(_ data: Data) throws {
 		// Retain one maximum frame, including its four-byte prefix, plus one read.
-		guard data.count <= 65_536, bytes.count - offset <= 131_076 - data.count else { throw PeerFailure.limit("wire buffer") }
-		if offset > 0 { bytes = Data(bytes.dropFirst(offset)); offset = 0 }; bytes.append(data)
+		let remaining = bytes.count - offset
+		guard data.count <= 65_536, remaining <= 131_076 - data.count else { throw PeerFailure.limit("wire buffer") }
+		if offset > 0 {
+			if remaining == 0 {
+				bytes.removeAll(keepingCapacity: true)
+			} else {
+				bytes.withUnsafeMutableBytes { raw in
+					if let base = raw.baseAddress { memmove(base, base.advanced(by: offset), remaining) }
+				}
+				bytes.count = remaining
+			}
+			offset = 0
+		}
+		bytes.append(data)
 	}
 	public mutating func handshake() throws -> PeerHandshake? {
 		guard !handshaken else { throw PeerFailure.invalid("repeated handshake") }
@@ -135,41 +161,48 @@ public struct PeerWireDecoder: Sendable {
 		guard bytes.count - offset - 4 >= size else { return nil }
 		offset += 4
 		if size == 0 { return .keepAlive }
-		let data = bytes.subdata(in: offset..<(offset + size)); offset += size
-		switch data[0] {
+		let base = offset
+		offset += size
+		let id = bytes[base]
+		switch id {
 		case 0...3:
 			guard size == 1 else { throw PeerFailure.invalid("control message length") }
-			return [.choke, .unchoke, .interested, .notInterested][Int(data[0])]
+			switch id {
+			case 0: return .choke
+			case 1: return .unchoke
+			case 2: return .interested
+			default: return .notInterested
+			}
 		case 4:
-			guard size == 5 else { throw PeerFailure.invalid("have length") }; return .have(try PeerBytes.integer(data, at: 1))
+			guard size == 5 else { throw PeerFailure.invalid("have length") }; return .have(try PeerBytes.integer(bytes, at: base + 1))
 		case 5:
-			guard size <= 50_001 else { throw PeerFailure.limit("bitfield bytes") }; return .bitfield(Data(data.dropFirst()))
+			guard size <= 50_001 else { throw PeerFailure.limit("bitfield bytes") }; return .bitfield(bytes.subdata(in: (base + 1)..<(base + size)))
 		case 6, 8, 16:
-			if data[0] == 16, !features.fast && !features.v2 { throw PeerFailure.invalid("unnegotiated rejection") }
+			if id == 16, !features.fast && !features.v2 { throw PeerFailure.invalid("unnegotiated rejection") }
 			guard size == 13 else { throw PeerFailure.invalid("request/cancel length") }
-			let block = PeerBlock(piece: try PeerBytes.integer(data, at: 1), offset: try PeerBytes.integer(data, at: 5), length: try PeerBytes.integer(data, at: 9))
+			let block = PeerBlock(piece: try PeerBytes.integer(bytes, at: base + 1), offset: try PeerBytes.integer(bytes, at: base + 5), length: try PeerBytes.integer(bytes, at: base + 9))
 			guard (1...16384).contains(block.length) else { throw PeerFailure.invalid("request length") }
-			return data[0] == 6 ? .request(block) : data[0] == 8 ? .cancel(block) : .reject(block)
+			return id == 6 ? .request(block) : id == 8 ? .cancel(block) : .reject(block)
 		case 7:
 			guard (10...16393).contains(size) else { throw PeerFailure.invalid("piece length") }
-			return .piece(try PeerBytes.integer(data, at: 1), try PeerBytes.integer(data, at: 5), Data(data.dropFirst(9)))
+			return .piece(try PeerBytes.integer(bytes, at: base + 1), try PeerBytes.integer(bytes, at: base + 5), bytes.subdata(in: (base + 9)..<(base + size)))
 		case 9:
-			guard features.dht, size == 3 else { throw PeerFailure.invalid("unnegotiated DHT port") }; return .port(Int(data[1]) * 256 + Int(data[2]))
+			guard features.dht, size == 3 else { throw PeerFailure.invalid("unnegotiated DHT port") }; return .port(Int(bytes[base + 1]) * 256 + Int(bytes[base + 2]))
 		case 13...17:
 			guard features.fast else { throw PeerFailure.invalid("unnegotiated Fast message") }
-			if data[0] == 14 || data[0] == 15 { guard size == 1 else { throw PeerFailure.invalid("Fast availability length") }; return data[0] == 14 ? .haveAll : .haveNone }
+			if id == 14 || id == 15 { guard size == 1 else { throw PeerFailure.invalid("Fast availability length") }; return id == 14 ? .haveAll : .haveNone }
 			guard size == 5 else { throw PeerFailure.invalid("Fast index length") }
-			return data[0] == 13 ? .suggest(try PeerBytes.integer(data, at: 1)) : .allowedFast(try PeerBytes.integer(data, at: 1))
+			return id == 13 ? .suggest(try PeerBytes.integer(bytes, at: base + 1)) : .allowedFast(try PeerBytes.integer(bytes, at: base + 1))
 		case 20:
-			guard features.extended, size >= 2 else { throw PeerFailure.invalid("unnegotiated extension") }; return .extended(Int(data[1]), Data(data.dropFirst(2)))
+			guard features.extended, size >= 2 else { throw PeerFailure.invalid("unnegotiated extension") }; return .extended(Int(bytes[base + 1]), bytes.subdata(in: (base + 2)..<(base + size)))
 		case 21...23:
 			guard features.v2, size >= 49 else { throw PeerFailure.invalid("unnegotiated hash message") }
-			let request = MerkleHashRequest(root: data.subdata(in: 1..<33), base: try PeerBytes.integer(data, at: 33), index: try PeerBytes.integer(data, at: 37), count: try PeerBytes.integer(data, at: 41), proofLayers: try PeerBytes.integer(data, at: 45))
-			if data[0] == 21 { guard size == 49 else { throw PeerFailure.invalid("hash request length") }; return .hashRequest(request) }
-			if data[0] == 23 { guard size == 49 else { throw PeerFailure.invalid("hash rejection length") }; return .hashReject(request) }
+			let request = MerkleHashRequest(root: bytes.subdata(in: (base + 1)..<(base + 33)), base: try PeerBytes.integer(bytes, at: base + 33), index: try PeerBytes.integer(bytes, at: base + 37), count: try PeerBytes.integer(bytes, at: base + 41), proofLayers: try PeerBytes.integer(bytes, at: base + 45))
+			if id == 21 { guard size == 49 else { throw PeerFailure.invalid("hash request length") }; return .hashRequest(request) }
+			if id == 23 { guard size == 49 else { throw PeerFailure.invalid("hash rejection length") }; return .hashReject(request) }
 			guard (2...512).contains(request.count), request.count.nonzeroBitCount == 1, request.proofLayers <= 40,
 				size == 49 + (request.count + request.proofCount) * 32 else { throw PeerFailure.invalid("hash response length") }
-			return .hashes(request, Data(data.dropFirst(49)))
+			return .hashes(request, bytes.subdata(in: (base + 49)..<(base + size)))
 		default: throw PeerFailure.invalid("unnegotiated message ID")
 		}
 	}

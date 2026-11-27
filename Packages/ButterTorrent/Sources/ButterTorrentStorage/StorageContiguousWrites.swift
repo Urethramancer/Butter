@@ -8,7 +8,7 @@ extension StorageState {
 		var bytes: Range<Int>
 	}
 	// Validation and durable invalidation have completed before allocating this buffer.
-	func writeContiguousRanges(_ writes: [StorageWrite], segments: [[StorageLayout.Segment]], check: () throws -> Void) throws {
+	func writeContiguousRanges(_ writes: [StorageWrite], segments: [[StorageLayout.Segment]], retainedFiles: UnsafeMutablePointer<[Int: (fd: Int32, stamp: FileStamp)]>? = nil, check: () throws -> Void) throws {
 		let profile = writeProfile
 		profile?.enter(.packing)
 		let sorted = writes.indices.sorted {
@@ -20,7 +20,10 @@ extension StorageState {
 		// Preserve last-write-wins semantics for callers supplying overlapping bytes.
 		if overlaps { profile?.count("overlapJobs") }
 		let indices = overlaps ? Array(writes.indices) : sorted
-		var buffer = Data(count: writes.reduce(0) { $0 + $1.data.count })
+		let totalBytes = writes.reduce(0) { $0 + $1.data.count }
+		let raw = totalBytes > 0 ? malloc(totalBytes) : nil
+		if totalBytes > 0, raw == nil { throw diskError("Cannot allocate write buffer", code: ENOMEM) }
+		var buffer = raw.map { Data(bytesNoCopy: $0, count: totalBytes, deallocator: .free) } ?? Data()
 		var ranges: [WriteRange] = [], cursor = 0
 		try buffer.withUnsafeMutableBytes { target in
 			for index in indices {
@@ -42,8 +45,14 @@ extension StorageState {
 		StorageDiagnostics.count(.contiguousWriteRanges, ranges.count)
 		profile?.count("contiguousRanges", ranges.count)
 		for range in ranges { profile?.histogram("contiguousBytes", range.bytes.count) }
-		var files: [Int: Int32] = [:], order: [Int] = []
-		defer { profile?.enter(.cleanup); for file in files.values { close(file); profile?.count("descriptorCloses") } }
+		var files: [Int: (fd: Int32, stamp: FileStamp)] = [:], order: [Int] = []
+		var transferred = false
+		defer {
+			if !transferred {
+				profile?.enter(.cleanup)
+				for entry in files.values { close(entry.fd); profile?.count("descriptorCloses") }
+			}
+		}
 		for range in ranges {
 			profile?.enter(.prewriteChecks)
 			try check()
@@ -51,16 +60,20 @@ extension StorageState {
 			profile?.count("descriptorAcquisitions")
 			let (directory, path) = location(range.file)
 			let file: Int32
-			if let cached = files[range.file] { file = cached; profile?.count("descriptorHits"); StorageDiagnostics.count(.writeDescriptorCacheHits) }
+			var freshStamp: FileStamp?
+			if let cached = files[range.file] { file = cached.fd; profile?.count("descriptorHits"); StorageDiagnostics.count(.writeDescriptorCacheHits) }
 			else {
-				if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!); profile?.count("descriptorCloses"); profile?.enter(.descriptorAcquisition) }
-				file = try directory.openFile(path, write: true); files[range.file] = file; order.append(range.file)
+				if files.count == 8 { let oldest = order.removeFirst(); profile?.enter(.cleanup); close(files.removeValue(forKey: oldest)!.fd); profile?.count("descriptorCloses"); profile?.enter(.descriptorAcquisition) }
+				let (openedFile, openedStamp) = try directory.openFileWithStamp(path, write: true)
+				file = openedFile; freshStamp = openedStamp; files[range.file] = (openedFile, openedStamp); order.append(range.file)
 			}
 			pendingFlush.insert(range.file)
 			try StorageDirectory.write(buffer[range.bytes], to: file, offset: range.offset, maximumChunk: 1_048_576, profile: profile) {
 				// Refresh path, identity, link and permission observations on every retry.
 				try check()
-				let opened = try directory.stamp(file)
+				let opened: FileStamp
+				if let initial = freshStamp { opened = initial; freshStamp = nil }
+				else { opened = try directory.stamp(file) }
 				guard let current = try directory.inspect(path), current.sameFile(opened) else { throw StorageFailure.invalid("payload replaced during write batch") }
 				if current != record.stamps[range.file] {
 					profile?.count(record.stamps[range.file] == nil ? "coalescedMismatchAbsent" : "coalescedMismatchRecorded")
@@ -68,7 +81,13 @@ extension StorageState {
 				}
 			}
 			profile?.enter(.postwriteStamping)
-			record.stamps[range.file] = try directory.stamp(file)
+			let finalStamp = try directory.stamp(file)
+			record.stamps[range.file] = finalStamp
+			files[range.file] = (file, finalStamp)
+		}
+		if let retainedFiles {
+			retainedFiles.pointee = files
+			transferred = true
 		}
 	}
 }
